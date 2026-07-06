@@ -7,10 +7,10 @@
 #
 # `policiesRules` = { enrich; policy; } gen-dispatch rule lists (Task 3 compiles them from
 # `den.policies`; Task 2 threads them straight through so the B1 fixpoint is real).
-# `declarations` = the declaration vocabulary DEP — `classify` a declaration to its stratum,
-# `strataOrder`, `importEdgesOf` (distinct from the attribute named `declarations` below,
-# which is the dispatched policy declarations at a node). `fleetChildren self id` = the
-# cell-expansion glue (gen-product enumeration lives in lib/fleet.nix, Law A1).
+# `declarations` = the declaration vocabulary DEP — `classify` a declaration to its KIND,
+# `kindOrder`, `kindToStratum`, `importEdgesOf` (distinct from the attribute named
+# `declarations` below, the dispatched policy declarations at a node). `fleetChildren self id`
+# = the cell-expansion glue (gen-product enumeration lives in lib/fleet.nix, Law A1).
 {
   prelude,
   scope,
@@ -61,7 +61,7 @@
       let
         base = self.get id "inherited-context";
         # one enrich dispatch at a context → its fired enrich declarations. classify is a
-        # constant single-stratum tag here (every rule in policiesRules.enrich is an enrich
+        # constant single-kind tag here (every rule in policiesRules.enrich is an enrich
         # declaration); the general declaration classifier would be ceremony.
         enrichAt =
           ctx:
@@ -115,7 +115,7 @@
 
   # 4. declarations — resolution/collection/demand policies dispatched on the structural
   #    context (Task 3 widens `context` to `enriched-context // linked-context`). `declarations`
-  #    in this compute is the vocabulary DEP (classify/strataOrder), not this attribute.
+  #    in this compute is the vocabulary DEP (classify/kindOrder), not this attribute.
   declarations = resolve.attr {
     name = "declarations";
     kind = "synthesized";
@@ -128,7 +128,7 @@
         context = self.get id "enriched-context";
         match = dispatch.fromFunctionMatch;
         classify = declarations.classify;
-        phaseOrder = declarations.strataOrder;
+        phaseOrder = declarations.kindOrder;
       };
   };
 

@@ -27,10 +27,12 @@ in
     key: ownerA: ownerB:
     fail "single-writer enrichment (B1)" "enrich key `${key}` is written by two policies (`${ownerA}` and `${ownerB}`); a key may be enriched by exactly one policy";
 
-  # B2 stratum coherence: a policy whose declarations do not all classify to one stratum
-  # aborts, naming the policy and both strata (the declaration constructors that produced
-  # them). Wired at the declaration classifier (Task 3); Task 2 provides the builder.
+  # B2 stratum coherence: a policy whose declarations do not all classify to one STRATUM
+  # aborts. Each declaration's stratum is derived from its KIND via the vocabulary's
+  # kind->stratum map (Task 2: enrich -> structural is the whole map; Task 3 extends it), so
+  # the abort names both offending kinds AND their strata. Wired at the declaration classifier
+  # (Task 3); Task 2 provides the builder.
   mixedStratum =
-    policyName: stratumA: stratumB:
-    fail "declaration stratum (B2)" "policy `${policyName}` produced declarations in two strata (`${stratumA}` and `${stratumB}`); a policy's declarations must all classify to a single stratum";
+    policyName: kindA: stratumA: kindB: stratumB:
+    fail "declaration stratum (B2)" "policy `${policyName}` produced declarations of kind `${kindA}` (stratum `${stratumA}`) and kind `${kindB}` (stratum `${stratumB}`); a policy's declarations must all classify to a single stratum";
 }

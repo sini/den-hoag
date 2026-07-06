@@ -51,13 +51,17 @@ let
   scopeAdapter = import ./scope-adapter.nix { inherit select; };
 
   # Minimal declaration vocabulary for the structural stratum (Task 2). Task 3 replaces it
-  # with the real declaration constructors + stratum classifier. Enough to classify policy
-  # declarations (`__stratum` tag) and to run the `declarations`/`imports` attributes with
-  # empty rule sets. (The enrichments fixpoint uses its own constant single-stratum classify.)
+  # with the real declaration constructors + kind classifier. `classify` names a declaration's
+  # KIND (enrich/member/configure/edge/demand) from its `__kind` tag — distinct from the B2
+  # STRATUM (structural/resolution/collection), which `kindToStratum` maps each kind to.
+  # Enough to run the `declarations`/`imports` attributes with empty rule sets. (The
+  # enrichments fixpoint uses its own constant single-kind classify.)
   declarationsMin = {
-    classify =
-      a: a.__stratum or (throw "den-hoag: declaration carries no __stratum tag (declarationsMin)");
-    strataOrder = [ "policy" ];
+    classify = a: a.__kind or (throw "den-hoag: declaration carries no __kind tag (declarationsMin)");
+    kindOrder = [ "policy" ];
+    kindToStratum = {
+      enrich = "structural";
+    };
     importEdgesOf = _policyDeclarations: [ ];
   };
 
