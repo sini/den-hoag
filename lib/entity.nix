@@ -18,7 +18,7 @@ let
   # option per kind (the tree that holds those options can't also be the tree that
   # discovers them without a laziness cycle). Two schema evals; the probe forces only
   # schema declarations. `contentClass` stays den-side and null here — the class wiring
-  # that populates it lands in Task 2.
+  # that populates it lands with the classes concern (quirk channels / output assembly).
   discoverKinds =
     userModules:
     let

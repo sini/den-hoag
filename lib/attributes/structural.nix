@@ -28,6 +28,7 @@
   inherited-context = resolve.attr {
     name = "inherited-context";
     kind = "inherited";
+    stratum = "structural";
     readsAttrs = [ ];
     compute =
       self: id:
@@ -145,6 +146,7 @@
   imports = resolve.attr {
     name = "imports";
     kind = "synthesized";
+    stratum = "structural";
     readsAttrs = [ "declarations" ];
     compute = self: id: declarations.importEdgesOf (self.get id "declarations");
   };

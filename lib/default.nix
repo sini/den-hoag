@@ -58,6 +58,8 @@ let
   # enrichments fixpoint uses its own constant single-kind classify.)
   declarationsMin = {
     classify = a: a.__kind or (throw "den-hoag: declaration carries no __kind tag (declarationsMin)");
+    # NB: "policy" here is the dispatch GROUP label for the one-shot policy evaluation,
+    # not a declaration kind (enrich/member/configure/…) — the real vocabulary replaces this.
     kindOrder = [ "policy" ];
     kindToStratum = {
       enrich = "structural";
