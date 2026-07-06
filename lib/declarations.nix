@@ -107,6 +107,17 @@ let
     in
     builtins.seq a (actions.drop { aspect = a; });
 
+  # `link { target }` — structural: an I-edge to an EXISTING entity node (annotates, never
+  # creates/re-resolves). `target` denotes an entity node — an identity-law position (A2) — so it
+  # is entry-checked EAGERLY, like `member`/`edge`. Selector fan-out is a POLICY-level idiom (a
+  # policy resolves a selector and emits one `link` per matched entry), not constructor polymorphism.
+  link =
+    { target }:
+    let
+      t = requireEntry "link.target" target;
+    in
+    builtins.seq t (actions.link { target = t; });
+
   # `demand args` — demand: a subject entity plus the demand payload.
   demand' =
     args:
@@ -165,6 +176,7 @@ actions
     configure
     edge
     drop
+    link
     ;
   demand = demand';
   # pipe.* operators re-exported from gen-pipe (map/filter/fold/scan/route/join/tee). They are

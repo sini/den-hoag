@@ -41,6 +41,11 @@ in
         )).success;
       expected = false;
     };
+    # `link` target is an entity-node position (A2) — a scope-string aborts, named.
+    test-link-string-aborts = {
+      expr = (builtins.tryEval (declare.link { target = "host:axon"; })).success;
+      expected = false;
+    };
 
     # (b) — the entry-valued forms succeed and carry the entry through by id_hash.
     test-edge-entry-succeeds = {
@@ -63,6 +68,10 @@ in
             x = 1;
           };
         }).of.id_hash == hostEntry.id_hash;
+      expected = true;
+    };
+    test-link-entry-succeeds = {
+      expr = (declare.link { target = hostEntry; }).target.id_hash == hostEntry.id_hash;
       expected = true;
     };
 

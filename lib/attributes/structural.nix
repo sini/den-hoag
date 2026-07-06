@@ -41,7 +41,15 @@
       self: id:
       let
         layers = scope.inheritAll {
-          extract = node: removeAttrs (node.decls or { }) [ "__edges" ];
+          # Strip reserved `__` decls from the context: `__edges` (gen-scope's own) and
+          # `__containment` (the cell's coordinate-root ids, a resolution-only visibility aid) are
+          # graph machinery, not entity bindings — a settings/policy read must never see them.
+          extract =
+            node:
+            removeAttrs (node.decls or { }) [
+              "__edges"
+              "__containment"
+            ];
         } self id;
       in
       prelude.foldl' (acc: layer: layer // acc) { } layers;

@@ -154,6 +154,33 @@ let
       ];
     };
   denDrop = (denHoag.mkDen (fleetBase ++ [ dropMod ])).den;
+
+  # ── diamond include — ay → {bee, cee}; bee → dee; cee → dee ─────────────────────────────────
+  # Pins the forwardExpand acc.nodes threading: the shared leaf dee resolves exactly once and BOTH
+  # branch nodes survive (the r2-sketch fold bug would drop the first branch's accumulated nodes).
+  diamondMod =
+    { config, ... }:
+    {
+      config.den.aspects = {
+        dee = { };
+        bee.includes = [ config.den.aspects.dee ];
+        cee.includes = [ config.den.aspects.dee ];
+        ay.includes = [
+          config.den.aspects.bee
+          config.den.aspects.cee
+        ];
+      };
+      config.den.include = [
+        {
+          at = config.den.host.axon;
+          aspects = [ config.den.aspects.ay ];
+        }
+      ];
+    };
+  denDiamond = (denHoag.mkDen (fleetBase ++ [ diamondMod ])).den;
+  countKey =
+    den: id: k:
+    builtins.length (builtins.filter (x: x == k) (keysOf den id));
 in
 {
   flake.tests.b4-fixpoint = {
@@ -214,6 +241,18 @@ in
     };
     test-drop-keeps-siblings = {
       expr = (has denDrop axonId "keepMe") && (has denDrop axonId "dropper");
+      expected = true;
+    };
+
+    # ── diamond include ──
+    # the shared leaf resolves exactly once (dedup over a diamond).
+    test-diamond-shared-leaf-once = {
+      expr = countKey denDiamond axonId "dee";
+      expected = 1;
+    };
+    # both include branches survive (forwardExpand threads accumulated nodes across the fold).
+    test-diamond-both-branches-survive = {
+      expr = (has denDiamond axonId "bee") && (has denDiamond axonId "cee");
       expected = true;
     };
   };
