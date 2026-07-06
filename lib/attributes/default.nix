@@ -18,6 +18,8 @@
   projects,
   scopeAdapter,
   declarations,
+  edge,
+  bind,
   errors,
 }:
 let
@@ -61,6 +63,19 @@ let
       errors
       ;
   };
+  classModules = import ./class-modules.nix {
+    inherit
+      prelude
+      resolve
+      ;
+  };
+  outputModules = import ./output-modules.nix {
+    inherit
+      prelude
+      edge
+      bind
+      ;
+  };
 in
 {
   # The full equation map. Structural attributes shape the graph (they never read a resolution
@@ -86,10 +101,13 @@ in
       settingsLayers ? [ ],
       dimKinds,
       projectors ? [ ],
+      classNames,
+      classifyKey,
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // (resolvedAspects { inherit allAspects directIncludes; })
     // (collections { inherit quirkDag classOfNode channelNames; })
+    // (classModules { inherit classNames classifyKey; })
     // {
       local-demand-data = localDemandData;
     }
@@ -107,6 +125,11 @@ in
   # The narrow accessor (A10) builder — depends only on the aspect registry + the final eval, not the
   # resolved-settings instance args, so den-hoag applies it once at the top level.
   inherit (resolvedSettings) mkNarrowAccessor;
+
+  # The output builder (attribute 12) — the gen-edge fold's graph accessor + `outputFor`/`traceFor`,
+  # and the per-class terminal crossing. Reads the FINAL eval (not an in-flight `self`), so den-hoag
+  # applies it once at the top level (like the narrow accessor).
+  mkOutputModules = outputModules;
 
   # Expose the structural builder for the suite's minimal-scenario scaffolding (b2 builds
   # structural equations over hand-built roots/rules).

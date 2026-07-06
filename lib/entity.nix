@@ -44,6 +44,32 @@ let
       dim = kindName;
     });
 
+  # Discover the declared quirk channel NAMES the same freeform-probe way `discoverKinds` reads
+  # the schema: a schema-less tree freeform-absorbs every `den.*` config the user modules set and
+  # exposes `den.quirks`' attr names WITHOUT forcing any quirk value (attrNames = spine only). mkDen
+  # needs the channel names up front to (a) declare each as a `raw` option on the aspect schema so a
+  # channel emission rides untouched (never freeform-absorbed into a nested aspect) and (b) seed the
+  # §2.2 three-branch key dispatch (`classifyKey`'s channel branch). Quirk names are static decls, so
+  # this probe is as sound as the kind probe.
+  discoverChannels =
+    userModules:
+    let
+      probe = merge.evalModuleTree {
+        modules = [
+          {
+            options.den = merge.mkOption {
+              default = { };
+              type = merge.types.submodule {
+                freeformType = merge.types.lazyAttrsOf merge.types.anything;
+              };
+            };
+          }
+        ]
+        ++ userModules;
+      };
+    in
+    builtins.attrNames (probe.config.den.quirks or { });
+
   # Build the schema module tree once; user modules declare config.den.schema.<kind>
   # and the instances config.den.<kind>.<name>. Returns { kinds; registries; meta;
   # topology; roots; config; } where:
@@ -97,5 +123,10 @@ let
       cc;
 in
 {
-  inherit build classOf discoverKinds;
+  inherit
+    build
+    classOf
+    discoverKinds
+    discoverChannels
+    ;
 }

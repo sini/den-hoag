@@ -68,6 +68,23 @@ let
       };
     };
 
+  # §2.2/§27 raw channel keys — each registered quirk channel is declared as a `raw`-typed option on
+  # every aspect, so a channel emission (plain data, an attrset, OR a deferred config-thunk) rides
+  # THROUGH the aspect submodule untouched instead of being freeform-absorbed (an attrset would become
+  # a nested aspect, a config-fn a wrapped functor). `raw` = single-value passthrough, no merge attempt.
+  # Empty when the fleet declares no quirks; `local-collection-data` reads `a.content.<channel>` back.
+  channelModules = map (
+    name:
+    { ... }:
+    {
+      options.${name} = merge.mkOption {
+        type = merge.types.raw;
+        default = null;
+        description = "Quirk channel `${name}` contribution (§2.5) — rides raw (never merged).";
+      };
+    }
+  ) (builtins.attrNames quirkChannels);
+
   # Aspect identity (A2) — a content-stable id_hash derived from the structural `key`, so den-hoag
   # aspects are identity-law entries usable by gen-settings (mkSchema/resolveAll route by id_hash) and
   # by `ref` (E6 requires an id_hash-bearing target). Same key ⇒ same id_hash (dedup-coherent with the
@@ -100,7 +117,8 @@ let
       neededByModule
       settingsModule
       idModule
-    ];
+    ]
+    ++ channelModules;
     metaModules = [
       guardMetaModule
       dropMetaModule
@@ -123,7 +141,13 @@ let
     "name"
     "description"
     "key"
+    "id_hash" # injected by idModule — a structural facet, not content
   ];
+  # §2.2 three-branch key dispatch — an aspect key is a declared facet, a registered output class, a
+  # registered quirk channel, or a definition-time error. `class-modules` (attribute 9) reuses this to
+  # route each resolved aspect's content keys: `class` keys collect module content, `channel`/`facet`
+  # keys are handled by their own strata, an unregistered key (a typo — freeform-absorbed by gen-aspects)
+  # aborts here naming the aspect and key.
   classifyKey =
     aspectName: key:
     if builtins.elem key facets then

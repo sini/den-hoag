@@ -115,7 +115,8 @@ let
       ;
   };
 
-  # Attribute assembly (structural attrs 1–6 + resolution attr 7) + the gen-resolve seam.
+  # Attribute assembly (structural attrs 1–6 + resolution attrs 7/9 + collection/settings/output) + the
+  # gen-resolve seam.
   attributesLib = import ./attributes/default.nix {
     inherit
       prelude
@@ -129,11 +130,21 @@ let
       settings
       settingsLib
       scopeAdapter
+      edge
+      bind
       errors
       ;
     projects = projectsLib;
     declarations = declare;
   };
+
+  # The classes concern (§2.4) + the terminal crossing (§2.10, Law A15). `concernClasses.compile`
+  # turns `den.classes` declarations into class config records; `terminalLib` is the ONE gen-flake
+  # crossing (lib/output/terminal.nix) — den-hoag stays nixpkgs-free by defaulting classes to the
+  # `collect` terminal (nixpkgs-free), with `crossNixos` available for den-compat / a real build.
+  concernClasses = import ./concern-classes.nix { inherit prelude bind; };
+  terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
+  graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
   runResolve = attributesLib.runResolve;
   inherit (buildRootsLib) buildRoots parseParent;
@@ -144,6 +155,23 @@ let
   mkDen =
     userModules:
     let
+      # §2.2/§27 raw channel keys — probe the declared quirk channel names (a static-decl probe, like
+      # `discoverKinds`), then build a CHANNEL-AWARE aspect schema: each channel key is a `raw` option
+      # (so an emission rides untouched, never freeform-absorbed into a nested aspect) and `classifyKey`
+      # gains its three-branch channel branch. Rebuilt per mkDen because channels are user config.
+      discoveredChannels = entity.discoverChannels userModules;
+      channelSet = prelude.genAttrs discoveredChannels (_: true);
+      denAspects = import ./concern-aspects.nix {
+        inherit
+          prelude
+          aspects
+          merge
+          classNames
+          errors
+          ;
+        quirkChannels = channelSet;
+      };
+
       # den-managed module: the fleet membership channel. Task 1 bootstrap surface — the
       # fixture sets these tuples directly. Task 3 dispatches `member` declarations (they land in
       # the `declarations` attribute's structural group); routing them back into this membership
@@ -167,9 +195,21 @@ let
       };
 
       # den.aspects.<name> — the behavior concern (aspectsType). Compiled onto gen-aspects by
-      # concern-aspects; each entry carries `key`/`neededBy`/`meta.guard`/`meta.drop`/`includes`.
+      # concern-aspects (the CHANNEL-AWARE schema above); each entry carries
+      # `key`/`neededBy`/`meta.guard`/`meta.drop`/`includes` + a `raw` option per registered channel.
       aspectsDecl = {
-        options.den.aspects = concernAspects.aspectSchema.mkAspectOption { };
+        options.den.aspects = denAspects.aspectSchema.mkAspectOption { };
+      };
+
+      # den.classes.<name> — the classes concern (§2.4). Each entry declares `wrap`/`instantiate`/`share`;
+      # absent ⇒ den-hoag's defaults (bind-wins merge, validators on, the nixpkgs-free `collect`
+      # terminal). `raw` holds each record (its `instantiate` is a function) unmerged.
+      classesDecl = {
+        options.den.classes = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Output class registrations: `<name> = { wrap ? {}; instantiate ? <default>; share ? {}; }` (§2.4).";
+        };
       };
 
       # den.include — the static entity-scoped aspect-inclusion surface (r2 §370 `directAspects`):
@@ -260,6 +300,7 @@ let
           membershipDecl
           policiesDecl
           aspectsDecl
+          classesDecl
           includeDecl
           quirksDecl
           contentClassDecl
@@ -379,6 +420,17 @@ let
         entityOfNode = node: node.decls.__entry or null;
       };
 
+      # The classes concern (§2.4): compile every registered class (the class-name buckets, extended by
+      # any `den.classes.<name>` declaration) into class config records — the `wrap.mergeStrategy` →
+      # gen-bind `defaultMergeStrategy` adapter, the validator toggle, the terminal `instantiate`, the
+      # `share.core` opt-in, and the A10 `coreStrategy` seam. Default terminal = the nixpkgs-free
+      # `collect` (den-hoag stays pure; a real build supplies `crossNixos` per class).
+      classDecls = prelude.genAttrs classNames (name: ent.config.den.classes.${name} or { });
+      classesByName = concernClasses.compile {
+        classes = classDecls;
+        defaultInstantiate = terminalLib.collect;
+      };
+
       equations = attributesLib.equations {
         inherit policiesRules fleetChildren linkTarget;
         allAspects = ent.config.den.aspects;
@@ -392,11 +444,21 @@ let
           dimKinds
           projectors
           ;
+        inherit classNames;
+        inherit (denAspects) classifyKey;
       };
 
       structural = runResolve {
         roots = scopeRoots;
         inherit equations parseParent;
+      };
+
+      # The output stratum (attribute 12, Law A15): the gen-edge fold's graph accessor + `outputFor`/
+      # `traceFor`, and the per-class terminal crossing (`systems.<class>.<member>`). Reads the FINAL
+      # eval; applied once here (like the narrow accessor).
+      output = attributesLib.mkOutputModules {
+        result = structural.eval;
+        inherit classesByName classOfNode;
       };
 
       # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,
@@ -491,6 +553,15 @@ let
           aspect = allAspects.${name};
           scopes = scopesOf allAspects.${name};
         }) (builtins.filter (n: (allAspects.${n}.projects or [ ]) != [ ]) (builtins.attrNames allAspects));
+
+      # The graph escape hatch (§2.11): the gen-scope result, the restricted fleet product, the per-root
+      # gen-edge edge set + frozen trace (the parity oracle input, Law A15), and the gen-demand resolution.
+      graph = graphEscape {
+        scope = structural.eval;
+        fleet = theFleet;
+        graphAccessor = output.graphAccessor;
+        demands = demandResolution;
+      };
     in
     {
       den = {
@@ -516,6 +587,12 @@ let
         # inert gen-edge records — these join the fleet edge set Task 9 materializes.
         demandKinds = demandKindSet;
         inherit demandResolution demandEdges;
+        # The output stratum (attribute 12, Law A15): the gen-edge fold (`graphAccessor`/`outputFor`/
+        # `traceFor`), the per-class terminal crossing (`systems`), and the compiled class configs.
+        inherit output;
+        classConfigs = classesByName;
+        # The graph escape hatch (§2.11), read-only.
+        inherit graph;
       };
     };
 in
@@ -562,6 +639,10 @@ in
     # Settings/linearization builders + the raw gen-settings/gen-algebra surfaces, for the suite's
     # A7/A16 direct-function and byte-parity scenarios (foldLayers reference; linearization errors).
     inherit settingsLib linearizationLib;
+    # The classes concern compiler + the terminal builder (crossNixos / collect), for the suite's
+    # class-modules + output + terminal-crossing scenarios.
+    compileClasses = concernClasses.compile;
+    terminal = terminalLib;
     inherit
       dispatch
       resolve
@@ -573,6 +654,10 @@ in
       settings
       algebra
       demand
+      edge
+      bind
+      merge
+      flake
       ;
   };
 }

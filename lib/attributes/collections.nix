@@ -30,18 +30,19 @@
   channelNames,
 }:
 let
-  # A config-demanding aspect channel value (a `{ config, ... }: …` thunk) reaches den as a gen-aspects
-  # wrapped functor carrying `__functionArgs`; that is the deferred (per-member) contribution. Plain
-  # data (lists/attrsets with no config demand) is class-invariant and rides as-is.
+  # A config-demanding aspect channel value (a `{ config, ... }: …` thunk) is the deferred (per-member)
+  # contribution. Under the §27 raw channel key it rides as a BARE function (functionArgs directly); the
+  # legacy gen-aspects freeform path wrapped it as a functor carrying `__functionArgs` — both forms are
+  # detected here. Plain data (lists/attrsets with no config demand) is class-invariant and rides as-is.
   configArgNames = [
     "config"
     "osConfig"
   ];
+  demandsConfigArg = args: builtins.any (a: builtins.elem a configArgNames) (builtins.attrNames args);
   isConfigThunk =
     v:
-    builtins.isAttrs v
-    && (v.__isWrappedFn or false)
-    && builtins.any (a: builtins.elem a configArgNames) (builtins.attrNames (v.__functionArgs or { }));
+    (builtins.isFunction v && demandsConfigArg (builtins.functionArgs v))
+    || (builtins.isAttrs v && (v.__isWrappedFn or false) && demandsConfigArg (v.__functionArgs or { }));
 
   # The reserved decls keys are graph machinery, never producing-scope coordinates.
   coordDims =
@@ -119,7 +120,11 @@ in
                   emissionIndex = 0; # one value per channel key ⇒ no intra-producer ordering here
                   contribution = pipe.contribute {
                     channel = quirkDag.channels.${chName};
-                    value = if deferredV then pipe.deferred { fn = env: v env; } else v;
+                    # `pipe.deferred` takes the config-demanding function ITSELF, so gen-pipe reads its
+                    # `argDemand` (functionArgs) to know which config args to supply and den-hoag's
+                    # `deferredToThunk` can hand it straight to gen-bind's `__configThunk` (resolve at the
+                    # producing class+scope). The channel value rides raw (§27), so `v` is that function.
+                    value = if deferredV then pipe.deferred v else v;
                     producer = {
                       entity = ownEntry;
                       scope = coords;
