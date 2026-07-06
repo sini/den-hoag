@@ -19,6 +19,7 @@ let
     "linearization.nix"
     "settings.nix"
     "projects.nix"
+    "demand.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
     "attributes/resolved-aspects.nix"
