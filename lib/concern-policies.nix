@@ -56,6 +56,9 @@
             ;
           inherit produce;
           identity = name;
+          # REQUIRED by gen-dispatch: multi-phase dispatch (attr 4's stratified phaseOrder)
+          # throws on rules without an explicit phase — this is lib contract, not metadata.
+          phase = stratum;
           __isEnrich = isEnrich;
         };
 
