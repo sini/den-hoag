@@ -49,6 +49,7 @@
             removeAttrs (node.decls or { }) [
               "__edges"
               "__containment"
+              "__coords"
             ];
         } self id;
       in

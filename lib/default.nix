@@ -51,6 +51,11 @@ let
   scopeAdapter = import ./scope-adapter.nix { inherit prelude select; };
   concernQuirks = import ./concern-quirks.nix { inherit prelude pipe errors; };
 
+  # Settings compilation surface (schema + scoped-override layers + ref re-export, §2.6/§4.3) and the
+  # linearization declaration surface (§2.7). Both are pure vocabulary over gen-settings / gen-product.
+  settingsLib = import ./settings.nix { inherit prelude settings errors; };
+  linearizationLib = import ./linearization.nix { inherit prelude product errors; };
+
   # den-hoag's output classes — the class-separated content buckets on every aspect, and the
   # class-tag vocabulary for quirk contributions (§2.5). The full class registry (wrap/instantiate/
   # share) is Task 6/A10; Task 5 needs only class ENTRIES to tag with, built here from the class
@@ -101,6 +106,9 @@ let
       aspects
       select
       pipe
+      product
+      settings
+      settingsLib
       scopeAdapter
       errors
       ;
@@ -166,6 +174,29 @@ let
         };
       };
 
+      # den.linearization.dims — the slice-order declaration surface (§2.7): a total order on the
+      # product DIMENSIONS as KIND entries (identity law A2), least→most specific. Empty (the default)
+      # means "canonical" — den-hoag fills it with the name-sorted kind entries, preserving the pre-
+      # concern behavior. `raw` holds the entry list unmerged.
+      linearizationDecl = {
+        options.den.linearization.dims = merge.mkOption {
+          type = merge.types.listOf merge.types.raw;
+          default = [ ];
+          description = "Slice-order dimensions (§2.7): [ <kind entry> ], least→most specific (identity law A2).";
+        };
+      };
+
+      # den.settings.layers — the scoped-override surface (§2.6 source 2), the `at`-record form:
+      # [ { at = <partial coords, entries>; of = <aspect entry>; set = { <field> = <value|ref> }; via ? null } ].
+      # `raw` holds each layer record unmerged (its `at`/`of` are entries, `set` a patch).
+      settingsDecl = {
+        options.den.settings.layers = merge.mkOption {
+          type = merge.types.listOf merge.types.raw;
+          default = [ ];
+          description = "Scoped settings overrides (§2.6): [ { at; of; set; via ? null } ].";
+        };
+      };
+
       # den.contentClass.<kind> — the class-tag vocabulary (§2.1/§2.5): the output class a kind's
       # scopes produce, as a class-name string (resolved to the class entry) or a class entry; a kind
       # with no mapping is class-neutral (e.g. env). den v2's canonical home is
@@ -189,6 +220,8 @@ let
           includeDecl
           quirksDecl
           contentClassDecl
+          linearizationDecl
+          settingsDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -305,12 +338,19 @@ let
         allAspects = ent.config.den.aspects;
         directIncludes = ent.config.den.include;
         inherit quirkDag classOfNode channelNames;
+        fleet = theFleet;
+        inherit lin settingsLayers dimKinds;
       };
 
       structural = runResolve {
         roots = scopeRoots;
         inherit equations parseParent;
       };
+
+      # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,
+      # over the FINAL eval (`structural.eval`). Consumed as the `aspects` module arg at output
+      # assembly (Task 9); exposed here so the settings/cross-aspect surface is readable standalone.
+      aspectsAt = attributesLib.mkNarrowAccessor ent.config.den.aspects structural.eval;
 
       # The fleet channel outputs — one gen-pipe.run over the neron traversal, for the class-relative
       # read (concernQuirks.consumeAt) at output assembly (Task 6). `.at pos` selects any position; it
@@ -334,7 +374,23 @@ let
         };
       };
 
-      lin = product.linearizeByDimOrder dimKinds;
+      # Slice-order linearization (§2.7). `den.linearization.dims` declares the dimension order as
+      # KIND entries; empty ⇒ canonical (name-sorted kind entries), preserving the pre-concern order.
+      # linearizationLib validates totality/identity and renders entries → product dim names (Law A1:
+      # the count-major slice key lives in gen-product).
+      declaredDims = ent.config.den.linearization.dims or [ ];
+      linDims = if declaredDims == [ ] then map (k: ent.kinds.${k}) dimKinds else declaredDims;
+      lin = linearizationLib.linearization {
+        dims = linDims;
+        productDims = dimKinds;
+      };
+
+      # Scoped settings overrides (§2.6) compiled to internal den-layer records (validated: `of` an
+      # aspect entry, `at` dims ∈ product). resolved-settings folds them per (cell, aspect) by §2.7.
+      settingsLayers = settingsLib.compileLayers {
+        layers = ent.config.den.settings.layers or [ ];
+        productDims = dimKinds;
+      };
     in
     {
       den = {
@@ -352,6 +408,9 @@ let
         # input to the class-relative read `internal.consumeAt`).
         classes = classEntries;
         inherit quirkDag receivedOutputs;
+        # Settings resolution surface (§2.6/§2.7/§2.8): the compiled scoped-override layers, and the
+        # narrow accessor `aspectsAt <nodeId> = { <aspectName> = { present; settings; }; }` (A10).
+        inherit settingsLayers aspectsAt;
       };
     };
 in
@@ -369,6 +428,12 @@ in
   # `declare.edge`, etc.
   inherit declare;
 
+  # den's settings vocabulary, independent of any one mkDen instance: `ref` (cross-aspect reference
+  # data, §2.8) and the linearization declaration helper (§2.7). `settings` re-exports gen-settings'
+  # `ref`; `linearization` is the totality-checked dim-order wrapper.
+  inherit (settingsLib) ref;
+  linearization = linearizationLib.linearization;
+
   # Internal builders + raw gen libs — for constructing minimal scenarios in the suite
   # (structural equations over hand-built roots/rules), not a public API.
   internal = {
@@ -383,6 +448,9 @@ in
     inherit (concernAspects) classifyKey;
     # The quirks concern's composer + class-relative read, for the suite's channel scenarios.
     inherit (concernQuirks) compose consumeAt;
+    # Settings/linearization builders + the raw gen-settings/gen-algebra surfaces, for the suite's
+    # A7/A16 direct-function and byte-parity scenarios (foldLayers reference; linearization errors).
+    inherit settingsLib linearizationLib;
     inherit
       dispatch
       resolve
@@ -391,6 +459,8 @@ in
       product
       aspects
       pipe
+      settings
+      algebra
       ;
   };
 }

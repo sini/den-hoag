@@ -116,6 +116,14 @@ let
               ${parentDim} = hostEntry;
               ${leafDim} = leafEntry;
               __entry = leafEntry;
+              # Full product coordinates of this cell (all dims → entries), cached for attribute 13's
+              # `gen-product.containmentChain` — the settings chain needs every coordinate. `c` is the
+              # cell within the host-sliced view, so it carries only the FREE dims (host was fixed by
+              # the slice and dropped); re-add the host coordinate for the full product cell. Reserved
+              # `__` key: excluded from context/coordDims, so it never leaks into policy ctx or channels.
+              __coords = c // {
+                ${parentDim} = hostEntry;
+              };
               # Containment ancestors (§B4a visibility): the flat root scope id of every non-leaf
               # coordinate of this cell (e.g. env:prod, host:axon). resolved-aspects reads these
               # ancestors' resolved sets top-down — env is a coordinate root, not a P-parent, so
@@ -132,4 +140,8 @@ let
 in
 {
   inherit factorOf mkFleet cellChildrenFor;
+  # The slice-order chain over the fleet product (§2.7) — re-exported so the settings resolution
+  # (attribute 13) and output assembly read one den-hoag surface. The algorithm is gen-product's
+  # (Law A1); den-hoag only names it.
+  inherit (product) containmentChain;
 }

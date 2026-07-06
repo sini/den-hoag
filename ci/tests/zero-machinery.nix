@@ -16,10 +16,13 @@ let
     "concern-policies.nix"
     "concern-aspects.nix"
     "concern-quirks.nix"
+    "linearization.nix"
+    "settings.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
     "attributes/resolved-aspects.nix"
     "attributes/collections.nix"
+    "attributes/resolved-settings.nix"
   ];
   forbidden = [
     "builtins.genericClosure"

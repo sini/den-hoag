@@ -50,6 +50,7 @@ let
       "__entry"
       "__edges"
       "__containment"
+      "__coords"
     ];
 in
 {

@@ -72,6 +72,28 @@ in
     }:
     fail "class tag (A13)" "aspect `${render aspect}` emits class-shaped (config-demanding) content to quirk channel `${channel}` at null-class scope `${renderScope scope}`; a class-shaped contribution needs a producing class — tag it explicitly or make the emission config-independent";
 
+  # A7 linearization declaration surface: a `den.linearization.dims` list that is not a total,
+  # entry-only cover of the product dimensions. `tag` names the failure; `detail` is the offending
+  # dim name (missing/duplicate) or the rendered non-entry (identity law A2). Definition-time.
+  linearizationDim =
+    tag: detail:
+    fail "linearization (A7)" (
+      if tag == "non-entry" then
+        "den.linearization.dims takes KIND entries (each carrying a `kind` field), got a non-entry `${detail}` — pass `den.schema.<kind>`, not a dim-name string"
+      else if tag == "missing" then
+        "den.linearization.dims omits product dimension `${detail}`; every registered dimension must appear exactly once"
+      else if tag == "duplicate" then
+        "den.linearization.dims names dimension `${detail}` more than once; each dimension appears exactly once"
+      else
+        "malformed dims (${tag}): ${detail}"
+    );
+
+  # A10 narrow accessor: reading `.settings` of an aspect whose `present = false` at this scope.
+  # Names the aspect and the scope node; the caller must check `.present` first (§2.8).
+  absentAspectSetting =
+    aspectName: scopeId:
+    fail "narrow accessor (A10)" "aspect `${aspectName}` is not present at scope `${scopeId}` — its `.settings` is unavailable; check `.present` before reading `.settings`";
+
   # A13 cross-class consumption: a consumer at class C reads a contribution tagged class C′ ≠ C with
   # no declared C′→C adapter on the quirk. den owns the discipline (a declared adapter is the ONLY
   # authorised coercion — §2.5, never implicit); this frames the abort naming the channel, the

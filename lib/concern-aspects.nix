@@ -55,6 +55,35 @@ let
       };
     };
 
+  # Settings SCHEMA (§2.6 source 1) — the aspect's declared `{ <bare-field> = { default; merge ? }; }`.
+  # A facet (§2.2), NOT a nested aspect: declared as a structured option so lib/settings.nix reads it
+  # as the static field-spec for `gen-settings.mkSchema`. `raw` holds each field record unmerged.
+  settingsModule =
+    { ... }:
+    {
+      options.settings = merge.mkOption {
+        type = merge.types.lazyAttrsOf merge.types.raw;
+        default = { };
+        description = "Settings schema (§2.6): `<bare-field> = { default; merge ? \"replace\"; }`.";
+      };
+    };
+
+  # Aspect identity (A2) — a content-stable id_hash derived from the structural `key`, so den-hoag
+  # aspects are identity-law entries usable by gen-settings (mkSchema/resolveAll route by id_hash) and
+  # by `ref` (E6 requires an id_hash-bearing target). Same key ⇒ same id_hash (dedup-coherent with the
+  # resolved-aspects fixpoint, which dedups by key).
+  idModule =
+    { config, ... }:
+    {
+      options.id_hash = merge.mkOption {
+        type = merge.types.str;
+        internal = true;
+        readOnly = true;
+        description = "Content-stable aspect identity (sha256 over the structural key).";
+      };
+      config.id_hash = builtins.hashString "sha256" "den-aspect:${config.key}";
+    };
+
   # cnf drives gen-aspects' `aspectType`. `classes` become clean deferredModule content buckets;
   # `moduleArgs` is the known-module-arg set gen-aspects uses to tell class-content module fns from
   # parametric guard fns; `aspectModules`/`metaModules` inject den's option surface into every
@@ -67,7 +96,11 @@ let
       host = true;
       user = true;
     };
-    aspectModules = [ neededByModule ];
+    aspectModules = [
+      neededByModule
+      settingsModule
+      idModule
+    ];
     metaModules = [
       guardMetaModule
       dropMetaModule

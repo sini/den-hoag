@@ -12,6 +12,9 @@
   aspects,
   select,
   pipe,
+  product,
+  settings,
+  settingsLib,
   scopeAdapter,
   declarations,
   errors,
@@ -46,6 +49,16 @@ let
       errors
       ;
   };
+  resolvedSettings = import ./resolved-settings.nix {
+    inherit
+      prelude
+      resolve
+      product
+      settings
+      settingsLib
+      errors
+      ;
+  };
 in
 {
   # The full equation map. Structural attributes shape the graph (they never read a resolution
@@ -62,10 +75,26 @@ in
       quirkDag,
       classOfNode,
       channelNames,
+      fleet,
+      lin,
+      settingsLayers ? [ ],
+      dimKinds,
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // (resolvedAspects { inherit allAspects directIncludes; })
-    // (collections { inherit quirkDag classOfNode channelNames; });
+    // (collections { inherit quirkDag classOfNode channelNames; })
+    // (resolvedSettings.mkEquation {
+      inherit
+        fleet
+        lin
+        settingsLayers
+        dimKinds
+        ;
+    });
+
+  # The narrow accessor (A10) builder — depends only on the aspect registry + the final eval, not the
+  # resolved-settings instance args, so den-hoag applies it once at the top level.
+  inherit (resolvedSettings) mkNarrowAccessor;
 
   # Expose the structural builder for the suite's minimal-scenario scaffolding (b2 builds
   # structural equations over hand-built roots/rules).
