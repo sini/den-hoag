@@ -51,8 +51,9 @@ let
   scopeAdapter = import ./scope-adapter.nix { inherit select; };
 
   # Minimal declaration vocabulary for the structural stratum (Task 2). Task 3 replaces it
-  # with the real declaration constructors + stratum classifier. Enough to classify enrich
-  # declarations (`__stratum` tag) and to run policy-declarations/imports with empty rule sets.
+  # with the real declaration constructors + stratum classifier. Enough to classify policy
+  # declarations (`__stratum` tag) and to run the `declarations`/`imports` attributes with
+  # empty rule sets. (The enrichments fixpoint uses its own constant single-stratum classify.)
   declarationsMin = {
     classify =
       a: a.__stratum or (throw "den-hoag: declaration carries no __stratum tag (declarationsMin)");

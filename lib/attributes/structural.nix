@@ -1,14 +1,16 @@
 # Structural stratum — HOAG attributes 1–6 as gen-resolve equations (r2 §B2). Every
 # body is wiring plus exactly one lib call for any algorithm: `gen-scope.inheritAll`
-# (attr 1), the `gen-scope.circular ∘ gen-dispatch.dispatchStep` pairing (attr 2),
-# `gen-dispatch.dispatch` (attr 4), the `gen-resolve.nta` spawn (attr 5). No structural
-# attribute demands a resolution attribute (A4); the gen-resolve schedule enforces it.
+# (attr 1), the `gen-scope.circular` re-dispatch fixpoint over `gen-dispatch.dispatch`
+# (attr 2), `gen-dispatch.dispatch` (attr 4), the `gen-resolve.nta` spawn (attr 5). No
+# structural attribute demands a resolution attribute (A4); the gen-resolve schedule
+# enforces it. Every attribute VALUE is inert data — never a dispatch accumulator record.
 #
 # `policiesRules` = { enrich; policy; } gen-dispatch rule lists (Task 3 compiles them from
 # `den.policies`; Task 2 threads them straight through so the B1 fixpoint is real).
-# `declarations` = the declaration vocabulary (classify a declaration to its stratum,
-# stratum order, import-edge projection). `fleetChildren self id` = the cell-expansion
-# glue (gen-product enumeration lives in lib/fleet.nix, Law A1).
+# `declarations` = the declaration vocabulary DEP — `classify` a declaration to its stratum,
+# `strataOrder`, `importEdgesOf` (distinct from the attribute named `declarations` below,
+# which is the dispatched policy declarations at a node). `fleetChildren self id` = the
+# cell-expansion glue (gen-product enumeration lives in lib/fleet.nix, Law A1).
 {
   prelude,
   scope,
@@ -37,16 +39,18 @@
       prelude.foldl' (acc: layer: layer // acc) { } layers;
   };
 
-  # 2. enrichments — the REAL self-referential enrichment fold (r2 §B1 cross-enrichment):
-  #    the enrich rules are RE-DISPATCHED on the CONVERGING context each iteration, so a
-  #    policy whose guard needs a key another policy set only fires once that key has entered
-  #    the context. This is the Law A1 pairing `gen-scope.circular ∘ gen-dispatch.dispatchStep`
-  #    — NOT a one-shot fold over a precomputed list. `dispatchStep`'s `self: id: prev -> next`
-  #    matches `circular`'s `f`; `dispatchInit base` seeds the ascent. Each pass's enrichment
-  #    delta is threaded into `context` via extract/combine, so the next iteration dispatches
-  #    against the grown context (gen-dispatch dedups each policy across iterations). The
-  #    circular is internal to the body (not an attribute-level cycle), so kind stays
-  #    synthesized; stratum is forced structural (the fold BUILDS structure — never warm-served).
+  # 2. enrichments — the REAL cross-enrichment fixpoint (r2 §B1), as INERT DATA. The enrich
+  #    rules are RE-DISPATCHED on the CONVERGING context each iteration (gen-scope.circular
+  #    over one gen-dispatch.dispatch pass), so a policy whose guard needs a key another
+  #    policy set only fires once that key has entered the context. keyset-eq is sound and no
+  #    per-policy `fired` tracking is needed: single-writer (below) + keyset-monotone guards
+  #    make a key's value fixed once it appears, so a refire at a grown context is idempotent.
+  #    The circular value is the converged context (a plain attrset), never an accumulator
+  #    record. B1 single-writer is ONE post-convergence dispatch: at the converged context
+  #    every satisfiable guard fires, so two policies writing one key both surface — whether
+  #    they collided in the same pass or across iterations. The attribute value is
+  #    { added = <converged delta>; owners = <key -> policy>; }, owners seq-forced so the
+  #    collision abort fires on demand.
   enrichments = resolve.attr {
     name = "enrichments";
     kind = "synthesized";
@@ -56,60 +60,72 @@
       self: id:
       let
         base = self.get id "inherited-context";
-        cfg = {
-          rules = policiesRules.enrich;
-          inherit id;
-          match = dispatch.fromFunctionMatch;
-          classify = declarations.classify;
-          phaseOrder = [ "enrich" ];
-          # extract this pass's enrich declarations into a { key = value; } delta; combine grows context.
-          extract = acts: prelude.foldl' (acc: e: acc // { ${e.key} = e.value; }) { } (acts.enrich or [ ]);
-          combine = ctx: delta: ctx // delta;
-        };
-        loop = scope.circular {
-          init = dispatch.dispatchInit base;
-          # keyset-eq on the converging context (B1-sound: a key's value is stable once it appears).
-          eq = a: b: builtins.attrNames a.context == builtins.attrNames b.context;
-        } (dispatch.dispatchStep { inherit (dispatch) dispatch; } cfg) self id;
-        # B1 single-writer over the CONVERGED accumulation — catches both a same-pass collision
-        # and a cross-iteration one (two policies writing one key even in different passes). Names
-        # both policies + the key.
+        # one enrich dispatch at a context → its fired enrich declarations. classify is a
+        # constant single-stratum tag here (every rule in policiesRules.enrich is an enrich
+        # declaration); the general declaration classifier would be ceremony.
+        enrichAt =
+          ctx:
+          (dispatch.dispatch {
+            rules = policiesRules.enrich;
+            inherit id;
+            context = ctx;
+            match = dispatch.fromFunctionMatch;
+            classify = _: "enrich";
+            phaseOrder = [ "enrich" ];
+          }).actions.enrich or [ ];
+        delta = acts: prelude.foldl' (acc: e: acc // { ${e.key} = e.value; }) { } acts;
+        converged =
+          scope.circular
+            {
+              init = base;
+              eq = a: b: builtins.attrNames a == builtins.attrNames b;
+            }
+            (
+              _self: _id: ctx:
+              ctx // delta (enrichAt ctx)
+            )
+            self
+            id;
+        finalActs = enrichAt converged;
+        added = delta finalActs;
+        # single-writer: fold key -> policy, aborting (naming both policies + the key) on a
+        # second writer of any key.
         owners = prelude.foldl' (
           acc: e:
           if acc ? ${e.key} && acc.${e.key} != e.__policy then
             errors.singleWriter e.key acc.${e.key} e.__policy
           else
             acc // { ${e.key} = e.__policy; }
-        ) { } (loop.accActions.enrich or [ ]);
+        ) { } finalActs;
       in
-      builtins.seq owners loop;
+      builtins.seq owners { inherit added owners; };
   };
 
-  # 3. enriched-context — the converged context that dispatch reads: a plain projection of
-  #    enrichments.context (the keyset-eq fixpoint above), not itself circular.
+  # 3. enriched-context — inherited bindings extended with the converged enrichment delta.
   enriched-context = resolve.attr {
     name = "enriched-context";
     kind = "synthesized";
     stratum = "structural";
-    readsAttrs = [ "enrichments" ];
-    compute = self: id: (self.get id "enrichments").context;
+    readsAttrs = [
+      "inherited-context"
+      "enrichments"
+    ];
+    compute = self: id: (self.get id "inherited-context") // (self.get id "enrichments").added;
   };
 
-  # 4. policy-declarations — resolution/collection/demand policies dispatched on the structural
-  #    context (Task 3 widens `context` to `enriched-context // linked-context`).
-  policy-declarations = resolve.attr {
-    name = "policy-declarations";
+  # 4. declarations — resolution/collection/demand policies dispatched on the structural
+  #    context (Task 3 widens `context` to `enriched-context // linked-context`). `declarations`
+  #    in this compute is the vocabulary DEP (classify/strataOrder), not this attribute.
+  declarations = resolve.attr {
+    name = "declarations";
     kind = "synthesized";
     readsAttrs = [ "enriched-context" ];
     compute =
       self: id:
-      let
-        ctx = self.get id "enriched-context";
-      in
       dispatch.dispatch {
         rules = policiesRules.policy;
         inherit id;
-        context = ctx;
+        context = self.get id "enriched-context";
         match = dispatch.fromFunctionMatch;
         classify = declarations.classify;
         phaseOrder = declarations.strataOrder;
@@ -117,7 +133,7 @@
   };
 
   # 5. children — the HOAG NTA: fleet cells materialized under this host node (+ spawn
-  #    declarations from policy-declarations, wired in Task 3). The enumeration is a gen-product
+  #    declarations from `declarations`, wired in Task 3). The enumeration is a gen-product
   #    call inside fleetChildren (lib/fleet.nix); this equation is the Vogt node-spawning seam.
   children = resolve.nta {
     name = "children";
@@ -129,7 +145,7 @@
   imports = resolve.attr {
     name = "imports";
     kind = "synthesized";
-    readsAttrs = [ "policy-declarations" ];
-    compute = self: id: declarations.importEdgesOf (self.get id "policy-declarations");
+    readsAttrs = [ "declarations" ];
+    compute = self: id: declarations.importEdgesOf (self.get id "declarations");
   };
 }
