@@ -50,22 +50,18 @@ let
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
   scopeAdapter = import ./scope-adapter.nix { inherit select; };
 
-  # Minimal declaration vocabulary for the structural stratum (Task 2). Task 3 replaces it
-  # with the real declaration constructors + kind classifier. `classify` names a declaration's
-  # KIND (enrich/member/configure/edge/demand) from its `__kind` tag — distinct from the B2
-  # STRATUM (structural/resolution/collection), which `kindToStratum` maps each kind to.
-  # Enough to run the `declarations`/`imports` attributes with empty rule sets. (The
-  # enrichments fixpoint uses its own constant single-kind classify.)
-  declarationsMin = {
-    classify = a: a.__kind or (throw "den-hoag: declaration carries no __kind tag (declarationsMin)");
-    # NB: "policy" here is the dispatch GROUP label for the one-shot policy evaluation,
-    # not a declaration kind (enrich/member/configure/…) — the real vocabulary replaces this.
-    kindOrder = [ "policy" ];
-    kindToStratum = {
-      enrich = "structural";
-    };
-    importEdgesOf = _policyDeclarations: [ ];
+  # The declaration vocabulary (verb `declare`) + the policy compiler. `declare` supplies the
+  # tagged constructors, stratum classifier, and identity-law checks the structural stratum reads
+  # as its `declarations` DEP; concern-policies compiles `den.policies` onto gen-dispatch rules.
+  declare = import ./declarations.nix {
+    inherit
+      prelude
+      dispatch
+      pipe
+      errors
+      ;
   };
+  concernPolicies = import ./concern-policies.nix { inherit prelude dispatch declare; };
 
   structuralAttributes = import ./attributes/structural.nix {
     inherit
@@ -75,7 +71,7 @@ let
       dispatch
       errors
       ;
-    declarations = declarationsMin;
+    declarations = declare;
   };
   runResolve = import ./attributes/default.nix { inherit resolve; };
   inherit (buildRootsLib) buildRoots parseParent;
@@ -87,8 +83,9 @@ let
     userModules:
     let
       # den-managed module: the fleet membership channel. Task 1 bootstrap surface — the
-      # fixture sets these tuples directly; Task 3 emits them from `member` declarations at
-      # membership-independent nodes.
+      # fixture sets these tuples directly. Task 3 dispatches `member` declarations (they land in
+      # the `declarations` attribute's structural group); routing them back into this membership
+      # channel is part of the Task 4 P-tree/edge wiring.
       membershipDecl = {
         options.den.membership = merge.mkOption {
           type = merge.types.listOf merge.types.raw;
@@ -97,9 +94,23 @@ let
         };
       };
 
+      # den.policies.<name> = ctxFn — the relationships concern. Each value is a context
+      # function (opaque, function-valued), so `raw` holds it without a merge attempt.
+      policiesDecl = {
+        options.den.policies = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Relationship policies: `<name> = ctx: [ declarations ]` (r2 §B).";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
-        userModules = [ membershipDecl ] ++ userModules;
+        userModules = [
+          membershipDecl
+          policiesDecl
+        ]
+        ++ userModules;
         inherit denMeta;
       };
 
@@ -151,15 +162,34 @@ let
         else
           { };
 
-      # Task 2 threads empty policy rule-sets (Task 3 compiles them from den.policies). The
-      # B1 enrich fixpoint is nonetheless real — the b1-single-writer suite drives it with
-      # its own rules through the same structural equations.
+      # Resolve a `link` target entry to the scope node whose enriched-context feeds §B3
+      # linked-context. Root-kind targets map to their flat root id `"${kind}:${name}"`; the
+      # index is over the entity registries (not scope nodes), so this stays demand-safe. Cell
+      # targets resolve through the edge stratum in Task 4 (null here).
+      entryNodeIndex = prelude.foldl' (
+        acc: kindName:
+        prelude.foldl' (
+          acc': name:
+          let
+            e = ent.registries.${kindName}.${name};
+          in
+          acc'
+          // {
+            ${e.id_hash} = {
+              kind = kindName;
+              nodeId = "${kindName}:${name}";
+            };
+          }
+        ) acc (builtins.attrNames ent.registries.${kindName})
+      ) { } rootScopeKinds;
+      linkTarget = entry: entryNodeIndex.${entry.id_hash} or null;
+
+      # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
+      # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
+      policiesRules = concernPolicies.compile ent.config.den.policies;
+
       equations = structuralAttributes {
-        policiesRules = {
-          enrich = [ ];
-          policy = [ ];
-        };
-        inherit fleetChildren;
+        inherit policiesRules fleetChildren linkTarget;
       };
 
       structural = runResolve {
@@ -187,6 +217,10 @@ in
   # den's selector vocabulary (identity-law entry/kind constructors + adapters); used to
   # write declarations, independent of any one mkDen instance.
   sel = select;
+  # den's declaration vocabulary (verb): the tagged constructors + stratum classifier +
+  # identity-law checks, independent of any one mkDen instance. Policies read `declare.member`,
+  # `declare.edge`, etc.
+  inherit declare;
 
   # Internal builders + raw gen libs — for constructing minimal scenarios in the suite
   # (structural equations over hand-built roots/rules), not a public API.
@@ -198,7 +232,7 @@ in
       scopeAdapter
       ;
     structural = structuralAttributes;
-    declarations = declarationsMin;
+    compilePolicies = concernPolicies.compile;
     inherit
       dispatch
       resolve

@@ -12,6 +12,8 @@ let
     "fleet.nix"
     "build-roots.nix"
     "scope-adapter.nix"
+    "declarations.nix"
+    "concern-policies.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
   ];

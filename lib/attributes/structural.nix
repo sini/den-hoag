@@ -1,16 +1,19 @@
 # Structural stratum — HOAG attributes 1–6 as gen-resolve equations (r2 §B2). Every
 # body is wiring plus exactly one lib call for any algorithm: `gen-scope.inheritAll`
 # (attr 1), the `gen-scope.circular` re-dispatch fixpoint over `gen-dispatch.dispatch`
-# (attr 2), `gen-dispatch.dispatch` (attr 4), the `gen-resolve.nta` spawn (attr 5). No
-# structural attribute demands a resolution attribute (A4); the gen-resolve schedule
-# enforces it. Every attribute VALUE is inert data — never a dispatch accumulator record.
+# (attr 2), the stratified `gen-dispatch.dispatch` (attr 4), the `gen-resolve.nta` spawn
+# (attr 5). No structural attribute demands a resolution attribute (A4); the gen-resolve
+# schedule enforces it. Every attribute VALUE is inert data — never a dispatch accumulator record.
 #
 # `policiesRules` = { enrich; policy; } gen-dispatch rule lists (Task 3 compiles them from
-# `den.policies`; Task 2 threads them straight through so the B1 fixpoint is real).
-# `declarations` = the declaration vocabulary DEP — `classify` a declaration to its KIND,
-# `kindOrder`, `kindToStratum`, `importEdgesOf` (distinct from the attribute named
-# `declarations` below, the dispatched policy declarations at a node). `fleetChildren self id`
-# = the cell-expansion glue (gen-product enumeration lives in lib/fleet.nix, Law A1).
+# `den.policies` via concern-policies; Task 2 threaded empty lists so the B1 fixpoint was real).
+# `declarations` = the declaration vocabulary DEP (`declare`) — `stratumOf` a declaration to its
+# B2 stratum, `strata` (the stratified-dispatch order), `kindOf`/`kindToStratum`, `importEdgesOf`
+# (distinct from the attribute named `declarations` below, the dispatched policy declarations at a
+# node). `fleetChildren self id` = the cell-expansion glue (gen-product enumeration lives in
+# lib/fleet.nix, Law A1). `linkTarget entry` → { kind; nodeId; } | null resolves a `link` target
+# to the scope node whose enriched-context feeds §B3 linked-context (root targets in Task 3;
+# defaults to none so the structural stratum runs without link resolution).
 {
   prelude,
   scope,
@@ -19,7 +22,11 @@
   declarations,
   errors,
 }:
-{ policiesRules, fleetChildren }:
+{
+  policiesRules,
+  fleetChildren,
+  linkTarget ? (_: null),
+}:
 {
   # 1. inherited-context — entity bindings flow down P edges. The gen-scope parent walk
   #    collects each ancestor's decls (nearest first); the local `//` fold merges them
@@ -114,35 +121,61 @@
     compute = self: id: (self.get id "inherited-context") // (self.get id "enrichments").added;
   };
 
-  # 4. declarations — resolution/collection/demand policies dispatched on the structural
-  #    context (Task 3 widens `context` to `enriched-context // linked-context`). `declarations`
-  #    in this compute is the vocabulary DEP (classify/kindOrder), not this attribute.
+  # 4. declarations — the single rule-evaluation point: every non-enrich policy dispatched
+  #    over `enriched-context`, STRATIFIED across declare.strata (structural → resolution →
+  #    collection → demand). Stratification is what makes §B3 hold WITHOUT a cycle: the
+  #    structural phase (link/member/spawn/emit) fires on the plain context first, then
+  #    `combine` extends the context with linked-context — each `link` target's enriched-context
+  #    under the target's kind name — so ONLY the later (resolution/collection/demand) phases
+  #    ever see it. Attr 2/5 dispatch structural declarations on `ctx` alone; linked-context
+  #    reaches resolution and beyond only, never a structural read. `declarations` in this
+  #    compute is the vocabulary DEP (stratumOf/strata), not this attribute. The value is the
+  #    inert grouped-actions record (`{ actions; orderedPhases; context; fired; }`).
   declarations = resolve.attr {
     name = "declarations";
     kind = "synthesized";
     readsAttrs = [ "enriched-context" ];
     compute =
       self: id:
+      let
+        ctx0 = self.get id "enriched-context";
+        # §B3 linked-context, folded from the structural phase's own `link` declarations —
+        # forward-threaded through `combine`, so it never feeds back into the links it reads.
+        linkedFrom =
+          links:
+          prelude.foldl' (
+            acc: l:
+            let
+              t = linkTarget l.target;
+            in
+            if t == null then acc else acc // { ${t.kind} = self.get t.nodeId "enriched-context"; }
+          ) { } (builtins.filter (a: declarations.kindOf a == "link") links);
+      in
       dispatch.dispatch {
         rules = policiesRules.policy;
         inherit id;
-        context = self.get id "enriched-context";
+        context = ctx0;
         match = dispatch.fromFunctionMatch;
-        classify = declarations.classify;
-        phaseOrder = declarations.kindOrder;
+        classify = declarations.stratumOf;
+        phaseOrder = declarations.strata;
+        extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
+        combine = ctx: delta: ctx // linkedFrom (delta.structural or [ ]);
       };
   };
 
-  # 5. children — the HOAG NTA: fleet cells materialized under this host node (+ spawn
-  #    declarations from `declarations`, wired in Task 3). The enumeration is a gen-product
-  #    call inside fleetChildren (lib/fleet.nix); this equation is the Vogt node-spawning seam.
+  # 5. children — the HOAG NTA: fleet cells materialized under this host node. Task 3 leaves the
+  #    P-tree host-rooted; folding the structural phase's `spawn`/`member` declarations into new
+  #    scope nodes (env-nesting) lands with the resolution stratum in Task 4 (B4a). The
+  #    enumeration is a gen-product call inside fleetChildren (lib/fleet.nix); this equation is the
+  #    Vogt node-spawning seam.
   children = resolve.nta {
     name = "children";
     spawn = self: id: fleetChildren self id;
   };
 
-  # 6. imports — computed I edges: link declarations + collection routing (Task 3 populates the
-  #    declaration vocabulary; Task 2's importEdgesOf yields none, keeping the neron chain empty).
+  # 6. imports — computed I edges from the dispatched declarations: `link` targets (+ collection
+  #    routing, Task 5) via importEdgesOf. Empty until a policy emits `link`, keeping the neron
+  #    chain inert for the fixture.
   imports = resolve.attr {
     name = "imports";
     kind = "synthesized";
