@@ -30,6 +30,7 @@ let
     "attributes/class-modules.nix"
     "attributes/output-modules.nix"
     "output/terminal.nix"
+    "output/class-share.nix"
   ];
   forbidden = [
     "builtins.genericClosure"

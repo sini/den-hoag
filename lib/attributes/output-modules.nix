@@ -21,11 +21,13 @@
 #
 # NO EFFECT RUNTIME: every body is field renames + attrset assembly + exactly one gen-edge call per
 # algorithm (edgesFor/toposort/project/materialize) — Law A1. Deps: prelude, edge (the fold),
-# bind (the config-thunk adaptation).
+# bind (the config-thunk adaptation), classShare (the A10 gen-class tier-2 build path).
 {
   prelude,
   edge,
   bind,
+  merge,
+  classShare,
 }:
 {
   result,
@@ -128,32 +130,105 @@ let
     in
     if c == null then null else c.name;
 
-  # systems.<class>.<member> — one terminal instantiation per member of the class carrying content.
-  # Class-major + content-driven (the gen-flake `realize` shape): a member with no content for a class
-  # never appears under it, so `builtins.attrNames systems.<class>` IS the instantiated-member set.
-  systems = prelude.mapAttrs (
-    name: classCfg:
+  # The member (scope node) ids that carry NON-EMPTY content for a class — the class-major output map's
+  # spine, and the class-share member set. Content-driven (a member with no content for `name` is absent).
+  contentIdsOf =
+    name:
+    prelude.filter (
+      id: memberClassName id == name && ((result.get id "class-modules").${name} or [ ]) != [ ]
+    ) allNodeIds;
+
+  # ── A10 class-share seam (share.core = true) ───────────────────────────────────────────────────────
+  # The synthetic loc the shared class-invariant core occupies — `applyCoreFixed`'s sole-def leaf. A
+  # member's DELTA (its class-modules) never defines it, so the core is the sole def there (spine skip).
+  projectionPath = "denClassShareCore";
+
+  # A member's config-independent (classInvariant) projection = the mkCore candidate set. Reads the
+  # member's OWN channel emissions (attribute 10); a classInvariant contribution rides as a plain value
+  # (gen-pipe E8 soundness), a per-member (deferred) one is excluded. mkCore intersects the KEYS across
+  # members, so a member-varying channel value drops out of the core. Cheap channel data — forcing it
+  # (for the shared core) never forces a member's class-modules (per-cell laziness, A17).
+  projectionOf =
+    id:
+    let
+      # attribute 10 stores, per channel, a list of gen-pipe CONTRIBUTIONS (post producer tie-break) —
+      # each carries `classInvariant` (E8-sound: non-deferred ⇒ config-independent) and its plain `value`.
+      local = result.get id "local-collection-data";
+      invariantValsOf = ch: prelude.map (c: c.value) (prelude.filter (c: c.classInvariant) local.${ch});
+    in
     builtins.listToAttrs (
       prelude.concatMap (
-        id:
+        ch:
         let
-          hostModules = (result.get id "class-modules").${name} or [ ];
+          vals = invariantValsOf ch;
         in
-        if memberClassName id == name && hostModules != [ ] then
-          [
-            {
-              name = id; # the member (scope node) id keys the class-major output map
-              value = classCfg.instantiate {
-                name = id; # the terminal contract's `name` is the member id
-                inherit hostModules classCfg;
-                bindings = bindingsAt id;
-              };
-            }
-          ]
-        else
-          [ ]
-      ) allNodeIds
-    )
+        if vals == [ ] then [ ] else [ (prelude.nameValuePair ch vals) ]
+      ) (builtins.attrNames local)
+    );
+
+  # A member's DELTA module list — its wrapped class-modules, the gen-merge modules `applyCoreFixed`
+  # merges beside the core. `wrapAll` is the SAME binding DI the ordinary terminal runs (r2 obligation 6);
+  # done once, here, for the share path. A root `freeformType` absorbs the class-modules' undeclared
+  # (nixpkgs-shaped) options: den-hoag's pure gen-merge merge carries no nixos option declarations, so
+  # the shared build is an INSPECTABLE freeform config (the `collect` terminal's nixpkgs-free philosophy)
+  # — a REAL nixos build crosses through the nixpkgs terminal, not this tier-2 path.
+  freeformAbsorber = {
+    freeformType = merge.anything;
+  };
+  deltaOf =
+    name: classCfg: id:
+    [ freeformAbsorber ]
+    ++ (bind.wrapAll {
+      modules = (result.get id "class-modules").${name} or [ ];
+      bindings = bindingsAt id;
+      defaultMergeStrategy = classCfg.defaultMergeStrategy;
+    }).modules;
+
+  # systems.<class>.<member> — the per-member built artifact. Class-major + content-driven (the gen-flake
+  # `realize` shape): `builtins.attrNames systems.<class>` IS the member set, forced without forcing any
+  # artifact (one build per member, per-cell lazy — Law A17). Per class (NEVER a fleet switch — A17):
+  #   • share.core = true  → the A10 gen-class tier-2 path: partition members by class entry id_hash,
+  #       compose the class-invariant core once, byte-gate each member (loud on divergence — A18), and
+  #       build via `applyCoreFixed`. The shared core forces every member's PROJECTION, never their DELTAS.
+  #   • share.core = false → the ordinary terminal crossing (`classCfg.instantiate`, Task 9), unchanged.
+  systems = prelude.mapAttrs (
+    name: classCfg:
+    let
+      contentIds = contentIdsOf name;
+    in
+    if classCfg.share.core then
+      let
+        shared = classShare.build {
+          members = builtins.listToAttrs (
+            prelude.map (id: prelude.nameValuePair id (result.node id)) contentIds
+          );
+          classOf = classOfNode;
+          inherit projectionOf projectionPath;
+          shareCore = true;
+        };
+      in
+      builtins.listToAttrs (
+        prelude.map (id: {
+          name = id;
+          # Gate BEFORE the build (A18): a divergent core aborts named; a sound one yields the
+          # applyCoreFixed config. `seq` forces the authorization ahead of the delta merge.
+          value = builtins.seq (shared.authorize id (projectionOf id)) (
+            shared.outputFor id (deltaOf name classCfg id)
+          );
+        }) contentIds
+      )
+    else
+      builtins.listToAttrs (
+        prelude.map (id: {
+          name = id; # the member (scope node) id keys the class-major output map
+          value = classCfg.instantiate {
+            name = id; # the terminal contract's `name` is the member id
+            hostModules = (result.get id "class-modules").${name} or [ ];
+            inherit classCfg;
+            bindings = bindingsAt id;
+          };
+        }) contentIds
+      )
   ) classesByName;
 in
 {

@@ -20,9 +20,14 @@
   declarations,
   edge,
   bind,
+  class,
+  merge,
   errors,
 }:
 let
+  # The A10 class-share build path (gen-class tier-2/tier-3). Imported here so the output stratum can
+  # route a `share.core = true` class through it; nixpkgs-lib-free like the rest of lib/**.
+  classShare = import ../output/class-share.nix { inherit prelude class errors; };
   structural = import ./structural.nix {
     inherit
       prelude
@@ -74,6 +79,8 @@ let
       prelude
       edge
       bind
+      merge
+      classShare
       ;
   };
 in

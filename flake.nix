@@ -39,7 +39,14 @@
         select = inputs.gen-select.lib;
         bind = inputs.gen-bind.lib;
         dispatch = inputs.gen-dispatch.lib;
-        class = inputs.gen-class.lib;
+        # gen-class WITH the tier-2 fixed-input kernel injected (gen-merge): `applyCoreFixed` (the A10
+        # class-share build path) requires it; every tier-1 verb works without it. The flake's own
+        # `gen-class.lib` is merge-less (its README §tier-2), so den-hoag re-imports the source with
+        # `merge` — the same wiring the gen hub's `mkGenLibs.class` does.
+        class = import "${inputs.gen-class}/lib" {
+          prelude = inputs.gen-prelude.lib;
+          merge = inputs.gen-merge.lib;
+        };
         edge = inputs.gen-edge.lib;
         product = inputs.gen-product.lib;
         settings = inputs.gen-settings.lib;

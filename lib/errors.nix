@@ -115,6 +115,18 @@ in
     projectorName: tag:
     fail "projection selector (A14)" "aspect `${projectorName}` projects with a dynamic selector (`${tag}`); projection selectors are static — they match declared name/tags/setting fields only, never resolved graph position or values";
 
+  # A18 class-share gate: an injected class-invariant core is NOT byte-identical to a member's real
+  # projection at the shared keys — the share is UNSOUND and aborts LOUD (never silently reused). Names
+  # the member and the two digests. The byte gate is the ONLY authority a share is sound (gen-class
+  # gate.nix: "keys narrow, the gate decides"); this is den-hoag's hard-fail on `gate == false`.
+  classShareGate =
+    {
+      member,
+      candidateDigest,
+      realDigest,
+    }:
+    fail "class-share gate (A18)" "the class-invariant core for member `${member}` is not byte-identical to its real projection (candidate ${candidateDigest} != real ${realDigest}); a class-share is authorised ONLY by the byte gate — a divergent core is never silently reused";
+
   # A13 cross-class consumption: a consumer at class C reads a contribution tagged class C′ ≠ C with
   # no declared C′→C adapter on the quirk. den owns the discipline (a declared adapter is the ONLY
   # authorised coercion — §2.5, never implicit); this frames the abort naming the channel, the
