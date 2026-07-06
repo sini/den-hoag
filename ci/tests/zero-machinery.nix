@@ -14,8 +14,10 @@ let
     "scope-adapter.nix"
     "declarations.nix"
     "concern-policies.nix"
+    "concern-aspects.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
+    "attributes/resolved-aspects.nix"
   ];
   forbidden = [
     "builtins.genericClosure"

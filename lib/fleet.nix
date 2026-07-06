@@ -116,6 +116,14 @@ let
               ${parentDim} = hostEntry;
               ${leafDim} = leafEntry;
               __entry = leafEntry;
+              # Containment ancestors (§B4a visibility): the flat root scope id of every non-leaf
+              # coordinate of this cell (e.g. env:prod, host:axon). resolved-aspects reads these
+              # ancestors' resolved sets top-down — env is a coordinate root, not a P-parent, so
+              # aspect radiation from env reaches every cell it contains without a P-tree nesting.
+              # Reserved `__` key: excluded from context/coordDims.
+              __containment = map (d: "${d}:${c.${d}.name}") (
+                builtins.filter (d: d != leafDim) (builtins.attrNames c)
+              );
             };
           };
         }

@@ -35,4 +35,10 @@ in
   mixedStratum =
     policyName: kindA: stratumA: kindB: stratumB:
     fail "declaration stratum (B2)" "policy `${policyName}` produced declarations of kind `${kindA}` (stratum `${stratumA}`) and kind `${kindB}` (stratum `${stratumB}`); a policy's declarations must all classify to a single stratum";
+
+  # §2.2 aspect-key dispatch: an aspect key that is neither a declared facet, a registered
+  # class, nor a registered quirk channel is a definition-time error, naming the aspect + key.
+  unknownAspectKey =
+    aspectName: key:
+    fail "aspect key (§2.2)" "aspect `${aspectName}` declares key `${key}`, which is neither a facet, a registered class, nor a quirk channel";
 }

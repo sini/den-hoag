@@ -97,6 +97,16 @@ let
     in
     builtins.seq a (actions.edge { aspect = a; });
 
+  # `drop aspect` — resolution: a scope-level constraint pruning an aspect (and its include
+  # subtree) from this node's resolved set (§B4 constraints; consumed by resolved-aspects'
+  # `constraintSeen` pre-seed). Aspect-entry-typed EAGERLY, like `edge`.
+  drop =
+    aspect:
+    let
+      a = requireEntry "drop" aspect;
+    in
+    builtins.seq a (actions.drop { aspect = a; });
+
   # `demand args` — demand: a subject entity plus the demand payload.
   demand' =
     args:
@@ -154,6 +164,7 @@ actions
     member
     configure
     edge
+    drop
     ;
   demand = demand';
   # pipe.* operators re-exported from gen-pipe (map/filter/fold/scan/route/join/tee). They are

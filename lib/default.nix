@@ -50,6 +50,14 @@ let
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
   scopeAdapter = import ./scope-adapter.nix { inherit select; };
 
+  # den-hoag's output classes — the class-separated content buckets on every aspect. The classes
+  # concern (Task 5/6) will own this list; until then it is den-hoag's default target set.
+  classNames = [
+    "nixos"
+    "home-manager"
+    "k8s-manifests"
+  ];
+
   # The declaration vocabulary (verb `declare`) + the policy compiler. `declare` supplies the
   # tagged constructors, stratum classifier, and identity-law checks the structural stratum reads
   # as its `declarations` DEP; concern-policies compiles `den.policies` onto gen-dispatch rules.
@@ -63,17 +71,33 @@ let
   };
   concernPolicies = import ./concern-policies.nix { inherit prelude dispatch declare; };
 
-  structuralAttributes = import ./attributes/structural.nix {
+  # The aspects concern — compiles `den.aspects` onto gen-aspects (the neededBy/guard/drop surface
+  # + §2.2 key dispatch). `aspectSchema.mkAspectOption` declares `options.den.aspects`.
+  concernAspects = import ./concern-aspects.nix {
+    inherit
+      prelude
+      aspects
+      merge
+      classNames
+      errors
+      ;
+  };
+
+  # Attribute assembly (structural attrs 1–6 + resolution attr 7) + the gen-resolve seam.
+  attributesLib = import ./attributes/default.nix {
     inherit
       prelude
       scope
       resolve
       dispatch
+      aspects
+      select
       errors
       ;
     declarations = declare;
   };
-  runResolve = import ./attributes/default.nix { inherit resolve; };
+  structuralAttributes = attributesLib.structural;
+  runResolve = attributesLib.runResolve;
   inherit (buildRootsLib) buildRoots parseParent;
 
   # mkDen assembles the four concerns; Tasks 1–11 extend it. Task 1: entity registries
@@ -104,11 +128,30 @@ let
         };
       };
 
+      # den.aspects.<name> — the behavior concern (aspectsType). Compiled onto gen-aspects by
+      # concern-aspects; each entry carries `key`/`neededBy`/`meta.guard`/`meta.drop`/`includes`.
+      aspectsDecl = {
+        options.den.aspects = concernAspects.aspectSchema.mkAspectOption { };
+      };
+
+      # den.include — the static entity-scoped aspect-inclusion surface (r2 §370 `directAspects`):
+      # each `{ at = <entity>; aspects = [ <aspect> ]; }` seeds its aspects at exactly the entity's
+      # own scope node (node-local, so an include at an ancestor does not seed descendants).
+      includeDecl = {
+        options.den.include = merge.mkOption {
+          type = merge.types.listOf merge.types.raw;
+          default = [ ];
+          description = "Static entity-scoped aspect inclusions: [ { at = <entity>; aspects = [ <aspect> ]; } ].";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
           membershipDecl
           policiesDecl
+          aspectsDecl
+          includeDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -188,8 +231,10 @@ let
       # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
       policiesRules = concernPolicies.compile ent.config.den.policies;
 
-      equations = structuralAttributes {
+      equations = attributesLib.equations {
         inherit policiesRules fleetChildren linkTarget;
+        allAspects = ent.config.den.aspects;
+        directIncludes = ent.config.den.include;
       };
 
       structural = runResolve {
@@ -203,6 +248,7 @@ let
       den = {
         schema = ent.kinds;
         inherit (ent) registries meta roots;
+        aspects = ent.config.den.aspects;
         fleet = theFleet;
         cells = product.cells theFleet;
         inherit dimKinds;
@@ -233,12 +279,14 @@ in
       ;
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
+    inherit (concernAspects) classifyKey;
     inherit
       dispatch
       resolve
       scope
       select
       product
+      aspects
       ;
   };
 }
