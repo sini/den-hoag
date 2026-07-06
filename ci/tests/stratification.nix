@@ -196,6 +196,35 @@ let
     };
   denNoFire = (denHoag.mkDen (fleetBase ++ [ noFireMod ])).den;
   rsNoFire = denNoFire.structural.eval.get cellId "resolved-settings";
+
+  # ── a `configure` policy destructuring the reserved `__coords` key never fires (reserved-key
+  #    invariant, symmetric with `__containment`) — the cell's coordinate cache is graph machinery,
+  #    stripped from every policy-dispatch context (inherited-context `removeAttrs`), so it is never a
+  #    ctx key and the policy's canTake guard is never satisfied. Completes the reserved-key set.
+  coordsMod =
+    { config, ... }:
+    {
+      config.den.aspects.app = {
+        neededBy = sel.kind config.den.schema.user;
+        settings.level.default = "info";
+      };
+      config.den.include = [
+        {
+          at = config.den.env.prod;
+          aspects = [ config.den.aspects.app ];
+        }
+      ];
+      config.den.policies.wouldConfigure =
+        { __coords, ... }:
+        [
+          (denHoag.declare.configure {
+            of = config.den.aspects.app;
+            set.level = "pwned";
+          })
+        ];
+    };
+  denCoords = (denHoag.mkDen (fleetBase ++ [ coordsMod ])).den;
+  rsCoords = denCoords.structural.eval.get cellId "resolved-settings";
 in
 {
   flake.tests.stratification = {
@@ -259,6 +288,16 @@ in
     };
     test-hasaspect-policy-no-policy-layer = {
       expr = map (e: e.rendered) rsNoFire.app.provenance.level;
+      expected = [ "default" ];
+    };
+
+    # ── reserved `__coords` policy destructure never fires (symmetric with __containment) ──
+    test-coords-policy-never-fires = {
+      expr = rsCoords.app.value.level;
+      expected = "info";
+    };
+    test-coords-policy-no-policy-layer = {
+      expr = map (e: e.rendered) rsCoords.app.provenance.level;
       expected = [ "default" ];
     };
   };

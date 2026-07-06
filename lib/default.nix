@@ -51,6 +51,11 @@ let
   scopeAdapter = import ./scope-adapter.nix { inherit prelude select; };
   concernQuirks = import ./concern-quirks.nix { inherit prelude pipe errors; };
 
+  # The `projects` facet (§2.9 / A14): the aspect-schema selector domain (`hasSetting` + schemaContext)
+  # and the projection-layer expansion. Pure vocabulary over gen-select; resolved-settings consumes
+  # `projectionLayers`, `hasSetting` is exposed at the top for writing `projects` rules standalone.
+  projectsLib = import ./projects.nix { inherit prelude select errors; };
+
   # Settings compilation surface (schema + scoped-override layers + ref re-export, §2.6/§4.3) and the
   # linearization declaration surface (§2.7). Both are pure vocabulary over gen-settings / gen-product.
   settingsLib = import ./settings.nix { inherit prelude settings errors; };
@@ -112,6 +117,7 @@ let
       scopeAdapter
       errors
       ;
+    projects = projectsLib;
     declarations = declare;
   };
   structuralAttributes = attributesLib.structural;
@@ -339,7 +345,12 @@ let
         directIncludes = ent.config.den.include;
         inherit quirkDag classOfNode channelNames;
         fleet = theFleet;
-        inherit lin settingsLayers dimKinds;
+        inherit
+          lin
+          settingsLayers
+          dimKinds
+          projectors
+          ;
       };
 
       structural = runResolve {
@@ -391,6 +402,40 @@ let
         layers = ent.config.den.settings.layers or [ ];
         productDims = dimKinds;
       };
+
+      # Projecting aspects (§2.9 / A14, the `projects` facet): each aspect declaring a non-empty
+      # `projects`, paired with its ATTACHMENT scopes — the containment position `{ <kind> = entity }`
+      # of every entity it is directly included at (`den.include`). v1 uses the static include surface
+      # as the introduction source; policy / neededBy / edge introduction is deferred (deriving it
+      # would couple projection to the resolution stratum, an A9 stratification hazard). The projection
+      # LAYERS are expanded in resolved-settings (`projectionLayersAt`); this only resolves attachment.
+      entityKindOf =
+        let
+          index = prelude.foldl' (
+            acc: kindName:
+            prelude.foldl' (
+              acc': name: acc' // { ${ent.registries.${kindName}.${name}.id_hash} = kindName; }
+            ) acc (builtins.attrNames ent.registries.${kindName})
+          ) { } (builtins.attrNames ent.registries);
+        in
+        entry: index.${entry.id_hash};
+      allAspects = ent.config.den.aspects;
+      projectors =
+        let
+          scopesOf =
+            aspect:
+            prelude.concatMap (
+              inc:
+              if builtins.any (x: (x.id_hash or null) == aspect.id_hash) inc.aspects then
+                [ { ${entityKindOf inc.at} = inc.at; } ]
+              else
+                [ ]
+            ) (ent.config.den.include or [ ]);
+        in
+        map (name: {
+          aspect = allAspects.${name};
+          scopes = scopesOf allAspects.${name};
+        }) (builtins.filter (n: (allAspects.${n}.projects or [ ]) != [ ]) (builtins.attrNames allAspects));
     in
     {
       den = {
@@ -419,6 +464,12 @@ in
   # den's selector vocabulary (identity-law entry/kind constructors + adapters); used to
   # write declarations, independent of any one mkDen instance.
   sel = select;
+
+  # den's `projects`-facet sugar (§2.9 / A14): `hasSetting <field>` = a STATIC selector matching every
+  # aspect that declares `<field>` in its settings schema — the address side of a projection rule
+  # (`projects = [ { select = hasSetting "theme"; set = { theme = …; }; } ]`). Independent of any one
+  # mkDen instance; the aspect-schema selector domain is den-hoag-owned (see lib/projects.nix).
+  inherit (projectsLib) hasSetting;
   # den's class-tag vocabulary (the fixed class entries, identity-law A2): the same entries every
   # mkDen tags contributions with, exposed for writing quirk `adapters` (cross-class coercions) that
   # reference a class by its entry rather than a bare name.

@@ -31,6 +31,7 @@
   product,
   settings,
   settingsLib,
+  projects,
   errors,
 }:
 let
@@ -84,8 +85,24 @@ let
       lin,
       settingsLayers,
       dimKinds,
+      allAspects ? { },
+      projectors ? [ ],
     }:
     let
+      # A14 (projects facet) — `projectionLayersAt`: expand every projecting aspect into `via`-carrying
+      # den-layer records at its attachment scopes, added to the scoped-override pool. resolved-settings
+      # then folds them exactly like a hand-written `via` layer — projection (via != null) sorts
+      # immediately before same-slice direct overrides (§2.7 / `layersAtSlice`), and the containment-chain
+      # fold applies a fleet-scope projection ONCE per node (A14 constraint 1), never re-emitting it per
+      # descendant. The projects lib enforces the static-selector (A14.2) and same-scope collision (A14.3)
+      # disciplines during this expansion. Empty when no aspect declares `projects` ⇒ byte-identical to
+      # the pre-facet pool (additive/experimental).
+      projectionLayersAt = projects.projectionLayers {
+        inherit allAspects projectors;
+        matchAddresses = builtins.attrNames allAspects;
+      };
+      poolLayers = settingsLayers ++ projectionLayersAt;
+
       # den-layer records declared AT one slice, FOR one aspect (batch routing by `of.id_hash`).
       # Projection layers (§2.9, `via != null`) sort immediately before direct overrides at the same
       # slice (§2.7): a direct declaration beats a projection attached at that scope.
@@ -94,7 +111,7 @@ let
         let
           here = builtins.filter (
             l: l.of.id_hash == aspectEntry.id_hash && coordsEq l.atCoords sliceFixed
-          ) settingsLayers;
+          ) poolLayers;
           projection = builtins.filter (l: l.via != null) here;
           direct = builtins.filter (l: l.via == null) here;
         in

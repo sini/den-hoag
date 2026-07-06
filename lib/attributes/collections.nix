@@ -115,7 +115,7 @@ in
                 {
                   inherit chName;
                   rank = 0; # aspect producer (policy = 1, arriving with fleet-wide pipe ops)
-                  identity = a.key; # aspect structural identity — the A12 producer key
+                  identity = a.content.id_hash; # aspect identity (id_hash) — the A12 producer key (§A12)
                   emissionIndex = 0; # one value per channel key ⇒ no intra-producer ordering here
                   contribution = pipe.contribute {
                     channel = quirkDag.channels.${chName};

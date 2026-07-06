@@ -94,6 +94,27 @@ in
     aspectName: scopeId:
     fail "narrow accessor (A10)" "aspect `${aspectName}` is not present at scope `${scopeId}` — its `.settings` is unavailable; check `.present` before reading `.settings`";
 
+  # A14 constraint 3 (projects facet): two DISTINCT projecting aspects inject a settings layer for the
+  # SAME target aspect at the SAME attachment scope — the order between projectors is undecided, so den
+  # aborts at definition time, naming both projectors, the target address, and the scope.
+  projectionCollision =
+    {
+      projectors,
+      address,
+      scope,
+    }:
+    fail "projection collision (A14)" "aspects ${
+      builtins.concatStringsSep " and " (map (p: "`${p}`") projectors)
+    } both project settings onto aspect `${address}` at scope `${renderScope scope}`; a target address may be projected by at most one aspect per scope";
+
+  # A14 constraint 2 (projects facet): a projection selector must be STATIC — it may match an aspect's
+  # own declared name/tags/setting fields, never resolved graph position or values. A scope-navigating
+  # or identity/coordinate selector (within/has/parentMatches/entity/kind/coord) is dynamic and aborts,
+  # naming the projecting aspect + the offending selector tag.
+  projectionDynamicSelector =
+    projectorName: tag:
+    fail "projection selector (A14)" "aspect `${projectorName}` projects with a dynamic selector (`${tag}`); projection selectors are static — they match declared name/tags/setting fields only, never resolved graph position or values";
+
   # A13 cross-class consumption: a consumer at class C reads a contribution tagged class C′ ≠ C with
   # no declared C′→C adapter on the quirk. den owns the discipline (a declared adapter is the ONLY
   # authorised coercion — §2.5, never implicit); this frames the abort naming the channel, the

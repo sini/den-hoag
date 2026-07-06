@@ -18,6 +18,7 @@ let
     "concern-quirks.nix"
     "linearization.nix"
     "settings.nix"
+    "projects.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
     "attributes/resolved-aspects.nix"

@@ -197,13 +197,14 @@ in
       expr = orderOf denFwd "ssh-peers" == orderOf denRev "ssh-peers";
       expected = true;
     };
-    # the canonical winner is literally [alpha, beta] (self-documenting complement to the equality
-    # above): producer identity — alpha's key sorts before beta's — decides, not include order.
+    # the canonical winner is literally [beta, alpha] (self-documenting complement to the equality
+    # above): producer identity — the A12 tie-break key is the aspect id_hash (§A12), and beta's
+    # id_hash sorts before alpha's — decides, not include order or the display name string.
     test-order-canonical-winner = {
       expr = orderOf denFwd "ssh-peers";
       expected = [
-        "alpha"
         "beta"
+        "alpha"
       ];
     };
 

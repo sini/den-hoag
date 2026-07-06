@@ -15,6 +15,7 @@
   product,
   settings,
   settingsLib,
+  projects,
   scopeAdapter,
   declarations,
   errors,
@@ -56,6 +57,7 @@ let
       product
       settings
       settingsLib
+      projects
       errors
       ;
   };
@@ -79,6 +81,7 @@ in
       lin,
       settingsLayers ? [ ],
       dimKinds,
+      projectors ? [ ],
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // (resolvedAspects { inherit allAspects directIncludes; })
@@ -89,6 +92,8 @@ in
         lin
         settingsLayers
         dimKinds
+        allAspects
+        projectors
         ;
     });
 
