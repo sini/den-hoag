@@ -141,6 +141,8 @@ let
   # ── A10 class-share seam (share.core = true) ───────────────────────────────────────────────────────
   # The synthetic loc the shared class-invariant core occupies — `applyCoreFixed`'s sole-def leaf. A
   # member's DELTA (its class-modules) never defines it, so the core is the sole def there (spine skip).
+  # NB: exported as `internal.classShareCoreAttr`; the no-fleet-flags suite detects the share path by
+  # this exact value — keep in sync through the export, not by re-hardcoding.
   projectionPath = "denClassShareCore";
 
   # A member's config-independent (classInvariant) projection = the mkCore candidate set. Reads the

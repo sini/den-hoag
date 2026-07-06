@@ -645,6 +645,9 @@ in
     # class-modules + output + terminal-crossing scenarios.
     compileClasses = concernClasses.compile;
     terminal = terminalLib;
+    # The synthetic loc the shared class-invariant core occupies in share.core=true output —
+    # exported so tests detect the share path via this constant instead of re-hardcoding the string.
+    classShareCoreAttr = "denClassShareCore";
     inherit
       dispatch
       resolve

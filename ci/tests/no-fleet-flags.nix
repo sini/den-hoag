@@ -174,14 +174,16 @@ in
     # the share.core = true class (nixos) is built through the gen-class tier-2 path — its member output
     # carries the shared-core loc (the collect terminal never produces it).
     test-nixos-class-shares = {
-      expr = den.output.systems.nixos.${axonId} ? denClassShareCore;
+      expr = builtins.hasAttr denHoag.internal.classShareCoreAttr den.output.systems.nixos.${axonId};
       expected = true;
     };
     test-nixos-both-members-share = {
-      expr = builtins.all (id: den.output.systems.nixos.${id} ? denClassShareCore) [
-        axonId
-        bladeId
-      ];
+      expr =
+        builtins.all (id: builtins.hasAttr denHoag.internal.classShareCoreAttr den.output.systems.nixos.${id})
+          [
+            axonId
+            bladeId
+          ];
       expected = true;
     };
     # the sibling share.core = false class (home-manager) is NOT shared — it crosses the ordinary
@@ -191,7 +193,7 @@ in
       expected = "collect";
     };
     test-home-manager-no-core-loc = {
-      expr = den.output.systems.home-manager.${cellId} ? denClassShareCore;
+      expr = builtins.hasAttr denHoag.internal.classShareCoreAttr den.output.systems.home-manager.${cellId};
       expected = false;
     };
 

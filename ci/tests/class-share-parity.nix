@@ -29,6 +29,9 @@ let
     m2 = { };
   };
   classOf = _node: nixosEntry; # both members produce the same class ⇒ one partition
+  # Test-local synthetic loc for the ISOLATED mechanism tests — deliberately distinct from the live
+  # den path's loc (internal.classShareCoreAttr = "denClassShareCore") so nothing here accidentally
+  # couples to the assembly wiring.
   projectionPath = "denCore";
   sharedProj = _id: {
     alpha = "A";
