@@ -3,6 +3,22 @@
 # builder genuinely uses a prelude helper).
 let
   fail = ctx: msg: throw "den-hoag: ${ctx}: ${msg}";
+  # Display name of an entry / class / aspect (id_hash-bearing or name-bearing); strings are only
+  # authoritative in a rendered message. Mirrors gen-pipe's renderEntry without a lib edge.
+  render =
+    e:
+    if e == null then
+      "<none>"
+    else if builtins.isAttrs e then
+      (e.name or e.id_hash or (builtins.toJSON e))
+    else
+      toString e;
+  renderScope =
+    coords:
+    if coords == null || coords == { } then
+      "<no-scope>"
+    else
+      builtins.concatStringsSep ", " (map (k: "${k}=${render coords.${k}}") (builtins.attrNames coords));
 in
 {
   identityLaw =
@@ -41,4 +57,35 @@ in
   unknownAspectKey =
     aspectName: key:
     fail "aspect key (§2.2)" "aspect `${aspectName}` declares key `${key}`, which is neither a facet, a registered class, nor a quirk channel";
+
+  # A13 class-tag ambiguity: a null-class scope emitting class-shaped (config-demanding) content —
+  # the producing scope binds no class to resolve the contribution's `config` against, so the class
+  # tag is undecidable. den detects this at the emission it owns (a null producing class + a deferred
+  # value) and frames gen-pipe's E1 with den names — the producing aspect, the quirk channel, and the
+  # scope. `config`-independent (class-neutral) emissions at the same scope are legal (T3), so the
+  # abort is precise to the class-shaped case.
+  classAmbiguity =
+    {
+      aspect,
+      channel,
+      scope,
+    }:
+    fail "class tag (A13)" "aspect `${render aspect}` emits class-shaped (config-demanding) content to quirk channel `${channel}` at null-class scope `${renderScope scope}`; a class-shaped contribution needs a producing class — tag it explicitly or make the emission config-independent";
+
+  # A13 cross-class consumption: a consumer at class C reads a contribution tagged class C′ ≠ C with
+  # no declared C′→C adapter on the quirk. den owns the discipline (a declared adapter is the ONLY
+  # authorised coercion — §2.5, never implicit); this frames the abort naming the channel, the
+  # producer, and both classes before gen-pipe would otherwise coerce or reject.
+  crossClassNoAdapter =
+    {
+      channel,
+      producer,
+      tag,
+      consuming,
+    }:
+    fail "cross-class read (A13)" "quirk channel `${channel}` consumed at class `${render consuming}` but a contribution from aspect `${
+      render (producer.aspect or null)
+    }` (entity `${
+      render (producer.entity or null)
+    }`) is tagged class `${render tag}`; declare a `${render tag}` -> `${render consuming}` adapter on the quirk or consume at the producing class";
 }

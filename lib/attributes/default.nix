@@ -11,6 +11,8 @@
   dispatch,
   aspects,
   select,
+  pipe,
+  scopeAdapter,
   declarations,
   errors,
 }:
@@ -34,11 +36,22 @@ let
       select
       ;
   };
+  collections = import ./collections.nix {
+    inherit
+      prelude
+      scope
+      resolve
+      pipe
+      scopeAdapter
+      errors
+      ;
+  };
 in
 {
   # The full equation map. Structural attributes shape the graph (they never read a resolution
-  # attribute — the gen-resolve schedule enforces it); attr 7 reads structural + ancestor
-  # resolution (top-down, acyclic along containment).
+  # attribute — the gen-resolve schedule enforces it); attr 7 (resolution) reads structural +
+  # ancestor resolution (top-down, acyclic along containment); the collection attrs (10/11) read the
+  # resolution + collection strata (never structural), so they schedule cleanly beneath both.
   equations =
     {
       policiesRules,
@@ -46,9 +59,13 @@ in
       linkTarget ? (_: null),
       allAspects ? { },
       directIncludes ? [ ],
+      quirkDag,
+      classOfNode,
+      channelNames,
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
-    // (resolvedAspects { inherit allAspects directIncludes; });
+    // (resolvedAspects { inherit allAspects directIncludes; })
+    // (collections { inherit quirkDag classOfNode channelNames; });
 
   # Expose the structural builder for the suite's minimal-scenario scaffolding (b2 builds
   # structural equations over hand-built roots/rules).

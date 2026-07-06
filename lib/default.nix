@@ -48,15 +48,23 @@ let
   entity = import ./entity.nix { inherit prelude schema merge; };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
-  scopeAdapter = import ./scope-adapter.nix { inherit select; };
+  scopeAdapter = import ./scope-adapter.nix { inherit prelude select; };
+  concernQuirks = import ./concern-quirks.nix { inherit prelude pipe errors; };
 
-  # den-hoag's output classes — the class-separated content buckets on every aspect. The classes
-  # concern (Task 5/6) will own this list; until then it is den-hoag's default target set.
+  # den-hoag's output classes — the class-separated content buckets on every aspect, and the
+  # class-tag vocabulary for quirk contributions (§2.5). The full class registry (wrap/instantiate/
+  # share) is Task 6/A10; Task 5 needs only class ENTRIES to tag with, built here from the class
+  # names with a stable identity (id_hash) so gen-pipe's duck-typed entry comparison and den's
+  # cross-class discipline both key off a real identity (Law A2), never a bare string.
   classNames = [
     "nixos"
     "home-manager"
     "k8s-manifests"
   ];
+  classEntries = prelude.genAttrs classNames (name: {
+    id_hash = builtins.hashString "sha256" "den-class:${name}";
+    inherit name;
+  });
 
   # The declaration vocabulary (verb `declare`) + the policy compiler. `declare` supplies the
   # tagged constructors, stratum classifier, and identity-law checks the structural stratum reads
@@ -92,6 +100,8 @@ let
       dispatch
       aspects
       select
+      pipe
+      scopeAdapter
       errors
       ;
     declarations = declare;
@@ -145,6 +155,31 @@ let
         };
       };
 
+      # den.quirks.<name> — the data concern (§2.5). Each entry declares a gen-pipe channel plus
+      # optional dataflow `ops` and cross-class `adapters`; concern-quirks assembles every quirk (and
+      # its ops) into ONE fleet-level compose. `raw` holds the (channel/ops/adapters) record unmerged.
+      quirksDecl = {
+        options.den.quirks = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Quirk channels: `<name> = { channel ? {}; ops ? []; adapters ? []; }` (§2.5).";
+        };
+      };
+
+      # den.contentClass.<kind> — the class-tag vocabulary (§2.1/§2.5): the output class a kind's
+      # scopes produce, as a class-name string (resolved to the class entry) or a class entry; a kind
+      # with no mapping is class-neutral (e.g. env). den v2's canonical home is
+      # `den.schema.<kind>.contentClass`; gen-schema kinds carry no such field, so den-hoag threads it
+      # as a parallel den-managed map. Absent for every kind ⇒ a policy-free / quirk-free fleet stays
+      # entirely class-neutral, exactly as before this concern existed.
+      contentClassDecl = {
+        options.den.contentClass = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Kind -> content class (class name or entry): the class a kind's scopes produce (§2.5).";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
@@ -152,6 +187,8 @@ let
           policiesDecl
           aspectsDecl
           includeDecl
+          quirksDecl
+          contentClassDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -231,15 +268,65 @@ let
       # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
       policiesRules = concernPolicies.compile ent.config.den.policies;
 
+      # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops);
+      # channel-name uniqueness (E4b) and reference closure (E4a) are therefore fleet-wide. Policy
+      # route/join/tee ops are collected fleet-wide with the demand/edge wiring (Task 8+); per-quirk
+      # `ops` cover intra-compose shaping until then, so policyOps is empty here.
+      quirks = ent.config.den.quirks;
+      channelNames = concernQuirks.channelNames quirks;
+      quirkDag = concernQuirks.compose {
+        inherit quirks;
+        policyOps = [ ];
+      };
+
+      # classOfNode — the producing-scope → class-entry function (§2.5). Resolve each kind's declared
+      # `contentClass` (a class-name string or an entry) to a class entry; a kind with no mapping is
+      # class-neutral. Reuses entity.classOf (which also handles the per-host function form) by
+      # enriching ent.meta with the resolved contentClass entry.
+      resolveClass =
+        cc:
+        if cc == null then
+          null
+        else if builtins.isString cc then
+          classEntries.${cc}
+            or (throw "den-hoag: den.contentClass names unknown class `${cc}` (known: ${builtins.concatStringsSep ", " classNames})")
+        else
+          cc;
+      metaWithClass = builtins.mapAttrs (
+        k: m: m // { contentClass = resolveClass (ent.config.den.contentClass.${k} or null); }
+      ) ent.meta;
+      classOfNode = entity.classOf {
+        meta = metaWithClass;
+        entityOfNode = node: node.decls.__entry or null;
+      };
+
       equations = attributesLib.equations {
         inherit policiesRules fleetChildren linkTarget;
         allAspects = ent.config.den.aspects;
         directIncludes = ent.config.den.include;
+        inherit quirkDag classOfNode channelNames;
       };
 
       structural = runResolve {
         roots = scopeRoots;
         inherit equations parseParent;
+      };
+
+      # The fleet channel outputs — one gen-pipe.run over the neron traversal, for the class-relative
+      # read (concernQuirks.consumeAt) at output assembly (Task 6). `.at pos` selects any position; it
+      # is the same run attribute 11 (received-collections) computes per node inside the schedule.
+      receivedOutputs = pipe.run {
+        dag = quirkDag;
+        traversal = scopeAdapter.traversalAdapter {
+          result = structural.eval;
+          localDataOf = pos: chName: (structural.eval.get pos "local-collection-data").${chName} or [ ];
+          classesOfNode =
+            node:
+            let
+              c = classOfNode node;
+            in
+            if c == null then [ ] else [ c ];
+        };
       };
 
       lin = product.linearizeByDimOrder dimKinds;
@@ -255,6 +342,11 @@ let
         linearization = lin;
         scopeRoots = scopeRoots;
         inherit structural;
+        # The quirks concern surface: class entries (the class-tag vocabulary), the ONE composed
+        # channel DAG, and the fleet channel outputs (`.at pos` → per-position channel values, and the
+        # input to the class-relative read `internal.consumeAt`).
+        classes = classEntries;
+        inherit quirkDag receivedOutputs;
       };
     };
 in
@@ -263,6 +355,10 @@ in
   # den's selector vocabulary (identity-law entry/kind constructors + adapters); used to
   # write declarations, independent of any one mkDen instance.
   sel = select;
+  # den's class-tag vocabulary (the fixed class entries, identity-law A2): the same entries every
+  # mkDen tags contributions with, exposed for writing quirk `adapters` (cross-class coercions) that
+  # reference a class by its entry rather than a bare name.
+  classes = classEntries;
   # den's declaration vocabulary (verb): the tagged constructors + stratum classifier +
   # identity-law checks, independent of any one mkDen instance. Policies read `declare.member`,
   # `declare.edge`, etc.
@@ -280,6 +376,8 @@ in
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
     inherit (concernAspects) classifyKey;
+    # The quirks concern's composer + class-relative read, for the suite's channel scenarios.
+    inherit (concernQuirks) compose consumeAt;
     inherit
       dispatch
       resolve
@@ -287,6 +385,7 @@ in
       select
       product
       aspects
+      pipe
       ;
   };
 }

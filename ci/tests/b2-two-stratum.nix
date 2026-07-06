@@ -136,6 +136,44 @@ let
   axonResolution = axonDecls.actions.resolution or [ ];
   axonStructural = axonDecls.actions.structural or [ ];
   captured = (builtins.head (builtins.filter (a: a.__action == "configure") axonResolution)).set.seen;
+
+  # (e) §B3 shadow direction — `combine = linkedFrom // ctx` means a node whose enriched-context
+  # ALREADY binds the linked kind's key keeps its OWN value; the link only ADDS a not-yet-present
+  # key. Here an enrich policy seeds `env = "OWN"` at host:axon, so the link to env:prod does NOT
+  # overwrite it — the captured `env` is the own value, not the target's context.
+  shadowMod =
+    { config, ... }:
+    {
+      config.den.policies = {
+        seedEnv = _ctx: [
+          (declare.enrich {
+            key = "env";
+            value = "OWN";
+          })
+        ];
+        linkEnv = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
+        captureEnv =
+          { env, ... }:
+          [
+            (declare.configure {
+              of = config.den.host.axon;
+              set = {
+                seen = env;
+              };
+            })
+          ];
+      };
+    };
+  denShadow = (denHoag.mkDen (fx.base ++ [ shadowMod ])).den;
+  shadowResolution =
+    (denShadow.structural.eval.get "host:axon" "declarations").actions.resolution or [ ];
+  capturedShadow =
+    (builtins.head (builtins.filter (a: a.__action == "configure") shadowResolution)).set.seen;
+
+  # (f) A4 strip regression — the cell's enriched-context must not leak the reserved `__containment`
+  # coordinate-root aid (the resolution-only visibility key stripped in inherited-context).
+  denClean = (denHoag.mkDen fx.base).den;
+  cellEnriched = denClean.structural.eval.get "user:alice@host:axon" "enriched-context";
 in
 {
   flake.tests.b2-two-stratum = {
@@ -196,6 +234,18 @@ in
     test-b3-structural-blind-to-linked = {
       expr = builtins.filter (a: a.__action == "emit") axonStructural == [ ];
       expected = true;
+    };
+
+    # (e) — §B3 shadow direction: the node's own `env` binding shadows the linked target's context.
+    test-b3-own-binding-shadows-link = {
+      expr = capturedShadow;
+      expected = "OWN";
+    };
+
+    # (f) — the A4 strip holds: enriched-context never exposes the reserved `__containment` key.
+    test-enriched-context-no-containment = {
+      expr = cellEnriched ? __containment;
+      expected = false;
     };
   };
 }

@@ -46,6 +46,12 @@ in
       expr = (builtins.tryEval (declare.link { target = "host:axon"; })).success;
       expected = false;
     };
+    # `drop` takes an aspect entry (A2) — a "kind:name" string aborts, named (the abort/succeed pair
+    # `drop` gained requireEntry in A4 without a suite case).
+    test-drop-string-aborts = {
+      expr = (builtins.tryEval (declare.drop "aspect:theme")).success;
+      expected = false;
+    };
 
     # (b) — the entry-valued forms succeed and carry the entry through by id_hash.
     test-edge-entry-succeeds = {
@@ -72,6 +78,10 @@ in
     };
     test-link-entry-succeeds = {
       expr = (declare.link { target = hostEntry; }).target.id_hash == hostEntry.id_hash;
+      expected = true;
+    };
+    test-drop-entry-succeeds = {
+      expr = (declare.drop hostEntry).aspect.id_hash == hostEntry.id_hash;
       expected = true;
     };
 
