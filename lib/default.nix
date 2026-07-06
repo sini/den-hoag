@@ -50,13 +50,14 @@ let
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
   scopeAdapter = import ./scope-adapter.nix { inherit select; };
 
-  # Minimal effect vocabulary for the structural stratum (Task 2). Task 3 replaces it with
-  # the real effect constructors + phase classifier. Enough to classify enrich actions
-  # (`__phase` tag) and to run policy-effects/imports with empty policy sets.
-  effectsMin = {
-    classify = a: a.__phase or (throw "den-hoag: effect action carries no __phase tag (effectsMin)");
-    phaseOrder = [ "policy" ];
-    importEdgesOf = _policyEffects: [ ];
+  # Minimal declaration vocabulary for the structural stratum (Task 2). Task 3 replaces it
+  # with the real declaration constructors + stratum classifier. Enough to classify enrich
+  # declarations (`__stratum` tag) and to run policy-declarations/imports with empty rule sets.
+  declarationsMin = {
+    classify =
+      a: a.__stratum or (throw "den-hoag: declaration carries no __stratum tag (declarationsMin)");
+    strataOrder = [ "policy" ];
+    importEdgesOf = _policyDeclarations: [ ];
   };
 
   structuralAttributes = import ./attributes/structural.nix {
@@ -67,7 +68,7 @@ let
       dispatch
       errors
       ;
-    effects = effectsMin;
+    declarations = declarationsMin;
   };
   runResolve = import ./attributes/default.nix { inherit resolve; };
   inherit (buildRootsLib) buildRoots parseParent;
@@ -79,7 +80,7 @@ let
     userModules:
     let
       # den-managed module: the fleet membership channel. Task 1 bootstrap surface — the
-      # fixture sets these tuples directly; Task 3 emits them from `member` effects at
+      # fixture sets these tuples directly; Task 3 emits them from `member` declarations at
       # membership-independent nodes.
       membershipDecl = {
         options.den.membership = merge.mkOption {
@@ -109,7 +110,7 @@ let
       # has a parent (its instances materialize under that parent as `children`); every other
       # kind's instances are flat scope roots. A leaf with no parent (a standalone kind) stays
       # a root. Task 2's fixture has one cell kind (`user`); multi-cell-kind generalization is
-      # deferred to the spawn-effect wiring (Task 3).
+      # deferred to the spawn-declaration wiring (Task 3).
       allKinds = builtins.attrNames ent.meta;
       parentKinds = prelude.unique (
         builtins.filter (p: p != null) (map (k: ent.meta.${k}.parent) allKinds)
@@ -149,7 +150,7 @@ let
       equations = structuralAttributes {
         policiesRules = {
           enrich = [ ];
-          effects = [ ];
+          policy = [ ];
         };
         inherit fleetChildren;
       };
@@ -190,7 +191,7 @@ in
       scopeAdapter
       ;
     structural = structuralAttributes;
-    effects = effectsMin;
+    declarations = declarationsMin;
     inherit
       dispatch
       resolve

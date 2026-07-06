@@ -1,6 +1,6 @@
 # Fleet graph — the registries become gen-product factors, restricted by membership to
 # the sparse sub-product of cells that actually exist (Law A5). Membership tuples come
-# from `member` effects (Task 3) and functional dim assignments; Task 1 feeds them as
+# from `member` declarations (Task 3) and functional dim assignments; Task 1 feeds them as
 # fixture data through `den.membership`. Every algorithm here is a gen-product call — the
 # only local recursion is attrset assembly (`groupBy`), which is wiring, not machinery (A1).
 {
@@ -50,7 +50,7 @@ let
     };
 
   # dims = the ordered list of dimension kinds (declared by den.linearization; see Task 6).
-  # membershipTuples = [ { coords = { <dim> = <entry>; }; via ? null; } ] from member effects +
+  # membershipTuples = [ { coords = { <dim> = <entry>; }; via ? null; } ] from member declarations +
   #   functional assignments (idempotent: gen-product restrict dedups by cellId).
   mkFleet =
     {

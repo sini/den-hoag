@@ -12,9 +12,9 @@ in
     }";
 
   # A5 emission discipline: `member` is accepted only at membership-independent scope
-  # nodes. A `member` effect dispatched at a membership-derived node (a fleet cell, or
+  # nodes. A `member` declaration dispatched at a membership-derived node (a fleet cell, or
   # any node beneath one) aborts, naming the policy and the scope. The membership-
-  # derived classification is the caller's (Task 3 effect-phase classifier); this
+  # derived classification is the caller's (Task 3 declaration-stratum classifier); this
   # builder is the abort it raises.
   memberAtCell =
     policyName: scopeId:
@@ -27,10 +27,10 @@ in
     key: ownerA: ownerB:
     fail "single-writer enrichment (B1)" "enrich key `${key}` is written by two policies (`${ownerA}` and `${ownerB}`); a key may be enriched by exactly one policy";
 
-  # B2 effect-phase coherence: a policy whose effects do not all classify to one phase aborts,
-  # naming the policy and both phases (the effect constructors that produced them). Wired at
-  # the effect classifier (Task 3); Task 2 provides the builder.
-  mixedPhase =
-    policyName: phaseA: phaseB:
-    fail "effect phase (B2)" "policy `${policyName}` produced effects in two phases (`${phaseA}` and `${phaseB}`); a policy's effects must all classify to a single phase";
+  # B2 stratum coherence: a policy whose declarations do not all classify to one stratum
+  # aborts, naming the policy and both strata (the declaration constructors that produced
+  # them). Wired at the declaration classifier (Task 3); Task 2 provides the builder.
+  mixedStratum =
+    policyName: stratumA: stratumB:
+    fail "declaration stratum (B2)" "policy `${policyName}` produced declarations in two strata (`${stratumA}` and `${stratumB}`); a policy's declarations must all classify to a single stratum";
 }

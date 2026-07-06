@@ -9,7 +9,7 @@ let
     structural
     runResolve
     parseParent
-    effects
+    declarations
     dispatch
     ;
 
@@ -36,10 +36,9 @@ let
     }:
     dispatch.mkRule {
       inherit identity condition;
-      phase = "enrich";
       produce = _id: _ctx: [
         {
-          __phase = "enrich";
+          __stratum = "enrich";
           inherit key value;
           __policy = identity;
         }
@@ -53,7 +52,7 @@ let
       equations = structural {
         policiesRules = {
           enrich = enrichRules;
-          effects = [ ];
+          policy = [ ];
         };
         fleetChildren = noChildren;
       };
@@ -113,7 +112,7 @@ let
     id = "host:h";
     context = base;
     match = dispatch.fromFunctionMatch;
-    classify = effects.classify;
+    classify = declarations.classify;
     phaseOrder = [ "enrich" ];
     extract = acts: builtins.foldl' (acc: e: acc // { ${e.key} = e.value; }) { } (acts.enrich or [ ]);
     combine = ctx: delta: ctx // delta;

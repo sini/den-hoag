@@ -54,8 +54,8 @@ let
       ];
     };
 
-  # A `member` tuple emitted at a membership-derived scope (A5 violation). The effect-
-  # phase classifier (Task 3) sets `membershipDerived`; Task 1 enforces the abort.
+  # A `member` tuple emitted at a membership-derived scope (A5 violation). The declaration-
+  # stratum classifier (Task 3) sets `membershipDerived`; Task 1 enforces the abort.
   memberAtCell =
     { config, ... }:
     {

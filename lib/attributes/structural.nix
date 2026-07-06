@@ -4,16 +4,17 @@
 # `gen-dispatch.dispatch` (attr 4), the `gen-resolve.nta` spawn (attr 5). No structural
 # attribute demands a resolution attribute (A4); the gen-resolve schedule enforces it.
 #
-# `policiesRules` = { enrich; effects; } gen-dispatch rule lists (Task 3 compiles them
-# from `den.policies`; Task 2 threads them straight through so the B1 fixpoint is real).
-# `fleetChildren self id` = the cell-expansion glue (gen-product enumeration lives in
-# lib/fleet.nix, Law A1).
+# `policiesRules` = { enrich; policy; } gen-dispatch rule lists (Task 3 compiles them from
+# `den.policies`; Task 2 threads them straight through so the B1 fixpoint is real).
+# `declarations` = the declaration vocabulary (classify a declaration to its stratum,
+# stratum order, import-edge projection). `fleetChildren self id` = the cell-expansion
+# glue (gen-product enumeration lives in lib/fleet.nix, Law A1).
 {
   prelude,
   scope,
   resolve,
   dispatch,
-  effects,
+  declarations,
   errors,
 }:
 { policiesRules, fleetChildren }:
@@ -36,19 +37,18 @@
       prelude.foldl' (acc: layer: layer // acc) { } layers;
   };
 
-  # 2. enrich-effects — the REAL self-referential enrichment fold (r2 §B1 cross-enrichment):
+  # 2. enrichments — the REAL self-referential enrichment fold (r2 §B1 cross-enrichment):
   #    the enrich rules are RE-DISPATCHED on the CONVERGING context each iteration, so a
   #    policy whose guard needs a key another policy set only fires once that key has entered
   #    the context. This is the Law A1 pairing `gen-scope.circular ∘ gen-dispatch.dispatchStep`
   #    — NOT a one-shot fold over a precomputed list. `dispatchStep`'s `self: id: prev -> next`
-  #    matches `circular`'s `f`; `dispatchInit base` seeds `{ context; fired; accActions;
-  #    orderedPhases }`. dispatch threads each pass's enrich delta into `context` via
-  #    extract/combine, so the next iteration dispatches against the grown context; `fired`
-  #    dedups per policy across iterations. The circular is internal to the body (not an
-  #    attribute-level cycle), so kind stays synthesized; stratum is forced structural (the
-  #    fold BUILDS structure — it must not be warm-served).
-  enrich-effects = resolve.attr {
-    name = "enrich-effects";
+  #    matches `circular`'s `f`; `dispatchInit base` seeds the ascent. Each pass's enrichment
+  #    delta is threaded into `context` via extract/combine, so the next iteration dispatches
+  #    against the grown context (gen-dispatch dedups each policy across iterations). The
+  #    circular is internal to the body (not an attribute-level cycle), so kind stays
+  #    synthesized; stratum is forced structural (the fold BUILDS structure — never warm-served).
+  enrichments = resolve.attr {
+    name = "enrichments";
     kind = "synthesized";
     stratum = "structural";
     readsAttrs = [ "inherited-context" ];
@@ -60,9 +60,9 @@
           rules = policiesRules.enrich;
           inherit id;
           match = dispatch.fromFunctionMatch;
-          classify = effects.classify;
+          classify = declarations.classify;
           phaseOrder = [ "enrich" ];
-          # extract this pass's enrich actions into a { key = value; } delta; combine grows context.
+          # extract this pass's enrich declarations into a { key = value; } delta; combine grows context.
           extract = acts: prelude.foldl' (acc: e: acc // { ${e.key} = e.value; }) { } (acts.enrich or [ ]);
           combine = ctx: delta: ctx // delta;
         };
@@ -72,8 +72,8 @@
           eq = a: b: builtins.attrNames a.context == builtins.attrNames b.context;
         } (dispatch.dispatchStep { inherit (dispatch) dispatch; } cfg) self id;
         # B1 single-writer over the CONVERGED accumulation — catches both a same-pass collision
-        # and a cross-iteration one (two policies writing one key even if they fired in different
-        # passes). Names both policies + the key.
+        # and a cross-iteration one (two policies writing one key even in different passes). Names
+        # both policies + the key.
         owners = prelude.foldl' (
           acc: e:
           if acc ? ${e.key} && acc.${e.key} != e.__policy then
@@ -86,19 +86,19 @@
   };
 
   # 3. enriched-context — the converged context that dispatch reads: a plain projection of
-  #    enrich-effects.context (the keyset-eq fixpoint above), not itself circular.
+  #    enrichments.context (the keyset-eq fixpoint above), not itself circular.
   enriched-context = resolve.attr {
     name = "enriched-context";
     kind = "synthesized";
     stratum = "structural";
-    readsAttrs = [ "enrich-effects" ];
-    compute = self: id: (self.get id "enrich-effects").context;
+    readsAttrs = [ "enrichments" ];
+    compute = self: id: (self.get id "enrichments").context;
   };
 
-  # 4. policy-effects — resolution/collection/demand policies dispatched on the structural
+  # 4. policy-declarations — resolution/collection/demand policies dispatched on the structural
   #    context (Task 3 widens `context` to `enriched-context // linked-context`).
-  policy-effects = resolve.attr {
-    name = "policy-effects";
+  policy-declarations = resolve.attr {
+    name = "policy-declarations";
     kind = "synthesized";
     readsAttrs = [ "enriched-context" ];
     compute =
@@ -107,29 +107,29 @@
         ctx = self.get id "enriched-context";
       in
       dispatch.dispatch {
-        rules = policiesRules.effects;
+        rules = policiesRules.policy;
         inherit id;
         context = ctx;
         match = dispatch.fromFunctionMatch;
-        classify = effects.classify;
-        phaseOrder = effects.phaseOrder;
+        classify = declarations.classify;
+        phaseOrder = declarations.strataOrder;
       };
   };
 
   # 5. children — the HOAG NTA: fleet cells materialized under this host node (+ spawn
-  #    effects from policy-effects, wired in Task 3). The enumeration is a gen-product call
-  #    inside fleetChildren (lib/fleet.nix); this equation is the Vogt node-spawning seam.
+  #    declarations from policy-declarations, wired in Task 3). The enumeration is a gen-product
+  #    call inside fleetChildren (lib/fleet.nix); this equation is the Vogt node-spawning seam.
   children = resolve.nta {
     name = "children";
     spawn = self: id: fleetChildren self id;
   };
 
-  # 6. imports — computed I edges: link effects + collection routing (Task 3 populates the
-  #    effect vocabulary; Task 2's importEdgesOf yields none, keeping the neron chain empty).
+  # 6. imports — computed I edges: link declarations + collection routing (Task 3 populates the
+  #    declaration vocabulary; Task 2's importEdgesOf yields none, keeping the neron chain empty).
   imports = resolve.attr {
     name = "imports";
     kind = "synthesized";
-    readsAttrs = [ "policy-effects" ];
-    compute = self: id: effects.importEdgesOf (self.get id "policy-effects");
+    readsAttrs = [ "policy-declarations" ];
+    compute = self: id: declarations.importEdgesOf (self.get id "policy-declarations");
   };
 }
