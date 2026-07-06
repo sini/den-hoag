@@ -107,6 +107,35 @@ let
   denP = (denHoag.mkDen (fx.base ++ [ poisonMod ])).den;
   getP = denP.structural.eval.get;
   cellId = "user:alice@host:axon";
+
+  # (d) §B3 positive path — linked-context reaches the resolution stratum but not the structural
+  # one. At host:axon: a structural `link` to the env:prod root, a resolution policy that captures
+  # the linked kind's context (ctx.env → configure.set.seen), and a structural policy guarded on
+  # the same key (it must NOT fire, since the structural phase precedes linked-context injection).
+  b3Mod =
+    { config, ... }:
+    {
+      config.den.policies = {
+        linkEnv = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
+        captureEnv =
+          { env, ... }:
+          [
+            (declare.configure {
+              of = config.den.host.axon;
+              set = {
+                seen = env;
+              };
+            })
+          ];
+        structSeesEnv = { env, ... }: [ (declare.emit { marker = "struct-saw-env"; }) ];
+      };
+    };
+  denB3 = (denHoag.mkDen (fx.base ++ [ b3Mod ])).den;
+  getB3 = denB3.structural.eval.get;
+  axonDecls = getB3 "host:axon" "declarations";
+  axonResolution = axonDecls.actions.resolution or [ ];
+  axonStructural = axonDecls.actions.structural or [ ];
+  captured = (builtins.head (builtins.filter (a: a.__action == "configure") axonResolution)).set.seen;
 in
 {
   flake.tests.b2-two-stratum = {
@@ -154,6 +183,19 @@ in
     test-resolution-stratum-poisoned = {
       expr = (builtins.tryEval (builtins.deepSeq (getP cellId "declarations") true)).success;
       expected = false;
+    };
+
+    # (d) — §B3: the resolution declaration received the link target's enriched-context under the
+    # target's kind name (`env`), i.e. linked-context reached the resolution stratum.
+    test-b3-linked-context-reaches-resolution = {
+      expr = captured.env.name;
+      expected = "prod";
+    };
+    # …and the structural stratum was blind to it — the `env`-guarded structural policy never
+    # fired, so no `emit` declaration is present (structural saw `ctx` alone).
+    test-b3-structural-blind-to-linked = {
+      expr = builtins.filter (a: a.__action == "emit") axonStructural == [ ];
+      expected = true;
     };
   };
 }

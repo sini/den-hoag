@@ -129,8 +129,11 @@
   #    under the target's kind name — so ONLY the later (resolution/collection/demand) phases
   #    ever see it. Attr 2/5 dispatch structural declarations on `ctx` alone; linked-context
   #    reaches resolution and beyond only, never a structural read. `declarations` in this
-  #    compute is the vocabulary DEP (stratumOf/strata), not this attribute. The value is the
-  #    inert grouped-actions record (`{ actions; orderedPhases; context; fired; }`).
+  #    compute is the vocabulary DEP (stratumOf/strata), not this attribute. The value is INERT
+  #    DATA: only the grouped-by-stratum `actions` are kept — the dispatch state (context / fired
+  #    / orderedPhases) is projected away, never stored on the node. A later task that wants
+  #    linked-context as data recomputes it via `linkedFrom` (pure and cheap), not by reading a
+  #    dispatch accumulator back off this attribute.
   declarations = resolve.attr {
     name = "declarations";
     kind = "synthesized";
@@ -140,7 +143,9 @@
       let
         ctx0 = self.get id "enriched-context";
         # §B3 linked-context, folded from the structural phase's own `link` declarations —
-        # forward-threaded through `combine`, so it never feeds back into the links it reads.
+        # forward-threaded through `combine`, so it never feeds back into the links it reads. The
+        # node's own bindings shadow it (`linkedContext // ctx`): a link only ADDS a target's
+        # context under a not-yet-present kind name.
         linkedFrom =
           links:
           prelude.foldl' (
@@ -151,15 +156,20 @@
             if t == null then acc else acc // { ${t.kind} = self.get t.nodeId "enriched-context"; }
           ) { } (builtins.filter (a: declarations.kindOf a == "link") links);
       in
-      dispatch.dispatch {
-        rules = policiesRules.policy;
-        inherit id;
-        context = ctx0;
-        match = dispatch.fromFunctionMatch;
-        classify = declarations.stratumOf;
-        phaseOrder = declarations.strata;
-        extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
-        combine = ctx: delta: ctx // linkedFrom (delta.structural or [ ]);
+      {
+        inherit
+          (dispatch.dispatch {
+            rules = policiesRules.policy;
+            inherit id;
+            context = ctx0;
+            match = dispatch.fromFunctionMatch;
+            classify = declarations.stratumOf;
+            phaseOrder = declarations.strata;
+            extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
+            combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
+          })
+          actions
+          ;
       };
   };
 

@@ -10,6 +10,10 @@
 # readable. This is a pure, terminating classification (a `map`/`filter`, not a runtime loop): it
 # yields the rule's `phase` (attr 4 dispatches stratified over `declare.strata`) and whether the
 # rule is a pure-enrich writer (all declarations structural `enrich`), which selects its feed.
+# FAILURE MODE: this assumes the den pattern — a policy body forwards its ctx entries straight into
+# declaration constructors. A body that instead does NON-entry work on a ctx value (list iteration,
+# integer math, any type-dependent op) throws against the sentinel entry during this definition-time
+# probe, with an error pointing at the probe rather than the real call site.
 {
   prelude,
   dispatch,
