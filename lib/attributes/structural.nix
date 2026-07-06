@@ -127,7 +127,7 @@
   #    structural phase (link/member/spawn/emit) fires on the plain context first, then
   #    `combine` extends the context with linked-context — each `link` target's enriched-context
   #    under the target's kind name — so ONLY the later (resolution/collection/demand) phases
-  #    ever see it. Attr 2/5 dispatch structural declarations on `ctx` alone; linked-context
+  #    ever see it. Attr 2 dispatches (and attr 5 materializes) on `ctx` alone; linked-context
   #    reaches resolution and beyond only, never a structural read. `declarations` in this
   #    compute is the vocabulary DEP (stratumOf/strata), not this attribute. The value is INERT
   #    DATA: only the grouped-by-stratum `actions` are kept — the dispatch state (context / fired

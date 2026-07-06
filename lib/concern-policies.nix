@@ -56,7 +56,6 @@
             ;
           inherit produce;
           identity = name;
-          phase = stratum; # attr 4 dispatches stratified over declare.strata
           __isEnrich = isEnrich;
         };
 
