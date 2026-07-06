@@ -12,11 +12,13 @@ let
   # Discover the registered kinds from the schema declarations WITHOUT evaluating any
   # instance registry: a schema-only probe tree, freeform-absorbing every non-`schema`
   # `den.*` config the user modules set (instances, membership), exposes `_kindNames` +
-  # `_topology`. `build` needs the static kind list up front to generate one
-  # `mkInstanceRegistry` option per kind (the tree that holds those options can't also
-  # be the tree that discovers them without a laziness cycle). Two schema evals; the
-  # probe forces only schema declarations. `contentClass` stays den-side and null here —
-  # the class wiring that populates it lands in Task 2.
+  # `_topology`. The absorbed freeform values are IGNORED — the probe reads only
+  # `schema._kindNames`/`_topology`, never the instance/membership config it swallows.
+  # `build` needs the static kind list up front to generate one `mkInstanceRegistry`
+  # option per kind (the tree that holds those options can't also be the tree that
+  # discovers them without a laziness cycle). Two schema evals; the probe forces only
+  # schema declarations. `contentClass` stays den-side and null here — the class wiring
+  # that populates it lands in Task 2.
   discoverKinds =
     userModules:
     let

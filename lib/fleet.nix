@@ -21,19 +21,33 @@ let
       acc // { ${k} = (acc.${k} or [ ]) ++ [ x ]; }
     ) { } xs;
 
-  # A registry -> gen-product factor. `key` maps a public coordinate entry to the
-  # factor node id (its id_hash); `entryOf` inverts it. (gen-product default codec.)
-  factorOf = kindName: registry: {
-    dim = kindName;
-    graph = {
-      nodes = builtins.attrNames registry;
-      edges = _: [ ];
-      parent = _: null;
-      nodeData = id: registry.${id};
+  # A registry -> gen-product factor. `key` maps a public coordinate entry to the factor
+  # node id (its id_hash); `entryOf` inverts it. Per the gen-product factor contract the
+  # node ids ARE the `key` outputs, so nodes/nodeData/entryOf are keyed by id_hash — an
+  # id_hash -> entry index. (The registry is name-keyed; keying the factor by name would
+  # make `entryOf (key entry)` — which containmentChain / not-a-node detection round-trips
+  # — miss, since `key` yields the hash, not the name.)
+  factorOf =
+    kindName: registry:
+    let
+      byHash = builtins.listToAttrs (
+        map (e: {
+          name = e.id_hash;
+          value = e;
+        }) (builtins.attrValues registry)
+      );
+    in
+    {
+      dim = kindName;
+      graph = {
+        nodes = builtins.attrNames byHash;
+        edges = _: [ ];
+        parent = _: null;
+        nodeData = id: byHash.${id};
+      };
+      key = entry: entry.id_hash;
+      entryOf = id: byHash.${id};
     };
-    key = entry: entry.id_hash;
-    entryOf = id: registry.${id};
-  };
 
   # dims = the ordered list of dimension kinds (declared by den.linearization; see Task 6).
   # membershipTuples = [ { coords = { <dim> = <entry>; }; via ? null; } ] from member effects +
@@ -68,7 +82,46 @@ let
       }) byDims;
     in
     builtins.seq disciplineOk (product.restrict full { inherit relations; });
+
+  # Cell children of a host scope node (the `children` NTA's fleet arm, r2 attr 5). Slice
+  # the fleet to this host (a gen-product call), then map each surviving cell to a leaf
+  # scope node `"leaf:name@<hostNodeId>"` carrying both the host and leaf bindings (r2
+  # decls = { host; user; }). A childless host (no cell in its slice) yields no children.
+  # Enumeration is gen-product; the node assembly is A1 wiring.
+  cellChildrenFor =
+    {
+      fleet,
+      parentDim,
+      hostEntry,
+      hostNodeId,
+      leafDim,
+    }:
+    let
+      cells = product.cells (product.slice fleet { ${parentDim} = hostEntry; });
+    in
+    builtins.listToAttrs (
+      map (
+        c:
+        let
+          leafEntry = c.${leafDim};
+          cid = "${leafDim}:${leafEntry.name}@${hostNodeId}";
+        in
+        {
+          name = cid;
+          value = {
+            id = cid;
+            type = leafDim;
+            parent = hostNodeId;
+            decls = {
+              ${parentDim} = hostEntry;
+              ${leafDim} = leafEntry;
+              __entry = leafEntry;
+            };
+          };
+        }
+      ) cells
+    );
 in
 {
-  inherit factorOf mkFleet;
+  inherit factorOf mkFleet cellChildrenFor;
 }

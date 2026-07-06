@@ -19,4 +19,18 @@ in
   memberAtCell =
     policyName: scopeId:
     fail "member discipline (A5)" "policy `${policyName}` emitted `member` at membership-derived scope `${scopeId}`; member is accepted only at membership-independent nodes";
+
+  # B1 single-writer enrichment (A3): two enrich policies writing one context key abort at
+  # definition time, naming both policies + the key. Fires on a same-pass collision AND a
+  # cross-iteration one (the check runs over the converged enrich accumulation).
+  singleWriter =
+    key: ownerA: ownerB:
+    fail "single-writer enrichment (B1)" "enrich key `${key}` is written by two policies (`${ownerA}` and `${ownerB}`); a key may be enriched by exactly one policy";
+
+  # B2 effect-phase coherence: a policy whose effects do not all classify to one phase aborts,
+  # naming the policy and both phases (the effect constructors that produced them). Wired at
+  # the effect classifier (Task 3); Task 2 provides the builder.
+  mixedPhase =
+    policyName: phaseA: phaseB:
+    fail "effect phase (B2)" "policy `${policyName}` produced effects in two phases (`${phaseA}` and `${phaseB}`); a policy's effects must all classify to a single phase";
 }
