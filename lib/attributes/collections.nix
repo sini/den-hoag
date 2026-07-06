@@ -132,7 +132,9 @@ in
           ) channelNames;
 
         records = prelude.concatMap recordsOfAspect (self.get id "resolved-aspects");
-        # group by channel, then apply the A12 producer-identity order within each channel.
+        # group by channel, then apply the A12 producer-identity order within each channel. The inline
+        # group-by fold mirrors lib/fleet.nix's; both collapse onto `gen-prelude.groupBy` once it lands
+        # upstream (tracked follow-up, task #23 — add groupBy to gen-prelude, swap the den-hoag copies).
         grouped = prelude.foldl' (
           acc: r: acc // { ${r.chName} = (acc.${r.chName} or [ ]) ++ [ r ]; }
         ) { } records;

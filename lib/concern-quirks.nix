@@ -72,7 +72,11 @@ in
       mode ? "values",
     }:
     let
-      seq = (outputs.at at).${channel.name}.contributions;
+      # gen-pipe's `outputs.at` emits an entry for EVERY composed channel (evaluate.nix: `at = p:
+      # mapAttrs (name: ch: …) dag.channels`), so `.${channel.name}` is always present for a channel
+      # in this dag; `or [ ]` is the same defensive default `localDataOf` uses — inert under that
+      # contract, robust to a caller passing a channel from a different compose.
+      seq = (outputs.at at).${channel.name}.contributions or [ ];
       adapters = channel.class.adapters or [ ];
       crossClass =
         c:

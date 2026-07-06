@@ -107,6 +107,81 @@ let
   countOf =
     den: chName:
     builtins.length (den.structural.eval.get axonId "received-collections").${chName}.contributions;
+
+  # ── neron ORDER pin (B5: self → imports → parent) ──────────────────────────────────────────────
+  # A cell that IMPORTS one host (host:blade, via a `link`) while another is its P-parent (host:axon),
+  # both contributing to the channel: the received order must be imports-before-parent, not just the
+  # parent. `linkBlade` fires only where a `user` binding is present (the cell), so only the cell
+  # imports blade; host:axon stays the cell's parent.
+  neronBase = [
+    {
+      config.den.schema = {
+        env.parent = null;
+        host.parent = "env";
+        user.parent = "host";
+      };
+    }
+    {
+      config.den = {
+        env.prod = { };
+        host.axon = { };
+        host.blade = { };
+        user.alice = { };
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.membership = [
+          {
+            coords = {
+              env = config.den.env.prod;
+              host = config.den.host.axon;
+            };
+          }
+          {
+            coords = {
+              env = config.den.env.prod;
+              host = config.den.host.blade;
+            };
+          }
+          {
+            coords = {
+              host = config.den.host.axon;
+              user = config.den.user.alice;
+            };
+          }
+        ];
+      }
+    )
+    { config.den.contentClass.host = "nixos"; }
+    { config.den.quirks.ssh-peers = { }; }
+  ];
+  neronMod =
+    { config, ... }:
+    {
+      config.den.aspects = {
+        parentA.ssh-peers = [ "parent" ];
+        importA.ssh-peers = [ "import" ];
+      };
+      config.den.include = [
+        {
+          at = config.den.host.axon;
+          aspects = [ config.den.aspects.parentA ];
+        }
+        {
+          at = config.den.host.blade;
+          aspects = [ config.den.aspects.importA ];
+        }
+      ];
+      config.den.policies.linkBlade = { user, ... }: [
+        (denHoag.declare.link { target = config.den.host.blade; })
+      ];
+    };
+  denNeron = (denHoag.mkDen (neronBase ++ [ neronMod ])).den;
+  neronOrder = map (c: c.value) (
+    (denNeron.structural.eval.get "user:alice@host:axon" "received-collections").ssh-peers.contributions
+  );
 in
 {
   flake.tests.b5-channel-order = {
@@ -122,12 +197,24 @@ in
       expr = orderOf denFwd "ssh-peers" == orderOf denRev "ssh-peers";
       expected = true;
     };
-    # and it is genuinely the producer-identity order (both aspects present, deterministic pair).
-    test-order-is-both-producers = {
-      expr = builtins.sort (a: b: a < b) (orderOf denFwd "ssh-peers");
+    # the canonical winner is literally [alpha, beta] (self-documenting complement to the equality
+    # above): producer identity — alpha's key sorts before beta's — decides, not include order.
+    test-order-canonical-winner = {
+      expr = orderOf denFwd "ssh-peers";
       expected = [
         "alpha"
         "beta"
+      ];
+    };
+
+    # ── neron ORDER: self → imports → parent (B5) ──
+    # the cell receives the IMPORTED host's contribution before its PARENT host's — imports precede
+    # parent in the pinned traversal, not merely parent-only.
+    test-neron-imports-before-parent = {
+      expr = neronOrder;
+      expected = [
+        [ "import" ]
+        [ "parent" ]
       ];
     };
 

@@ -192,13 +192,26 @@
   };
 
   # 6. imports — computed I edges from the dispatched declarations: `link` targets (+ collection
-  #    routing, Task 5) via importEdgesOf. Empty until a policy emits `link`, keeping the neron
-  #    chain inert for the fixture.
+  #    routing, Task 5) via importEdgesOf. `importEdgesOf` yields target ENTRIES; the neron traversal
+  #    (gen-scope) walks NODE IDS, so each target is resolved to its scope-node id via `linkTarget`
+  #    (a root-kind target maps to its flat root id; an unresolvable target — e.g. a cell, pending the
+  #    Task 4 edge stratum — drops out). Empty until a policy emits a resolving `link`, keeping the
+  #    neron chain inert for a link-free fixture.
   imports = resolve.attr {
     name = "imports";
     kind = "synthesized";
     stratum = "structural";
     readsAttrs = [ "declarations" ];
-    compute = self: id: declarations.importEdgesOf (self.get id "declarations");
+    compute =
+      self: id:
+      builtins.filter (i: i != null) (
+        map (
+          t:
+          let
+            r = linkTarget t;
+          in
+          if r == null then null else r.nodeId
+        ) (declarations.importEdgesOf (self.get id "declarations"))
+      );
   };
 }

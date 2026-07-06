@@ -315,6 +315,11 @@ let
       # The fleet channel outputs — one gen-pipe.run over the neron traversal, for the class-relative
       # read (concernQuirks.consumeAt) at output assembly (Task 6). `.at pos` selects any position; it
       # is the same run attribute 11 (received-collections) computes per node inside the schedule.
+      # DRIFT NOTE: this traversal adapter MUST stay identical to attribute 11's (lib/attributes/
+      # collections.nix received-collections) — both are assembled from the same three
+      # `scopeAdapter.traversalAdapter` components (neron order / local-collection-data / classOfNode),
+      # differing only in whose eval they read (final `structural.eval` here vs the in-flight `self`
+      # there). Divergence would silently make consumeAt and the attribute disagree.
       receivedOutputs = pipe.run {
         dag = quirkDag;
         traversal = scopeAdapter.traversalAdapter {

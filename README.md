@@ -8,12 +8,12 @@ naming, forwarding, and attrset assembly.
 
 ## The four concerns
 
-| Concern       | Meaning        | Substrate                                     |
+| Concern | Meaning | Substrate |
 | ------------- | -------------- | --------------------------------------------- |
-| **policies**  | relationships  | effect constructors + `gen-dispatch` dispatch |
-| **quirks**    | data           | one fleet-level `gen-pipe.compose`            |
-| **classes**   | systems        | `gen-class` partition / contract / apply / gate |
-| **aspects**   | behavior       | `gen-resolve` over `gen-scope`, settings via `gen-settings` |
+| **policies** | relationships | effect constructors + `gen-dispatch` dispatch |
+| **quirks** | data | one fleet-level `gen-pipe.compose` |
+| **classes** | systems | `gen-class` partition / contract / apply / gate |
+| **aspects** | behavior | `gen-resolve` over `gen-scope`, settings via `gen-settings` |
 
 ## Architecture
 
@@ -54,9 +54,13 @@ pinned `flake.lock`:
 ## Development
 
 ```sh
+ulimit -s unlimited                    # deep module-system evals exceed the 8 MB default stack
 nix-unit --flake ./ci#tests            # whole suite
 nix-unit --flake ./ci#tests.<suite>    # one suite
 ```
+
+The suite's HOAG evaluations are deep enough to overflow the default 8 MB C stack; raise it with
+`ulimit -s unlimited` (the `ci` pre-commit hook already does this). CI is unaffected.
 
 The library core (`lib/**`) is nixpkgs-lib-free — it uses `gen-prelude` for list/attr/string
 helpers. Only `ci/tests/**` may use nixpkgs `lib`.
