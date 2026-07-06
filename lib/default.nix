@@ -406,8 +406,9 @@ let
       # Projecting aspects (§2.9 / A14, the `projects` facet): each aspect declaring a non-empty
       # `projects`, paired with its ATTACHMENT scopes — the containment position `{ <kind> = entity }`
       # of every entity it is directly included at (`den.include`). v1 uses the static include surface
-      # as the introduction source; policy / neededBy / edge introduction is deferred (deriving it
-      # would couple projection to the resolution stratum, an A9 stratification hazard). The projection
+      # as the introduction source; policy / neededBy / edge introduction is deferred: deriving it would
+      # require per-node scope derivation inside the resolve loop (projectors are pre-computed as a
+      # static list before it) — an implementation-complexity deferral, not a formal A9 violation. The projection
       # LAYERS are expanded in resolved-settings (`projectionLayersAt`); this only resolves attachment.
       entityKindOf =
         let

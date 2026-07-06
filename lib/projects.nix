@@ -56,7 +56,7 @@ let
         if builtins.isAttrs sel && sel ? __sel then
           sel.__sel
         else
-          errors.projectionDynamicSelector projectorName "<non-selector>";
+          errors.projectionDynamicSelector projectorName "<not-a-selector>";
       children = if tag == "not" then [ sel.selector ] else (sel.selectors or [ ]);
     in
     if builtins.elem tag combinatorTags then
@@ -181,10 +181,10 @@ let
     assertNoCollision (prelude.concatMap layersOf projectors);
 in
 {
+  # assertStaticSelector stays internal — projectionLayers applies it; nothing external needs it.
   inherit
     hasSetting
     schemaContext
     projectionLayers
-    assertStaticSelector
     ;
 }
