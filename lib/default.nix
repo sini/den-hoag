@@ -51,6 +51,20 @@ let
   scopeAdapter = import ./scope-adapter.nix { inherit prelude select; };
   concernQuirks = import ./concern-quirks.nix { inherit prelude pipe errors; };
 
+  # The demand concern (§B demand stratum): the demand channel, kind registration, the fleet
+  # resolveAll wrapper, and the resources/wiring → gen-edge constructors. Pure wiring over gen-demand
+  # (cascade), gen-pipe (the channel), and gen-edge (edge records) — Law A1.
+  demandLib = import ./demand.nix {
+    inherit
+      prelude
+      demand
+      pipe
+      edge
+      resolve
+      scopeAdapter
+      ;
+  };
+
   # The `projects` facet (§2.9 / A14): the aspect-schema selector domain (`hasSetting` + schemaContext)
   # and the projection-layer expansion. Pure vocabulary over gen-select; resolved-settings consumes
   # `projectionLayers`, `hasSetting` is exposed at the top for writing `projects` rules standalone.
@@ -217,6 +231,29 @@ let
         };
       };
 
+      # den.demandKinds.<name> — the demand-kind registry (§B demand stratum). Each entry declares a
+      # gen-demand kind: `{ below ? []; resolve; dedupKey ? null; fold ? null; }` (functions, so `raw`
+      # holds it unmerged); `below` names the kinds this one may cascade into (downward-only DAG,
+      # checked at registration). Absent ⇒ a demand-free fleet (empty kind set, no cascade).
+      demandKindsDecl = {
+        options.den.demandKinds = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Demand kinds: `<name> = { below ? []; resolve; dedupKey ? null; fold ? null; }` (§B).";
+        };
+      };
+
+      # den.demandContext — the STATIC context passed verbatim to every demand resolver (gen-demand
+      # `ctx`). It is opaque, config-independent data; the engine never adds resolved state to it, so a
+      # resolver desugars a composite from its own fields + this ctx alone (emission ⊥ consumption).
+      demandContextDecl = {
+        options.den.demandContext = merge.mkOption {
+          type = merge.types.raw;
+          default = { };
+          description = "Static context passed verbatim to every demand resolver (§B); never resolved state.";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
@@ -228,6 +265,8 @@ let
           contentClassDecl
           linearizationDecl
           settingsDecl
+          demandKindsDecl
+          demandContextDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -307,15 +346,16 @@ let
       # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
       policiesRules = concernPolicies.compile ent.config.den.policies;
 
-      # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops);
-      # channel-name uniqueness (E4b) and reference closure (E4a) are therefore fleet-wide. Policy
-      # route/join/tee ops are collected fleet-wide with the demand/edge wiring (Task 8+); per-quirk
-      # `ops` cover intra-compose shaping until then, so policyOps is empty here.
+      # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
+      # plus the den-managed demand channel (§B) threaded through the `policyOps` seam so it joins the
+      # SAME compose — channel-name uniqueness (E4b) and reference closure (E4a) are therefore
+      # fleet-wide over quirks AND demands. Policy route/join/tee ops are collected fleet-wide with the
+      # edge wiring (Task 9); per-quirk `ops` cover intra-compose shaping until then.
       quirks = ent.config.den.quirks;
       channelNames = concernQuirks.channelNames quirks;
       quirkDag = concernQuirks.compose {
         inherit quirks;
-        policyOps = [ ];
+        policyOps = [ demandLib.demandChannel ];
       };
 
       # classOfNode — the producing-scope → class-entry function (§2.5). Resolve each kind's declared
@@ -344,6 +384,7 @@ let
         allAspects = ent.config.den.aspects;
         directIncludes = ent.config.den.include;
         inherit quirkDag classOfNode channelNames;
+        localDemandData = demandLib.localDemandData;
         fleet = theFleet;
         inherit
           lin
@@ -384,6 +425,19 @@ let
             if c == null then [ ] else [ c ];
         };
       };
+
+      # The demand concern (§B): register the kinds (downward-only DAG, checked here), gather the
+      # fleet's demand declarations in the demand channel's pinned order, run ONE resolveAll, and
+      # construct the resources/wiring → gen-edge records. All lazy — a demand-free fleet never forces
+      # a resolveAll (the fixtures reading only `structural`/`quirkDag` pay nothing for this concern).
+      demandKindSet = demandLib.registerKinds (ent.config.den.demandKinds or { });
+      orderedDemands = demandLib.collectDemands structural.eval;
+      demandResolution = demandLib.resolveDemands {
+        kinds = demandKindSet;
+        inherit orderedDemands;
+        ctx = ent.config.den.demandContext or { };
+      };
+      demandEdges = demandLib.toEdges demandResolution;
 
       # Slice-order linearization (§2.7). `den.linearization.dims` declares the dimension order as
       # KIND entries; empty ⇒ canonical (name-sorted kind entries), preserving the pre-concern order.
@@ -457,6 +511,11 @@ let
         # Settings resolution surface (§2.6/§2.7/§2.8): the compiled scoped-override layers, and the
         # narrow accessor `aspectsAt <nodeId> = { <aspectName> = { present; settings; }; }` (A10).
         inherit settingsLayers aspectsAt;
+        # The demand concern surface (§B): the registered kind set (downward-only DAG), the single
+        # fleet resolveAll result ({ resources; wiring; trace; }), and its resources/wiring rendered as
+        # inert gen-edge records — these join the fleet edge set Task 9 materializes.
+        demandKinds = demandKindSet;
+        inherit demandResolution demandEdges;
       };
     };
 in
@@ -513,6 +572,7 @@ in
       pipe
       settings
       algebra
+      demand
       ;
   };
 }

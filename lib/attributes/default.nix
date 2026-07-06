@@ -65,8 +65,11 @@ in
 {
   # The full equation map. Structural attributes shape the graph (they never read a resolution
   # attribute — the gen-resolve schedule enforces it); attr 7 (resolution) reads structural +
-  # ancestor resolution (top-down, acyclic along containment); the collection attrs (10/11) read the
-  # resolution + collection strata (never structural), so they schedule cleanly beneath both.
+  # ancestor resolution (top-down, acyclic along containment); the collection attrs (10/11 +
+  # `local-demand-data`) read the resolution + collection strata (and the structural `declarations`,
+  # like `neron-order` reads `imports`), so they schedule cleanly beneath both. `localDemandData` is
+  # the demand concern's collection attribute (lib/demand.nix); it merges in as attribute
+  # `local-demand-data`.
   equations =
     {
       policiesRules,
@@ -77,6 +80,7 @@ in
       quirkDag,
       classOfNode,
       channelNames,
+      localDemandData,
       fleet,
       lin,
       settingsLayers ? [ ],
@@ -86,6 +90,9 @@ in
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // (resolvedAspects { inherit allAspects directIncludes; })
     // (collections { inherit quirkDag classOfNode channelNames; })
+    // {
+      local-demand-data = localDemandData;
+    }
     // (resolvedSettings.mkEquation {
       inherit
         fleet
