@@ -48,6 +48,8 @@ let
         let
           m = content.${k};
         in
+        # An empty class body ({}) is a declared no-op — dropped rather than merged as an
+        # empty module, so bucket counts reflect real content.
         if m == { } then acc else acc // { ${k} = (acc.${k} or [ ]) ++ [ m ]; }
       else
         acc

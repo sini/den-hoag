@@ -277,6 +277,8 @@ in
       };
     };
     # equal topology ⇒ byte-equal trace: permuting the order-significant membership list changes nothing.
+    # (Equality alone would pass vacuously on two empty traces — non-emptiness is established by
+    # test-trace-one-edge-per-channel, so this pair together pins stability of a REAL trace.)
     test-trace-stable-under-permutation = {
       expr = traceAxon == traceAxonRev;
       expected = true;

@@ -30,7 +30,9 @@
         core = (c.share or { }).core or false;
       };
       # A10 seam (spec §2.10 class-share output assembly): the per-class module-preparation strategy
-      # applied before the terminal wraps a member. Identity by default; gen-class tier-3 replaces it.
+      # applied before the terminal wraps a member. Identity by default; A10 supplies an adapter
+      # lambda over gen-class (`modules: (class.applyCoreFixed { inherit core modules; }).config`),
+      # never bare `applyCoreFixed` (its signature is `{ core; modules; }`, not modules→modules).
       coreStrategy = c.coreStrategy or (m: m);
     }) classes;
 }

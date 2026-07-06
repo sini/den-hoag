@@ -22,9 +22,11 @@
 }:
 let
   # A10 seam: a class's core-injection strategy transforms the raw per-member module list before the
-  # terminal wraps it. The default is identity (ordinary per-member merge). gen-class tier-3
-  # (`applyCoreFixed`) drops in here as `classCfg.coreStrategy` — the output path takes it without
-  # restructuring (Law A17: per class, never a global fleet switch).
+  # terminal wraps it. The default is identity (ordinary per-member merge). coreStrategy is
+  # `modules -> modules-or-result`; gen-class's `applyCoreFixed` takes `{ core; modules; }`, so A10
+  # plugs in an ADAPTER lambda — `modules: (class.applyCoreFixed { inherit core modules; }).config`
+  # — never `applyCoreFixed` bare. The output path takes it without restructuring (Law A17: per
+  # class, never a global fleet switch).
   prepareModules = classCfg: hostModules: (classCfg.coreStrategy or (m: m)) hostModules;
 in
 {
