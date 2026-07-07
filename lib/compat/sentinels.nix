@@ -8,7 +8,7 @@
 # This is a SHIM-CORE file (compile.nix imports it): it references ONLY `errors`, never a legacy
 # module, so severability holds. A sentinel is the shim core's knowledge that a surface EXISTS (so it
 # can refuse it when unhandled), NOT how to desugar it (that stays behind the severable boundary).
-# The `forwards` sentinel lands with Task 5; this file grows one builder per legacy surface.
+# This file grows one builder per legacy surface.
 { errors }:
 {
   # A `provides` key on an aspect that reached compile un-desugared ⇒ legacy/provides.nix is absent.
@@ -17,6 +17,18 @@
     aspectName: aspect:
     if builtins.isAttrs aspect && aspect ? provides then
       errors.legacyProvidesAbsent aspectName
+    else
+      true;
+
+  # A `den.classes.<c>.forwardTo` that reached compile un-desugared ⇒ legacy/forwards.nix is absent
+  # (severed, or compile called directly). `forwardTo` is the compile-visible forward surface (a class
+  # option, v1 options.nix); the forwards module's desugar strips it when present, so a survivor means
+  # the module is gone — fail LOUDLY naming the surface + the module to import (Law C5). `true` when
+  # clean, composing under `builtins.seq` at the class-translation boundary.
+  forwardTo =
+    className: cls:
+    if builtins.isAttrs cls && (cls.forwardTo or null) != null then
+      errors.legacyForwardsAbsent "den.classes.${className}.forwardTo"
     else
       true;
 }

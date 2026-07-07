@@ -242,16 +242,20 @@ let
   # den-hoag class registration (§2.4): the `{ wrap; instantiate; share; }` surface. A v1 class decl's
   # den-hoag-shaped keys pass through; v1-battery-specific keys (parentArg/parentPath/…) are delivery
   # mechanism, consumed by `legacy.forwards` (Task 5), not the class registration.
+  #
+  # LEGACY SURFACE SENTINEL (C5): `forwardTo` must have been stripped by legacy/forwards.nix's desugar
+  # (applied by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is
+  # severed — fail LOUDLY naming the surface rather than silently dropping the forward (a bare
+  # `intersectAttrs` would just discard it), parallel to the `provides` sentinel in translateAspect.
   translateClass =
-    cls:
-    let
-      keep = builtins.intersectAttrs {
+    name: cls:
+    builtins.seq (sentinels.forwardTo name cls) (
+      builtins.intersectAttrs {
         wrap = null;
         instantiate = null;
         share = null;
-      } cls;
-    in
-    keep;
+      } cls
+    );
 in
 { ... }@v1Decls:
 let
@@ -332,5 +336,5 @@ in
       errors.quirkClassOverlap (builtins.head overlap)
     else
       builtins.mapAttrs (_: pipeLib.channelOf) quirks;
-  classes = builtins.mapAttrs (_: translateClass) v1Classes;
+  classes = builtins.mapAttrs translateClass v1Classes;
 }

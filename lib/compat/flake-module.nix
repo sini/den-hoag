@@ -141,22 +141,40 @@ let
     legacy.forwards
   ];
 
-  # The LEGACY provides desugar (§B4a): the ONE reference to `legacy.provides` outside `legacy/` (the
-  # flakeModule assembly, §2.1 severance) — applied to the v1 aspects BEFORE compile so den-hoag sees
-  # only grounded `neededBy`/`includes`/content. Severed (no `desugar` ⇒ the identity), a residual
-  # `provides` key trips compile's sentinel (Law C5). Pure (Law C2): a v1-aspects → v1-aspects transform.
+  # The LEGACY desugars: the ONLY references to `legacy.*` outside `legacy/` (the flakeModule assembly,
+  # §2.1 severance) — applied to the v1 surface BEFORE compile so den-hoag sees only grounded vocabulary.
+  # Each is an or-identity: severed (no `desugar` ⇒ the identity), a residual legacy key survives to
+  # compile and trips that surface's sentinel (Law C5). Both pure (Law C2): v1 → v1 transforms.
+  #   • provides → v1-aspects → v1-aspects (§B4a `neededBy`/`includes`/content).
+  #   • forwards → v1 → v1: strips `den.classes.<c>.forwardTo` (the compile-visible forward surface).
   legacyProvidesDesugar = legacy.provides.desugar or (aspects: aspects);
-  # C5 (Task 5) adds `legacyForwardsDesugar = legacy.forwards.desugar or (…)` here — same or-identity
-  # severance pattern — and composes it into `desugarLegacy` below; a residual `forwards` key then
-  # trips its own sentinel when the module is severed.
+  legacyForwardsDesugar = legacy.forwards.desugar or (v1: v1);
+  # Forwards desugars the FULL v1 (it reshapes `classes`); provides desugars the resulting `aspects`.
+  # Compose forwards-first so provides sees the post-forward aspect set.
   desugarLegacy =
     v1:
-    v1
+    let
+      v1f = legacyForwardsDesugar v1;
+    in
+    v1f
     // {
-      aspects = legacyProvidesDesugar (v1.aspects or { });
+      aspects = legacyProvidesDesugar (v1f.aspects or { });
     };
+  # `den.interpret` — the gen-edge source-interpreter seam (item 7): the legacy forwards module's
+  # `synthesize`/`rewalk` composers, threaded into den-hoag's single `materialize` via the shipped raw
+  # option (lib/default.nix `interpretDecl`, output-modules.nix `interpret ? { }`) WITHOUT editing
+  # output-modules.nix. Severed (no forwards module ⇒ `or { }`) ⇒ the native default: no synthesize
+  # source is ever folded, so `{ }` is complete. den-hoag constructs no synthesize record and defines
+  # no interpreter — both are the legacy module's, supplied here as data + a closure.
+  interpretModule = {
+    config.den.interpret = legacy.forwards.interpret or { };
+  };
   mkDen =
-    userModules: denHoag.mkDen [ (mkFleetModule (compile (desugarLegacy (evalV1 userModules)))) ];
+    userModules:
+    denHoag.mkDen [
+      (mkFleetModule (compile (desugarLegacy (evalV1 userModules))))
+      interpretModule
+    ];
 in
 {
   inherit
