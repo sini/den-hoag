@@ -67,5 +67,17 @@ in
       expr = traceHoag fixtures.quirkChannel == traceHoag (wrap fixtures.quirkChannel);
       expected = true;
     };
+
+    # multi-host invariance — belt-and-suspenders on the root-enumeration fan-out: with TWO hosts across
+    # two systems, both arms enumerate + concatenate per-root traces (v1 `hostRootsOf`, hoag
+    # `attrNames den.scopeRoots`). Re-nesting the module must not perturb that fan-out on either arm.
+    test-multi-hoag-topology-invariant = {
+      expr = traceHoag fixtures.multiHost == traceHoag (wrap fixtures.multiHost);
+      expected = true;
+    };
+    test-multi-v1-topology-invariant = {
+      expr = traceV1 fixtures.multiHost == traceV1 (wrap fixtures.multiHost);
+      expected = true;
+    };
   };
 }

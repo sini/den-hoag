@@ -3,6 +3,8 @@
 # order, with correct arm attribution (`onlyIn`) and the bracketing matched neighbours (`precededBy` /
 # `followedBy`). Two mutations — a DROP (edge unique to `expected`/v1) and an ADD (edge unique to
 # `actual`/hoag) — cover both attribution directions.
+# `lib` is nixpkgs lib, injected by the gen `mkCi` scaffold (the nix-unit test runner supplies it to every
+# test module); used here only for `lib.sublist` to build the drop-mutation.
 { harness, lib, ... }:
 let
   inherit (harness) schema traceV1 fixtures;

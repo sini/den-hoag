@@ -112,6 +112,10 @@ let
   # Normalize a gen-edge edge record: rewrite the target root + the collected source scope (+ its rendered
   # members, for display parity) to names. rewalk/synthesize/value carry no entity SCOPE in their sort key
   # (aspect/forward ids are their own identity), so they pass through unchanged.
+  # ASSUMPTION (holds at C7): the hoag arm produces NO rewalk edges — rewalk is v1's spawn re-walk, and it
+  # appears only in the legacy trace (`traceV1Legacy`, v1-only). If a future den-hoag ever emitted a
+  # rewalk-flavored edge, its `rewalk.aspect` id_hash would NOT be normalized here and would surface as a
+  # spurious divergence in P1 (a loud, classifiable failure — not a silent mis-match). Extend this arm then.
   hoagNormEdge =
     hashToName: e:
     e

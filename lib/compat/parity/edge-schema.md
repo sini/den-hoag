@@ -1,5 +1,9 @@
 # The frozen parity edge schema — version 1
 
+> The "version 1" in this heading is the SAME number as `schema.nix`'s `version = 1` — one version
+> tracked in two places. Any bump changes BOTH (and adds a `ledger.md` entry); see "Version-bump
+> discipline" below.
+
 The whole structural oracle is one string: the frozen **`T | P | S | M` sort key**. gen-edge deliberately
 froze den v1's `edgeSortKey` byte-for-byte (`gen-edge/lib/core.nix` — "the FROZEN trace sort key, v1 byte
 contract"; den v1 `nix/lib/aspects/fx/edges/edge.nix` `edgeSortKey`), so both harness arms render into the

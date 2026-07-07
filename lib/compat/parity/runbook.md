@@ -8,14 +8,56 @@ den-hoag repo; **`ulimit -s unlimited` first** (the dual-den module-system evals
 
 ```
 ulimit -s unlimited
-nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-structural       # P1
-nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-trace-stability   # P4
-nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-first-divergent   # P5
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-structural        # P1
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-trace-stability    # P4
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-first-divergent     # P5
 nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-identity-negcontrol # P7
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-schema-guards        # frozen-schema + normalizer guards (pure, fast)
 ```
+
+`parity-schema-guards` is pure (no den eval) and runs in a second — start there to prove the frozen-schema
+cross-version refusal and the `hoagNormName` mis-map guard before paying for the heavy dual-den suites.
 
 New files under `parity/` or `lib/compat/parity/` must be `git add`ed before nix sees them (both flakes
 read a git tree). See `feedback_stage_new_files`.
+
+## Add a fixture (the full cycle — C8 does this repeatedly)
+
+1. **Write it** in `parity/fixtures/topologies.nix` as `{ name; module; crossArm; hostRoots ? true; flakeRoot ? false; }`. A plain-attrset `module` (`{ den.hosts…; }`) runs on BOTH arms (`crossArm = true`); a FUNCTION module (`{ den, lib, … }: …`) reaches den v1's `den.lib.policy.*` and is v1-ONLY
+   (`crossArm = false`, e.g. the negative control).
+1. **`git add parity/fixtures/topologies.nix`** — BEFORE any nix command. Both flakes read a git tree, so
+   an unstaged fixture is invisible and the harness silently uses the old set (this is the #1 gotcha).
+1. **Capture its diff.** Run the same shape the P1 suite uses (`resultOf`), as a one-off:
+   ```
+   ulimit -s unlimited
+   nix eval --impure --json --expr '
+     let
+       hoag = builtins.getFlake "path:/abs/den-hoag";
+       parity = builtins.getFlake "path:/abs/den-hoag/parity";
+       npkgs = parity.inputs.nixpkgs; nlib = import "${npkgs}/lib";
+       v1flk = parity.inputs.den-v1;
+       v1edge = import "${v1flk}/nix/lib/aspects/fx/edges/edge.nix" { lib = nlib; };
+       P = hoag.compat.parity;
+       v1 = P.oracle.mkV1 { denV1Flake = v1flk; denV1Edge = v1edge; nixpkgsLib = nlib; nixpkgs = npkgs; };
+       fx = (import ./parity/fixtures/topologies.nix { }).<yourFixture>;
+       keys = t: map (e: e.__sortKey) t;
+       h = t: builtins.hashString "sha256" (builtins.toJSON (P.schema.keysOf t));
+       tV1 = v1.traceV1 fx; tHoag = P.oracle.traceHoag { denCompat = hoag.compat; } fx;
+       p = P.schema.assertEdgeParity { expected = tV1; actual = tHoag; };
+     in { v1 = keys tV1; hoag = keys tHoag; matched = P.schema.keysOf p.matched;
+          missing = P.schema.keysOf p.missingFromActual; extra = P.schema.keysOf p.extraInActual;
+          v1Hash = h tV1; hoagHash = h tHoag; }'
+   ```
+1. **Write the golden.** Transcribe the JSON into a new `<yourFixture> = { … };` entry in
+   `parity/golden/traces.nix` (the seven keys above — `v1`/`hoag`/`matched`/`missing`/`extra`/`v1Hash`/
+   `hoagHash`). Every list must be a normalized `<kind>:<name>` sort key.
+1. **Wire the tests.** Add the fixture to `parity/tests/parity-structural.nix` (`resultOf` + a
+   `test-<name>` asserting `diffOnly` == `goldenDiff golden.<name>`) and to
+   `parity/tests/parity-trace-stability.nix` (the two golden-hash tests + a topology-invariance test).
+1. **Ledger a row** in `ledger.md` IF the diff introduces a NEW classification (a divergence shape not
+   already covered by L1–L5). A fixture whose diff is the same domain-boundary shape needs no new row —
+   note it under Scope instead.
+1. **Re-run** `parity-structural` + `parity-trace-stability` (green) and re-`git add` the changed files.
 
 ## Inspect a diff by hand
 
