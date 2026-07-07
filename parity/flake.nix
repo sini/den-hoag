@@ -54,6 +54,9 @@
           inherit (P) schema;
           traceHoag = P.oracle.traceHoag { inherit denCompat; };
           inherit (v1arm) traceV1 traceV1Legacy;
+          # The entity-scope normalizer + its id_hash predicate, for the schema-guard suite's direct
+          # mis-map test (a colon-bearing non-entity name must pass through unmapped).
+          inherit (P.oracle) hoagNormName isIdHash nonEntityNameMap;
           fixtures = import ./fixtures/topologies.nix { };
           golden = import ./golden/traces.nix;
         };

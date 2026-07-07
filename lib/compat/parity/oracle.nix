@@ -85,15 +85,25 @@ let
       ) acc (builtins.attrNames den.registries.${kind})
     ) { } (builtins.attrNames den.registries);
 
+  # An id_hash is exactly 64 lowercase hex (sha256). The entity-detection predicate requires BOTH the
+  # shape AND registry membership, so a non-entity opaque string that merely CONTAINS a colon
+  # (`system=x86_64-linux`, a flake-output path, …) can never be mis-mapped by a coincidental hex tail:
+  # membership is the real guard (id_hashes are globally unique per (kind, name)); the shape is a cheap
+  # pre-filter that also short-circuits the registry lookup for the common non-entity case.
+  isIdHash = s: builtins.match "[0-9a-f]{64}" s != null;
+
   # Normalize one rendered scope string (gen-edge `renderName` output) → the cross-arm name:
-  #   entity  "<kind>:<idHash>"  → "<kind>:<name>"   (F1, keyed by the bare id_hash tail)
+  #   entity  "<kind>:<idHash>"  → "<kind>:<name>"   (F1 — the tail is a 64-hex id_hash IN the registry)
   #   non-ent  opaque string      → its v1 mkScopeId form (F2) else identity.
   hoagNormName =
     hashToName: rendered:
     let
       tail = lastSegment ":" rendered;
     in
-    if hashToName ? ${tail} then hashToName.${tail} else nonEntityNameMap.${rendered} or rendered;
+    if isIdHash tail && hashToName ? ${tail} then
+      hashToName.${tail}
+    else
+      nonEntityNameMap.${rendered} or rendered;
 
   # Rewrite an entity/opaque nameSpec to an opaque `<kind>:<name>` spec (so gen-edge `renderName` yields
   # the normalized name). Already-opaque non-entity specs pass through the name map.
@@ -322,5 +332,10 @@ in
     mkV1
     nonEntityNameMap
     tagAndSort
+    # Exposed for the schema-guard suite: the entity-scope name normalizer (`hashToName -> rendered ->
+    # name`) + its 64-hex id_hash predicate, so the mis-map guard is exercised directly (a colon-bearing
+    # non-entity name passes through unmapped).
+    hoagNormName
+    isIdHash
     ;
 }
