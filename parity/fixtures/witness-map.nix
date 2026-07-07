@@ -356,8 +356,10 @@ rec {
     };
 
     # r16 `den.default` / `den.batteries.*` — MANDATORY: battery aspects compile as ORDINARY aspects.
-    # `den.default` (v1 defaults.nix) is the fleet-wide default aspect — registered as `__default`,
-    # radiated by a single fleet-wide `__denDefault` policy (matching v1's schema-include for all kinds).
+    # `den.default` (v1 defaults.nix:15-19) is registered as `__default` and radiated by the `__denDefault`
+    # policy, NARROWED to v1's three built-in kinds — host, user, home (`lib.genAttrs [ "host" "user"
+    # "home" ]`), NOT all kinds. den-hoag folds home into user, so the target is host + user; the policy's
+    # `{ host, ... }` canTake guard fires only where a host coordinate is in scope, excluding custom kinds.
     # `homeManager` class key grounds to `home-manager`. (`den.batteries.*` live at `config.batteries`,
     # NOT `config.den`, so the compat surface only ever sees the value inlined into `den.default.includes`
     # / an aspect's `includes`; there is no separate `den.batteries` surface key to compile.)

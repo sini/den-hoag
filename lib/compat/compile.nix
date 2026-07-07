@@ -296,20 +296,36 @@ let
   v1Policies = v1Decls.policies or { };
   v1Classes = v1Decls.classes or { };
 
-  # `den.default` (v1 modules/aspects/defaults.nix): the default aspect, injected there as a schema
-  # `includes = [ den.default ]` for EVERY entity kind — i.e. radiated fleet-wide. Compiled the same way:
-  # registered as the reserved aspect `__default` (translated like any aspect — grounded class keys,
-  # provides/forward sentinels apply), then radiated by a single fleet-wide `__denDefault` policy that
-  # emits an `edge` of it at every scope (den-hoag dispatch runs the bare `_ctx:` body everywhere). One
-  # policy, not one-per-kind — a per-kind fan-out would double-radiate (the kind-include policies fire
-  # fleet-wide too, C1 stage). `__`-prefixed names cannot collide with a user aspect/policy (den reserves
-  # `__`). Absent (`den.default` unset) ⇒ no aspect, no policy — byte-identical to a fixture without it.
+  # `den.default` (v1 modules/aspects/defaults.nix:15-19): the default aspect, injected THERE via
+  # `lib.genAttrs [ "host" "user" "home" ]` as a schema `includes = [ den.default ]` for EXACTLY the three
+  # built-in entity kinds — host, user, home — NOT every kind (custom kinds do NOT receive it). Compiled
+  # the same way: registered as the reserved aspect `__default` (translated like any aspect — grounded
+  # class keys, provides/forward sentinels apply), then radiated by a single `__denDefault` policy.
+  #
+  # NARROWING to v1's kind set: den-hoag folds `home` into `user` (ingest.nix §8 — user IS user∪home), so
+  # v1's {host, user, home} is den-hoag's {host, user}. The policy destructures `{ host, ... }`, which
+  # den-hoag's `dispatch.fromFunctionMatch` reads as a canTake guard (concern-policies.nix): it fires ONLY
+  # at scopes carrying a `host` coordinate — every host and every user cell (a user inherits its host
+  # coordinate) — and NEVER at a custom-kind scope (env/cluster carry only their own coordinate, no host).
+  # The guard rides straight through as the SYNTHESIZED policy's real formals — it is NOT wrapped by
+  # `compilePolicy` (which erases the canTake), so unlike a v1 policy body the destructure gates dispatch.
+  # `host` is required-but-unused (the guard, not a read).
+  # (RESIDUAL: a custom kind BOUND under a host would inherit `host` and match; the corpus census has no
+  # host-nested custom kind — clusters are fleet-level — so this never diverges in practice, PIN.md.)
+  #
+  # One policy, not one-per-kind — a per-kind fan-out would double-radiate at the user cell (which carries
+  # both host and user). `__`-prefixed names cannot collide with a user aspect/policy (den reserves `__`).
+  # Absent (`den.default` unset) ⇒ no aspect, no policy — byte-identical to a fixture without it.
   hasDefault = (v1Decls.default or { }) != { };
   defaultAspects =
     if hasDefault then { __default = translateAspect "__default" v1Decls.default; } else { };
   defaultPolicy =
     if hasDefault then
-      { __denDefault = _ctx: [ (declare.edge (resolveAspectRef aspectRec { name = "__default"; })) ]; }
+      {
+        __denDefault =
+          { host, ... }:
+          [ (declare.edge (resolveAspectRef aspectRec { name = "__default"; })) ];
+      }
     else
       { };
 
