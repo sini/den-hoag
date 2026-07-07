@@ -2,6 +2,7 @@
 # task). Every compile-time failure the shim raises names its concern (C-law) and the surface at
 # fault, so a v1 declaration that cannot compile fails at DEFINITION with a legible message rather
 # than deep in a later evaluation. No `lib`, only `throw` + string interpolation (Law: nixpkgs-lib-free).
+# `prelude` reserved — the compile/error surface grows across Tasks 1–9.
 { prelude }:
 let
   fail = ctx: msg: throw "den-compat: ${ctx}: ${msg}";

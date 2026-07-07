@@ -5,7 +5,8 @@
     gen.url = "github:sini/gen";
     den-v2.url = "path:.."; # this tree (its `.compat` output)
     den-v1.url = "github:denful/den/11866c16"; # the FROZEN pin (parity/PIN.md)
-    # INTERIM corpus pin (owner, 2026-07-07): frozen at nix-config main so parity diffs are
+    # INTERIM corpus pin (owner decision dated 2026-07-07, the compat-phase start): frozen at the
+    # then-current nix-config main so parity diffs are
     # reproducible during the compat build; bump deliberately at ship-gate. FOLLOW-UP (tracked):
     # the real harness migrates to a SYNTHETIC self-contained corpus (no live-fleet coupling).
     corpus.url = "github:sini/nix-config/b0b207693ce66fb57acf2bb09cf9549e1dbddec7";

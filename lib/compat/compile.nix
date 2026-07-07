@@ -7,6 +7,7 @@
 # Task 0 stub: the five-key declaration shape the four-concern API consumes. The desugar for each key
 # lands across Tasks 1–5 (entities/aspects/classes = ingestion + surface table; policies = deliver +
 # route/provide sugar; channels = the pipe stage vocabulary).
+# `prelude` reserved — the compile/error surface grows across Tasks 1–9.
 { prelude }:
 { ... }@v1Decls:
 {
