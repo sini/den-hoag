@@ -152,17 +152,32 @@ let
     } normEdges;
 
   contentHoag =
-    { denCompat }:
+    {
+      denCompat,
+      nixpkgs ? null,
+    }:
     fixture:
     let
-      built = denCompat.mkDen [ fixture.module ];
+      # We append a module setting `den.nixpkgs` so that output.systems resolves to real NixOS systems (with drvPath)
+      # if nixpkgs is supplied, rather than the nixpkgs-free `collect` representation.
+      built = denCompat.mkDen [
+        fixture.module
+        { den.nixpkgs = nixpkgs; }
+      ];
     in
-    prelude.mapAttrs (cls: members:
-      prelude.mapAttrs (id: cfg:
-        let c = cfg.config or cfg; in
-        if c ? system.build.toplevel.drvPath then c.system.build.toplevel.drvPath
-        else if c ? home.activationPackage.drvPath then c.home.activationPackage.drvPath
-        else builtins.hashString "sha256" (builtins.toJSON c)
+    prelude.mapAttrs (
+      cls: members:
+      prelude.mapAttrs (
+        id: cfg:
+        let
+          c = cfg.config or cfg;
+        in
+        if c ? system.build.toplevel.drvPath then
+          c.system.build.toplevel.drvPath
+        else if c ? home.activationPackage.drvPath then
+          c.home.activationPackage.drvPath
+        else
+          builtins.hashString "sha256" (builtins.toJSON c)
       ) members
     ) built.den.output.systems;
 
@@ -172,7 +187,9 @@ let
     let
       built = denCompat.mkDen [ fixture.module ];
     in
-    builtins.hashString "sha256" (builtins.toJSON built.den.quirkDag.nodes);
+    builtins.hashString "sha256" (
+      builtins.toJSON { inherit (built.den.quirkDag) declaredIds topo edges; }
+    );
 
   # ══ the v1 (oracle) arm ═══════════════════════════════════════════════════════════════════════════
   mkV1 =
@@ -361,21 +378,32 @@ let
               # `den.hosts.<sys>.<host>.nixos` is where the config lives in v1, or `den.outputs.nixos`.
               # Wait, we can just use `den.outputs` because v1 has it too (for testing).
               # Actually, den v1 has `den.nixosConfigurations`, `den.homeConfigurations`.
-              outs = if den ? outputs then den.outputs else {
-                nixos = den.nixosConfigurations or {};
-                "home-manager" = den.homeConfigurations or {};
-              };
+              outs =
+                if den ? outputs then
+                  den.outputs
+                else
+                  {
+                    nixos = den.nixosConfigurations or { };
+                    "home-manager" = den.homeConfigurations or { };
+                  };
             in
-            prelude.mapAttrs (cls: members:
-              prelude.mapAttrs (id: cfg:
-                let c = cfg.config or cfg; in
-                if c ? system.build.toplevel.drvPath then c.system.build.toplevel.drvPath
-                else if c ? home.activationPackage.drvPath then c.home.activationPackage.drvPath
-                else builtins.hashString "sha256" (builtins.toJSON c)
+            prelude.mapAttrs (
+              cls: members:
+              prelude.mapAttrs (
+                id: cfg:
+                let
+                  c = cfg.config or cfg;
+                in
+                if c ? system.build.toplevel.drvPath then
+                  c.system.build.toplevel.drvPath
+                else if c ? home.activationPackage.drvPath then
+                  c.home.activationPackage.drvPath
+                else
+                  builtins.hashString "sha256" (builtins.toJSON c)
               ) members
             ) outs;
         };
-        
+
       crossPipelineV1 =
         fixture:
         runV1 {
@@ -383,7 +411,7 @@ let
           compute =
             den:
             # Hash of the pipeline state
-            builtins.hashString "sha256" (builtins.toJSON den.pipeline or {});
+            builtins.hashString "sha256" (builtins.toJSON den.pipeline or { });
         };
     in
     {

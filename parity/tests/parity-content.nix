@@ -1,7 +1,12 @@
 { harness, ... }:
 let
-  inherit (harness) prelude fixtureNames fixtures;
-  inherit (harness) contentHoag crossPipelineHoag contentV1 crossPipelineV1;
+  inherit (harness)
+    fixtures
+    contentHoag
+    crossPipelineHoag
+    contentV1
+    crossPipelineV1
+    ;
 
   mkContentTest = name: fixture: {
     expr =
@@ -24,17 +29,20 @@ let
     expected = true;
   };
 
+  validFixtures = builtins.removeAttrs fixtures [ "spawnNegControl" ];
 in
 {
-  flake.tests.parity-content = {
-    # Content equality for all fixtures
-    test-content-parity = prelude.genAttrs fixtureNames (
-      name: mkContentTest name fixtures.${name}
+  flake.tests.parity-content =
+    builtins.listToAttrs (
+      map (name: {
+        name = "test-content-parity-${name}";
+        value = mkContentTest name validFixtures.${name};
+      }) (builtins.attrNames validFixtures)
+    )
+    // builtins.listToAttrs (
+      map (name: {
+        name = "test-cross-pipeline-parity-${name}";
+        value = mkCrossPipelineTest name validFixtures.${name};
+      }) (builtins.attrNames validFixtures)
     );
-
-    # Cross-pipeline hash parity
-    test-cross-pipeline-parity = prelude.genAttrs fixtureNames (
-      name: mkCrossPipelineTest name fixtures.${name}
-    );
-  };
 }

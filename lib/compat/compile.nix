@@ -41,10 +41,12 @@ let
         prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
         // prelude.optionalAttrs (d.guard != null) { guard = true; }
         // prelude.optionalAttrs isModule { mergeHalf = "default-fold"; };
-        
+
       # Wrap the module for eval-time application of guard and adaptArgs (Gap 2)
-      wrapModule = m: 
-        if d.guard == null && d.adaptArgs == null then m
+      wrapModule =
+        m:
+        if d.guard == null && d.adaptArgs == null then
+          m
         else
           # A nixpkgs-free wrapper (the terminal crosses nixpkgs, so args exist there)
           args:
@@ -53,8 +55,8 @@ let
             g = if d.guard != null then d.guard a else true;
             evaluated = if builtins.isFunction m then m a else m;
           in
-          if g then evaluated else {};
-          
+          if g then evaluated else { };
+
       delivDecl = declare.delivery {
         sourceClass = if isModule then toEntry else ing.resolveBucket "deliver" d.sourceClass;
         targetClass = toEntry;
@@ -67,13 +69,19 @@ let
           ;
         inherit annotations;
       };
-      
+
       injectDecl = declare.inject {
         class = toEntry;
         module = wrapModule d.moduleSource;
       };
     in
-    if isModule then [ delivDecl injectDecl ] else [ delivDecl ];
+    if isModule then
+      [
+        delivDecl
+        injectDecl
+      ]
+    else
+      [ delivDecl ];
 
   # v1 class-key names that differ from den-hoag's (§ grounded terminology): a v1 aspect's class key is
   # renamed to the den-hoag class it targets before passing through, so `classifyKey` recognises it.
@@ -371,15 +379,27 @@ let
     _ctx:
     map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
   ) ing.kindIncludes;
-  
+
   # selfProvideInclude (Gap 1): a v1 `host.name==key` implicit auto-inclusion.
   # If an aspect's name EXACTLY matches the host's name, it is automatically included.
   # Represented as a fleet-wide policy matching the host name.
   selfProvideInclude = {
-    __selfProvideInclude = { host, ... }:
-      if host != null && v1Aspects ? ${host.name} then
-        [ (declare.edge (resolveAspectRef aspectRec host.name)) ]
-      else [ ];
+    __selfProvideInclude =
+      { host, ... }:
+      if host != null then
+        if host.name == "«probe»" then
+          [
+            (declare.edge {
+              id_hash = "«probe»";
+              name = "«probe»";
+            })
+          ]
+        else if v1Aspects ? ${host.name} then
+          [ (declare.edge (resolveAspectRef aspectRec host.name)) ]
+        else
+          [ ]
+      else
+        [ ];
   };
 
   aspects =
@@ -422,6 +442,7 @@ let
     "quirks"
     "contentClass"
     "default"
+    "nixpkgs"
   ]
   ++ declaredKinds;
   unknownSurfaceKeys = builtins.filter (

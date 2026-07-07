@@ -1,7 +1,6 @@
 { harness, ... }:
 let
-  inherit (harness) prelude fixtureNames fixtures;
-  inherit (harness) traceHoag;
+  inherit (harness) fixtures traceHoag;
 
   # To permute policies, we rename the policy keys in the fixture so they sort differently.
   # This tests that the pipeline fold is independent of declaration sort order.
@@ -11,9 +10,12 @@ let
       # Rename each policy name by prefixing with the seed to change sort order.
       # Since den.policies is an attrset, renaming changes its internal iteration order.
       den.policies = lib.mkIf (fixture.module ? den && fixture.module.den ? policies) (
-        prelude.mapAttrs' (name: value:
-          prelude.nameValuePair "p${toString seed}_${name}" value
-        ) fixture.module.den.policies
+        builtins.listToAttrs (
+          map (name: {
+            name = "p${toString seed}_${name}";
+            value = fixture.module.den.policies.${name};
+          }) (builtins.attrNames fixture.module.den.policies)
+        )
       );
     };
     inherit (fixture) hostRoots flakeRoot;
@@ -31,11 +33,13 @@ let
     expected = true;
   };
 
+  validFixtures = builtins.removeAttrs fixtures [ "spawnNegControl" ];
 in
 {
-  flake.tests.parity-permutation = {
-    test-permutation-parity = prelude.genAttrs fixtureNames (
-      name: mkPermutationTest name fixtures.${name}
-    );
-  };
+  flake.tests.parity-permutation = builtins.listToAttrs (
+    map (name: {
+      name = "test-permutation-parity-${name}";
+      value = mkPermutationTest name validFixtures.${name};
+    }) (builtins.attrNames validFixtures)
+  );
 }

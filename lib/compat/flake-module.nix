@@ -63,6 +63,7 @@ let
           include = rawListOpt "v1 static entity-scoped aspect inclusions.";
           quirks = rawOpt "v1 `den.quirks.<name>` (quirk channels).";
           contentClass = rawOpt "v1 kind -> content-class overrides.";
+          nixpkgs = rawOpt "v1 `den.nixpkgs` (transparent pass-through to den-hoag).";
         };
       };
     };
@@ -131,6 +132,7 @@ let
             instantiate = nixosInstantiate;
           };
         };
+        nixpkgs = compiled.nixpkgs or null;
       }
       // instanceConfig;
     };
@@ -150,12 +152,14 @@ let
   #   • forwards → v1 → v1: strips `den.classes.<c>.forwardTo` (the compile-visible forward surface).
   legacyProvidesDesugar = legacy.provides.desugar or (aspects: aspects);
   legacyForwardsDesugar = legacy.forwards.desugar or (v1: v1);
-  # Forwards desugars the FULL v1 (it reshapes `classes`); provides desugars the resulting `aspects`.
-  # Compose forwards-first so provides sees the post-forward aspect set.
+  legacyDefaultsDesugar = legacy.defaults.desugar or (v1: v1);
+
+  # Thread the desugars: forwards reshapes `classes`, then provides reshapes `aspects`.
   desugarLegacy =
     v1:
     let
-      v1f = legacyForwardsDesugar v1;
+      v1d = legacyDefaultsDesugar v1;
+      v1f = legacyForwardsDesugar v1d;
     in
     v1f
     // {

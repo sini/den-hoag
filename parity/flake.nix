@@ -53,9 +53,17 @@
         {
           inherit (P) schema;
           traceHoag = P.oracle.traceHoag { inherit denCompat; };
-          contentHoag = P.oracle.contentHoag { inherit denCompat; };
+          contentHoag = P.oracle.contentHoag {
+            inherit denCompat;
+            nixpkgs = inputs.nixpkgs;
+          };
           crossPipelineHoag = P.oracle.crossPipelineHoag { inherit denCompat; };
-          inherit (v1arm) traceV1 traceV1Legacy contentV1 crossPipelineV1;
+          inherit (v1arm)
+            traceV1
+            traceV1Legacy
+            contentV1
+            crossPipelineV1
+            ;
           # The entity-scope normalizer + its id_hash predicate, for the schema-guard suite's direct
           # mis-map test (a colon-bearing non-entity name must pass through unmapped).
           inherit (P.oracle) hoagNormName isIdHash nonEntityNameMap;

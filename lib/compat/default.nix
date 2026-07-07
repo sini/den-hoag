@@ -48,6 +48,7 @@ let
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
+    defaults = ./legacy/defaults.nix;
   };
   # flakeModuleCore — the module(s) declaring the v1 option surface as `raw`, read by a v1-shaped eval
   # whose config `compile` desugars (the two-eval shape; den-hoag's own `mkDen` owns `den.*` typed, so

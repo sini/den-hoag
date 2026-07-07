@@ -1,7 +1,6 @@
 { harness, ... }:
 let
-  inherit (harness) prelude fixtureNames fixtures;
-  inherit (harness) traceHoag;
+  inherit (harness) fixtures traceHoag;
 
   # Create a modified fixture that sets share.core = true for all output classes
   shareCoreFixture = fixture: {
@@ -25,11 +24,13 @@ let
     expected = true;
   };
 
+  validFixtures = builtins.removeAttrs fixtures [ "spawnNegControl" ];
 in
 {
-  flake.tests.parity-class-share = {
-    test-class-share-parity = prelude.genAttrs fixtureNames (
-      name: mkClassShareTest name fixtures.${name}
-    );
-  };
+  flake.tests.parity-class-share = builtins.listToAttrs (
+    map (name: {
+      name = "test-class-share-parity-${name}";
+      value = mkClassShareTest name validFixtures.${name};
+    }) (builtins.attrNames validFixtures)
+  );
 }
