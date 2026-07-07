@@ -107,7 +107,20 @@ let
   # Source arm mirrors v1: a class source collects the `from` class at the firing scope; a MODULE source
   # (provide) collects the TARGET class (edges/provides.nix:121 — the provided module rides the target
   # scope's own bucket). `members = [ id ]` is the own-scope collection (v1 simple-route default;
-  # collectSubtree is Task 5). `adapt` applies to nest modes only (a merge edge carries none, gen-edge E).
+  # collectSubtree is Task 5).
+  #
+  # GUARD / ADAPTARGS are EVAL-TIME transforms, NOT fold content-transforms (C7.5). v1 applies them at
+  # module assembly: `guardModule` gates config via `optionalAttrs (guard args)` and `adaptArgs` rewrites
+  # the module ARGS through a nested `evalModules` (`nestWithAdaptArgs`, route.nix) — both need the module
+  # eval environment (`args`/`config`), which the pure fold does not have. gen-edge's `adapt` has the
+  # signature `content -> Π -> content` (a content rewriter, e.g. path placement), NOT an arg-adapter:
+  # routing a v1 `adaptArgs = args: args // …` through it materializes `adaptArgs content Π`, which aborts
+  # ("attempt to call something which is not a function"). So the fold carries NO `adapt`; the closures
+  # ride on the declaration (`d.guard`/`d.adaptArgs`) and the trace annotations record their PRESENCE
+  # (booleans — hashable, `traceEntryOf` renders `annotations`). Their active application is the terminal
+  # crossing (the nixpkgs `evalModules` boundary, where `args` exist) — the C8 content-oracle path; here
+  # the edge is the faithful TRACE (the C7.5 deliverable): it always renders, gated or not (v1 parity —
+  # a guard gates content, never rule-firing, so the edge is present in both arms' traces).
   deliveryEdgesAt =
     id:
     let
@@ -127,7 +140,7 @@ let
             class = d.targetClass.name;
           };
           inherit (d) path mode;
-          adapt = if d.mode == "merge" then null else d.adaptArgs;
+          adapt = null; # guard/adaptArgs are eval-time terminal transforms (see above), never a fold adapt
           annotations = d.annotations or { };
         };
     in

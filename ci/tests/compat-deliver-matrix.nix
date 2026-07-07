@@ -212,6 +212,37 @@ let
   # reviewer pin: the shim NEVER emits synthesize/value — every trace edge is collected.
   everyEdgeCollected = builtins.all (e: e.source.arm == "collected") e2eTrace;
 
+  # ── C7.5 guard/adaptArgs materialization soundness ──────────────────────────────────────────────────
+  # A CLASS-source NEST delivery carrying a REAL arg-reading `adaptArgs` (the v1 hm→nixos shape,
+  # `args: args // …`) AND a `guard`. Before C7.5, `deliveryEdgesAt` routed the arg-adapter through
+  # gen-edge's content-transform `adapt` (`content -> Π -> content`), so materializing the fold aborted
+  # ("attempt to call something which is not a function but a set"). Now the fold carries NO `adapt`
+  # (guard/adaptArgs are eval-time terminal transforms — v1 guardModule/nestWithAdaptArgs), so the fold
+  # materializes, the edge traces (a guard gates content, never rule-firing), and the annotations record
+  # both closures' PRESENCE. `at = [ "p" ]` ⇒ nest (the mode that previously carried the crashing adapt).
+  gaDen = denCompat.mkDen [
+    {
+      config.den.hosts.x86_64-linux.axon.class = "nixos";
+      config.den.aspects.base.nixos.networking.hostName = "axon";
+      config.den.schema.host.includes = [ "base" ];
+      config.den.policies.ga = _ctx: [
+        (deliver {
+          from = "nixos";
+          to = "nixos";
+          at = [ "p" ];
+          adaptArgs = a: a // { extra = 1; };
+          guard = _: true;
+        })
+      ];
+    }
+  ];
+  gaMaterializes =
+    (builtins.tryEval (builtins.deepSeq (gaDen.den.output.outputFor "host:axon") true)).success;
+  gaTrace = gaDen.den.graph.trace "host:axon";
+  gaDeliveryEdge = builtins.head (
+    builtins.filter (e: (e.annotations.adaptArgs or false) && (e.annotations.guard or false)) gaTrace
+  );
+
   # tryEval helper for the error cells (the descriptor forces its validation eagerly).
   fails = expr: !(builtins.tryEval expr).success;
 in
@@ -433,6 +464,30 @@ in
     test-e2e-no-synthesize-or-value = {
       expr = everyEdgeCollected;
       expected = true;
+    };
+
+    # ── C7.5: guard/adaptArgs materialization soundness ──
+    # a nest delivery carrying a REAL arg-reading adaptArgs + guard materializes the fold WITHOUT the
+    # pre-C7.5 abort (the arg-adapter is no longer misrouted through gen-edge's content `adapt`).
+    test-guard-adapt-materializes = {
+      expr = gaMaterializes;
+      expected = true;
+    };
+    # …and the delivery edge still TRACES with both annotations present (a guard gates content at the
+    # terminal, never the trace — the edge is present gated or not, v1 parity).
+    test-guard-adapt-edge-traces = {
+      expr = {
+        adaptArgs = gaDeliveryEdge.annotations.adaptArgs or false;
+        guard = gaDeliveryEdge.annotations.guard or false;
+        mode = gaDeliveryEdge.mode;
+        source = gaDeliveryEdge.source.arm;
+      };
+      expected = {
+        adaptArgs = true;
+        guard = true;
+        mode = "nest";
+        source = "collected";
+      };
     };
 
     # ── FULLY-COMPAT content: the C1 aspect fix makes the include carry content, so the host's channel
