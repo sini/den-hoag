@@ -1,39 +1,28 @@
-# den-compat legacy: v1 default class configuration and hierarchy routes
-#
-# Emulates den-v1's implicit schema and default configurations that populate the `os` and
-# `homeManager` buckets out of the box, fulfilling the C8/C9 parity requirement.
 { prelude, ... }:
 {
   desugar =
     v1:
     let
-      defaults = {
-        classes = {
-          os = {
-            forwardTo = "nixos";
-          };
+      v1Classes = v1.classes or { };
+      nixosClass = v1Classes.nixos or { };
+      darwinClass = v1Classes.darwin or { };
+
+      baseDefaults = {
+        nixos = {
+          os.forwardTo = "nixos";
+          homeManager.forwardTo = "homeManager";
         };
-        schema = {
-          host = {
-            classes = [ "homeManager" ];
-          };
-          user = {
-            classes = [ "homeManager" ];
-          };
-        };
-        default = {
-          nixos = {
-            system = {
-              stateVersion = "25.11";
-            };
-          };
-          homeManager = {
-            home = {
-              stateVersion = "25.11";
-            };
-          };
+        darwin = {
+          os.forwardTo = "darwin";
+          homeManager.forwardTo = "homeManager";
         };
       };
     in
-    prelude.recursiveUpdate defaults v1;
+    v1
+    // {
+      classes = v1Classes // {
+        nixos = nixosClass // baseDefaults.nixos;
+        darwin = darwinClass // baseDefaults.darwin;
+      };
+    };
 }
