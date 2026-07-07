@@ -39,9 +39,19 @@ in
     kind: parent:
     fail "schema" "kind `${kind}` names parent `${parent}`, which is not a declared kind (known kinds are `den.schema.<kind>` + the built-in `host`/`user`)";
 
-  # The `pipe.*` stage vocabulary compiles to gen-pipe channels in denCompat's `pipe.nix`.
-  # TODO(pipe.nix): remove this seam once `compile` learns the pipe stage vocabulary.
-  pipeNotYet = fail "pipe stages" "the `pipe.*` stage vocabulary compiles to gen-pipe channels in denCompat `pipe.nix` and is not yet available";
+  # A v1 `pipe.from` names a stage the shim does not compile: it handles the §2.4 stage vocabulary
+  # (filter/transform/fold/for + to/as + append/expose/broadcast/collect/collectAll/withProvenance).
+  # Anything else names itself here rather than compiling to a silent no-op (pipe.nix `stageOp`).
+  unknownPipeStage =
+    kind:
+    fail "pipe stage (C3)" "unknown v1 pipe stage `${kind}` — the shim compiles §2.4 (filter/transform/fold/for, to/as, append/expose/broadcast/collect/collectAll/withProvenance)";
+
+  # A name declared as BOTH a class (`den.classes.<name>`) and a quirk channel (`den.quirks.<name>`):
+  # den-hoag's `resolveBucket` unions classes ∪ channels, so an overlapping name is ambiguous at
+  # dispatch. Named at definition time — the key-overlap check §2.4 preserves from v1.
+  quirkClassOverlap =
+    name:
+    fail "quirks (C3)" "`${name}` is declared as both a class and a quirk channel — a name is one or the other (classes ∪ channels must stay disjoint); rename one";
 
   # A v1 policy effect the shim does not compile: it handles the structural/resolution vocabulary —
   # include/exclude/resolve and the for/when combinators; deliver/route/provide and pipe land with their

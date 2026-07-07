@@ -15,6 +15,10 @@
   errors,
 }:
 let
+  # The §2.4 pipe stage vocabulary: `den.quirks.<name>` → a channel registration (`channelOf`) and the
+  # `pipe.from name [stages]` policy effect → a collection-stratum `pipeOp` declaration (`compilePipe`).
+  pipeLib = import ./pipe.nix { inherit prelude errors; };
+
   # A delivery DESCRIPTOR (`deliver`/`route`/`provide`, deliver.nix) → a den-hoag `delivery` DECLARATION
   # (resolution stratum): the delivery INTENT — resolved class registrations + placement + the
   # trace-facing annotation booleans. The gen-edge record is rendered from this intent at the FIRING
@@ -154,7 +158,11 @@ let
       in
       [ spawnDecl ]
     else if kind == "pipe" then
-      errors.pipeNotYet
+      # A v1 `pipe.from name [stages]` → a collection-stratum `pipeOp` declaration: the deriving stages
+      # fold left-to-right into a gen-pipe op DAG on the named channel, the delivery/site stages ride as
+      # inert markers (pipe.nix `compilePipe`). No value is forced (Law C2); a deferred (config-thunk)
+      # channel value crosses the compiled pipe untouched to the terminal (parity-watch items 5, 6).
+      [ (pipeLib.compilePipe declare effect.value) ]
     else if kind == "instantiate" then
       # Native per-cluster instantiation (nixidy k8s; PIN.md census) — a spawn of the entity's class
       # content. The entity carries its own instantiate/intoAttr metadata (read at output assembly).
@@ -302,10 +310,21 @@ in
       ;
   };
   inherit aspects policies;
-  # v1 `den.quirks.<name>` channel DECLARATIONS pass through to register the channels, so an aspect's
-  # quirk key resolves to a channel contribution rather than being class-classified or aborting as an
-  # unknown key. This is the channel REGISTRATION only; the pipe STAGE vocabulary (`pipe.from`/filter/
-  # fold → the operator DAG on a channel) lands with Task 3, which extends this.
-  channels = v1Decls.quirks or { };
+  # v1 `den.quirks.<name>` → a den-hoag channel registration `{ channel; ops; adapters; }` (pipe.nix
+  # `channelOf`), so an aspect's quirk key resolves to a channel contribution rather than being
+  # class-classified or aborting as an unknown key. The pipe STAGE vocabulary (`pipe.from`/filter/fold →
+  # the operator DAG on a channel) is a POLICY effect, compiled by `translateEffect` above. KEY-OVERLAP
+  # CHECK (§2.4, preserved from v1): a name declared as both a class and a quirk channel is ambiguous
+  # under den-hoag's `resolveBucket` (classes ∪ channels) — a named definition-time error.
+  channels =
+    let
+      quirks = v1Decls.quirks or { };
+      classNames = builtins.attrNames v1Classes;
+      overlap = builtins.filter (n: builtins.elem n classNames) (builtins.attrNames quirks);
+    in
+    if overlap != [ ] then
+      errors.quirkClassOverlap (builtins.head overlap)
+    else
+      builtins.mapAttrs (_: pipeLib.channelOf) quirks;
   classes = builtins.mapAttrs (_: translateClass) v1Classes;
 }

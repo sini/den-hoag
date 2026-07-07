@@ -5,7 +5,7 @@
 # parametric class key + a quirk key, one `policy.include`, one class — against a snapshot derived
 # from first principles (id_hashes recomputed here, not copied from a run), and proves purity by
 # poisoning a parametric body with `throw` and showing the structural projection still computes.
-{ denCompat, ... }:
+{ denCompat, denHoagSrc, ... }:
 let
   # The parametric class body is a THROW: if `compile` (or any structural read below) forced it, the
   # suite would abort. It never does — the aspect row is near-identity passthrough, values stay thunks.
@@ -120,6 +120,33 @@ let
       config.den.classes.myclass = { };
     }
   ];
+
+  # ── §2.4 pipe stage vocabulary (Task 3) ──────────────────────────────────────────────────────────
+  # The C1 witness fixtures live in the parity harness (shared with the future P-suites); read through
+  # the den-hoag flake source (`path:..`), the same store-path route the zero-machinery source scan uses.
+  pipeFx = import "${denHoagSrc}/parity/fixtures/pipe-stages.nix" { };
+
+  # Walk a gen-pipe derived-channel DAG outermost→base, collecting each op left-to-right (the base channel
+  # ref has no `__derive`, so the walk stops there). Reads only `.op` / `.__derive.inputs` — the structural
+  # projection, forcing no stage closure (so a deferred value on the channel is never touched here).
+  opChain =
+    d: if (d.__derived or false) then opChain (builtins.head d.__derive.inputs) ++ [ d.op ] else [ ];
+  baseOf = d: if (d.__derived or false) then baseOf (builtins.head d.__derive.inputs) else d;
+
+  # Each pipe fixture's `pipe.from` policy body is unconditional, so any ctx yields the pipeOp declaration.
+  derivePipeOp = builtins.head ((denCompat.compile pipeFx.derivePipe).policies.shapeMetric { });
+  deliverToOp = builtins.head ((denCompat.compile pipeFx.deliverToPipe).policies.routePorts { });
+  deliverAsOp = builtins.head ((denCompat.compile pipeFx.deliverAsPipe).policies.renameRaw { });
+  sitePipeOp = builtins.head ((denCompat.compile pipeFx.sitePipe).policies.gatherPeers { });
+  siteMark = k: builtins.head (builtins.filter (m: m.__pipeMark == k) sitePipeOp.marks);
+
+  # `den.quirks.<name>` → channel registration + the class/quirk key-overlap check.
+  channelsCompiled = (denCompat.compile pipeFx.channelsFixture).channels;
+
+  # Deferred (config-thunk) discipline: the raw quirk value + the pipe compiled over it.
+  deferredCompiled = denCompat.compile pipeFx.deferredFixture;
+  deferredMarks = deferredCompiled.aspects.svc.marks;
+  deferredPipeOp = builtins.head (deferredCompiled.policies.shapeMarks { });
 in
 {
   flake.tests.compat-compile-golden = {
@@ -215,7 +242,7 @@ in
       expr = builtins.attrNames compiled.classes;
       expected = [ "myclass" ];
     };
-    # channels are the pipe stage vocabulary (Task 3) — empty here.
+    # channels register `den.quirks.<name>` (Task 3); this fixture declares no quirk, so it is empty.
     test-channels-empty = {
       expr = compiled.channels;
       expected = { };
@@ -260,6 +287,137 @@ in
     # the boundary entry's id_hash equals the entry mkDen independently stamps (identity coherence).
     test-roundtrip-id-coherent = {
       expr = roundTrip.den.registries.host.axon.id_hash == hostAxonHash;
+      expected = true;
+    };
+
+    # ── §2.4 pipe stages: deriving vocab → left-to-right op DAG on the named channel ─────────────
+    test-pipe-op-kind = {
+      expr = derivePipeOp.__action;
+      expected = "pipeOp";
+    };
+    test-pipe-channel = {
+      expr = derivePipeOp.channel;
+      expected = "metric";
+    };
+    # filter→filter, transform→map, fold→fold (assoc-only B5), for→map — folded left-to-right, order pinned.
+    test-pipe-derive-chain = {
+      expr = opChain derivePipeOp.derived;
+      expected = [
+        "filter"
+        "map"
+        "fold"
+        "map"
+      ];
+    };
+    # the DAG roots at the named channel (the base ref's id is the quirk key).
+    test-pipe-derive-base = {
+      expr = (baseOf derivePipeOp.derived).id;
+      expected = "metric";
+    };
+
+    # ── §2.4 delivery stages: to → route selecting aspects; as → route to a target pipe ──────────
+    test-pipe-to-route = {
+      expr = map (r: r.op) deliverToOp.routes;
+      expected = [ "route" ];
+    };
+    test-pipe-to-route-from = {
+      expr = (builtins.head deliverToOp.routes).from;
+      expected = "ports";
+    };
+    test-pipe-as-route = {
+      expr = map (r: r.op) deliverAsOp.routes;
+      expected = [ "route" ];
+    };
+    test-pipe-as-route-to = {
+      expr = (builtins.head deliverAsOp.routes).to;
+      expected = "shaped";
+    };
+
+    # ── §2.4 site stages: append/expose/broadcast/collect/collectAll/withProvenance → inert markers ─
+    test-pipe-site-marks = {
+      expr = map (m: m.__pipeMark) sitePipeOp.marks;
+      expected = [
+        "append"
+        "expose"
+        "broadcast"
+        "collect"
+        "collectAll"
+        "withProvenance"
+      ];
+    };
+    # collectAll reads raw + exposed (PR #623), collect only the local gather.
+    test-pipe-collectall-exposed = {
+      expr = (siteMark "collectAll").exposed;
+      expected = true;
+    };
+    test-pipe-collect-not-exposed = {
+      expr = (siteMark "collect").exposed;
+      expected = false;
+    };
+
+    # ── §2.4 `den.quirks.<name>` → channel registration + key-overlap check ──────────────────────
+    test-quirk-channel-keys = {
+      expr = builtins.attrNames channelsCompiled.backends;
+      expected = [
+        "adapters"
+        "channel"
+        "ops"
+      ];
+    };
+    # a bare marker quirk → an empty (default ordered-list) channel; the v1 `description` is dropped.
+    test-quirk-channel-default = {
+      expr = channelsCompiled.backends.channel;
+      expected = { };
+    };
+    # a quirk carrying gen-pipe channel options passes them through (non-channel keys still dropped).
+    test-quirk-channel-options = {
+      expr = channelsCompiled.tuned.channel;
+      expected = {
+        merge = "ordered-list";
+        dedup = "by-key";
+      };
+    };
+    test-quirk-channel-empty-ops = {
+      expr = channelsCompiled.backends.ops == [ ] && channelsCompiled.backends.adapters == [ ];
+      expected = true;
+    };
+    # a name declared as both a class and a quirk channel aborts (classes ∪ channels must stay disjoint).
+    test-quirk-class-overlap-aborts = {
+      expr =
+        (builtins.tryEval (builtins.deepSeq (denCompat.compile pipeFx.overlapFixture).channels true))
+        .success;
+      expected = false;
+    };
+
+    # ── deferred-value discipline (parity-watch items 5, 6) ──────────────────────────────────────
+    # item 5: the config-demanding channel value rides RAW — a bare function whose args carry the
+    # producing-class config handle, so gen-bind keeps the consuming module's config arg unbound at the
+    # terminal (a fully-bound consumer would skip thunk resolution, wrap.nix `allMatched`).
+    test-deferred-value-raw = {
+      expr = builtins.isFunction deferredMarks;
+      expected = true;
+    };
+    test-deferred-config-handle = {
+      expr = (builtins.functionArgs deferredMarks) ? config;
+      expected = true;
+    };
+    # item 6: the pipe over the deferred value emits only filter/map (no value-demanding fold/scan), and
+    # NOTHING forces the poison body — deepSeq of the structural projection (op chain + channel + arg keys)
+    # completes. Had `compile` (or the compiled pipe) forced the throwing thunk, this would abort; that it
+    # does not proves the deferred marker crosses the compiled v1 pipe intact to the terminal.
+    test-deferred-derive-chain = {
+      expr = opChain deferredPipeOp.derived;
+      expected = [
+        "filter"
+        "map"
+      ];
+    };
+    test-deferred-no-force = {
+      expr = builtins.deepSeq {
+        ops = opChain deferredPipeOp.derived;
+        chan = deferredPipeOp.channel;
+        argKeys = builtins.attrNames (builtins.functionArgs deferredMarks);
+      } true;
       expected = true;
     };
 
