@@ -137,12 +137,62 @@ let
       // instanceConfig;
     };
 
-  # The full driver: v1 modules → the den-hoag assembly. `flakeModule` (core + legacy) supplies the v1
+  flakeOutputModule = { config, lib ? null, ... }: {
+    # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
+    # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
+    # while the strict `schema.evalModuleTree` in `mkDen` does the actual heavy lifting.
+    options.den =
+      if lib != null then
+        lib.mkOption {
+          type = lib.types.submoduleWith {
+            modules = [
+              {
+                freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
+              }
+            ];
+          };
+          default = { };
+          description = "The den v1 declaration surface (flake-parts permissive collector).";
+        }
+      else
+        { };
+
+    config._module.args.den = config.den // {
+      lib = {
+        policy = {
+          resolve = {
+            to = kind: value: {
+              __policyEffect = "resolve";
+              value = if builtins.isAttrs value && value ? ${kind} then value.${kind} else value;
+            };
+          };
+        };
+      };
+      schema =
+        (schema.evalModuleTree {
+          modules = [
+            {
+              options.den.schema = schema.mkSchemaOption { };
+              config.den.schema = config.den.schema or { };
+            }
+          ];
+        }).config.den.schema;
+    };
+
+    config.flake =
+      let
+        built = mkDen [ { den = config.den; } ];
+      in
+      {
+        nixosConfigurations = built.nixosConfigurations or { };
+        darwinConfigurations = built.darwinConfigurations or { };
+      };
+  };
+
+  # The full driver: v1 modules → the den-hoag assembly. `flakeModule` supplies the v1
   # option declarations for `evalV1`; `compile` desugars; `mkFleetModule` bridges; `denHoag.mkDen` builds.
-  flakeModule = flakeModuleCore ++ [
-    legacy.provides
-    legacy.forwards
-  ];
+  # We expose `flakeOutputModule` for flake-parts users, but keep `flakeModuleCore` pure for `evalV1`.
+  flakeModule = [ flakeOutputModule ];
 
   # The LEGACY desugars: the ONLY references to `legacy.*` outside `legacy/` (the flakeModule assembly,
   # §2.1 severance) — applied to the v1 surface BEFORE compile so den-hoag sees only grounded vocabulary.

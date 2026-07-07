@@ -442,6 +442,12 @@ let
     "quirks"
     "contentClass"
     "default"
+    # Custom kind pluralizations / extra top-level keys from the user's config
+    "clusters"
+    "environments"
+    "groups"
+    "users"
+    "secretsConfig"
     "nixpkgs"
   ]
   ++ declaredKinds;

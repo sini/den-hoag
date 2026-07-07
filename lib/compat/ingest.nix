@@ -221,8 +221,10 @@ let
       userNames = prelude.unique (map (b: b.user) bindings);
 
       # Custom (non-host/user) kinds carry their own v1 instances verbatim.
+      # For v1 compatibility, we fall back to the pluralized kind name (e.g., `clusters` for `cluster`)
+      # because the v1 configuration surface commonly mapped them there.
       customKinds = builtins.filter (k: k != "host" && k != "user") (builtins.attrNames schemaDecls);
-      customInstances = prelude.genAttrs customKinds (k: v1Decls.${k} or { });
+      customInstances = prelude.genAttrs customKinds (k: v1Decls.${k} or (v1Decls.${k + "s"} or { }));
 
       instances = {
         host = flatHosts;
