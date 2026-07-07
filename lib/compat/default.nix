@@ -16,20 +16,49 @@
 }@deps:
 let
   errors = import ./errors.nix { inherit prelude; };
-  compile = import ./compile.nix { inherit prelude; };
+  # The ingestion boundary (Law C6): the ONE place v1 name-strings become id_hash-bearing entries.
+  ingest = import ./ingest.nix {
+    inherit
+      denHoag
+      prelude
+      schema
+      errors
+      ;
+  };
+  # The pure compile core (Law C2): v1 declarations → den-hoag concern declarations. `declare` is
+  # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets).
+  compile = import ./compile.nix {
+    inherit prelude ingest errors;
+    inherit (denHoag) declare;
+  };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
   };
-  # flakeModuleCore — the den-hoag module list that accepts the v1 option tree and compiles it to
-  # `config.den.*` via `compile`, fed to `denHoag.mkDen` (spec-vs-reality flag 1: den-hoag has
-  # `mkDen`, not a `flakeModule`). Empty in the Task 0 skeleton so `flakeModule` is well-formed now;
-  # Tasks 1–3 replace this with `import ./flake-module.nix (deps // { inherit compile errors; })`.
-  flakeModuleCore = [ ];
+  # flakeModuleCore — the module(s) declaring the v1 option surface as `raw`, read by a v1-shaped eval
+  # whose config `compile` desugars (the two-eval shape; den-hoag's own `mkDen` owns `den.*` typed, so
+  # the v1 surface cannot share its eval). `mkFleetModule`/`mkDen` bridge the compiled output to
+  # `denHoag.mkDen` (spec-vs-reality flag 1). Grows the C0 skeleton's empty core to length 1.
+  flakeModuleWiring = import ./flake-module.nix {
+    inherit
+      denHoag
+      prelude
+      schema
+      compile
+      legacy
+      ;
+  };
+  inherit (flakeModuleWiring) flakeModuleCore;
 in
 {
-  inherit compile flakeModuleCore legacy;
-  flakeModule = flakeModuleCore ++ [ legacy.provides legacy.forwards ];
+  inherit
+    compile
+    ingest
+    flakeModuleCore
+    legacy
+    ;
+  inherit (flakeModuleWiring) mkFleetModule mkDen evalV1;
+  flakeModule = flakeModuleWiring.flakeModule;
   # parity — the two-sided harness helper functions (frozen edge schema, oracle, firstDivergent
   # triage), Task 7. Placeholder attrset until then so `compat.parity` is addressable (the scaffold
   # reachability gate); Task 7 replaces this with `import ./parity { inherit denHoag prelude edge; }`.

@@ -30,10 +30,10 @@
       expected = "forwards";
     };
     # flakeModule = flakeModuleCore ++ both legacy modules (the severance surface, §2.1): importing
-    # it gives the full v1 surface. Empty core in the skeleton ⇒ exactly the two legacy modules.
-    # SKELETON EXPECTATION: Tasks 1–3 grow flakeModuleCore — bump the expected length with them.
+    # it gives the full v1 surface. C1 grew flakeModuleCore to the v1-options module ⇒ core (1) + the
+    # two legacy modules (2) = 3. SKELETON EXPECTATION: later tasks grow the core — bump with them.
     test-flake-module-is-list = {
-      expr = builtins.isList denCompat.flakeModule && builtins.length denCompat.flakeModule == 2;
+      expr = builtins.isList denCompat.flakeModule && builtins.length denCompat.flakeModule == 3;
       expected = true;
     };
   };
