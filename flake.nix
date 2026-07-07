@@ -25,7 +25,7 @@
 
   outputs =
     inputs@{ ... }:
-    {
+    let
       lib = import ./lib {
         prelude = inputs.gen-prelude.lib;
         algebra = inputs.gen-algebra.lib;
@@ -53,6 +53,19 @@
         demand = inputs.gen-demand.lib;
         pipe = inputs.gen-pipe.lib;
         flake = inputs.gen-flake.lib;
+      };
+    in
+    {
+      inherit lib;
+      # den-compat (L4) — the den v1 compatibility shim + the two-sided parity harness, on top of the
+      # assembled `lib`. `denHoag` = the four-concern API (this flake's `lib`); the shim reaches every
+      # gen substrate lib through den-hoag vocabulary and needs only `schema` (id_hash at ingestion)
+      # and `edge` (inert legacy records + the frozen trace schema) directly.
+      compat = import ./lib/compat {
+        denHoag = lib;
+        prelude = inputs.gen-prelude.lib;
+        schema = inputs.gen-schema.lib;
+        edge = inputs.gen-edge.lib;
       };
     };
 }

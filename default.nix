@@ -31,26 +31,38 @@
   pipe ? dep "gen-pipe",
   flake ? dep "gen-flake",
 }:
-import ./lib {
-  inherit
-    prelude
-    algebra
-    types
-    merge
-    schema
-    aspects
-    graph
-    scope
-    resolve
-    select
-    bind
-    dispatch
-    class
-    edge
-    product
-    settings
-    demand
-    pipe
-    flake
-    ;
+let
+  lib = import ./lib {
+    inherit
+      prelude
+      algebra
+      types
+      merge
+      schema
+      aspects
+      graph
+      scope
+      resolve
+      select
+      bind
+      dispatch
+      class
+      edge
+      product
+      settings
+      demand
+      pipe
+      flake
+      ;
+  };
+in
+# Mirror of the flake outputs: the assembled lib, with the den-compat shim attached as `.compat`
+# (the flake exposes `compat` as a sibling output; the standalone entry IS the lib, so `.compat`
+# rides on it). Bare-lib consumers (`(import ./default.nix).mkDen`) are unaffected.
+lib
+// {
+  compat = import ./lib/compat {
+    denHoag = lib;
+    inherit prelude schema edge;
+  };
 }
