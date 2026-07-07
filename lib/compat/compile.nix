@@ -241,6 +241,8 @@ let
   # declarations. The wrapper is a bare `ctx:` (no destructuring) — v1 `for`/`when` gating already
   # lives inside `fn`, so den-hoag's dispatch runs it at every scope and `fn`'s own guard decides. The
   # translation of each effect is eager only when the body runs (per ctx); compile itself never runs it.
+  # NB: a SYNTHESIZED policy whose own destructuring must gate dispatch (canTake via functionArgs)
+  # MUST bypass this wrapper — it erases the formals. See `defaultPolicy` (__denDefault) below.
   compilePolicy =
     ing: aspectRec: value: ctx:
     prelude.concatMap (translateEffect ing aspectRec) (innerFn value ctx);
@@ -381,6 +383,8 @@ let
   # kinds (whose instances ride at `den.<kind>`). `_`-prefixed keys are den-internal (reserved), never a
   # user surface, so they are exempt. A typo'd/unknown key aborts named, never silently drops.
   declaredKinds = builtins.attrNames (v1Decls.schema or { });
+  # KEEP IN SYNC with flake-module.nix `v1OptionsModule.options` (the declared v1 surface) — a key
+  # added there without a row here aborts every fleet; a key here without an option there is dead.
   knownSurfaceKeys = [
     "hosts"
     "homes"

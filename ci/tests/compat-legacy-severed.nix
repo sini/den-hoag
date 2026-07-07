@@ -128,7 +128,8 @@ let
 
   # ── (F) the Law-C5 sentinel: a forwardTo reaching compile un-desugared is a named error ────────────
   # Force the compiled class (the sentinel is a lazy `seq` inside translateClass) so the throw is observed.
-  sentinelTripped =
+  # NB: tryEval .success — TRUE means the eval SURVIVED (sentinel did NOT fire); tests expect false.
+  forwardToCompilesClean =
     (builtins.tryEval (
       builtins.seq
         (denCompat.compile {
@@ -411,7 +412,7 @@ in
 
     # ── (F) the Law-C5 sentinel ────────────────────────────────────────────────────────────────────────
     test-sentinel-fires-on-forwardTo = {
-      expr = sentinelTripped;
+      expr = forwardToCompilesClean;
       expected = false;
     };
     test-clean-class-compiles = {

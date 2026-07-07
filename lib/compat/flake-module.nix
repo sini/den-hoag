@@ -46,6 +46,7 @@ let
   # TRADE-OFF of the freeform: a TYPO in an unknown `den.*` key silently succeeds HERE (it is absorbed,
   # not rejected). That is deliberate — surface-totality (every v1 key is a KNOWN key, else a named
   # error) is enforced downstream at `compile`, over the read-back config, not at this permissive eval.
+  # KEEP IN SYNC with compile.nix `knownSurfaceKeys` (the totality gate reads that list).
   v1OptionsModule = {
     options.den = schema.mkOption {
       default = { };
