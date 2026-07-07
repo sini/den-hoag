@@ -94,8 +94,9 @@ let
   # ── complex: an INERT gen-edge `synthesize` SOURCE RECORD (Law C2 relaxation — record construction,
   #    no evaluation). Identity triple `(forwardId, fromClass, intoClass)` matches the frozen v1 schema;
   #    the adapter machinery + source module ride on `module` (opaque payload) for interpret.synthesize.
-  #    `reads = [ ]` — a synthesize forward is a pure producer (its content is built from its own source
-  #    module, not from accumulator cells; v1 buildForwardAspect reads no fold state). ─────────────────
+  #    A synthesize forward is a pure producer (its content is built from its own source module, not
+  #    from accumulator cells; v1 buildForwardAspect reads no fold state) — so `reads` is left at
+  #    gen-edge's default `[ ]` rather than passed explicitly. ─────────────────────────────────────────
   synthRecord =
     spec:
     edge.sources.synthesize {
@@ -174,9 +175,10 @@ in
   # desugar — the surface consumer wired by flake-module.nix's `desugarLegacy` (or-identity severance,
   # the C4 template). Strips `den.classes.<c>.forwardTo`: it is INERT default metadata (v1 forward.nix
   # reads it as the fallback intoClass/intoPath for a `forward` FROM that class), and the corpus has no
-  # forward USING it (PIN.md census) — so stripping is semantically complete AND lets translateClass's
-  # sentinel pass when the module is present. Severed (or compile called directly), a residual `forwardTo`
-  # survives to compile and trips `errors.legacyForwardsAbsent` (Law C5). Everything else passes through.
+  # forward USING it (PIN.md census) — so stripping is semantically complete. The sentinel mechanism:
+  # this desugar removes `forwardTo` BEFORE compile sees it, so translateClass's sentinel finds nothing
+  # when the module is present; severed (or compile called directly), the residual `forwardTo` survives
+  # to compile and trips `errors.legacyForwardsAbsent` (Law C5). Everything else passes through.
   desugar =
     v1:
     v1

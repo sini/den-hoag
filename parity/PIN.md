@@ -8,10 +8,13 @@ scope rest on grep-confirmed reality, not on the pre-pin survey.
 ## Frozen v1 pin
 
 - **Rev:** `denful/den @ 11866c16` — full: `11866c167f5b4408149a4914966ae1a050054358`
+
 - **Subject:** `feat: pipe.broadcast cross-scope push + collect reads exposed (#623)`
+
 - **Reachability (verified 2026-07-06):** `11866c16` is a reachable ancestor of the current
   `denful/den` main tip `1614f6f8`, so `github:denful/den/11866c16` resolves. The pin is a
   **deliberate freeze**, currently 2 commits behind main:
+
   - `1614f6f8 fix: preserve source entity binding in forward fallback (#627)`
   - `3932adfe fix: derive class-content emit ctx from authoritative scope state (#624)`
 
@@ -20,6 +23,7 @@ scope rest on grep-confirmed reality, not on the pre-pin survey.
 - **Dev-time only.** The shim never ships a runtime dependency on den v1 (spec §5); this pin exists
   solely for the parity harness. The rev carries every dev-time dependency the harness reads,
   verified present at HEAD:
+
   - `nix/lib/aspects/fx/edges/edge.nix` — `edgeSortKey` (the `T | P | S | M` byte contract),
     `sources.{collected,rewalk,synthesize}`, `rootTarget`/`outputTarget`. Both arms render into this
     exact sort key (the shared structural oracle). Consumed directly by the harness (`{ lib }`-only).
@@ -62,10 +66,11 @@ implemented path), not a tier-1 static forward. Recorded so Task 5's witness set
 ### Open-Question-2 census — tier-2 derived-children NTA forward consumer
 
 **None found.** The corpus's entity-derivation mechanisms are:
+
 - `policy.instantiate` (nixidy: k8s manifest collection per cluster) — a native den-hoag mechanism,
   compiled through the non-legacy surface (Tasks 1–2), **not** the legacy forward surface.
 - the `microvm-guests` quirk (`modules/den/quirks/microvm-guests.nix`, explicitly *"provides-free"*)
-  + `microvm.guests` on hosts — native den-hoag, **not** a forward.
+  - `microvm.guests` on hosts — native den-hoag, **not** a forward.
 
 No `forward`-with-derived-children (NTA-spawning) consumer exists in the corpus. **Task 5's scope is
 NOT widened; Tier-2 derived-children NTA remains NOT implemented** (the plan's default holds). If a
@@ -74,8 +79,14 @@ future corpus bump introduces such a consumer, re-open Open Question 2 here.
 ## Forward-tier summary (the input to Task 5's witness set)
 
 - **Tier-1 static** (`path`, no `adaptArgs`) → plain `deliver`: the 3 `home-platform.nix` routes.
-- **Adapter-bearing complex** (`adaptArgs` present) → `synthesize` record + `interpret.synthesize`:
-  the hm delivery (osConfig adapter) and the `devshell` route (`config.allModuleArgs` adapter).
+- **Adapter-bearing complex** → `synthesize` record + `interpret.synthesize` — **LABEL CORRECTED
+  (C5 review):** this arm belongs to the FORWARD surface (`forward`/`forwardTo`/`__complexForward`,
+  route.nix:824-826), which has ZERO corpus consumers. The hm delivery and the `devshell` route are
+  adapter-bearing **`policy.route`** sites — in frozen v1 a route-with-`adaptArgs` renders a
+  **COLLECTED edge with adapt annotation, NOT synthesize** — and compat compiles them via the
+  deliver surface (Task 2's collected+adapt path). The C7 harness must witness them there, never
+  through `legacy/forwards`. Task 5's synthesize fixtures are synthetic forward specs mirroring the
+  corpus adapter *shapes* for surface-totality coverage.
 - **Tier-2 derived-children NTA** → NOT implemented: no corpus consumer (census above).
 
 ## Upstream compatibility note (#624 / #625) — owner directive, 2026-07-07
