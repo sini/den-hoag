@@ -114,7 +114,7 @@ let
       context = ctx;
       match = dispatch.fromFunctionMatch;
       classify = _: "enrich";
-      phaseOrder = [ "enrich" ];
+      groupOrder = [ "enrich" ];
     }).actions.enrich or [ ];
   oneShotDelta = builtins.foldl' (acc: e: acc // { ${e.key} = e.value; }) { } (enrichAt base);
 

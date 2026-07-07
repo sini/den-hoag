@@ -20,7 +20,7 @@
   errors,
 }:
 let
-  # Kind → stratum grouping (mkActions phases ARE the B2 strata). `collection`'s single kind is
+  # Kind → stratum grouping (mkActions groups ARE the B2 strata). `collection`'s single kind is
   # `pipeOp` — the pipe.* op payload rides it; concern-quirks (Task 5) wraps the operators below
   # into `pipeOp` declarations.
   groups = {
@@ -127,7 +127,7 @@ let
     builtins.seq s (actions.demand (args // { subject = s; }));
 
   # I-edges a node contributes: `link` targets become import edges; a collection `route` joins
-  # via channel wiring, not an import edge. Reads the multi-phase dispatch result (structural +
+  # via channel wiring, not an import edge. Reads the multi-group dispatch result (structural +
   # resolution groups — the strata that carry edge-forming kinds).
   importEdgesOf =
     r:

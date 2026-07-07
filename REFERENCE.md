@@ -80,7 +80,7 @@ r2-era reader may look for to what the assembly actually uses:
 | `enrich-effects` attribute | **`enrichments`** attribute (`{ added; owners }`, inert data) |
 | policy dispatch / dispatch point | **rule evaluation** (policies are rules evaluated at nodes) |
 | phase / `checkPhase` | **stratum** / `checkStratum` (definition-time stratum typing) |
-| fired / dispatch accumulator internals | internal to `gen-dispatch` — never surfaced in den-hoag |
+| fired / dispatch accumulator internals | retired from `gen-dispatch` (now rule-evaluation-only) — never surfaced in den-hoag |
 
 `gen-dispatch`'s own exported names (`mkActions`, `dispatch`, …) stay as-is *behind* den-hoag's
 wrappers; the wrapper surface uses the grounded terms.
@@ -98,8 +98,9 @@ faithfully to Law A1:
    `gen-resolve` documents the circular∘dispatch pattern but exports no wrapper. The B1 enrichment
    fixpoint is `gen-scope.circular { init = base; eq = keysetEq } (ctx: ctx // extract (dispatch …))` —
    re-dispatch-on-converging-context. The earlier `dispatchStep`/`dispatchInit` accumulator form was
-   judged ceremony for the single-stratum enrichment attribute and retired (decision #25); those
-   gen-dispatch exports remain available for a future multi-stratum accumulation, but **den-hoag uses
+   judged ceremony for the single-stratum enrichment attribute and retired in den-hoag (decision #25);
+   `gen-dispatch` has since completed the same retirement lib-side (`dispatchStep`/`dispatchInit` deleted,
+   `phase`→`group`), so it owns rule evaluation only and no accumulator export remains. **den-hoag uses
    ZERO `dispatchStep`** (the `end-to-end` fixpoint census asserts it).
 
 A third reality note on the class-share path: **tier-2 share is gen-merge-only; the nixpkgs crossing

@@ -88,7 +88,7 @@
             context = ctx;
             match = dispatch.fromFunctionMatch;
             classify = _: "enrich";
-            phaseOrder = [ "enrich" ];
+            groupOrder = [ "enrich" ];
           }).actions.enrich or [ ];
         delta = acts: prelude.foldl' (acc: e: acc // { ${e.key} = e.value; }) { } acts;
         converged =
@@ -139,8 +139,8 @@
   #    ever see it. Attr 2 dispatches (and attr 5 materializes) on `ctx` alone; linked-context
   #    reaches resolution and beyond only, never a structural read. `declarations` in this
   #    compute is the vocabulary DEP (stratumOf/strata), not this attribute. The value is INERT
-  #    DATA: only the grouped-by-stratum `actions` are kept — the dispatch state (context / fired
-  #    / orderedPhases) is projected away, never stored on the node. A later task that wants
+  #    DATA: only the grouped-by-stratum `actions` are kept — the dispatch state (context /
+  #    orderedGroups) is projected away, never stored on the node. A later task that wants
   #    linked-context as data recomputes it via `linkedFrom` (pure and cheap), not by reading a
   #    dispatch accumulator back off this attribute.
   declarations = resolve.attr {
@@ -173,7 +173,7 @@
             context = ctx0;
             match = dispatch.fromFunctionMatch;
             classify = declarations.stratumOf;
-            phaseOrder = declarations.strata;
+            groupOrder = declarations.strata;
             extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
             combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
           })

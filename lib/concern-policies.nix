@@ -8,7 +8,7 @@
 # A rule's STRATUM is read once by probing produce on a sentinel context — every guard key filled
 # with a sentinel entry, so the constructors' identity-law checks pass and the produced kinds are
 # readable. This is a pure, terminating classification (a `map`/`filter`, not a runtime loop): it
-# yields the rule's `phase` (attr 4 dispatches stratified over `declare.strata`) and whether the
+# yields the rule's `group` (attr 4 dispatches stratified over `declare.strata`) and whether the
 # rule is a pure-enrich writer (all declarations structural `enrich`), which selects its feed.
 # FAILURE MODE: this assumes the den pattern — a policy body forwards its ctx entries straight into
 # declaration constructors. A body that instead does NON-entry work on a ctx value (list iteration,
@@ -56,9 +56,9 @@
             ;
           inherit produce;
           identity = name;
-          # REQUIRED by gen-dispatch: multi-phase dispatch (attr 4's stratified phaseOrder)
-          # throws on rules without an explicit phase — this is lib contract, not metadata.
-          phase = stratum;
+          # REQUIRED by gen-dispatch: multi-group dispatch (attr 4's stratified groupOrder)
+          # throws on rules without an explicit group — this is lib contract, not metadata.
+          group = stratum;
           __isEnrich = isEnrich;
         };
 

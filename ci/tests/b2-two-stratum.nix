@@ -91,7 +91,7 @@ let
       context = ctx;
       match = dispatch.fromFunctionMatch;
       classify = declare.stratumOf;
-      phaseOrder = declare.strata;
+      groupOrder = declare.strata;
     }).actions;
 
   # (c) demand-laziness — a poison policy edges a sentinel entry whose id_hash throws. Forcing the
