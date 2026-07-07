@@ -82,6 +82,9 @@ let
       k = stage.__pipeStage or null;
     in
     if k == "filter" then
+      # predicate keep (den v1 `policy-effects.nix:304` builds `{ __pipeStage="filter"; fn; }`; run at
+      # `assemble-pipes.nix:281-282` — `builtins.filter (v: passthrough v || stage.fn (unwrap v))`, so a
+      # deferred `__configThunk` value passes through unfiltered, item 6). gen-pipe `filter` is the twin.
       {
         role = "derive";
         op = "filter";
@@ -97,6 +100,11 @@ let
         apply = declare.pipe.map stage.fn;
       }
     else if k == "fold" then
+      # left fold to a single value (den v1 `policy-effects.nix:312` builds `{ fn; init; }`; run at
+      # `assemble-pipes.nix:285-286` — `[ (seed (builtins.foldl' (acc: v: stage.fn acc (unwrap v))
+      # stage.init values)) ]`). gen-pipe `fold` is the twin; its combine is B5 ASSOCIATIVE-ONLY (gen-pipe
+      # channel L1), so a v1 fold whose `fn` is order-dependent is a run-semantics divergence the parity
+      # harness surfaces — the compile is faithful, the associativity obligation rides to the run.
       {
         role = "derive";
         op = "fold";
@@ -130,6 +138,11 @@ let
           };
       }
     else if k == "to" then
+      # deliver the pipe value to named aspects (den v1 `policy-effects.nix:327`; `hasToStage`/
+      # `getToTargets` at `assemble-pipes.nix:490,494-499`, applied at `:634`). The route is INTENTIONALLY
+      # a self-route (`to = from`): unlike `as`, `to` does not rename the channel — the value STAYS on its
+      # own channel for the selected aspects to read, and `select` carries those aspect targets. (aspects
+      # are not gen-pipe channels, so this is a route-shaped carrier, not a channel→channel move.)
       {
         role = "deliver";
         op = declare.pipe.route {
@@ -139,6 +152,9 @@ let
         };
       }
     else if k == "as" then
+      # expose the pipe value under another pipe name (den v1 `policy-effects.nix:331`; `hasAsStage`/
+      # `getAsTarget` at `assemble-pipes.nix:502,505-510`, applied at `:962`) — a genuine channel→channel
+      # route to that target (`select = passAll`, every contribution moves), the clean gen-pipe `route`.
       {
         role = "deliver";
         op = declare.pipe.route {
@@ -148,6 +164,8 @@ let
         };
       }
     else if k == "append" then
+      # append a literal value at the policy's scope (den v1 `policy-effects.nix:316`; run at
+      # `assemble-pipes.nix:287-288` — `values ++ [ (seed stage.value) ]`, re-tagged to the current scope).
       {
         role = "site";
         mark = {
@@ -156,6 +174,9 @@ let
         };
       }
     else if k == "expose" then
+      # ascend: push this scope's values UP to the parent for a peer to gather (den v1
+      # `policy-effects.nix:335`; `hasExposeStage` at `assemble-pipes.nix:666`, read by `collectAllExposed`
+      # at `:701`). The marker carries no payload — the ascend is the whole directive.
       {
         role = "site";
         mark = {
@@ -163,6 +184,9 @@ let
         };
       }
     else if k == "broadcast" then
+      # #623 push-dual of expose: push values to the scopes matching `receiver`, class-tagged at the
+      # PRODUCING class+scope (den v1 `policy-effects.nix:338`; `hasBroadcastStage` at
+      # `assemble-pipes.nix:669`, resolved by `collectAllBroadcast` at `:794`). `fn` is the receiver predicate.
       {
         role = "site";
         mark = {
@@ -171,6 +195,8 @@ let
         };
       }
     else if k == "collect" then
+      # gather peers' values into this scope — RAW contributions only (den v1 `policy-effects.nix:342`;
+      # run at `assemble-pipes.nix:457-467` via `collectTagged`, tagging each by its source scope).
       {
         role = "site";
         mark = {
@@ -180,6 +206,9 @@ let
         };
       }
     else if k == "collectAll" then
+      # gather RAW + EXPOSED (#623: what peers pushed up via `expose`) — den v1 `policy-effects.nix:346`;
+      # run at `assemble-pipes.nix:469-478`. `exposed = true` is the only field distinguishing it from
+      # `collect` (den v1's collect-vs-collectAll raw/exposed asymmetry, `assemble-pipes.nix:792`).
       {
         role = "site";
         mark = {
@@ -189,6 +218,9 @@ let
         };
       }
     else if k == "withProvenance" then
+      # provenance-view no-op: switches the run to the `pvFunctor` so values carry `{ __pv; __ps }` source
+      # tags (den v1 `policy-effects.nix:324`; `hasProvenance` at `assemble-pipes.nix:408`, `pvFunctor` at
+      # `:257-265`, handled at `:480-486`). No transform — a marker the run reads, inert at compile.
       {
         role = "site";
         mark = {
@@ -219,6 +251,9 @@ in
   # A v1 `den.quirks.<name>` value → a den-hoag channel registration `{ channel; ops; adapters; }`
   # (concern-quirks' input shape). Only the recognised gen-pipe channel options cross into `channel`;
   # any `ops`/`adapters` the quirk declares pass through. `name` is added by concern-quirks' channelDeclOf.
+  # A bare marker quirk yields an EMPTY `channel` — gen-pipe's `channel` fills the ordered-list defaults
+  # (`merge = "ordered-list"`, list-concat combine, `[ ]` init), so a plain `{ description = …; }` quirk
+  # becomes the default ordered-list channel with no options to state.
   channelOf = q: {
     channel = builtins.intersectAttrs channelOptKeys q;
     ops = q.ops or [ ];
