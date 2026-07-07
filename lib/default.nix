@@ -421,15 +421,40 @@ let
       policiesRules = concernPolicies.compile ent.config.den.policies;
 
       # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
-      # plus the den-managed demand channel (§B) threaded through the `policyOps` seam so it joins the
-      # SAME compose — channel-name uniqueness (E4b) and reference closure (E4a) are therefore
-      # fleet-wide over quirks AND demands. Policy route/join/tee ops are collected fleet-wide with the
-      # edge wiring (Task 9); per-quirk `ops` cover intra-compose shaping until then.
+      # plus the den-managed demand channel (§B) AND the collection-stratum pipe operators threaded
+      # through the `policyOps` seam so they join the SAME compose — channel-name uniqueness (E4b) and
+      # reference closure (E4a) are therefore fleet-wide over quirks, demands AND pipes.
+      #
+      # PIPE OPS (den.policies `pipe.from name [stages]`, compiled to `pipeOp` declarations): a pipe's
+      # `derived` channel DAG (filter/transform/fold/for folded left-to-right) is FLEET-WIDE — the
+      # transform is ONE DAG over the named channel, not a per-scope fact — so it rides `policyOps`
+      # exactly like the demand channel, seeded (from the static probe in concern-policies) BEFORE the
+      # eval. The compose's cycle-safe worklist dedups the pipe's base-channel stub against the real
+      # `den.quirks` registration by id (channelDecls seeded first, first wins), so `pipe.from feat …`
+      # resolves onto the registered `feat` channel with no E4b clash and the derived channel
+      # (`feat.<op>.<idx>`) joins the DAG — CONSUMED, where before it compiled but never reached the fold.
+      #
+      # NOT yet threaded (a bounded C3/C8 follow-up, not a regression — these compile, they just do not
+      # join the compose): the `to`/`as` delivery `routes` carry channel refs as NAMES (v1 aspect targets
+      # / pipe names), but gen-pipe's compose consumes route `from`/`to` as channel RECORDS, so routing
+      # them needs the C3 route to carry `channelRef` records (and `to`'s aspect-carrier semantics
+      # resolved — an aspect is not a gen-pipe channel). Site `marks` (append/expose/collect/broadcast)
+      # are per-scope EMISSION wiring, not compose ops. The `for` whole-list run (`__derive.wholeList`)
+      # rides inert — gen-pipe's `map` deriveSeq is per-element, so whole-list application needs a gen-pipe
+      # whole-list op (a cross-lib change), tracked with the run-semantics follow-up.
       quirks = ent.config.den.quirks;
       channelNames = concernQuirks.channelNames quirks;
+      # Every derived channel in the DAG must be a DIRECT declaration (gen-pipe E4a checks a declared
+      # op's inputs against the declaration set, not the transitively-reached worklist), so the compiled
+      # pipe's `derived` (the FINAL node) is walked base-ward to declare the whole chain. `compilePipe`
+      # folds the deriving stages linearly, so each node has one input; the walk stops at the base ref
+      # (`__derived = false`) — the registered quirk, declared via channelDecls, so it is NOT re-added.
+      pipeChainOf =
+        d: if (d.__derived or false) then [ d ] ++ pipeChainOf (builtins.head d.__derive.inputs) else [ ];
+      pipeChannelOps = prelude.concatMap (p: pipeChainOf p.derived) (policiesRules.pipeOps or [ ]);
       quirkDag = concernQuirks.compose {
         inherit quirks;
-        policyOps = [ demandLib.demandChannel ];
+        policyOps = [ demandLib.demandChannel ] ++ pipeChannelOps;
       };
 
       # classOfNode — the producing-scope → class-entry function (§2.5). Resolve each kind's declared
