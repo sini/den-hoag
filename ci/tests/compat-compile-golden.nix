@@ -88,6 +88,24 @@ let
   vResolve = builtins.head (vocab.policies.fanout { });
   vFor = builtins.head (vocab.policies.forB { });
 
+  # The NORMAL v1 multi-host case: the same user (`bob`) on TWO hosts. The user REGISTRY must dedup to
+  # ONE `bob` entry (den-hoag entities are field-less, so the merge is trivial and drops nothing), while
+  # MEMBERSHIP must carry TWO cells — one per host — each binding the right host entry. A last-wins
+  # re-key would silently drop a cell here.
+  multiHost = denCompat.compile {
+    hosts.x86_64-linux.host1 = {
+      class = "nixos";
+      users.bob = { };
+    };
+    hosts.x86_64-linux.host2 = {
+      class = "nixos";
+      users.bob = { };
+    };
+  };
+  multiHostCells = multiHost.entities.membership;
+  multiHostHostNames = builtins.sort (a: b: a < b) (map (m: m.coords.host.name) multiHostCells);
+  bobHash = builtins.hashString "sha256" "user|name=bob";
+
   # The full C1 pipeline: v1 module → evalV1 → compile → mkFleetModule → denHoag.mkDen. Proves the
   # compiled declarations actually feed the assembly (ingestion round-trips the v1 fixture), not just
   # that `compile` returns a well-shaped attrset. A host with a `host.users` member exercises the
@@ -135,6 +153,28 @@ in
     test-host-instance-system = {
       expr = compiled.entities.instances.host.axon.system;
       expected = "x86_64-linux";
+    };
+
+    # ── multi-host user: one distinct user entry, one membership cell per host ───────────────────
+    test-multihost-one-user = {
+      expr = builtins.attrNames multiHost.entities.registries.user;
+      expected = [ "bob" ];
+    };
+    test-multihost-two-cells = {
+      expr = builtins.length multiHostCells;
+      expected = 2;
+    };
+    test-multihost-both-hosts = {
+      expr = multiHostHostNames;
+      expected = [
+        "host1"
+        "host2"
+      ];
+    };
+    # both cells bind the SAME (single) bob entry — the distinct hosts are the only thing that varies.
+    test-multihost-user-coherent = {
+      expr = builtins.all (m: m.coords.user.id_hash == bobHash) multiHostCells;
+      expected = true;
     };
 
     # ── aspect row (near-identity, class key + quirk key pass through) ───────────────────────────

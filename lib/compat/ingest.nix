@@ -59,57 +59,37 @@ let
       host = if builtins.length parts > 1 then builtins.elemAt parts 1 else null;
     };
 
-  # `den.homes.<sys>.<name>` → user instances (keyed by the bare user name) + `member` tuples binding
-  # each to its host (a declared host entry when present, else a synthetic `{ host = <name>; }` identity
-  # so host-keyed policies still resolve). Symmetric to `flattenHosts`; the membership half is deferred
-  # to `buildMembership` (it needs the built entries, which need the flattened instances first).
-  homesToUsers =
+  # All (user, host) BINDINGS from `den.homes.<name>` — one per original entry, so the SAME user on N
+  # hosts (`bob@host1`, `bob@host2`) yields N bindings, hence N distinct membership cells (the NORMAL v1
+  # case, not an edge). `host` is null for an unbound standalone home (bare `"user"`). The user REGISTRY
+  # dedups these to one field-less entry per name; the MEMBERSHIP keeps every binding (`buildMembership`).
+  homeBindings =
     homes:
-    prelude.foldl' (
-      acc: sys:
-      acc
-      // builtins.mapAttrs (
-        n: h:
+    prelude.concatMap (
+      sys:
+      map (
+        key:
         let
-          parsed = parseHomeName n;
+          parsed = parseHomeName key;
         in
-        h
-        // {
-          system = sys;
-          userName = parsed.user;
-          hostName = h.hostName or parsed.host;
+        {
+          user = parsed.user;
+          host = homes.${sys}.${key}.hostName or parsed.host;
         }
-      ) (renameByUser homes.${sys})
-    ) { } (builtins.attrNames homes);
+      ) (builtins.attrNames homes.${sys})
+    ) (builtins.attrNames homes);
 
-  # Re-key a system's homes from the registry key ("user@host") to the bare user name, preserving the
-  # original key under `__homeKey` for host parsing / membership.
-  renameByUser =
-    systemHomes:
-    prelude.foldl' (
-      acc: key:
-      let
-        parsed = parseHomeName key;
-      in
-      acc
-      // {
-        ${parsed.user} = systemHomes.${key} // {
-          __homeKey = key;
-        };
-      }
-    ) { } (builtins.attrNames systemHomes);
-
-  # `host.users.<u>` across every flat host → user instances (keyed by user name) tagged with the host
-  # they sit under (`__hostName`), so `buildMembership` can bind the cell.
-  hostUsers =
+  # All (user, host) bindings from `host.users.<u>` across every flat host — one binding per user-under-
+  # host, so a user present on several hosts yields one cell per host (same NORMAL multi-host case).
+  hostUserBindings =
     flatHosts:
-    prelude.foldl' (
-      acc: hostName:
-      let
-        us = flatHosts.${hostName}.users or { };
-      in
-      acc // builtins.mapAttrs (u: uAttrs: uAttrs // { __hostName = hostName; }) us
-    ) { } (builtins.attrNames flatHosts);
+    prelude.concatMap (
+      hostName:
+      map (u: {
+        user = u;
+        host = hostName;
+      }) (builtins.attrNames (flatHosts.${hostName}.users or { }))
+    ) (builtins.attrNames flatHosts);
 
   # Build the den-hoag containment schema from v1's declared kinds atop the built-ins. den v1 makes
   # `host` a root and `user` a cell under it implicitly; `den.schema.<kind> = { parent; }` declares
@@ -170,29 +150,37 @@ let
     in
     prelude.genAttrs kinds (kindName: tree.config.den.${kindName});
 
-  # Membership tuples from the user instances: a cell `{ host = <hostEntry>; user = <userEntry>; }` per
-  # user, host bound to its declared registry entry when present, else a synthetic `{ name; }` identity
-  # (which carries no id_hash — a synthetic host is a NAME MATCH target, §2.5, not a scope node). Users
-  # with no resolvable host (unbound standalone home) contribute a user entry but no cell.
+  # Membership tuples: one cell `{ host = <hostEntry>; user = <userEntry>; }` per (user, host) BINDING.
+  # host binds to its declared registry entry, else a synthetic `{ name; }` (a NAME-MATCH target §2.5,
+  # not a scope node — carries no id_hash). A null-host binding (unbound standalone home) yields a user
+  # entry but no cell. Deduped by the (user, host) name pair — membership is a RELATION, so a user
+  # reachable via BOTH a standalone home and a `host.users` entry on the SAME host collapses to one cell
+  # (distinct hosts stay distinct cells). The null-host sentinel `""` cannot collide with a real host
+  # name (hostnames are non-empty); the key uses `@` (never `:`), so it is not a scope-string.
   buildMembership =
     {
-      userInstances,
+      bindings,
       hostRegistry,
       userRegistry,
     }:
+    let
+      deduped = builtins.attrValues (
+        prelude.foldl' (
+          acc: b: acc // { "${b.user}@${if b.host == null then "" else b.host}" = b; }
+        ) { } bindings
+      );
+    in
     prelude.concatMap (
-      userName:
+      b:
       let
-        u = userInstances.${userName};
-        hostName = u.__hostName or u.hostName or null;
-        userEntry = userRegistry.${userName};
+        userEntry = userRegistry.${b.user};
         hostEntry =
-          if hostName == null then
+          if b.host == null then
             null
-          else if hostRegistry ? ${hostName} then
-            hostRegistry.${hostName}
+          else if hostRegistry ? ${b.host} then
+            hostRegistry.${b.host}
           else
-            { name = hostName; };
+            { name = b.host; };
       in
       if hostEntry == null then
         [ ]
@@ -205,7 +193,7 @@ let
             };
           }
         ]
-    ) (builtins.attrNames userInstances);
+    ) deduped;
 
   # `resolveClass classRegistry policy name` — a class-name STRING → its registration entry; the string
   # does NOT survive (C6). An unknown name aborts named (the deliver-adjacent §2.3 error, reused for the
@@ -223,11 +211,14 @@ let
       schemaDecls = buildSchema v1Schema;
 
       flatHosts = flattenHosts (v1Decls.hosts or { });
-      standaloneUsers = homesToUsers (v1Decls.homes or { });
-      cellUsers = hostUsers flatHosts;
-      # host.users and standalone homes both land in the user registry; a declared host user wins a
-      # same-name standalone home (it carries the real cell binding).
-      userInstances = standaloneUsers // cellUsers;
+      # Every (user, host) binding from standalone homes AND host-embedded users — the cell granularity.
+      bindings = homeBindings (v1Decls.homes or { }) ++ hostUserBindings flatHosts;
+      # ONE field-less user entry per DISTINCT user name. den-hoag entities carry no content (it comes
+      # from aspects), so merging a user's N per-host homes is trivial: ingestion reads only the user
+      # NAME (here) and the host BINDING (kept per-cell in `membership`), never a per-host user field —
+      # so there is nothing to conflict on and no per-host config is silently dropped. (If ingestion ever
+      # grew to read a per-host user field, differing values would need a named abort added right here.)
+      userNames = prelude.unique (map (b: b.user) bindings);
 
       # Custom (non-host/user) kinds carry their own v1 instances verbatim.
       customKinds = builtins.filter (k: k != "host" && k != "user") (builtins.attrNames schemaDecls);
@@ -235,7 +226,7 @@ let
 
       instances = {
         host = flatHosts;
-        user = userInstances;
+        user = prelude.genAttrs userNames (_: { });
       }
       // customInstances;
 
@@ -243,7 +234,7 @@ let
       registries = buildRegistries { inherit schemaDecls instanceNames; };
 
       membership = buildMembership {
-        inherit userInstances;
+        inherit bindings;
         hostRegistry = registries.host or { };
         userRegistry = registries.user or { };
       };
@@ -285,9 +276,11 @@ in
 {
   inherit
     flattenHosts
-    homesToUsers
+    homeBindings
+    hostUserBindings
     buildSchema
     buildRegistries
+    buildMembership
     resolveClass
     aspectEntry
     classEntry

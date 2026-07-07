@@ -37,12 +37,24 @@ in
   # product. (den-hoag's built-in `host`/`user` are always present.)
   unknownParentKind =
     kind: parent:
-    fail "schema (C1)" "kind `${kind}` names parent `${parent}`, which is not a declared kind (known kinds are `den.schema.<kind>` + the built-in `host`/`user`)";
+    fail "schema" "kind `${kind}` names parent `${parent}`, which is not a declared kind (known kinds are `den.schema.<kind>` + the built-in `host`/`user`)";
 
-  # deliver / route / provide are the DELIVERY-edge vocabulary — compiled in C3 (Task 2), not the C1
-  # structural/resolution core. A policy that emits one before Task 2 lands hits this named seam rather
-  # than a silent drop or an opaque failure. Removed when `compile` learns delivery (deliver.nix).
-  deliverInTaskTwo =
+  # `deliver` / `route` / `provide` are the DELIVERY-edge vocabulary; their compilation lands with
+  # denCompat's `deliver.nix`. A policy that emits one before that pass exists hits this named seam
+  # rather than a silent drop or an opaque failure.
+  # TODO(deliver.nix): remove this seam once `compile` learns the delivery-edge vocabulary.
+  deliverNotYet =
     effect:
-    fail "deliver family (C3)" "`${effect}` is delivery-edge vocabulary compiled in C3 (Task 2 — deliver.nix); the C1 core handles the structural/resolution vocabulary (include/exclude/resolve/for/when) only";
+    fail "deliver family" "`${effect}` is delivery-edge vocabulary; its compilation lands with denCompat `deliver.nix` and is not yet available";
+
+  # The `pipe.*` stage vocabulary compiles to gen-pipe channels in denCompat's `pipe.nix`.
+  # TODO(pipe.nix): remove this seam once `compile` learns the pipe stage vocabulary.
+  pipeNotYet = fail "pipe stages" "the `pipe.*` stage vocabulary compiles to gen-pipe channels in denCompat `pipe.nix` and is not yet available";
+
+  # A v1 policy effect the shim does not compile: it handles the structural/resolution vocabulary —
+  # include/exclude/resolve and the for/when combinators; deliver/route/provide and pipe land with their
+  # own passes (named above). Anything else names itself here rather than being mis-routed.
+  unsupportedEffect =
+    effect:
+    fail "policy effect" "unsupported v1 policy effect `${effect}` — the shim compiles include/exclude/resolve and for/when; deliver/route/provide and pipe land with their own passes";
 }

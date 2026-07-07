@@ -76,9 +76,11 @@ let
       in
       grounded // (if metaWithDrop == null then { } else { meta = metaWithDrop; });
 
-  # Translate ONE v1 policy effect record → den-hoag declaration(s). The structural/resolution
-  # vocabulary except deliver (Task 2). Every entry-typed argument is an entry by here (C6), so the
-  # `declare.*` constructors' eager identity checks pass; a stray string would abort named.
+  # Translate ONE v1 policy effect record → den-hoag declaration(s): the structural/resolution
+  # vocabulary (include/exclude/resolve + the instantiate spawn). The delivery-edge vocabulary
+  # (deliver/route/provide) and the pipe stages ride named seams until their own passes land. Every
+  # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
+  # checks pass; a stray string would abort named.
   translateEffect =
     ing: effect:
     let
@@ -91,7 +93,7 @@ let
     else if kind == "resolve" then
       # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
       # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
-      # are context data the spawned node carries (Task 2 wiring reads them off the declaration).
+      # are context data the spawned node carries (the edge-wiring pass reads them off the declaration).
       let
         shared = effect.__shared or false;
         spawnDecl = (if shared then declare.spawnShared else declare.spawn) {
@@ -101,19 +103,19 @@ let
       in
       [ spawnDecl ]
     else if kind == "deliver" || kind == "route" || kind == "provide" then
-      errors.deliverInTaskTwo kind
+      errors.deliverNotYet kind
     else if kind == "pipe" then
-      errors.deliverInTaskTwo "pipe" # the pipe stage vocabulary is Task 3 (channels)
+      errors.pipeNotYet
     else if kind == "instantiate" then
       # Native per-cluster instantiation (nixidy k8s; PIN.md census) — a spawn of the entity's class
-      # content. The entity carries its own instantiate/intoAttr metadata (read at output, Task 2).
+      # content. The entity carries its own instantiate/intoAttr metadata (read at output assembly).
       [ (declare.spawn { instantiate = effect.value; }) ]
     else if kind == null then
       # Not an effect descriptor — a raw declaration a v1 body built directly. Pass it through; a
       # non-declaration surfaces at the den-hoag dispatch, not here.
       [ effect ]
     else
-      errors.deliverInTaskTwo kind;
+      errors.unsupportedEffect kind;
 
   # Coerce a v1 `den.policies.<name>` value to the inner `{ gate; fn }` a compiled policy wraps. v1
   # `for`/`when` produce `{ __isPolicy = true; fn; }` records whose `fn` already gates on ctx (entity
@@ -131,6 +133,12 @@ let
   # A v1 `when`-over-inline-aspect record: `{ name = "<when>"; meta.guard; meta.aspects; includes; }`.
   # These are conditional ASPECTS (the guard reads the in-flight path set, A9.1), not policies — v1
   # emits them precisely to avoid the resolved-state cycle. They compile to den-hoag aspects.
+  #
+  # The `meta.guard` + `meta.aspects` PAIR is an unambiguous discriminator against the other two
+  # `den.policies.<name>` value shapes: a bare policy is a FUNCTION (no `meta` at all), and a v1
+  # `for`/`when`-over-a-policy record is `{ __isPolicy = true; name; fn; }` (an `fn`, and no
+  # `meta.aspects`). Only the inline-aspect conditional carries BOTH keys, so testing the pair never
+  # misclassifies a policy as an aspect (or vice versa).
   isConditionalAspect =
     value: builtins.isAttrs value && (value.meta or { }) ? guard && (value.meta or { }) ? aspects;
 
@@ -205,6 +213,9 @@ let
 
   aspects = builtins.mapAttrs (_: translateAspect) v1Aspects // compiledPolicies.conditionalAspects;
 
+  # The synthetic `__kindInclude__<kind>` policy names cannot collide with a compiled
+  # `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a v1 policy name is a
+  # user-authored identifier that never uses it — so this namespace is disjoint from `compiledPolicies`.
   policies =
     compiledPolicies.policies
     // builtins.listToAttrs (

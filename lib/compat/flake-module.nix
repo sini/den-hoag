@@ -42,6 +42,10 @@ let
   # instances, `den.default`, …) so an arbitrary den-scoped corpus module evaluates without a schema
   # edit. Declared as a single submodule (not `options.den.<x>` groups) so it never collides with a
   # `den` leaf — the leaf/group collision the two-eval separation exists to avoid.
+  #
+  # TRADE-OFF of the freeform: a TYPO in an unknown `den.*` key silently succeeds HERE (it is absorbed,
+  # not rejected). That is deliberate — surface-totality (every v1 key is a KNOWN key, else a named
+  # error) is enforced downstream at `compile`, over the read-back config, not at this permissive eval.
   v1OptionsModule = {
     options.den = schema.mkOption {
       default = { };
