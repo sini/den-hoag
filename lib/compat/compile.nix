@@ -40,7 +40,10 @@ let
         // prelude.optionalAttrs isModule { mergeHalf = "default-fold"; };
     in
     declare.delivery {
-      # A module source collects the TARGET class (v1 provide); a class source collects `from`.
+      # A module source collects the TARGET class (v1 provide, provides.nix:121) — so for a module
+      # source, sourceClass deliberately CARRIES THE TARGET REGISTRATION (sourceClass == targetClass;
+      # deliveryEdgesAt disambiguates on `module != null`, not on the class pair). A class source
+      # collects `from`.
       sourceClass = if isModule then toEntry else ing.resolveBucket "deliver" d.sourceClass;
       targetClass = toEntry;
       module = d.moduleSource;
