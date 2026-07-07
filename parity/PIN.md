@@ -77,3 +77,15 @@ future corpus bump introduces such a consumer, re-open Open Question 2 here.
 - **Adapter-bearing complex** (`adaptArgs` present) → `synthesize` record + `interpret.synthesize`:
   the hm delivery (osConfig adapter) and the `devshell` route (`config.allModuleArgs` adapter).
 - **Tier-2 derived-children NTA** → NOT implemented: no corpus consumer (census above).
+
+## Upstream compatibility note (#624 / #625) — owner directive, 2026-07-07
+
+The frozen v1 pin (`11866c16` = #623) PREDATES den #624 (emit-classes reads scope ctx from
+`state.scopeContexts`; class content keyed by named entity args — the "N user-scoped nixos
+configs collapse to 1" fix), #627, and #625 (replicated-home shortfall; draft on the sini fork
+at pin time). The shim must be COMPATIBLE with the #624/#625 semantics: den-hoag natively keys
+class content per member/cell (`systems.<class>.<member>`), so the #624 bug class is
+structurally absent on the v2 arm — the open question is only whether the SHIM's compilation
+reproduces post-#624 delivery shapes. VERIFY at nix-config integration (the C8 corpus arm);
+the pin-bump decision (stay at #623 vs advance past #627) is a ship-gate item with ledger
+evidence in hand.
