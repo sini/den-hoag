@@ -36,30 +36,44 @@ let
     ing: d:
     let
       isModule = d.sourceClass == null;
-      # `resolveBucket`: from/to name a den-hoag fold bucket (a quirk channel) or a class (§9). A channel
-      # delivery flows through the fold now; a class delivery's bucket is empty until class content joins.
       toEntry = ing.resolveBucket "deliver" d.target;
       annotations =
         prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
         // prelude.optionalAttrs (d.guard != null) { guard = true; }
         // prelude.optionalAttrs isModule { mergeHalf = "default-fold"; };
+        
+      # Wrap the module for eval-time application of guard and adaptArgs (Gap 2)
+      wrapModule = m: 
+        if d.guard == null && d.adaptArgs == null then m
+        else
+          # A nixpkgs-free wrapper (the terminal crosses nixpkgs, so args exist there)
+          args:
+          let
+            a = if d.adaptArgs != null then d.adaptArgs args else args;
+            g = if d.guard != null then d.guard a else true;
+            evaluated = if builtins.isFunction m then m a else m;
+          in
+          if g then evaluated else {};
+          
+      delivDecl = declare.delivery {
+        sourceClass = if isModule then toEntry else ing.resolveBucket "deliver" d.sourceClass;
+        targetClass = toEntry;
+        module = d.moduleSource;
+        inherit (d)
+          path
+          mode
+          guard
+          adaptArgs
+          ;
+        inherit annotations;
+      };
+      
+      injectDecl = declare.inject {
+        class = toEntry;
+        module = wrapModule d.moduleSource;
+      };
     in
-    declare.delivery {
-      # A module source collects the TARGET class (v1 provide, provides.nix:121) — so for a module
-      # source, sourceClass deliberately CARRIES THE TARGET REGISTRATION (sourceClass == targetClass;
-      # deliveryEdgesAt disambiguates on `module != null`, not on the class pair). A class source
-      # collects `from`.
-      sourceClass = if isModule then toEntry else ing.resolveBucket "deliver" d.sourceClass;
-      targetClass = toEntry;
-      module = d.moduleSource;
-      inherit (d)
-        path
-        mode
-        guard
-        adaptArgs
-        ;
-      inherit annotations;
-    };
+    if isModule then [ delivDecl injectDecl ] else [ delivDecl ];
 
   # v1 class-key names that differ from den-hoag's (§ grounded terminology): a v1 aspect's class key is
   # renamed to the den-hoag class it targets before passing through, so `classifyKey` recognises it.
@@ -357,18 +371,30 @@ let
     _ctx:
     map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
   ) ing.kindIncludes;
+  
+  # selfProvideInclude (Gap 1): a v1 `host.name==key` implicit auto-inclusion.
+  # If an aspect's name EXACTLY matches the host's name, it is automatically included.
+  # Represented as a fleet-wide policy matching the host name.
+  selfProvideInclude = {
+    __selfProvideInclude = { host, ... }:
+      if host != null && v1Aspects ? ${host.name} then
+        [ (declare.edge (resolveAspectRef aspectRec host.name)) ]
+      else [ ];
+  };
 
   aspects =
     builtins.mapAttrs translateAspect v1Aspects
     // defaultAspects
     // compiledPolicies.conditionalAspects;
 
-  # The synthetic `__kindInclude__<kind>` / `__denDefault` policy names cannot collide with a compiled
-  # `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a v1 policy name is a
-  # user-authored identifier that never uses it — so this namespace is disjoint from `compiledPolicies`.
+  # The synthetic `__kindInclude__<kind>` / `__denDefault` / `__selfProvideInclude` policy names cannot
+  # collide with a compiled `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a
+  # v1 policy name is a user-authored identifier that never uses it — so this namespace is disjoint from
+  # `compiledPolicies`.
   policies =
     compiledPolicies.policies
     // defaultPolicy
+    // selfProvideInclude
     // builtins.listToAttrs (
       map (kind: {
         name = "__kindInclude__${kind}";
