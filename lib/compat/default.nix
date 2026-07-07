@@ -52,15 +52,24 @@ let
   # whose config `compile` desugars (the two-eval shape; den-hoag's own `mkDen` owns `den.*` typed, so
   # the v1 surface cannot share its eval). `mkFleetModule`/`mkDen` bridge the compiled output to
   # `denHoag.mkDen` (spec-vs-reality flag 1). Grows the C0 skeleton's empty core to length 1.
-  flakeModuleWiring = import ./flake-module.nix {
-    inherit
-      denHoag
-      prelude
-      schema
-      compile
-      legacy
-      ;
-  };
+  # mkWiring — the den-hoag-facing driver builder PARAMETERISED by a legacy-module subset (the C5
+  # severance handle, §2.1). `mkWiring legacy` = the full v1 surface; `mkWiring { }` = flakeModuleCore
+  # ALONE (both `desugarLegacy` halves fall back to or-identity, so a residual legacy key trips its
+  # compile sentinel); `mkWiring { inherit (legacy) provides; }` = a single-legacy combination. The
+  # compile core, sentinels, and errors are SHARED across every wiring — only `desugarLegacy` (hence
+  # `compileFull` / `mkDen`) differs. The severability suite (compat-legacy-severed) drives all four.
+  mkWiring =
+    legacyArg:
+    import ./flake-module.nix {
+      inherit
+        denHoag
+        prelude
+        schema
+        compile
+        ;
+      legacy = legacyArg;
+    };
+  flakeModuleWiring = mkWiring legacy;
   inherit (flakeModuleWiring) flakeModuleCore;
 in
 {
@@ -77,6 +86,12 @@ in
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
   inherit (flakeModuleWiring) mkNixosInstantiate;
   inherit (flakeModuleWiring) mkFleetModule mkDen evalV1;
+  # `compileFull` — the "through flakeModule" compile (apply the full legacy desugars, then compile), the
+  # entry a v1 surface takes under `flakeModule`. For a non-legacy surface it equals `compile` (or-identity
+  # desugars); the C1 witness suite drives every witness through it uniformly. `mkWiring` is the severed-
+  # variant builder the C5 suite uses to prove each legacy module removable.
+  inherit (flakeModuleWiring) compileFull;
+  inherit mkWiring;
   flakeModule = flakeModuleWiring.flakeModule;
   # parity — the two-sided harness helper functions (frozen edge schema, oracle, firstDivergent
   # triage), Task 7. Placeholder attrset until then so `compat.parity` is addressable (the scaffold

@@ -1,8 +1,10 @@
-# compat-legacy-severed (C5) — the legacy `forwards` surface (self-contained tagged legacy/forwards.nix)
-# and its two tiers, the `den.interpret.synthesize` seam, and the Law-C5 sentinel. This file lands the
-# FORWARDS HALF of the severability suite; the full severed-module half (both legacy surfaces removed +
-# surface totality) completes in Task 6 (C6). Ground truth: the frozen pin denful/den@11866c16 forward
-# system (forward.nix / handlers/forward.nix / route.nix) + the PIN.md corpus census.
+# compat-legacy-severed (C5) — legacy SEVERABILITY, both halves. Part 1 (the forwards surface, its two
+# tiers, the `den.interpret.synthesize` seam, and the Law-C5 forwards sentinel) landed in Task 5. Part 2
+# (C6, this task) lands the SEVERABILITY PROOF proper: `flakeModuleCore` ALONE and each single-legacy
+# combination leave every NON-LEGACY fixture byte-identical (declaration set + trace) vs the full
+# `flakeModule`; a severed surface's use is a named sentinel abort; and no core/other path IMPORTS a
+# legacy module (the modules are wired at exactly one site — default.nix, the assembly).
+# Ground truth: the frozen pin denful/den@11866c16 forward system + the PIN.md corpus census.
 #
 #   TIER-1 (static forward, no adapter) → a plain `deliver` (collected source, reroute-shaped), the same
 #     surface the corpus takes — identical to v1's tier-1 classification. Witnesses: the 3 home-platform
@@ -14,7 +16,17 @@
 #     the interpreter RUNS at materialization, threaded through den.interpret (item 7).
 #   SENTINEL — a `den.classes.<c>.forwardTo` reaching compile un-desugared (severed module) is a named
 #     definition-time error (Law C5), parallel to the `provides` sentinel.
-{ denHoag, denCompat, ... }:
+#
+# CONTENT DEFERRAL (checked-in TODO, plan §C5): this suite pins the DECLARATION + TRACE half of C5(a)'s
+# byte-identity. The CONTENT half (drv-hash equality of a severed vs full mkDen) rides Task 8's
+# `parity-content` (P2), which needs the two-arm harness to exist first — see parity/tests/ (Task 8).
+{
+  denHoag,
+  denCompat,
+  denHoagSrc,
+  lib,
+  ...
+}:
 let
   fwd = denCompat.legacy.forwards;
   edge = denHoag.internal.edge;
@@ -144,6 +156,125 @@ let
       c2.share.core = true;
     };
   };
+
+  # ══ SEVERABILITY PROOF (C6) — the four wirings share ONE compile core, sentinels, and errors; only
+  #    `desugarLegacy` (hence `compileFull` / `mkDen`) differs by which legacy modules are present
+  #    (default.nix `mkWiring`). ══════════════════════════════════════════════════════════════════════
+  full = denCompat; # both legacy modules (the full flakeModule surface)
+  core = denCompat.mkWiring { }; # flakeModuleCore ALONE (both desugars or-identity)
+  provOnly = denCompat.mkWiring { inherit (denCompat.legacy) provides; };
+  fwdOnly = denCompat.mkWiring { inherit (denCompat.legacy) forwards; };
+  wirings = [
+    full
+    core
+    provOnly
+    fwdOnly
+  ];
+
+  # NON-LEGACY fixtures (no `provides`, no `forwardTo`): the legacy desugars are or-identity on them, so
+  # every wiring must compile them byte-identically. `edgeRoute` emits real trace edges (a channel→channel
+  # `deliver`, the trace-half witness); `policyInclude` / `quirkChannel` exercise the include + channel
+  # surfaces (declaration-half witnesses).
+  edgeRoute = {
+    hosts.x86_64-linux.axon.class = "nixos";
+    quirks.src = { };
+    quirks.dst = { };
+    aspects.seed.src = [ "hello" ];
+    schema.host.includes = [ "seed" ];
+    policies.route1 = _ctx: [
+      (denCompat.deliver {
+        from = "src";
+        to = "dst";
+      })
+    ];
+  };
+  nonLegacy = {
+    inherit edgeRoute;
+    policyInclude = {
+      hosts.x86_64-linux.axon.class = "nixos";
+      aspects.a = { };
+      policies.attachA = _ctx: [
+        {
+          __policyEffect = "include";
+          value = {
+            name = "a";
+          };
+        }
+      ];
+    };
+    quirkChannel = {
+      quirks.metric = { };
+      aspects.svc.metric = [ "x" ];
+    };
+  };
+
+  # C5(a) DECLARATION-SET byte-identity — attrNames + id_hashes only (no function is forced, so a
+  # parametric body never enters the comparison). A fixture's projection must be `==` across all wirings.
+  declProj = c: {
+    kinds = builtins.attrNames c.entities.schema;
+    regIds = builtins.mapAttrs (_: r: builtins.mapAttrs (_: e: e.id_hash) r) c.entities.registries;
+    members = builtins.length c.entities.membership;
+    aspectKeys = builtins.mapAttrs (n: _: builtins.attrNames c.aspects.${n}) c.aspects;
+    policyNames = builtins.attrNames c.policies;
+    classKeys = builtins.mapAttrs (n: _: builtins.attrNames c.classes.${n}) c.classes;
+    channelKeys = builtins.mapAttrs (n: _: builtins.attrNames c.channels.${n}) c.channels;
+  };
+  declSeverable =
+    fx:
+    let
+      ps = map (w: declProj (w.compileFull fx)) wirings;
+    in
+    builtins.all (p: p == builtins.head ps) ps;
+
+  # C5(a) TRACE byte-identity — mkDen through a wiring, union the per-root traces (the frozen T|P|S|M
+  # sort-key strings), compare across wirings. (CONTENT / drv-hash defers to Task 8's parity-content.)
+  v1mod = fx: { config.den = fx; };
+  unionTrace =
+    result:
+    let
+      den = result.den;
+    in
+    edge.trace (builtins.concatMap (r: den.graph.edges r) (builtins.attrNames den.scopeRoots));
+  traceFull = unionTrace (full.mkDen [ (v1mod edgeRoute) ]);
+  traceCore = unionTrace (core.mkDen [ (v1mod edgeRoute) ]);
+  traceProv = unionTrace (provOnly.mkDen [ (v1mod edgeRoute) ]);
+  traceFwd = unionTrace (fwdOnly.mkDen [ (v1mod edgeRoute) ]);
+
+  # C5(b) SENTINELS — a severed surface's use aborts named. Force the offending aspect/class to trip the
+  # lazy `seq` sentinel inside translate{Aspect,Class}. `provTrips`/`fwdTrips` are `true` when it aborts.
+  providesFixture = {
+    aspects.foo.provides.to-users = {
+      nixos.services.foo.enable = true;
+    };
+  };
+  fwdFixture = {
+    classes.myclass.forwardTo = {
+      class = "nixos";
+      path = [ ];
+    };
+  };
+  provTrips =
+    w: !(builtins.tryEval (builtins.seq (w.compileFull providesFixture).aspects.foo null)).success;
+  fwdTrips =
+    w: !(builtins.tryEval (builtins.seq (w.compileFull fwdFixture).classes.myclass null)).success;
+
+  # C5(b) STRUCTURAL severance — the legacy modules are IMPORTED at exactly ONE site (default.nix, the
+  # assembly); every hand-off past it is by value. Scan the compat source: only default.nix contains an
+  # `import ./legacy` / `import ../legacy`. (The core files mention "legacy" only in comments / error
+  # strings — never as an import — so the scan targets the import expression, not the word.)
+  compatDir = "${denHoagSrc}/lib/compat";
+  isNix = n: lib.hasSuffix ".nix" n;
+  topNix = builtins.filter isNix (builtins.attrNames (builtins.readDir compatDir));
+  legacyNix = map (n: "legacy/${n}") (
+    builtins.filter isNix (builtins.attrNames (builtins.readDir "${compatDir}/legacy"))
+  );
+  importsLegacy =
+    rel:
+    let
+      t = builtins.readFile "${compatDir}/${rel}";
+    in
+    lib.hasInfix "import ./legacy" t || lib.hasInfix "import ../legacy" t;
+  legacyImportSites = builtins.filter importsLegacy (topNix ++ legacyNix);
 in
 {
   flake.tests.compat-legacy-severed = {
@@ -297,6 +428,85 @@ in
     test-desugar-keeps-other-class-keys = {
       expr = (desugared.classes.c1 ? wrap) && desugared.classes.c2.share.core;
       expected = true;
+    };
+
+    # ══ (H) C5(a) DECLARATION-SET byte-identity — flakeModuleCore alone + each single-legacy combo == full,
+    #    on every NON-LEGACY fixture (the legacy desugars are or-identity ⇒ the compiled declarations match).
+    test-decl-severable-edgeRoute = {
+      expr = declSeverable nonLegacy.edgeRoute;
+      expected = true;
+    };
+    test-decl-severable-policyInclude = {
+      expr = declSeverable nonLegacy.policyInclude;
+      expected = true;
+    };
+    test-decl-severable-quirkChannel = {
+      expr = declSeverable nonLegacy.quirkChannel;
+      expected = true;
+    };
+
+    # ══ (I) C5(a) TRACE byte-identity — the edge trace is identical with EITHER legacy module removed (and
+    #    with BOTH removed, `core`) vs the full flakeModule. Non-vacuous (the route emits real edges).
+    #    CONTENT (drv-hash) byte-identity defers to Task 8's parity-content (the file-header TODO).
+    test-trace-nonvacuous = {
+      expr = builtins.length traceFull >= 1;
+      expected = true;
+    };
+    test-trace-severable-core = {
+      expr = traceCore == traceFull;
+      expected = true;
+    };
+    test-trace-severable-provOnly = {
+      expr = traceProv == traceFull;
+      expected = true;
+    };
+    test-trace-severable-fwdOnly = {
+      expr = traceFwd == traceFull;
+      expected = true;
+    };
+
+    # ══ (J) C5(b) SENTINELS — a severed surface's use is a named definition-time abort ─────────────────
+    # provides severed (core = both gone; fwdOnly = provides gone) ⇒ the provides sentinel fires.
+    test-provides-severed-core-aborts = {
+      expr = provTrips core;
+      expected = true;
+    };
+    test-provides-severed-fwdOnly-aborts = {
+      expr = provTrips fwdOnly;
+      expected = true;
+    };
+    # forwards severed (core; provOnly = forwards gone) ⇒ the forwards sentinel fires.
+    test-forwards-severed-core-aborts = {
+      expr = fwdTrips core;
+      expected = true;
+    };
+    test-forwards-severed-provOnly-aborts = {
+      expr = fwdTrips provOnly;
+      expected = true;
+    };
+    # the COMPLEMENT (the sentinel is surgical): a PRESENT legacy module compiles its surface CLEAN.
+    test-provides-present-provOnly-ok = {
+      expr = !(provTrips provOnly);
+      expected = true;
+    };
+    test-provides-present-full-ok = {
+      expr = !(provTrips full);
+      expected = true;
+    };
+    test-forwards-present-fwdOnly-ok = {
+      expr = !(fwdTrips fwdOnly);
+      expected = true;
+    };
+    test-forwards-present-full-ok = {
+      expr = !(fwdTrips full);
+      expected = true;
+    };
+
+    # ══ (K) C5(b) STRUCTURAL severance — the legacy modules are imported at EXACTLY one site (default.nix,
+    #    the assembly). No core/other path reads them; every hand-off past the assembly is by value.
+    test-legacy-import-single-site = {
+      expr = legacyImportSites;
+      expected = [ "default.nix" ];
     };
   };
 }

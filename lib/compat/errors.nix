@@ -66,4 +66,23 @@ in
   unsupportedEffect =
     effect:
     fail "policy effect" "unsupported v1 policy effect `${effect}` — the shim compiles include/exclude/resolve and for/when; deliver/route/provide and pipe land with their own passes";
+
+  # SURFACE TOTALITY (C1) — a top-level `den.<key>` the shim does not recognise. The permissive v1 eval
+  # (flake-module.nix `v1OptionsModule` freeformType) ABSORBS unknown `den.*` keys silently so an arbitrary
+  # corpus module evaluates; that absorption's promised downstream enforcement is HERE, over the read-back
+  # config. A typo'd or unknown surface key is rejected with a name — never silently dropped (the C1
+  # freeform-absorption trade-off). Names the offending key + the surface the shim compiles.
+  unknownSurfaceKey =
+    key:
+    fail "surface totality (C1)" "unknown `den.${key}` — the shim compiles { hosts, homes, schema, aspects, policies, classes, include, quirks, contentClass, default, <declared custom kinds> }; a typo'd or unknown `den.*` key is absorbed by the permissive v1 eval and rejected HERE, never silently dropped. Fix the key or extend the surface";
+
+  # NOT-IMPLEMENTED-BY-CENSUS (C1 surface totality) — an aspect carrying `meta.__forward`, the manifestation
+  # of `den.batteries.forward` (v1 `nix/lib/forward.nix` `forwardItem`). The shim does NOT implement the
+  # forward-battery NTA path: the corpus census found ZERO consumers (PIN.md Open-Question-2, Tier-2
+  # derived-children NTA deliberately unbuilt). Rather than pass `meta.__forward` through as opaque aspect
+  # content (silently wrong), the surface aborts named, with a migration pointer. Witness-mapped as
+  # not-implemented-by-census (parity/fixtures/witness-map.nix `batteriesForward`).
+  batteriesForwardUnsupported =
+    aspect:
+    fail "batteries.forward (not implemented — corpus-zero census)" "aspect `${aspect}` carries `meta.__forward` (a `den.batteries.forward` manifestation); the shim does not implement the forward-battery NTA path — PIN.md Open-Question-2 records zero corpus consumers. Migrate the forward to a native den-hoag class + `deliver` (the tier-1 path legacy/forwards.nix takes), or, if a corpus consumer appears, build the Tier-2 derived-children NTA in legacy/forwards.nix and re-open Open Question 2";
 }

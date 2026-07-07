@@ -160,6 +160,14 @@ let
     // {
       aspects = legacyProvidesDesugar (v1f.aspects or { });
     };
+
+  # `compileFull` — the "through flakeModule" compile: apply this wiring's legacy desugars, then compile.
+  # This is what a v1 surface sees when driven by the assembled `flakeModule` (both legacy present) or by
+  # a SEVERED wiring (`mkWiring` with a subset). For a non-legacy v1 set the desugars are or-identity, so
+  # `compileFull ≡ compile`; that identity is exactly the severability the C5 suite pins (a non-legacy
+  # fixture compiles byte-identically with any legacy subset). A legacy fixture through a wiring WITHOUT
+  # its module keeps the residual key, which trips compile's sentinel (Law C5).
+  compileFull = v1: compile (desugarLegacy v1);
   # `den.interpret` — the gen-edge source-interpreter seam (item 7): the legacy forwards module's
   # `synthesize`/`rewalk` composers, threaded into den-hoag's single `materialize` via the shipped raw
   # option (lib/default.nix `interpretDecl`, output-modules.nix `interpret ? { }`) WITHOUT editing
@@ -185,5 +193,7 @@ in
     evalV1
     mkFleetModule
     mkDen
+    desugarLegacy
+    compileFull
     ;
 }

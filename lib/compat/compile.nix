@@ -97,6 +97,18 @@ let
     else
       errors.identityLaw "policy aspect reference" ref;
 
+  # NOT-IMPLEMENTED-BY-CENSUS (C1 surface totality): an aspect carrying `meta.__forward` is a
+  # `den.batteries.forward` manifestation (v1 forward.nix `forwardItem`). The shim has no desugar for it
+  # (Tier-2 derived-children NTA, corpus-zero census — PIN.md Open-Question-2). Rather than pass the
+  # opaque `meta.__forward` payload through as aspect content (silently wrong), abort named with a
+  # migration pointer. `true` when clean, composing under `builtins.seq`.
+  noBatteriesForward =
+    name: aspect:
+    if builtins.isAttrs aspect && ((aspect.meta or { }).__forward or null) != null then
+      errors.batteriesForwardUnsupported name
+    else
+      true;
+
   # Near-identity aspect translation (§2.2 aspect row). den-hoag's aspect submodule already accepts the
   # v1 shape — `includes`/`neededBy`/`settings`/`meta.{guard,drop}`/`projects`/`tags` and freeform
   # class/quirk keys ride THROUGH untouched (a quirk key becomes a channel contribution at the aspect's
@@ -108,29 +120,33 @@ let
     # LEGACY SURFACE SENTINEL (C5): `provides` must have been desugared by legacy/provides.nix (applied
     # by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is severed —
     # fail LOUDLY naming the surface rather than dropping the declaration (sentinels.nix / errors.nix).
+    # SURFACE TOTALITY (C1): `meta.__forward` (the batteries.forward manifestation) has no desugar path —
+    # a named abort, not a silent passthrough (noBatteriesForward).
     builtins.seq (sentinels.provides name aspect) (
-      if builtins.isFunction aspect then
-        { includes = [ aspect ]; }
-      else
-        let
-          excludes = aspect.excludes or [ ];
-          withoutDropped = builtins.removeAttrs aspect droppedAspectKeys;
-          grounded = prelude.foldl' (
-            acc: k:
-            let
-              k' = v1ClassKeyMap.${k} or k;
-            in
-            builtins.removeAttrs acc [ k ] // { ${k'} = aspect.${k}; }
-          ) withoutDropped (builtins.attrNames withoutDropped);
-          # Fold `excludes` into `meta.drop` (aspect-level constraint) without clobbering a declared drop.
-          meta = grounded.meta or { };
-          metaWithDrop =
-            if excludes == [ ] then
-              grounded.meta or null
-            else
-              meta // { drop = (meta.drop or [ ]) ++ excludes; };
-        in
-        grounded // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
+      builtins.seq (noBatteriesForward name aspect) (
+        if builtins.isFunction aspect then
+          { includes = [ aspect ]; }
+        else
+          let
+            excludes = aspect.excludes or [ ];
+            withoutDropped = builtins.removeAttrs aspect droppedAspectKeys;
+            grounded = prelude.foldl' (
+              acc: k:
+              let
+                k' = v1ClassKeyMap.${k} or k;
+              in
+              builtins.removeAttrs acc [ k ] // { ${k'} = aspect.${k}; }
+            ) withoutDropped (builtins.attrNames withoutDropped);
+            # Fold `excludes` into `meta.drop` (aspect-level constraint) without clobbering a declared drop.
+            meta = grounded.meta or { };
+            metaWithDrop =
+              if excludes == [ ] then
+                grounded.meta or null
+              else
+                meta // { drop = (meta.drop or [ ]) ++ excludes; };
+          in
+          grounded // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
+      )
     );
 
   # Translate ONE v1 policy effect record → den-hoag declaration(s): the structural/resolution
@@ -163,6 +179,22 @@ let
         };
       in
       [ spawnDecl ]
+    else if kind == "spawn" then
+      # A v1 `policy.spawn { classes }` (policy-effects.nix `spawn`) — a deferred home-projection spawn
+      # (the projected content sees fleet-wide pipe values, PR #623). A den-hoag `spawn` of the named
+      # classes with empty bindings; a null `classes` (v1's "default to the drain-site classes") desugars
+      # to `[ ]`, letting den-hoag's spawn wiring pick the class set. The producing-scope channel
+      # resolution is den-hoag's, not the shim's (Law C2). Surface acceptance here; the shared/isolated
+      # projection nuance is a Task 8 parity refinement, recorded in the ledger if it diverges.
+      let
+        cs = effect.value.classes or null;
+      in
+      [
+        (declare.spawn {
+          classes = if cs == null then [ ] else cs;
+          bindings = { };
+        })
+      ]
     else if kind == "pipe" then
       # A v1 `pipe.from name [stages]` → a collection-stratum `pipeOp` declaration: the deriving stages
       # fold left-to-right into a gen-pipe op DAG on the named channel, the delivery/site stages ride as
@@ -264,6 +296,23 @@ let
   v1Policies = v1Decls.policies or { };
   v1Classes = v1Decls.classes or { };
 
+  # `den.default` (v1 modules/aspects/defaults.nix): the default aspect, injected there as a schema
+  # `includes = [ den.default ]` for EVERY entity kind — i.e. radiated fleet-wide. Compiled the same way:
+  # registered as the reserved aspect `__default` (translated like any aspect — grounded class keys,
+  # provides/forward sentinels apply), then radiated by a single fleet-wide `__denDefault` policy that
+  # emits an `edge` of it at every scope (den-hoag dispatch runs the bare `_ctx:` body everywhere). One
+  # policy, not one-per-kind — a per-kind fan-out would double-radiate (the kind-include policies fire
+  # fleet-wide too, C1 stage). `__`-prefixed names cannot collide with a user aspect/policy (den reserves
+  # `__`). Absent (`den.default` unset) ⇒ no aspect, no policy — byte-identical to a fixture without it.
+  hasDefault = (v1Decls.default or { }) != { };
+  defaultAspects =
+    if hasDefault then { __default = translateAspect "__default" v1Decls.default; } else { };
+  defaultPolicy =
+    if hasDefault then
+      { __denDefault = _ctx: [ (declare.edge (resolveAspectRef aspectRec { name = "__default"; })) ]; }
+    else
+      { };
+
   # Name → the FULL compiled aspect record den-hoag's resolution consumes: the compiled content
   # (`aspects.<name>`) plus its `{ id_hash; name }` identity. `resolved-aspects.nix` uses an edge's
   # aspect record directly as content, so an include MUST carry content, not a stub (the C1 gap). An
@@ -291,21 +340,56 @@ let
     map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
   ) ing.kindIncludes;
 
-  aspects = builtins.mapAttrs translateAspect v1Aspects // compiledPolicies.conditionalAspects;
+  aspects =
+    builtins.mapAttrs translateAspect v1Aspects
+    // defaultAspects
+    // compiledPolicies.conditionalAspects;
 
-  # The synthetic `__kindInclude__<kind>` policy names cannot collide with a compiled
+  # The synthetic `__kindInclude__<kind>` / `__denDefault` policy names cannot collide with a compiled
   # `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a v1 policy name is a
   # user-authored identifier that never uses it — so this namespace is disjoint from `compiledPolicies`.
   policies =
     compiledPolicies.policies
+    // defaultPolicy
     // builtins.listToAttrs (
       map (kind: {
         name = "__kindInclude__${kind}";
         value = kindIncludePolicies.${kind};
       }) (builtins.attrNames kindIncludePolicies)
     );
+
+  # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
+  # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys
+  # silently; this is the promised downstream enforcement of that trade-off (errors.nix
+  # `unknownSurfaceKey`). Known = the recognised concern surfaces + `den.default` + the declared custom
+  # kinds (whose instances ride at `den.<kind>`). `_`-prefixed keys are den-internal (reserved), never a
+  # user surface, so they are exempt. A typo'd/unknown key aborts named, never silently drops.
+  declaredKinds = builtins.attrNames (v1Decls.schema or { });
+  knownSurfaceKeys = [
+    "hosts"
+    "homes"
+    "schema"
+    "aspects"
+    "policies"
+    "classes"
+    "include"
+    "quirks"
+    "contentClass"
+    "default"
+  ]
+  ++ declaredKinds;
+  unknownSurfaceKeys = builtins.filter (
+    k: (builtins.substring 0 1 k != "_") && !(builtins.elem k knownSurfaceKeys)
+  ) (builtins.attrNames v1Decls);
+  surfaceTotalityOk =
+    if unknownSurfaceKeys == [ ] then
+      true
+    else
+      errors.unknownSurfaceKey (builtins.head unknownSurfaceKeys);
 in
-{
+# Force the totality check before ANY concern crosses the boundary (a consumer forcing any output attr
+# trips a typo'd/unknown `den.*` key here, never downstream).
+builtins.seq surfaceTotalityOk {
   # The entity concern (§8): flat registries (entry-valued), the v1 attrs mkDen rebuilds from, the
   # membership relation, the containment schema, the content-class map, and the kind-attached includes
   # lifted to `include` records. Everything here is entry-valued past ingestion (C6).
