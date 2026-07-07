@@ -1,26 +1,14 @@
 # Fleet graph — the registries become gen-product factors, restricted by membership to
 # the sparse sub-product of cells that actually exist (Law A5). Membership tuples come
 # from `member` declarations (Task 3) and functional dim assignments; Task 1 feeds them as
-# fixture data through `den.membership`. Every algorithm here is a gen-product call — the
-# only local recursion is attrset assembly (`groupBy`), which is wiring, not machinery (A1).
+# fixture data through `den.membership`. Every algorithm here is a gen-product call;
+# membership grouping is `gen-prelude.groupBy` (A1 wiring, not machinery).
 {
   prelude,
   product,
   errors,
 }:
 let
-  # Group a tuple list into one relation per distinct coordinate dim-set. Attrset
-  # assembly (Law A1 wiring); gen-prelude has no groupBy, so it lives here.
-  groupBy =
-    keyFn: xs:
-    prelude.foldl' (
-      acc: x:
-      let
-        k = keyFn x;
-      in
-      acc // { ${k} = (acc.${k} or [ ]) ++ [ x ]; }
-    ) { } xs;
-
   # A registry -> gen-product factor. `key` maps a public coordinate entry to the factor
   # node id (its id_hash); `entryOf` inverts it. Per the gen-product factor contract the
   # node ids ARE the `key` outputs, so nodes/nodeData/entryOf are keyed by id_hash — an
@@ -75,7 +63,7 @@ let
       factors = map (k: factorOf k registries.${k}) dimKinds;
       full = product.productN "cartesian" factors;
       # relations = one per distinct tuple-dim-set; pairs are partial coords.
-      byDims = groupBy (t: builtins.toJSON (builtins.attrNames t.coords)) membershipTuples;
+      byDims = prelude.groupBy (t: builtins.toJSON (builtins.attrNames t.coords)) membershipTuples;
       relations = prelude.mapAttrsToList (_: ts: {
         dims = builtins.attrNames (builtins.head ts).coords;
         pairs = map (t: t.coords) ts;
