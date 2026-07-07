@@ -27,12 +27,10 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
 - **L6 is the C7.5 CONVERGENCE (#44), the first `matched` row.** The `class-content-as-fold-content`
   mechanism (`output-modules.nix` — class buckets join the graph accessor's `channelsOf`/`contentsOf`)
   makes den-hoag's default fold emit `collected:scope/<producing-class> | merge`, byte-matching v1's class
-  fold. WHY L3/L5 did NOT also converge: their fixtures declare NO class content that reaches den-hoag
-  (den v1 injects `os`/`homeManager`/`nixos` defaults + a `host.name==key` self-provide-include that the
-  shim does not reproduce, so den-hoag's class buckets there are EMPTY). L6 witnesses the mechanism where
-  class content is EXPLICITLY included (`den.schema.host.includes`), so its host bucket is non-empty. Full
-  L3/L5 convergence additionally needs the v1 default/self-provide injection + the os→nixos class-hierarchy
-  routes — the C8/C9 default-fold reconciliation, NOT the C7.5 fold-visibility mechanism.
+  fold.
+- **Gap 3 Closed:** The C8/C9 default-fold reconciliation has been implemented by injecting `legacy/defaults.nix`
+  through `desugarLegacy` rather than `flakeModuleCore`, successfully preventing `gen-merge` conflicts on `den.schema`
+  while accurately populating bare-minimum host configurations (os/hm/nixos routes).
 - **No shim-defect rows** — the C7 corpus surfaced no compilation bug; every divergence is the domain
   boundary (L3–L6) or a handled schema-alignment normalization (L1–L2).
 - **Scope** — the corpus is the five `parity/fixtures/topologies.nix` topologies (plain host+user, quirk
