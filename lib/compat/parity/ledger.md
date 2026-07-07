@@ -13,6 +13,7 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
 | L3 | 2026-07-07 | plainHostUser | `root:host:igloo/homeManager \|  \| collected:host:igloo/homeManager \| merge` | domain-boundary | v1 class-folds (6) absent on hoag (class content rides the class-module path)| #44 / reconcile |
 | L4 | 2026-07-07 | quirkChannel | `root:host:igloo/feat \|  \| collected:host:igloo/feat \| merge` (EXTRA on hoag) | domain-boundary | hoag quirk-fold has no v1 counterpart (v1 folds quirk content into classes) | reconcile |
 | L5 | 2026-07-07 | multiHost | `root:host:iceberg/homeManager \|  \| collected:host:iceberg/homeManager \| merge` | domain-boundary | two-host union of the L3 class-fold boundary (root enumeration correct) | #44 / reconcile |
+| L6 | 2026-07-07 | classFold | `root:host:igloo/nixos \|  \| collected:host:igloo/nixos \| merge` (CONVERGED — now MATCHED) + 5 residual `missing` | domain-boundary | #44 / C7.5: class-content-as-fold-content landed. den-hoag's PRODUCING-class default fold byte-matches v1's nixos class fold (matched 0→1, extra 0). Residual missing = v1's `os` base class + os→nixos / hm→nixos (synthesize) / user→nixos routes + host homeManager default (v1's hierarchical multi-class model vs den-hoag flat one-class-per-scope). | output-modules.nix channelsOf/contentsOf |
 
 ## Notes
 
@@ -23,9 +24,18 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   DIFFERENT things as graph edges (`edge-schema.md` "domain finding"). They are pinned in
   `parity/golden/traces.nix`; a REGRESSION that shifts them fails P1, and a CONVERGENCE (an edge that
   starts matching once #44 lands) also fails P1 and forces a deliberate re-golden + a ledger update here.
+- **L6 is the C7.5 CONVERGENCE (#44), the first `matched` row.** The `class-content-as-fold-content`
+  mechanism (`output-modules.nix` — class buckets join the graph accessor's `channelsOf`/`contentsOf`)
+  makes den-hoag's default fold emit `collected:scope/<producing-class> | merge`, byte-matching v1's class
+  fold. WHY L3/L5 did NOT also converge: their fixtures declare NO class content that reaches den-hoag
+  (den v1 injects `os`/`homeManager`/`nixos` defaults + a `host.name==key` self-provide-include that the
+  shim does not reproduce, so den-hoag's class buckets there are EMPTY). L6 witnesses the mechanism where
+  class content is EXPLICITLY included (`den.schema.host.includes`), so its host bucket is non-empty. Full
+  L3/L5 convergence additionally needs the v1 default/self-provide injection + the os→nixos class-hierarchy
+  routes — the C8/C9 default-fold reconciliation, NOT the C7.5 fold-visibility mechanism.
 - **No shim-defect rows** — the C7 corpus surfaced no compilation bug; every divergence is the domain
-  boundary (L3–L5) or a handled schema-alignment normalization (L1–L2).
-- **Scope** — the C7 corpus is the four `parity/fixtures/topologies.nix` topologies (plain host+user,
-  quirk channel, multi-host, spawn negative-control). The fuller synthetic set (isolated-guest, microvm,
-  darwin, fleet-pipe-through-edge, host-aspects-spawn) and the real nix-config corpus arm are C8/C9, when
-  the deliver surface can be witnessed on both arms.
+  boundary (L3–L6) or a handled schema-alignment normalization (L1–L2).
+- **Scope** — the corpus is the five `parity/fixtures/topologies.nix` topologies (plain host+user, quirk
+  channel, class-fold, multi-host, spawn negative-control). The fuller synthetic set (isolated-guest,
+  microvm, darwin, fleet-pipe-through-edge, host-aspects-spawn) and the real nix-config corpus arm are
+  C8/C9, when the deliver surface can be witnessed on both arms.

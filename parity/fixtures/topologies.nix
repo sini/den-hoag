@@ -46,6 +46,24 @@
     };
   };
 
+  # Class-content default fold (#44 / C7.5 convergence witness). A `base` aspect carrying `nixos` class
+  # content is included at every host (`den.schema.host.includes`), so den-hoag's host:igloo now has a
+  # non-empty `nixos` class bucket — and (post-C7.5) the default fold emits its PRODUCING-class edge
+  # `collected:host:igloo/nixos | merge`, which BYTE-MATCHES v1's nixos class fold. This is the first
+  # cross-arm fixture with a non-empty `matched` set: the class-content-as-fold-content mechanism landed.
+  # The 5 still-`missing` v1 edges are the residual domain boundary (v1's `os` base class + os→nixos /
+  # home-manager→nixos / user→nixos class-composition routes + host homeManager default, none of which
+  # den-hoag's flat one-class-per-scope contentClass model injects) — L6 in the ledger.
+  classFold = {
+    name = "class-fold";
+    crossArm = true;
+    module = {
+      den.hosts.x86_64-linux.igloo.users.tux = { };
+      den.aspects.base.nixos.networking.hostName = "igloo";
+      den.schema.host.includes = [ { name = "base"; } ];
+    };
+  };
+
   # Two hosts across two systems (the multi-system `@system` shape) — exercises root enumeration + per-root
   # trace concatenation on both arms. Each host's class folds are independent; the diff is the union of two
   # single-host boundaries.

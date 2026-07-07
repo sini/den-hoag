@@ -53,6 +53,17 @@ in
       expr = hashKeys (traceHoag fixtures.multiHost);
       expected = golden.multiHost.hoagHash;
     };
+    # #44 / C7.5: the class-fold fixture's hoag hash pins the single producing-class fold edge (a change
+    # that drops or duplicates it moves the hash); the v1 hash equals plainHostUser's (v1's arm is the
+    # same 6-edge class trace — the include of `base` adds nixos content v1 already had by default).
+    test-class-fold-v1-hash = {
+      expr = hashKeys (traceV1 fixtures.classFold);
+      expected = golden.classFold.v1Hash;
+    };
+    test-class-fold-hoag-hash = {
+      expr = hashKeys (traceHoag fixtures.classFold);
+      expected = golden.classFold.hoagHash;
+    };
 
     # ── topology invariance: same topology, different module tree → byte-equal trace ──
     test-plain-hoag-topology-invariant = {

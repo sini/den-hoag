@@ -254,10 +254,25 @@ in
         ]
       ];
     };
-    # exactly one default-fold merge edge per present channel at the root (the ports channel).
+    # exactly one default-fold merge edge per present FOLD COORDINATE at the root: the `ports` quirk
+    # channel AND the host's producing `nixos` class bucket (§2.10 — class content is fold content, the
+    # C7.5 default-fold reconciliation). No per-descendant double-count (corollary 1).
     test-trace-one-edge-per-channel = {
       expr = builtins.length traceAxon;
-      expected = 1;
+      expected = 2;
+    };
+    # the class-content default fold: the nixos host emits its `collected:host:axon/nixos | merge` edge
+    # (its PRODUCING class only — never a phantom k8s/home-manager fold, mirroring the terminal's
+    # `contentIdsOf`). This is the trace-parity twin of v1's `defaultFoldEdges`.
+    test-trace-class-default-fold = {
+      expr = builtins.any (
+        e:
+        e.source.arm == "collected"
+        && (e.source.class or null) == "nixos"
+        && (e.target.class or null) == "nixos"
+        && e.mode == "merge"
+      ) traceAxon;
+      expected = true;
     };
     # the trace is a collected → root merge edge (the corollary-1 default fold).
     test-trace-is-collected-merge = {

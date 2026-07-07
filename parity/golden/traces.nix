@@ -61,6 +61,37 @@
     v1Hash = "5c1b4d82045fece9b0289b9396b487fdc0db53183f795476eafec17d57271b8c";
     hoagHash = "5b7009500063d6cb2b93c9881f59944bfc5ac6026a00a2bd6e610aadc9840fee";
   };
+  # #44 / C7.5 convergence witness — the FIRST cross-arm fixture with a non-empty `matched` set. den-hoag's
+  # producing-class default fold emits `collected:host:igloo/nixos | merge`, which byte-matches v1's nixos
+  # class fold. The 5 remaining `missing` v1 edges are the residual class-model boundary (v1's `os` base
+  # class + class-composition routes + host homeManager default) — L6 in the ledger. `extra = [ ]`: the
+  # producing-class scoping (never a phantom k8s/home-manager fold) keeps the hoag arm exact.
+  classFold = {
+    v1 = [
+      "root:host:igloo/homeManager |  | collected:host:igloo/homeManager | merge"
+      "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge"
+      "root:host:igloo/nixos |  | collected:host:igloo/os | merge"
+      "root:user:tux/nixos |  | collected:user:tux/os | merge"
+      "root:user:tux/nixos | home-manager/users/tux | synthesize:homeManager/nixos/home-manager/users/tux/homeManager>nixos | nest"
+      "root:user:tux/nixos | users/users/tux | collected:user:tux/user | nest"
+    ];
+    hoag = [
+      "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge"
+    ];
+    matched = [
+      "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge"
+    ];
+    missing = [
+      "root:host:igloo/homeManager |  | collected:host:igloo/homeManager | merge"
+      "root:host:igloo/nixos |  | collected:host:igloo/os | merge"
+      "root:user:tux/nixos |  | collected:user:tux/os | merge"
+      "root:user:tux/nixos | home-manager/users/tux | synthesize:homeManager/nixos/home-manager/users/tux/homeManager>nixos | nest"
+      "root:user:tux/nixos | users/users/tux | collected:user:tux/user | nest"
+    ];
+    extra = [ ];
+    v1Hash = "5c1b4d82045fece9b0289b9396b487fdc0db53183f795476eafec17d57271b8c";
+    hoagHash = "0114d4c6655e981f477efe0706741e63dd63a3873e9a8aeca3845e30e172cac8";
+  };
   multiHost = {
     v1 = [
       "root:host:iceberg/homeManager |  | collected:host:iceberg/homeManager | merge"

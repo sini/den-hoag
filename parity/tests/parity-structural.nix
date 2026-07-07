@@ -63,6 +63,7 @@ let
     plainHostUser = resultOf fixtures.plainHostUser;
     quirkChannel = resultOf fixtures.quirkChannel;
     multiHost = resultOf fixtures.multiHost;
+    classFold = resultOf fixtures.classFold;
   };
 in
 {
@@ -81,6 +82,12 @@ in
       expr = diffOnly results.multiHost;
       expected = goldenDiff golden.multiHost;
     };
+    # #44 / C7.5: the class-content default fold converges the host's producing-class edge onto v1 (the
+    # first non-empty `matched` set). The golden pins BOTH the match AND the residual class-model boundary.
+    test-class-fold = {
+      expr = diffOnly results.classFold;
+      expected = goldenDiff golden.classFold;
+    };
 
     # The recorded boundary itself: the class-fold vs quirk-fold domains are disjoint at C7, so parity is
     # false on every cross-arm fixture. A change that flips any of these to true is a real convergence
@@ -90,12 +97,29 @@ in
         results.plainHostUser.parity
         results.quirkChannel.parity
         results.multiHost.parity
+        results.classFold.parity
       ];
       expected = [
         false
         false
         false
+        false
       ];
+    };
+
+    # #44 / C7.5 CONVERGENCE: the class-fold fixture is the first cross-arm fixture whose `matched` set is
+    # non-empty — den-hoag's producing-class default fold now byte-matches v1's nixos class fold. This is
+    # the measurable teeth of the class-content-as-fold-content mechanism: a REGRESSION that empties this
+    # match (class content no longer folding) fails here, distinct from the still-open residual boundary.
+    test-class-fold-converges = {
+      expr = results.classFold.matched;
+      expected = [ "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge" ];
+    };
+    # …and the hoag arm stays EXACT — producing-class scoping never emits a phantom k8s/home-manager fold
+    # (the `class-modules` over-report the terminal's `contentIdsOf` also guards against), so `extra` is empty.
+    test-class-fold-no-extra = {
+      expr = results.classFold.extra;
+      expected = [ ];
     };
 
     # The quirk fixture is the sharpest disjoint-domain witness: hoag renders a `collected:host/feat` edge

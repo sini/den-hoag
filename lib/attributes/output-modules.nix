@@ -61,6 +61,41 @@ let
 
   received = id: result.get id "received-collections";
 
+  # ── class content as fold coordinates (§2.10 default-fold reconciliation) ──────────────────────────
+  # gen-edge is class-coordinate-generic (its README: "den's NixOS class buckets … are ONE instantiation")
+  # — a class bucket IS a fold channel. den-hoag's attribute 9 (`class-modules`) computes, per node, the
+  # `{ <class> = [ deferredModule ]; }` map; here it joins the graph accessor's channel view so class
+  # content folds through the SAME gen-edge pipeline as quirk channels: a scope emits one
+  # `collected:scope/<class> | merge` default-fold edge for its PRODUCING class (matching v1's
+  # `defaultFoldEdges` by construction, edges/default.nix Corollary 1), and a `deliver`/`route`/`provide`
+  # whose collected source names a CLASS moves that class's real content (before this, a class-source
+  # delivery traced but its collected read hit an absent channel ⇒ empty — the C7.5 gap).
+  #
+  # PRODUCING-CLASS scoping (§2.5, mirrors the terminal): `class-modules` over-reports — the aspect
+  # submodule's freeform gives EVERY class key a trivial `{ imports = [ ]; }` body even for an aspect that
+  # declares no content there, so a bare-channel aspect at a nixos host shows non-empty nixos/home-manager/
+  # k8s-manifests buckets alike. The terminal's `contentIdsOf` already resolves this by keying on the
+  # node's OWN producing class (`memberClassName`); the default fold does the SAME here (one class per
+  # scope — den-hoag's contentClass model), so a nixos host folds `nixos` (never a phantom k8s edge) and a
+  # home-manager cell folds `home-manager`. Cross-class content movement is the EXPLICIT deliver/inject
+  # edge, never the default fold. NO-EFFECT-RUNTIME: one attribute read + one list non-emptiness test on
+  # the bucket spine (never a module body — deferred class content is a `deferredModule` thunk carried
+  # UNFORCED, so presence stays A17-lazy exactly like `channelsOf` over quirks).
+  isClassName = cn: classesByName ? ${cn};
+  classModulesAt = id: result.get id "class-modules";
+  producingClassOf =
+    id:
+    let
+      c = classOfNode (result.node id);
+    in
+    if c == null then null else c.name;
+  classBucketsOf =
+    id:
+    let
+      cn = producingClassOf id;
+    in
+    if cn != null && ((classModulesAt id).${cn} or [ ]) != [ ] then [ cn ] else [ ];
+
   # Delivery declarations (den-compat's `deliver`/`route`/`provide`, `declare.delivery`) dispatched at a
   # node → gen-edge records, rendered HERE where the firing scope (the node id) and the collected
   # membership are known (the declaration itself is inert intent; C2). A native den-hoag fleet emits no
@@ -106,7 +141,8 @@ let
     childrenOf = id: builtins.attrNames (result.get id "children");
     parentOf = id: (result.node id).parent;
     isolatedAt = id: (result.node id).parent != null;
-    channelsOf = id: builtins.filter (ch: !(isReserved ch)) (builtins.attrNames (received id));
+    channelsOf =
+      id: builtins.filter (ch: !(isReserved ch)) (builtins.attrNames (received id)) ++ classBucketsOf id;
     # den-hoag emits no aspect-scoped content edge natively; the per-node declared edges are den-compat's
     # delivery declarations (rendered above), and the fleet-global demand edges join by concatenation in
     # `outputFor`/`traceFor`. A delivery-free, demand-free fleet keeps `edgesAt id = [ ]`.
@@ -118,15 +154,30 @@ let
     # (never deduped), matching the class-neutral / null-key contributions the fixtures produce.
     contentsOf =
       id: channel:
-      map (c: {
-        content = c.value;
-        key = c.__key or null;
-        provenance = {
-          edge = null;
-          source = "seed";
-          producer = c.producer;
-        };
-      }) ((received id).${channel}.contributions or [ ]);
+      if isClassName channel then
+        # class coordinate: the node's own class-modules bucket as seed contributions. Each contribution's
+        # `content` is a deferredModule (a gen-bind-shaped module, possibly a `{ config, … }` thunk) carried
+        # UNFORCED — the fold moves it, the terminal forces it. Null key (class modules are dedup-keyed by
+        # the gen-merge/module system at build, not the fold — §4.5 class-neutral null-key contributions).
+        map (m: {
+          content = m;
+          key = null;
+          provenance = {
+            edge = null;
+            source = "seed";
+            producer = null;
+          };
+        }) ((classModulesAt id).${channel} or [ ])
+      else
+        map (c: {
+          content = c.value;
+          key = c.__key or null;
+          provenance = {
+            edge = null;
+            source = "seed";
+            producer = c.producer;
+          };
+        }) ((received id).${channel}.contributions or [ ]);
   };
 
   # The full edge set folded at a root: the per-root default-fold edges (gen-edge derivation over the
