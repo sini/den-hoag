@@ -42,6 +42,7 @@ let
     "default.nix"
     "ingest.nix"
     "compile.nix"
+    "deliver.nix"
     "flake-module.nix"
   ];
   readCore = f: builtins.readFile "${denHoagSrc}/lib/compat/${f}";

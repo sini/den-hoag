@@ -26,11 +26,21 @@ let
       ;
   };
   # The pure compile core (Law C2): v1 declarations → den-hoag concern declarations. `declare` is
-  # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets).
+  # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets); `edge` is
+  # gen-edge's source/target constructors (the `collected`/`synthesize` delivery sources built at
+  # rule-fire time inside the compiled policy thunk — never on the pure compile path, C2).
   compile = import ./compile.nix {
-    inherit prelude ingest errors;
+    inherit
+      prelude
+      ingest
+      errors
+      edge
+      ;
     inherit (denHoag) declare;
   };
+  # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
+  # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
+  deliverLib = import ./deliver.nix { inherit prelude errors; };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
@@ -57,6 +67,12 @@ in
     flakeModuleCore
     legacy
     ;
+  # The v1 delivery-edge surface (`deliver`/`route`/`provide`) a corpus policy body calls; the compat
+  # twin of den v1's `den.lib.policy.{deliver,route,provide}`.
+  inherit (deliverLib) deliver route provide;
+  # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
+  # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
+  inherit (flakeModuleWiring) mkNixosInstantiate;
   inherit (flakeModuleWiring) mkFleetModule mkDen evalV1;
   flakeModule = flakeModuleWiring.flakeModule;
   # parity — the two-sided harness helper functions (frozen edge schema, oracle, firstDivergent

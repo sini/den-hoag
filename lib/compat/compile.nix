@@ -13,8 +13,83 @@
   ingest,
   declare,
   errors,
+  edge,
 }:
 let
+  # The firing scope of a delivery, resolved from the rule's fire-time context (C2: unknowable at
+  # compile — the shim emits a policy thunk; den-hoag dispatch supplies `ctx`). `ctx.__entry` is the
+  # node's OWN entity entry; its kind is recovered by matching that id_hash against the kind-keyed
+  # entries the enriched-context also carries (the den-hoag twin of v1 `edge.nix` `entityKindOf`).
+  # Returns a gen-edge nameSpec (`{ kind; idHash; }`); an unresolved firing scope (e.g. the stratum
+  # PROBE's empty sentinel ctx) falls back to an opaque marker so classification never crashes.
+  firingScopeOf =
+    ctx:
+    let
+      own = ctx.__entry or null;
+      isEntityKey =
+        k: !(prelude.hasPrefix "__" k) && builtins.isAttrs (ctx.${k} or null) && (ctx.${k} ? id_hash);
+      matching = builtins.filter (k: (ctx.${k}.id_hash or null) == (own.id_hash or null)) (
+        builtins.filter isEntityKey (builtins.attrNames ctx)
+      );
+    in
+    if own != null && matching != [ ] then
+      {
+        kind = builtins.head matching;
+        idHash = own.id_hash;
+      }
+    else
+      { opaque = "«unresolved-firing-scope»"; };
+
+  # A delivery DESCRIPTOR (`deliver`/`route`/`provide`, deliver.nix) → a den-hoag delivery DECLARATION:
+  # the gen-edge source + root target for the firing scope, plus the trace-facing annotation booleans
+  # (v1 route.nix/provides.nix record `adaptArgs = true` / `guard = true`, never the closures). A
+  # class source → `collected` (the firing scope's `from`-class bucket); a module source → `synthesize`
+  # (the injected module + its placement identity), NEVER `value` — v1's frozen sourceKey has no value
+  # arm, so a value edge could never byte-match (P1). The class-name strings resolve to registrations
+  # here (C6, unknown → named abort); the raw names never survive onward. This runs at FIRE time inside
+  # den-hoag's dispatch (compile itself returns a thunk), so no edge is constructed on the compile path.
+  translateDelivery =
+    ing: ctx: d:
+    let
+      firing = firingScopeOf ctx;
+      isModule = d.sourceClass == null;
+      toEntry = ing.resolveClass "deliver" d.target;
+      source =
+        if isModule then
+          edge.sources.synthesize {
+            spec.key = prelude.concatStringsSep "/" (
+              [
+                "provide"
+                d.target
+              ]
+              ++ d.path
+            );
+            module = d.moduleSource;
+          }
+        else
+          edge.sources.collected {
+            scope = firing;
+            class = (ing.resolveClass "deliver" d.sourceClass).name;
+          };
+      target = edge.targets.root {
+        root = firing;
+        class = toEntry.name;
+      };
+      annotations =
+        prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
+        // prelude.optionalAttrs (d.guard != null) { guard = true; };
+    in
+    {
+      __delivery = true;
+      inherit source target annotations;
+      inherit (d)
+        path
+        mode
+        guard
+        adaptArgs
+        ;
+    };
+
   # v1 class-key names that differ from den-hoag's (§ grounded terminology): a v1 aspect's class key is
   # renamed to the den-hoag class it targets before passing through, so `classifyKey` recognises it.
   # Identity for every already-grounded name; extended as the corpus surfaces more (harness-driven).
@@ -82,11 +157,15 @@ let
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
   # checks pass; a stray string would abort named.
   translateEffect =
-    ing: effect:
+    ing: ctx: effect:
     let
       kind = effect.__policyEffect or null;
     in
-    if kind == "include" then
+    # A delivery descriptor (deliver/route/provide, deliver.nix) → a den-hoag delivery declaration. The
+    # firing scope reads `ctx` (fire-time), so this branch takes ctx where the others ignore it.
+    if effect.__delivery or false then
+      [ (translateDelivery ing ctx effect) ]
+    else if kind == "include" then
       [ (declare.edge (resolveAspectRef ing.aspectEntry effect.value)) ]
     else if kind == "exclude" then
       [ (declare.drop (resolveAspectRef ing.aspectEntry effect.value)) ]
@@ -102,8 +181,6 @@ let
         };
       in
       [ spawnDecl ]
-    else if kind == "deliver" || kind == "route" || kind == "provide" then
-      errors.deliverNotYet kind
     else if kind == "pipe" then
       errors.pipeNotYet
     else if kind == "instantiate" then
@@ -148,7 +225,7 @@ let
   # translation of each effect is eager only when the body runs (per ctx); compile itself never runs it.
   compilePolicy =
     ing: value: ctx:
-    prelude.concatMap (translateEffect ing) (innerFn value ctx);
+    prelude.concatMap (translateEffect ing ctx) (innerFn value ctx);
 
   compilePolicies =
     ing: policies:
@@ -236,6 +313,7 @@ in
       instances
       membership
       contentClass
+      systemFor
       ;
   };
   inherit aspects policies;

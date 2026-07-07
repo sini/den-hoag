@@ -75,17 +75,49 @@ let
   evalV1 =
     userModules: (schema.evalModuleTree { modules = flakeModuleCore ++ userModules; }).config.den;
 
+  # The compat nixos instantiate wrapper (§2.5 carry-in): v1's per-host `system` never reaches
+  # den-hoag's pipeline (den-hoag entities are field-less), so it is injected HERE, at the terminal —
+  # the one place the per-host binding (`bindings.host`) is available. The wrapper prepends a
+  # `{ nixpkgs.hostPlatform.system = systemFor host; }` module to the host's class-modules, then
+  # delegates to the underlying `terminal`. `terminal` is a SEAM: the pure fleet wiring defaults it to
+  # den-hoag's nixpkgs-free `collect` (the platform is inspectable in its output modules); the parity
+  # harness supplies `crossNixos` for a real NixOS build. A system-less host (systemFor → null) injects
+  # nothing — byte-identical to the bare terminal.
+  mkNixosInstantiate =
+    {
+      systemFor,
+      terminal,
+    }:
+    args@{
+      name,
+      hostModules,
+      bindings,
+      classCfg,
+    }:
+    let
+      hostEntry = bindings.host or null;
+      sys = if hostEntry == null then null else systemFor hostEntry;
+      sysModule = if sys == null then [ ] else [ { nixpkgs.hostPlatform.system = sys; } ];
+    in
+    terminal (args // { hostModules = sysModule ++ hostModules; });
+
   # The pure bridge: `compile`'s output → a den-hoag `config.den.*` module. Instances become
   # `config.den.<kind>.<name>` FIELD-LESS — den-hoag entities carry no content (it comes from aspects),
   # and its kinds are strict, so only the registry KEY crosses (the id_hash is name-derived, coherent
   # with the boundary entries). The v1 entity fields (class/system/…) stay compile-side metadata
-  # (contentClass, membership); everything else maps to its den-hoag concern option.
+  # (contentClass, systemFor, membership); everything else maps to its den-hoag concern option. The
+  # nixos class carries the compat systemFor-injecting instantiate (§2.5 carry-in), so `den.hosts`'
+  # per-host platform reaches the built system.
   mkFleetModule =
     compiled:
     let
       instanceConfig = builtins.mapAttrs (
         _kind: insts: builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;
+      nixosInstantiate = mkNixosInstantiate {
+        inherit (compiled.entities) systemFor;
+        terminal = denHoag.internal.terminal.collect;
+      };
     in
     {
       config.den = {
@@ -93,7 +125,11 @@ let
         aspects = compiled.aspects;
         policies = compiled.policies;
         quirks = compiled.channels;
-        classes = compiled.classes;
+        classes = compiled.classes // {
+          nixos = (compiled.classes.nixos or { }) // {
+            instantiate = nixosInstantiate;
+          };
+        };
       }
       // instanceConfig;
     };
@@ -108,6 +144,7 @@ let
 in
 {
   inherit
+    mkNixosInstantiate
     flakeModuleCore
     flakeModule
     v1OptionsModule

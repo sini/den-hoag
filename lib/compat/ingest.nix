@@ -250,10 +250,33 @@ let
           value = flatHosts.${name}.class or "nixos";
         }) (builtins.attrNames flatHosts)
       );
+      # The host mapping is the per-host FUNCTION form: den-hoag's `entity.classOf` calls it with the
+      # host entry and uses the result DIRECTLY (it re-resolves only a bare STRING contentClass, not a
+      # function's return), so this returns a class ENTRY, not a name. The user mapping is a plain string
+      # (den-hoag resolves it to the built-in `home-manager` entry). An unknown host class name (a v1
+      # `host.class` with no registration) synthesises an entry rather than aborting the output fold.
       contentClass = {
-        host = host: classByHostId.${host.id_hash} or "nixos";
+        host =
+          host:
+          let
+            cls = classByHostId.${host.id_hash} or "nixos";
+          in
+          classRegistry.${cls} or (classEntry cls);
         user = "home-manager";
       };
+
+      # systemFor (§2.5 carry-in): v1's per-host `system` (the `den.hosts.<system>.<name>` path key,
+      # demoted to a field by `flattenHosts`) keyed by host id_hash. den-hoag entities are field-less,
+      # so — like contentClass — the platform rides a compile-time `id_hash → system` map, read by the
+      # compat nixos instantiate wrapper (flake-module.nix) to inject `nixpkgs.hostPlatform.system` per
+      # host. Absent (a system-less custom kind) → null, and the wrapper injects nothing.
+      systemByHostId = builtins.listToAttrs (
+        map (name: {
+          name = registries.host.${name}.id_hash;
+          value = flatHosts.${name}.system or null;
+        }) (builtins.attrNames flatHosts)
+      );
+      systemFor = host: systemByHostId.${host.id_hash} or null;
 
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
@@ -266,6 +289,7 @@ let
         instances
         membership
         contentClass
+        systemFor
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;

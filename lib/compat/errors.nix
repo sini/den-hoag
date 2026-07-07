@@ -39,14 +39,6 @@ in
     kind: parent:
     fail "schema" "kind `${kind}` names parent `${parent}`, which is not a declared kind (known kinds are `den.schema.<kind>` + the built-in `host`/`user`)";
 
-  # `deliver` / `route` / `provide` are the DELIVERY-edge vocabulary; their compilation lands with
-  # denCompat's `deliver.nix`. A policy that emits one before that pass exists hits this named seam
-  # rather than a silent drop or an opaque failure.
-  # TODO(deliver.nix): remove this seam once `compile` learns the delivery-edge vocabulary.
-  deliverNotYet =
-    effect:
-    fail "deliver family" "`${effect}` is delivery-edge vocabulary; its compilation lands with denCompat `deliver.nix` and is not yet available";
-
   # The `pipe.*` stage vocabulary compiles to gen-pipe channels in denCompat's `pipe.nix`.
   # TODO(pipe.nix): remove this seam once `compile` learns the pipe stage vocabulary.
   pipeNotYet = fail "pipe stages" "the `pipe.*` stage vocabulary compiles to gen-pipe channels in denCompat `pipe.nix` and is not yet available";

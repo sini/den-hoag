@@ -1,0 +1,426 @@
+# compat-deliver-matrix (C3) — the `deliver` surface (+ the permanent `route`/`provide` sugar) desugars
+# to den-hoag delivery DECLARATIONS, cell-by-cell over v1's `adaptArgs × path × verbatim × guard`
+# matrix (v1 Task-17's authoritative cell mapping: `policy-effects.nix` fields, `edges/route.nix`
+# classifyRoute + `edges/provides.nix` providesEdges modes). Declaration-in/declaration-out (Law C2):
+# each policy is compiled, then run on a synthetic FIRE-TIME ctx (a host node's own entity under
+# `__entry`) to observe the emitted declaration — `compile` itself constructs no edge.
+#
+# The REVIEWER-PINNED correctness rule (P1): a MODULE-source deliver realizes as `sources.synthesize`,
+# NEVER `sources.value` — v1's frozen sourceKey has no value arm, so a value edge could never byte-match
+# (it would pollute P1 with spurious extra-in-hoag entries). A class-source deliver → `sources.collected`.
+{ denCompat, ... }:
+let
+  inherit (denCompat)
+    deliver
+    route
+    provide
+    compile
+    ;
+
+  # One fixture, all matrix cells as policies (compiled once). The classes `src`/`dst` are declared so
+  # the C6 class-name → registration resolution finds them; `axon` is the firing host.
+  fixture = {
+    hosts.x86_64-linux.axon.class = "nixos";
+    classes.src = { };
+    classes.dst = { };
+    policies = {
+      # ── class source (route edge): mode is PATH-derived (merge at [], nest at a path), verbatim wins ──
+      cMerge = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+        })
+      ]; # at=[] → merge
+      cNest = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+          at = [ "p" ];
+        })
+      ]; # at=[p] → nest
+      cVerbatim = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+          mode = "verbatim";
+        })
+      ]; # → nest-verbatim
+      cVerbatimP = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+          at = [ "p" ];
+          mode = "verbatim";
+        })
+      ];
+      cAdapt = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+          at = [ "p" ];
+          adaptArgs = a: a;
+        })
+      ];
+      cGuard = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+          guard = _: true;
+        })
+      ];
+      cAdaptGuard = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+          at = [ "p" ];
+          adaptArgs = a: a;
+          guard = _: true;
+        })
+      ];
+      cVerbAdapt = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+          at = [ "p" ];
+          mode = "verbatim";
+          adaptArgs = a: a;
+        })
+      ];
+      # ── module source (provide edge): synthesize source, mode path-derived ──
+      pMerge = _ctx: [
+        (provide {
+          class = "dst";
+          module = {
+            foo = 1;
+          };
+        })
+      ]; # path=[] → merge
+      pNest = _ctx: [
+        (provide {
+          class = "dst";
+          module = {
+            foo = 1;
+          };
+          path = [ "p" ];
+        })
+      ];
+      # ── route sugar: reinstantiate → verbatim; intoPath → at ──
+      rReinst = _ctx: [
+        (route {
+          fromClass = "src";
+          intoClass = "dst";
+          reinstantiate = true;
+        })
+      ];
+      rIntoPath = _ctx: [
+        (route {
+          fromClass = "src";
+          intoClass = "dst";
+          intoPath = [ "q" ];
+        })
+      ];
+    };
+  };
+
+  compiled = compile fixture;
+  axon = compiled.entities.registries.host.axon;
+  axonHash = builtins.hashString "sha256" "host|name=axon";
+  # A synthetic FIRE-TIME context: the host node's own entity under `__entry` (the den-hoag ctx shape),
+  # plus the kind-keyed binding `firingScopeOf` recovers the kind from. `compile` returns a thunk; this
+  # is where den-hoag dispatch would supply ctx and the declaration materializes.
+  ctx = {
+    host = axon;
+    __entry = axon;
+  };
+  declOf = name: builtins.head (compiled.policies.${name} ctx);
+
+  # ── systemFor carry-in (§2.5): v1's per-host `system` reaches the built system via the compat nixos
+  #    instantiate wrapper. A stub terminal (identity) makes the injected module directly inspectable;
+  #    the mkDen path proves it through the real collect terminal's output (a host WITH content).
+  sysCompiled = compile { hosts.x86_64-linux.axon.class = "nixos"; };
+  sysAxon = sysCompiled.entities.registries.host.axon;
+  stubTerminal = args: args;
+  sysInstantiate = denCompat.mkNixosInstantiate {
+    inherit (sysCompiled.entities) systemFor;
+    terminal = stubTerminal;
+  };
+  sysInjected = sysInstantiate {
+    name = "axon";
+    hostModules = [ { existing = true; } ];
+    bindings = {
+      host = sysAxon;
+    };
+    classCfg = { };
+  };
+  sysHostModules = sysInjected.hostModules;
+
+  # End-to-end through the REAL den-hoag assembly: `mkDen` wires the compat systemFor instantiate into
+  # the nixos class config, and it crosses the real `collect` terminal. Driving the wired instantiate
+  # directly (rather than a host's resolved content) keeps this test independent of the compat aspect →
+  # class-module content path — the platform injection is what §2.5 pins, and collect keeps the injected
+  # module inspectable.
+  rt = denCompat.mkDen [ { config.den.hosts.x86_64-linux.axon.class = "nixos"; } ];
+  rtAxon = rt.den.registries.host.axon;
+  wiredInstantiate = rt.den.classConfigs.nixos.instantiate;
+  collectOut = wiredInstantiate {
+    name = "axon";
+    hostModules = [ { userMod = true; } ];
+    bindings = {
+      host = rtAxon;
+    };
+    classCfg = rt.den.classConfigs.nixos;
+  };
+  collectModules = collectOut.modules;
+
+  # tryEval helper for the error cells (the descriptor forces its validation eagerly).
+  fails = expr: !(builtins.tryEval expr).success;
+in
+{
+  flake.tests.compat-deliver-matrix = {
+    # ── class-source declaration shape (C6: source/target carry the firing scope + resolved classes) ──
+    test-class-source-is-collected = {
+      expr = (declOf "cMerge").source ? collected;
+      expected = true;
+    };
+    test-class-source-not-synthesize = {
+      expr = (declOf "cMerge").source ? synthesize;
+      expected = false;
+    };
+    test-collected-class-resolved = {
+      expr = (declOf "cMerge").source.collected.class;
+      expected = "src";
+    };
+    test-target-class-resolved = {
+      expr = (declOf "cMerge").target.class;
+      expected = "dst";
+    };
+    # firing scope: source scope AND target root are the firing entity (kind + id_hash nameSpec).
+    test-source-scope-firing = {
+      expr = (declOf "cMerge").source.collected.scope;
+      expected = {
+        kind = "host";
+        idHash = axonHash;
+      };
+    };
+    test-target-root-firing = {
+      expr = (declOf "cMerge").target.root;
+      expected = {
+        kind = "host";
+        idHash = axonHash;
+      };
+    };
+
+    # ── mode cells: verbatim → nest-verbatim; else PATH-derived (merge at [], nest at a path) ──
+    test-mode-merge = {
+      expr = (declOf "cMerge").mode;
+      expected = "merge";
+    };
+    test-mode-nest = {
+      expr = (declOf "cNest").mode;
+      expected = "nest";
+    };
+    test-mode-verbatim = {
+      expr = (declOf "cVerbatim").mode;
+      expected = "nest-verbatim";
+    };
+    test-mode-verbatim-with-path = {
+      expr = (declOf "cVerbatimP").mode;
+      expected = "nest-verbatim";
+    };
+    test-path-preserved = {
+      expr = (declOf "cNest").path;
+      expected = [ "p" ];
+    };
+    test-merge-path-empty = {
+      expr = (declOf "cMerge").path;
+      expected = [ ];
+    };
+
+    # ── adaptArgs × guard annotation cells (v1 records booleans, never the closures) ──
+    test-plain-no-annotations = {
+      expr = (declOf "cMerge").annotations;
+      expected = { };
+    };
+    test-adapt-annotation = {
+      expr = (declOf "cAdapt").annotations;
+      expected = {
+        adaptArgs = true;
+      };
+    };
+    test-adapt-closure-carried = {
+      expr = (declOf "cAdapt").adaptArgs != null;
+      expected = true;
+    };
+    test-guard-annotation = {
+      expr = (declOf "cGuard").annotations;
+      expected = {
+        guard = true;
+      };
+    };
+    test-guard-closure-carried = {
+      expr = (declOf "cGuard").guard != null;
+      expected = true;
+    };
+    test-adapt-guard-annotation = {
+      expr = (declOf "cAdaptGuard").annotations;
+      expected = {
+        adaptArgs = true;
+        guard = true;
+      };
+    };
+    test-verbatim-adapt-annotation = {
+      expr = (declOf "cVerbAdapt").annotations;
+      expected = {
+        adaptArgs = true;
+      };
+    };
+    test-verbatim-adapt-mode = {
+      expr = (declOf "cVerbAdapt").mode;
+      expected = "nest-verbatim";
+    };
+
+    # ── module source → synthesize, NEVER value (the reviewer-pinned P1 rule) ──
+    test-module-source-is-synthesize = {
+      expr = (declOf "pMerge").source ? synthesize;
+      expected = true;
+    };
+    test-module-source-not-value = {
+      expr = (declOf "pMerge").source ? value;
+      expected = false;
+    };
+    test-module-source-not-collected = {
+      expr = (declOf "pMerge").source ? collected;
+      expected = false;
+    };
+    test-provide-merge-mode = {
+      expr = (declOf "pMerge").mode;
+      expected = "merge";
+    };
+    test-provide-nest-mode = {
+      expr = (declOf "pNest").mode;
+      expected = "nest";
+    };
+    test-provide-target-class = {
+      expr = (declOf "pMerge").target.class;
+      expected = "dst";
+    };
+    # the synthesize identity carries the placement key (class + path), never the module content.
+    test-synthesize-spec-key = {
+      expr = (declOf "pNest").source.synthesize.spec.key;
+      expected = "provide/dst/p";
+    };
+
+    # ── route sugar: reinstantiate → nest-verbatim; intoPath → the target path ──
+    test-route-reinstantiate = {
+      expr = (declOf "rReinst").mode;
+      expected = "nest-verbatim";
+    };
+    test-route-intopath = {
+      expr = (declOf "rIntoPath").path;
+      expected = [ "q" ];
+    };
+    test-route-intopath-mode = {
+      expr = (declOf "rIntoPath").mode;
+      expected = "nest";
+    };
+
+    # ── §2.3 error cases (pinned message, same condition, definition-time) ──
+    test-error-invalid-mode = {
+      expr = fails (deliver {
+        from = "src";
+        to = "dst";
+        mode = "bogus";
+      });
+      expected = true;
+    };
+    test-error-verbatim-module = {
+      expr = fails (deliver {
+        from = {
+          module = { };
+        };
+        to = "dst";
+        mode = "verbatim";
+      });
+      expected = true;
+    };
+    test-error-route-path-conflict = {
+      expr = fails (route {
+        fromClass = "src";
+        intoClass = "dst";
+        intoPath = [ "a" ];
+        path = [ "b" ];
+      });
+      expected = true;
+    };
+    # unknown target class → the C6 named abort (unknownClass), forced through the resolved target.
+    test-error-unknown-class = {
+      expr = fails (
+        let
+          bad = compile {
+            classes.src = { };
+            policies.bad = _ctx: [
+              (deliver {
+                from = "src";
+                to = "nope";
+              })
+            ];
+          };
+        in
+        (builtins.head (bad.policies.bad ctx)).target.class
+      );
+      expected = true;
+    };
+
+    # ── the deliver SURFACE rejects the shim-internal fields (reached only through route's __extra):
+    #    they are NOT in its (strict, no-ellipsis) arg set, so passing either is an arity abort ──
+    test-deliver-surface-args = {
+      expr = builtins.attrNames (builtins.functionArgs deliver);
+      expected = [
+        "adaptArgs"
+        "at"
+        "from"
+        "guard"
+        "mode"
+        "to"
+      ];
+    };
+    test-deliver-rejects-reinstantiate = {
+      expr = builtins.functionArgs deliver ? reinstantiate;
+      expected = false;
+    };
+    test-deliver-rejects-append-to-parent = {
+      expr = builtins.functionArgs deliver ? appendToParent;
+      expected = false;
+    };
+
+    # ── systemFor carry-in (§2.5): v1 per-host `system` reaches the built system ──
+    test-systemfor-map = {
+      expr = sysCompiled.entities.systemFor sysAxon;
+      expected = "x86_64-linux";
+    };
+    # the wrapper PREPENDS the platform module ahead of the host's own modules.
+    test-systemfor-injected-module = {
+      expr = builtins.head sysHostModules;
+      expected = {
+        nixpkgs.hostPlatform.system = "x86_64-linux";
+      };
+    };
+    test-systemfor-preserves-host-modules = {
+      expr = builtins.elemAt sysHostModules 1;
+      expected = {
+        existing = true;
+      };
+    };
+    # end-to-end: the wired nixos instantiate crosses the real collect terminal with the platform module.
+    test-systemfor-wired-into-nixos-class = {
+      expr = collectOut.__terminal;
+      expected = "collect";
+    };
+    test-systemfor-collect-output = {
+      expr = builtins.any (
+        m: builtins.isAttrs m && (m.nixpkgs.hostPlatform.system or null) == "x86_64-linux"
+      ) collectModules;
+      expected = true;
+    };
+  };
+}
