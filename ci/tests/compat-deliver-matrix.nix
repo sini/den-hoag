@@ -4,9 +4,9 @@
 # `policy-effects.nix` fields, `edges/route.nix` classifyRoute + `edges/provides.nix` providesEdges
 # modes). Declaration-in/declaration-out (Law C2): the declaration is inert INTENT (resolved class
 # registrations + placement); the gen-edge record is rendered from it at the FIRING NODE by
-# output-modules' `edgesAt`. Two end-to-end sections then close the dispatch loop:
-#   • COMPAT: a v1 deliver policy through the FULL mkDen path lands its edge in `den.graph.trace`.
-#   • NATIVE: a `delivery` declaration over a channel with content moves it into `config(root)`.
+# output-modules' `edgesAt`. A fully-compat end-to-end section then closes the dispatch loop: a v1
+# deliver policy through the FULL mkDen path lands its edge in `den.graph.trace` AND moves an aspect's
+# channel content into `config(root)` — exercising the C1 aspect-record fix + quirk registration.
 #
 # REVIEWER-PINNED correctness rule: a MODULE-source deliver (provide) renders as `sources.collected` of
 # the TARGET class (edges/provides.nix:121-122 — the provided module rides the target scope's own bucket,
@@ -163,13 +163,19 @@ let
   };
   collectModules = collectOut.modules;
 
-  # ── COMPAT dispatch loop: a v1 deliver policy through the FULL mkDen path → an edge in the trace ──
+  # ── FULLY-COMPAT dispatch loop: a v1 deliver policy through the FULL mkDen path lands its edge in the
+  #    trace AND moves aspect channel content into config(root). This exercises the whole chain: the
+  #    include edge carries the FULL compiled aspect record (C1 fix — resolved-aspects reads it directly),
+  #    the quirk channel is registered (`src` gains the aspect's contribution), and the deliver resolves
+  #    `from`/`to` against the fold's channels — so the `src` channel is routed into `dst` in config.
   e2e = denCompat.mkDen [
     {
       config.den.hosts.x86_64-linux.axon.class = "nixos";
-      config.den.classes.src = { };
-      config.den.classes.dst = { };
-      config.den.policies.r = _ctx: [
+      config.den.quirks.src = { };
+      config.den.quirks.dst = { };
+      config.den.aspects.seed.src = [ "hello" ];
+      config.den.schema.host.includes = [ "seed" ];
+      config.den.policies.route1 = _ctx: [
         (deliver {
           from = "src";
           to = "dst";
@@ -186,6 +192,9 @@ let
     }
   ];
   e2eTrace = e2e.den.graph.trace "host:axon";
+  e2eConfig = e2e.den.output.outputFor "host:axon";
+  e2eSrcContribs =
+    ((e2e.den.structural.eval.get "host:axon" "received-collections").src or { }).contributions or [ ];
   # the route delivery edge: collected(src) → root(dst).
   routeEdges = builtins.filter (
     e:
@@ -202,59 +211,6 @@ let
   ) e2eTrace;
   # reviewer pin: the shim NEVER emits synthesize/value — every trace edge is collected.
   everyEdgeCollected = builtins.all (e: e.source.arm == "collected") e2eTrace;
-
-  # ── NATIVE content move: a `delivery` declaration over a channel with content lands it in config(root).
-  #    Isolated from the compat aspect→channel-content path (a separate C1 stub gap) — the delivery
-  #    MECHANISM (edgesAt render → edgesFor gather → the fold) is what §9 pins, proven directly here.
-  srcChan = {
-    id_hash = builtins.hashString "sha256" "src";
-    name = "src";
-  };
-  dstChan = {
-    id_hash = builtins.hashString "sha256" "dst";
-    name = "dst";
-  };
-  native = denHoag.mkDen [
-    { config.den.schema.host.parent = null; }
-    { config.den.host.axon = { }; }
-    { config.den.contentClass.host = "nixos"; }
-    {
-      config.den.quirks.src = { };
-      config.den.quirks.dst = { };
-    }
-    (
-      { config, ... }:
-      {
-        config.den.aspects.seed.src = [ "hello" ];
-        config.den.include = [
-          {
-            at = config.den.host.axon;
-            aspects = [ config.den.aspects.seed ];
-          }
-        ];
-      }
-    )
-    (
-      { config, ... }:
-      {
-        config.den.policies.route1 =
-          { host, ... }:
-          [
-            (denHoag.declare.delivery {
-              sourceClass = srcChan;
-              targetClass = dstChan;
-              module = null;
-              path = [ ];
-              mode = "merge";
-              adaptArgs = null;
-              guard = null;
-              annotations = { };
-            })
-          ];
-      }
-    )
-  ];
-  nativeConfig = native.den.output.outputFor "host:axon";
 
   # tryEval helper for the error cells (the descriptor forces its validation eagerly).
   fails = expr: !(builtins.tryEval expr).success;
@@ -479,13 +435,18 @@ in
       expected = true;
     };
 
-    # ── NATIVE content move: the delivery edge carries channel content into config(root) ──
-    test-native-content-moved = {
-      expr = nativeConfig."host:axon".dst;
+    # ── FULLY-COMPAT content: the C1 aspect fix makes the include carry content, so the host's channel
+    #    gains the aspect's contribution and the deliver routes it into config(root) ──
+    test-compat-channel-gains-aspect = {
+      expr = map (c: c.value) e2eSrcContribs;
       expected = [ [ "hello" ] ];
     };
-    test-native-source-retained = {
-      expr = nativeConfig."host:axon".src;
+    test-compat-content-moved = {
+      expr = e2eConfig."host:axon".dst;
+      expected = [ [ "hello" ] ];
+    };
+    test-compat-source-retained = {
+      expr = e2eConfig."host:axon".src;
       expected = [ [ "hello" ] ];
     };
 

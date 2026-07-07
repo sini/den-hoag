@@ -281,6 +281,20 @@ let
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
       classRegistry = builtinClasses // prelude.genAttrs declaredClassNames classEntry;
+
+      # A delivery names a FOLD BUCKET — in den-hoag that is a quirk channel (the fold operates on
+      # `received-collections`), so `resolveBucket` (used by `deliver`/`route`/`provide`) resolves
+      # against classes ∪ quirk channels: a channel name → a `{ id_hash; name }` channel entry (the name
+      # is the gen-edge collected `class`), a class name → its registration (a class-content delivery,
+      # whose fold bucket is empty until class content joins the fold, §9). A class shadows a channel of
+      # the same name (`// classRegistry` last). Unknown → the C6 named abort. `resolveClass` stays
+      # class-only for `contentClass`/kind selection.
+      channelNames = builtins.attrNames (v1Decls.quirks or { });
+      channelEntry = name: {
+        id_hash = builtins.hashString "sha256" "den-channel:${name}";
+        inherit name;
+      };
+      bucketRegistry = prelude.genAttrs channelNames channelEntry // classRegistry;
     in
     {
       schema = schemaDecls;
@@ -294,6 +308,7 @@ let
         ;
       kindIncludes = kindIncludesOf v1Schema;
       resolveClass = resolveClass classRegistry;
+      resolveBucket = resolveClass bucketRegistry;
       inherit aspectEntry classEntry;
     };
 in

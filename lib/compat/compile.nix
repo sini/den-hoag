@@ -31,7 +31,9 @@ let
     ing: d:
     let
       isModule = d.sourceClass == null;
-      toEntry = ing.resolveClass "deliver" d.target;
+      # `resolveBucket`: from/to name a den-hoag fold bucket (a quirk channel) or a class (§9). A channel
+      # delivery flows through the fold now; a class delivery's bucket is empty until class content joins.
+      toEntry = ing.resolveBucket "deliver" d.target;
       annotations =
         prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
         // prelude.optionalAttrs (d.guard != null) { guard = true; }
@@ -39,7 +41,7 @@ let
     in
     declare.delivery {
       # A module source collects the TARGET class (v1 provide); a class source collects `from`.
-      sourceClass = if isModule then toEntry else ing.resolveClass "deliver" d.sourceClass;
+      sourceClass = if isModule then toEntry else ing.resolveBucket "deliver" d.sourceClass;
       targetClass = toEntry;
       module = d.moduleSource;
       inherit (d)
@@ -68,16 +70,22 @@ let
     "_"
   ];
 
-  # Resolve a v1 aspect REFERENCE to a den-hoag aspect entry (id_hash). Accepts an entry (pass through),
-  # a `{ name; … }` aspect record, or a bare name string — the boundary conversion for the aspect row.
+  # Resolve a v1 aspect REFERENCE to the den-hoag aspect record den-hoag's resolution consumes. Accepts
+  # an already-resolved record (pass through), a `{ name; … }` record, or a bare name string. `aspectRec`
+  # (threaded from the inner block) maps a name to the FULL compiled aspect record — content + id_hash +
+  # name — NOT a bare `{ id_hash; name }` stub: `resolved-aspects.nix` `policyEdgeAspects` uses the
+  # edge's aspect record DIRECTLY as content (it never re-looks-up a registry), so a stub would resolve
+  # to an EMPTY aspect and a compat-included aspect would contribute no class/channel content (the C1
+  # gap the delivery content path exposed). The full record's `name` gives `gen-aspects.key` the same
+  # key a `neededBy` inclusion produces (dedup-coherent), and `id_hash` satisfies `declare.edge`'s A2.
   resolveAspectRef =
-    aspectEntry: ref:
+    aspectRec: ref:
     if builtins.isAttrs ref && ref ? id_hash then
       ref
     else if builtins.isAttrs ref && ref ? name then
-      aspectEntry ref.name
+      aspectRec ref.name
     else if builtins.isString ref then
-      aspectEntry ref
+      aspectRec ref
     else
       errors.identityLaw "policy aspect reference" ref;
 
@@ -118,7 +126,7 @@ let
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
   # checks pass; a stray string would abort named.
   translateEffect =
-    ing: effect:
+    ing: aspectRec: effect:
     let
       kind = effect.__policyEffect or null;
     in
@@ -127,9 +135,9 @@ let
     if effect.__delivery or false then
       [ (translateDelivery ing effect) ]
     else if kind == "include" then
-      [ (declare.edge (resolveAspectRef ing.aspectEntry effect.value)) ]
+      [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "exclude" then
-      [ (declare.drop (resolveAspectRef ing.aspectEntry effect.value)) ]
+      [ (declare.drop (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "resolve" then
       # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
       # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
@@ -185,11 +193,11 @@ let
   # lives inside `fn`, so den-hoag's dispatch runs it at every scope and `fn`'s own guard decides. The
   # translation of each effect is eager only when the body runs (per ctx); compile itself never runs it.
   compilePolicy =
-    ing: value: ctx:
-    prelude.concatMap (translateEffect ing) (innerFn value ctx);
+    ing: aspectRec: value: ctx:
+    prelude.concatMap (translateEffect ing aspectRec) (innerFn value ctx);
 
   compilePolicies =
-    ing: policies:
+    ing: aspectRec: policies:
     let
       names = builtins.attrNames policies;
       # Partition: `when`-over-inline-aspect values become aspects (conditional activation), everything
@@ -200,7 +208,7 @@ let
       policyNames = builtins.filter (n: !(isAspectValued n)) names;
     in
     {
-      policies = prelude.genAttrs policyNames (name: compilePolicy ing policies.${name});
+      policies = prelude.genAttrs policyNames (name: compilePolicy ing aspectRec policies.${name});
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
         name:
@@ -235,7 +243,20 @@ let
   v1Policies = v1Decls.policies or { };
   v1Classes = v1Decls.classes or { };
 
-  compiledPolicies = compilePolicies ing v1Policies;
+  # Name → the FULL compiled aspect record den-hoag's resolution consumes: the compiled content
+  # (`aspects.<name>`) plus its `{ id_hash; name }` identity. `resolved-aspects.nix` uses an edge's
+  # aspect record directly as content, so an include MUST carry content, not a stub (the C1 gap). An
+  # unknown name degrades to the bare identity (empty content), preserving the old no-abort behaviour.
+  #
+  # NO RECURSION CYCLE (the reference the DAG argument settles): `aspectRec` reads `aspects`; `aspects`
+  # reads `compiledPolicies.conditionalAspects`; `compiledPolicies` reads `aspectRec` — but ONLY through
+  # its `.policies` field. `.conditionalAspects` is built from the `when`-records alone (it never touches
+  # `aspectRec`), and `aspects` reads ONLY `.conditionalAspects`. So the dependency graph is
+  # `policies → aspectRec → aspects → conditionalAspects`, a DAG (`conditionalAspects ⊥ aspectRec`);
+  # laziness ties the knot without a loop.
+  aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
+
+  compiledPolicies = compilePolicies ing aspectRec v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → fire-at-kind policies: an aspect radiated to
   # every instance of a kind. Re-expressed as a den-hoag policy that emits one `edge` per aspect, gated
@@ -246,7 +267,7 @@ let
     # `ctx: [ edge … ]` — a bare body (den-hoag dispatch runs it fleet-wide); the kind-scoping is the
     # kind arg. Task 2's dispatch wiring narrows it; for C1 this is a declaration-producing policy.
     _ctx:
-    map (ref: declare.edge (resolveAspectRef ing.aspectEntry ref)) aspectRefs
+    map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
   ) ing.kindIncludes;
 
   aspects = builtins.mapAttrs (_: translateAspect) v1Aspects // compiledPolicies.conditionalAspects;
@@ -278,6 +299,10 @@ in
       ;
   };
   inherit aspects policies;
-  channels = { }; # the pipe stage vocabulary (Task 3)
+  # v1 `den.quirks.<name>` channel DECLARATIONS pass through to register the channels, so an aspect's
+  # quirk key resolves to a channel contribution rather than being class-classified or aborting as an
+  # unknown key. This is the channel REGISTRATION only; the pipe STAGE vocabulary (`pipe.from`/filter/
+  # fold → the operator DAG on a channel) lands with Task 3, which extends this.
+  channels = v1Decls.quirks or { };
   classes = builtins.mapAttrs (_: translateClass) v1Classes;
 }
