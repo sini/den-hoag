@@ -9,11 +9,18 @@ naming, forwarding, and attrset assembly.
 ## The four concerns
 
 | Concern | Meaning | Substrate |
-| ------------- | -------------- | --------------------------------------------- |
-| **policies** | relationships | effect constructors + `gen-dispatch` dispatch |
+| ------------- | -------------- | --------------------------------------------------------------- |
+| **policies** | relationships | declaration constructors + `gen-dispatch` rule evaluation |
 | **quirks** | data | one fleet-level `gen-pipe.compose` |
 | **classes** | systems | `gen-class` partition / contract / apply / gate |
 | **aspects** | behavior | `gen-resolve` over `gen-scope`, settings via `gen-settings` |
+
+A **policy** is a rule (`den.policies.<name> = ctx: [ declarations ]`) evaluated at graph nodes; a
+**declaration** is an inert, tagged graph fact (`spawn`/`link`/`member`/`edge`/`configure`/`demand`/…)
+the rule produces. There is no effect runtime — no queue, no resume, no router. A producer *attribute*
+computes declaration lists, consumer *attributes* filter them by kind, and attribute demand + edge
+toposort are the only evaluation order. See [REFERENCE.md](./REFERENCE.md) for the law index and the
+grounded-terminology mapping.
 
 ## Architecture
 
@@ -36,20 +43,40 @@ Two binding laws govern the assembly:
 
 ## Usage
 
-Flake consumers use the `.lib` output:
+`mkDen` takes a list of declaration modules (the fleet) and returns the assembled fleet:
 
 ```nix
 inputs.den-hoag.url = "github:sini/den-hoag";
 # ...
-den-hoag.lib.mkDen [ ./your-modules ];
+den-hoag.lib.mkDen fleetModules
+# => { den; graph; nixosConfigurations; }
 ```
+
+- **`den`** — the full assembly surface: `schema`/`registries`/`meta` (entities), `fleet`/`cells`
+  (the restricted product), `structural` (the resolve eval), `aspectsAt` (the narrow settings accessor),
+  `quirkDag`/`receivedOutputs` (the quirk channels), `demandKinds`/`demandResolution`/`demandEdges`
+  (the demand stratum), `output` (the edge-fold + per-class terminal), and `graph` (the escape hatch).
+- **`graph`** — the read-only graph escape hatch (`scope`/`fleet`/`edges`/`trace`/`demands`); `trace` is
+  the frozen, hashable parity oracle E(topology).
+- **`nixosConfigurations`** — the `nixos` class's per-host systems, keyed by host name. Set
+  `den.nixpkgs` (the nixpkgs flake) in a fleet module to make these REAL NixOS systems (the ONE
+  gen-flake crossing); absent, they are the nixpkgs-free `collect` artifacts.
 
 Non-flake consumers import the repo root, which self-resolves every dependency from the
 pinned `flake.lock`:
 
 ```nix
-(import ./den-hoag).mkDen [ ./your-modules ];
+(import ./den-hoag).mkDen fleetModules
 ```
+
+### Authoring policies (binding contract)
+
+A policy is `den.policies.<name> = ctx: [ declarations ]`. **The `ctx` function MUST use an OPEN
+attrset pattern** — `{ host, ... }:`, never `{ host }:`. `gen-dispatch` calls a policy with the FULL
+node context, so a closed pattern throws on the extra keys; the open pattern's `functionArgs` are also
+what the guard machinery reads to decide where the policy fires (a policy fires only where every
+destructured key is present in the node's context). A channel-named argument — a key that is never a
+context binding — therefore never fires, which is the intended idiom for "this policy is inert".
 
 ## Development
 

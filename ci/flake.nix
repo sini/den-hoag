@@ -18,6 +18,11 @@
       inherit inputs;
       name = "den-hoag";
       testModules = ./tests;
-      specialArgs = { inherit denHoag nixpkgsLib denHoagSrc; };
+      # `nixpkgs` (the FLAKE — carrying `.lib.nixosSystem`) is threaded through for the end-to-end
+      # terminal-crossing test (den-hoag's ONE nixpkgs boundary); every other suite ignores it (`...`).
+      specialArgs = {
+        inherit denHoag nixpkgsLib denHoagSrc;
+        nixpkgs = inputs.nixpkgs;
+      };
     };
 }
