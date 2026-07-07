@@ -13,6 +13,7 @@
   ingest,
   declare,
   errors,
+  sentinels,
 }:
 let
   # The §2.4 pipe stage vocabulary: `den.quirks.<name>` → a channel registration (`channelOf`) and the
@@ -103,29 +104,34 @@ let
   # to `{ includes = [ fn ]; }` (v1's own coercion), `excludes` folds into `meta.drop`, class keys are
   # grounded, and the v1-only structural keys are dropped.
   translateAspect =
-    aspect:
-    if builtins.isFunction aspect then
-      { includes = [ aspect ]; }
-    else
-      let
-        excludes = aspect.excludes or [ ];
-        withoutDropped = builtins.removeAttrs aspect droppedAspectKeys;
-        grounded = prelude.foldl' (
-          acc: k:
-          let
-            k' = v1ClassKeyMap.${k} or k;
-          in
-          builtins.removeAttrs acc [ k ] // { ${k'} = aspect.${k}; }
-        ) withoutDropped (builtins.attrNames withoutDropped);
-        # Fold `excludes` into `meta.drop` (aspect-level constraint) without clobbering a declared drop.
-        meta = grounded.meta or { };
-        metaWithDrop =
-          if excludes == [ ] then
-            grounded.meta or null
-          else
-            meta // { drop = (meta.drop or [ ]) ++ excludes; };
-      in
-      grounded // (if metaWithDrop == null then { } else { meta = metaWithDrop; });
+    name: aspect:
+    # LEGACY SURFACE SENTINEL (C5): `provides` must have been desugared by legacy/provides.nix (applied
+    # by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is severed —
+    # fail LOUDLY naming the surface rather than dropping the declaration (sentinels.nix / errors.nix).
+    builtins.seq (sentinels.provides name aspect) (
+      if builtins.isFunction aspect then
+        { includes = [ aspect ]; }
+      else
+        let
+          excludes = aspect.excludes or [ ];
+          withoutDropped = builtins.removeAttrs aspect droppedAspectKeys;
+          grounded = prelude.foldl' (
+            acc: k:
+            let
+              k' = v1ClassKeyMap.${k} or k;
+            in
+            builtins.removeAttrs acc [ k ] // { ${k'} = aspect.${k}; }
+          ) withoutDropped (builtins.attrNames withoutDropped);
+          # Fold `excludes` into `meta.drop` (aspect-level constraint) without clobbering a declared drop.
+          meta = grounded.meta or { };
+          metaWithDrop =
+            if excludes == [ ] then
+              grounded.meta or null
+            else
+              meta // { drop = (meta.drop or [ ]) ++ excludes; };
+        in
+        grounded // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
+    );
 
   # Translate ONE v1 policy effect record → den-hoag declaration(s): the structural/resolution
   # vocabulary (include/exclude/resolve + the instantiate spawn). The delivery-edge vocabulary
@@ -281,7 +287,7 @@ let
     map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
   ) ing.kindIncludes;
 
-  aspects = builtins.mapAttrs (_: translateAspect) v1Aspects // compiledPolicies.conditionalAspects;
+  aspects = builtins.mapAttrs translateAspect v1Aspects // compiledPolicies.conditionalAspects;
 
   # The synthetic `__kindInclude__<kind>` policy names cannot collide with a compiled
   # `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a v1 policy name is a

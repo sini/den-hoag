@@ -16,6 +16,10 @@
 }@deps:
 let
   errors = import ./errors.nix { inherit prelude; };
+  # Legacy-surface sentinels (Law C5's error half): the shim core's knowledge that `provides`/`forwards`
+  # EXIST, so compile can refuse an un-desugared key when the legacy module is severed. Core file
+  # (references only `errors`, never a legacy module) — severability holds.
+  sentinels = import ./sentinels.nix { inherit errors; };
   # The ingestion boundary (Law C6): the ONE place v1 name-strings become id_hash-bearing entries.
   ingest = import ./ingest.nix {
     inherit
@@ -33,6 +37,7 @@ let
       prelude
       ingest
       errors
+      sentinels
       ;
     inherit (denHoag) declare;
   };

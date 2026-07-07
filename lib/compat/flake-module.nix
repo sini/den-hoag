@@ -140,7 +140,20 @@ let
     legacy.provides
     legacy.forwards
   ];
-  mkDen = userModules: denHoag.mkDen [ (mkFleetModule (compile (evalV1 userModules))) ];
+
+  # The LEGACY provides desugar (§B4a): the ONE reference to `legacy.provides` outside `legacy/` (the
+  # flakeModule assembly, §2.1 severance) — applied to the v1 aspects BEFORE compile so den-hoag sees
+  # only grounded `neededBy`/`includes`/content. Severed (no `desugar` ⇒ the identity), a residual
+  # `provides` key trips compile's sentinel (Law C5). Pure (Law C2): a v1-aspects → v1-aspects transform.
+  legacyProvidesDesugar = legacy.provides.desugar or (aspects: aspects);
+  desugarLegacy =
+    v1:
+    v1
+    // {
+      aspects = legacyProvidesDesugar (v1.aspects or { });
+    };
+  mkDen =
+    userModules: denHoag.mkDen [ (mkFleetModule (compile (desugarLegacy (evalV1 userModules)))) ];
 in
 {
   inherit

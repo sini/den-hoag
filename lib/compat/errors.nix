@@ -17,6 +17,13 @@ in
   legacyProvidesAbsent =
     aspect:
     fail "legacy provides (C5)" "aspect `${aspect}` uses legacy `provides` — import denCompat.legacy.provides";
+
+  # A `provides.<key> = <value>` whose value is neither an aspect attrset nor a parametric aspect
+  # function (a scalar/string) — it cannot become deliverable content. Named at definition (legacy
+  # provides desugar, C4) rather than surfacing as a deep aspect-merge failure.
+  provideValueShape =
+    got:
+    fail "legacy provides (C4)" "a `provides.<key>` value must be an aspect (attrset or parametric function), got ${builtins.typeOf got}";
   legacyForwardsAbsent =
     what:
     fail "legacy forwards (C5)" "`${what}` uses legacy `forwards` — import denCompat.legacy.forwards";
