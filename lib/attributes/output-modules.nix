@@ -61,6 +61,43 @@ let
 
   received = id: result.get id "received-collections";
 
+  # Delivery declarations (den-compat's `deliver`/`route`/`provide`, `declare.delivery`) dispatched at a
+  # node → gen-edge records, rendered HERE where the firing scope (the node id) and the collected
+  # membership are known (the declaration itself is inert intent; C2). A native den-hoag fleet emits no
+  # `delivery` declaration, so this is `[ ]` for it — byte-identical to the pre-delivery fold. Per-node
+  # so `edgesFor` gathers each into the root it targets (the first-class `appendToParent`), and the
+  # frozen trace picks it up (C7 traceHoag). NO-EFFECT-RUNTIME: the record is built from declaration
+  # DATA, never stored dispatch state.
+  #
+  # Source arm mirrors v1: a class source collects the `from` class at the firing scope; a MODULE source
+  # (provide) collects the TARGET class (edges/provides.nix:121 — the provided module rides the target
+  # scope's own bucket). `members = [ id ]` is the own-scope collection (v1 simple-route default;
+  # collectSubtree is Task 5). `adapt` applies to nest modes only (a merge edge carries none, gen-edge E).
+  deliveryEdgesAt =
+    id:
+    let
+      deliveries = builtins.filter (a: (a.__action or null) == "delivery") (
+        (result.get id "declarations").actions.resolution or [ ]
+      );
+      renderDelivery =
+        d:
+        edge.edge {
+          source = edge.sources.collected {
+            scope = id;
+            class = (if d.module != null then d.targetClass else d.sourceClass).name;
+            members = [ id ];
+          };
+          target = edge.targets.root {
+            root = id;
+            class = d.targetClass.name;
+          };
+          inherit (d) path mode;
+          adapt = if d.mode == "merge" then null else d.adaptArgs;
+          annotations = d.annotations or { };
+        };
+    in
+    map renderDelivery deliveries;
+
   # gen-edge graph accessor (§2.3). Isolation makes every non-root scope node its OWN edge-root: a
   # user cell (home-manager) is a distinct root from its host (nixos), so a host's subtree collects only
   # the host's own channel buckets — matching the direct gen-pipe read (Law A15 "no side channel").
@@ -70,10 +107,10 @@ let
     parentOf = id: (result.node id).parent;
     isolatedAt = id: (result.node id).parent != null;
     channelsOf = id: builtins.filter (ch: !(isReserved ch)) (builtins.attrNames (received id));
-    # v1: no per-NODE declared content edges. den-hoag emits no aspect-scoped content edge; the only
-    # non-default edges in the fleet are the demand edges, and those are fleet-global (not attributable
-    # to any one node) — they join the fold by direct concatenation in `outputFor`/`traceFor`, not here.
-    edgesAt = _id: [ ];
+    # den-hoag emits no aspect-scoped content edge natively; the per-node declared edges are den-compat's
+    # delivery declarations (rendered above), and the fleet-global demand edges join by concatenation in
+    # `outputFor`/`traceFor`. A delivery-free, demand-free fleet keeps `edgesAt id = [ ]`.
+    edgesAt = deliveryEdgesAt;
     nameOf = id: id;
     # collection → edge-seed adaptation (§2.10). A deferred contribution's `value` is a poison thunk
     # (gen-pipe E6) — carried here UNFORCED (normalizeSeed never forces content), resolved only at a

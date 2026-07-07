@@ -26,15 +26,13 @@ let
       ;
   };
   # The pure compile core (Law C2): v1 declarations → den-hoag concern declarations. `declare` is
-  # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets); `edge` is
-  # gen-edge's source/target constructors (the `collected`/`synthesize` delivery sources built at
-  # rule-fire time inside the compiled policy thunk — never on the pure compile path, C2).
+  # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets, including the
+  # `delivery` intent kind); the gen-edge record is rendered from that intent later, at the firing node.
   compile = import ./compile.nix {
     inherit
       prelude
       ingest
       errors
-      edge
       ;
     inherit (denHoag) declare;
   };

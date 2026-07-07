@@ -13,81 +13,42 @@
   ingest,
   declare,
   errors,
-  edge,
 }:
 let
-  # The firing scope of a delivery, resolved from the rule's fire-time context (C2: unknowable at
-  # compile — the shim emits a policy thunk; den-hoag dispatch supplies `ctx`). `ctx.__entry` is the
-  # node's OWN entity entry; its kind is recovered by matching that id_hash against the kind-keyed
-  # entries the enriched-context also carries (the den-hoag twin of v1 `edge.nix` `entityKindOf`).
-  # Returns a gen-edge nameSpec (`{ kind; idHash; }`); an unresolved firing scope (e.g. the stratum
-  # PROBE's empty sentinel ctx) falls back to an opaque marker so classification never crashes.
-  firingScopeOf =
-    ctx:
-    let
-      own = ctx.__entry or null;
-      isEntityKey =
-        k: !(prelude.hasPrefix "__" k) && builtins.isAttrs (ctx.${k} or null) && (ctx.${k} ? id_hash);
-      matching = builtins.filter (k: (ctx.${k}.id_hash or null) == (own.id_hash or null)) (
-        builtins.filter isEntityKey (builtins.attrNames ctx)
-      );
-    in
-    if own != null && matching != [ ] then
-      {
-        kind = builtins.head matching;
-        idHash = own.id_hash;
-      }
-    else
-      { opaque = "«unresolved-firing-scope»"; };
-
-  # A delivery DESCRIPTOR (`deliver`/`route`/`provide`, deliver.nix) → a den-hoag delivery DECLARATION:
-  # the gen-edge source + root target for the firing scope, plus the trace-facing annotation booleans
-  # (v1 route.nix/provides.nix record `adaptArgs = true` / `guard = true`, never the closures). A
-  # class source → `collected` (the firing scope's `from`-class bucket); a module source → `synthesize`
-  # (the injected module + its placement identity), NEVER `value` — v1's frozen sourceKey has no value
-  # arm, so a value edge could never byte-match (P1). The class-name strings resolve to registrations
-  # here (C6, unknown → named abort); the raw names never survive onward. This runs at FIRE time inside
-  # den-hoag's dispatch (compile itself returns a thunk), so no edge is constructed on the compile path.
+  # A delivery DESCRIPTOR (`deliver`/`route`/`provide`, deliver.nix) → a den-hoag `delivery` DECLARATION
+  # (resolution stratum): the delivery INTENT — resolved class registrations + placement + the
+  # trace-facing annotation booleans. The gen-edge record is rendered from this intent at the FIRING
+  # NODE by output-modules' `edgesAt` (which owns the firing scope + collected membership); no gen-edge
+  # record is built on the compile path (C2 — compile returns policy thunks; den-hoag dispatches them).
+  #
+  # SOURCE ARM (v1-faithful): a class source → `collected` of the `from` class (edges/route.nix); a
+  # MODULE source (provide) → `collected` of the TARGET class (edges/provides.nix:121-122 — the provided
+  # module rides the target scope's OWN bucket and is carried by the default fold, hence `mergeHalf =
+  # "default-fold"`). NEVER `synthesize` (that is only v1's __complexForward adapter arm, Task 5) and
+  # NEVER `value` (v1's frozen sourceKey has no value arm — a value edge could never byte-match, P1).
+  # Class-name strings resolve to registrations HERE (C6, unknown → named abort); names never survive on.
   translateDelivery =
-    ing: ctx: d:
+    ing: d:
     let
-      firing = firingScopeOf ctx;
       isModule = d.sourceClass == null;
       toEntry = ing.resolveClass "deliver" d.target;
-      source =
-        if isModule then
-          edge.sources.synthesize {
-            spec.key = prelude.concatStringsSep "/" (
-              [
-                "provide"
-                d.target
-              ]
-              ++ d.path
-            );
-            module = d.moduleSource;
-          }
-        else
-          edge.sources.collected {
-            scope = firing;
-            class = (ing.resolveClass "deliver" d.sourceClass).name;
-          };
-      target = edge.targets.root {
-        root = firing;
-        class = toEntry.name;
-      };
       annotations =
         prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
-        // prelude.optionalAttrs (d.guard != null) { guard = true; };
+        // prelude.optionalAttrs (d.guard != null) { guard = true; }
+        // prelude.optionalAttrs isModule { mergeHalf = "default-fold"; };
     in
-    {
-      __delivery = true;
-      inherit source target annotations;
+    declare.delivery {
+      # A module source collects the TARGET class (v1 provide); a class source collects `from`.
+      sourceClass = if isModule then toEntry else ing.resolveClass "deliver" d.sourceClass;
+      targetClass = toEntry;
+      module = d.moduleSource;
       inherit (d)
         path
         mode
         guard
         adaptArgs
         ;
+      inherit annotations;
     };
 
   # v1 class-key names that differ from den-hoag's (§ grounded terminology): a v1 aspect's class key is
@@ -157,14 +118,14 @@ let
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
   # checks pass; a stray string would abort named.
   translateEffect =
-    ing: ctx: effect:
+    ing: effect:
     let
       kind = effect.__policyEffect or null;
     in
-    # A delivery descriptor (deliver/route/provide, deliver.nix) → a den-hoag delivery declaration. The
-    # firing scope reads `ctx` (fire-time), so this branch takes ctx where the others ignore it.
+    # A delivery descriptor (deliver/route/provide, deliver.nix) → a den-hoag `delivery` declaration
+    # (intent; the gen-edge record is rendered at the firing node by output-modules' edgesAt).
     if effect.__delivery or false then
-      [ (translateDelivery ing ctx effect) ]
+      [ (translateDelivery ing effect) ]
     else if kind == "include" then
       [ (declare.edge (resolveAspectRef ing.aspectEntry effect.value)) ]
     else if kind == "exclude" then
@@ -225,7 +186,7 @@ let
   # translation of each effect is eager only when the body runs (per ctx); compile itself never runs it.
   compilePolicy =
     ing: value: ctx:
-    prelude.concatMap (translateEffect ing ctx) (innerFn value ctx);
+    prelude.concatMap (translateEffect ing) (innerFn value ctx);
 
   compilePolicies =
     ing: policies:

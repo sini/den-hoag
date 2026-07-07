@@ -38,6 +38,7 @@ let
       "reroute"
       "inject"
       "configure"
+      "delivery"
     ];
     collection = [ "pipeOp" ];
     demand = [ "demand" ];
@@ -106,6 +107,31 @@ let
       a = requireEntry "drop" aspect;
     in
     builtins.seq a (actions.drop { aspect = a; });
+
+  # `delivery { sourceClass; targetClass; module ? null; path ? []; mode; adaptArgs ? null;
+  # guard ? null; annotations ? {}; }` — resolution: a v1 delivery-edge INTENT (den-compat's
+  # `deliver`/`route`/`provide`). The gen-edge record is rendered from this at the FIRING NODE by
+  # output-modules' `edgesAt` (which owns the firing scope + collected membership) — the declaration
+  # itself is inert intent. `sourceClass`/`targetClass` are class REGISTRATIONS (identity-law A2,
+  # entry-checked EAGERLY like `edge`); the remaining fields are placement + closures den-hoag applies
+  # at materialization. A native den-hoag fleet emits none of these — only den-compat does.
+  delivery =
+    args:
+    let
+      s = requireEntry "delivery.sourceClass" args.sourceClass;
+      t = requireEntry "delivery.targetClass" args.targetClass;
+    in
+    builtins.seq s (
+      builtins.seq t (
+        actions.delivery (
+          args
+          // {
+            sourceClass = s;
+            targetClass = t;
+          }
+        )
+      )
+    );
 
   # `link { target }` — structural: an I-edge to an EXISTING entity node (annotates, never
   # creates/re-resolves). `target` denotes an entity node — an identity-law position (A2) — so it
@@ -176,6 +202,7 @@ actions
     configure
     edge
     drop
+    delivery
     link
     ;
   demand = demand';

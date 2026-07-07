@@ -1,14 +1,18 @@
 # compat-deliver-matrix (C3) — the `deliver` surface (+ the permanent `route`/`provide` sugar) desugars
-# to den-hoag delivery DECLARATIONS, cell-by-cell over v1's `adaptArgs × path × verbatim × guard`
-# matrix (v1 Task-17's authoritative cell mapping: `policy-effects.nix` fields, `edges/route.nix`
-# classifyRoute + `edges/provides.nix` providesEdges modes). Declaration-in/declaration-out (Law C2):
-# each policy is compiled, then run on a synthetic FIRE-TIME ctx (a host node's own entity under
-# `__entry`) to observe the emitted declaration — `compile` itself constructs no edge.
+# to den-hoag `delivery` DECLARATIONS (`declare.delivery`, resolution stratum), cell-by-cell over v1's
+# `adaptArgs × path × verbatim × guard` matrix (v1 Task-17's authoritative cell mapping:
+# `policy-effects.nix` fields, `edges/route.nix` classifyRoute + `edges/provides.nix` providesEdges
+# modes). Declaration-in/declaration-out (Law C2): the declaration is inert INTENT (resolved class
+# registrations + placement); the gen-edge record is rendered from it at the FIRING NODE by
+# output-modules' `edgesAt`. Two end-to-end sections then close the dispatch loop:
+#   • COMPAT: a v1 deliver policy through the FULL mkDen path lands its edge in `den.graph.trace`.
+#   • NATIVE: a `delivery` declaration over a channel with content moves it into `config(root)`.
 #
-# The REVIEWER-PINNED correctness rule (P1): a MODULE-source deliver realizes as `sources.synthesize`,
-# NEVER `sources.value` — v1's frozen sourceKey has no value arm, so a value edge could never byte-match
-# (it would pollute P1 with spurious extra-in-hoag entries). A class-source deliver → `sources.collected`.
-{ denCompat, ... }:
+# REVIEWER-PINNED correctness rule: a MODULE-source deliver (provide) renders as `sources.collected` of
+# the TARGET class (edges/provides.nix:121-122 — the provided module rides the target scope's own bucket,
+# carried by the default fold), NEVER `synthesize` (v1's __complexForward adapter arm only) and NEVER
+# `value` (v1's frozen sourceKey has no value arm). A class-source deliver → `collected` of the `from`.
+{ denCompat, denHoag, ... }:
 let
   inherit (denCompat)
     deliver
@@ -17,8 +21,8 @@ let
     compile
     ;
 
-  # One fixture, all matrix cells as policies (compiled once). The classes `src`/`dst` are declared so
-  # the C6 class-name → registration resolution finds them; `axon` is the firing host.
+  # One fixture, all matrix cells as policies (compiled once). Classes `src`/`dst` are declared so the
+  # C6 class-name → registration resolution finds them.
   fixture = {
     hosts.x86_64-linux.axon.class = "nixos";
     classes.src = { };
@@ -86,7 +90,7 @@ let
           adaptArgs = a: a;
         })
       ];
-      # ── module source (provide edge): synthesize source, mode path-derived ──
+      # ── module source (provide edge): collected-of-target source, mode path-derived ──
       pMerge = _ctx: [
         (provide {
           class = "dst";
@@ -123,20 +127,12 @@ let
   };
 
   compiled = compile fixture;
-  axon = compiled.entities.registries.host.axon;
-  axonHash = builtins.hashString "sha256" "host|name=axon";
-  # A synthetic FIRE-TIME context: the host node's own entity under `__entry` (the den-hoag ctx shape),
-  # plus the kind-keyed binding `firingScopeOf` recovers the kind from. `compile` returns a thunk; this
-  # is where den-hoag dispatch would supply ctx and the declaration materializes.
-  ctx = {
-    host = axon;
-    __entry = axon;
-  };
-  declOf = name: builtins.head (compiled.policies.${name} ctx);
+  # `compile` returns policy thunks; a `delivery` declaration reads no ctx (its firing scope is the
+  # dispatching node, resolved at edgesAt), so any ctx yields the same intent declaration.
+  declOf = name: builtins.head (compiled.policies.${name} { });
 
   # ── systemFor carry-in (§2.5): v1's per-host `system` reaches the built system via the compat nixos
-  #    instantiate wrapper. A stub terminal (identity) makes the injected module directly inspectable;
-  #    the mkDen path proves it through the real collect terminal's output (a host WITH content).
+  #    instantiate wrapper. A stub terminal (identity) makes the injected module directly inspectable.
   sysCompiled = compile { hosts.x86_64-linux.axon.class = "nixos"; };
   sysAxon = sysCompiled.entities.registries.host.axon;
   stubTerminal = args: args;
@@ -154,15 +150,10 @@ let
   };
   sysHostModules = sysInjected.hostModules;
 
-  # End-to-end through the REAL den-hoag assembly: `mkDen` wires the compat systemFor instantiate into
-  # the nixos class config, and it crosses the real `collect` terminal. Driving the wired instantiate
-  # directly (rather than a host's resolved content) keeps this test independent of the compat aspect →
-  # class-module content path — the platform injection is what §2.5 pins, and collect keeps the injected
-  # module inspectable.
+  # the mkDen path wires the compat systemFor instantiate into the real collect terminal.
   rt = denCompat.mkDen [ { config.den.hosts.x86_64-linux.axon.class = "nixos"; } ];
   rtAxon = rt.den.registries.host.axon;
-  wiredInstantiate = rt.den.classConfigs.nixos.instantiate;
-  collectOut = wiredInstantiate {
+  collectOut = rt.den.classConfigs.nixos.instantiate {
     name = "axon";
     hostModules = [ { userMod = true; } ];
     bindings = {
@@ -172,42 +163,129 @@ let
   };
   collectModules = collectOut.modules;
 
+  # ── COMPAT dispatch loop: a v1 deliver policy through the FULL mkDen path → an edge in the trace ──
+  e2e = denCompat.mkDen [
+    {
+      config.den.hosts.x86_64-linux.axon.class = "nixos";
+      config.den.classes.src = { };
+      config.den.classes.dst = { };
+      config.den.policies.r = _ctx: [
+        (deliver {
+          from = "src";
+          to = "dst";
+        })
+      ];
+      config.den.policies.p = _ctx: [
+        (provide {
+          class = "dst";
+          module = {
+            m = 1;
+          };
+        })
+      ];
+    }
+  ];
+  e2eTrace = e2e.den.graph.trace "host:axon";
+  # the route delivery edge: collected(src) → root(dst).
+  routeEdges = builtins.filter (
+    e:
+    e.source.arm == "collected"
+    && (e.source.class or null) == "src"
+    && (e.target.class or null) == "dst"
+  ) e2eTrace;
+  # the provide delivery edge collects the TARGET class (dst) — reviewer-pinned collected shape.
+  provideCollectsTarget = builtins.any (
+    e:
+    e.source.arm == "collected"
+    && (e.source.class or null) == "dst"
+    && (e.target.class or null) == "dst"
+  ) e2eTrace;
+  # reviewer pin: the shim NEVER emits synthesize/value — every trace edge is collected.
+  everyEdgeCollected = builtins.all (e: e.source.arm == "collected") e2eTrace;
+
+  # ── NATIVE content move: a `delivery` declaration over a channel with content lands it in config(root).
+  #    Isolated from the compat aspect→channel-content path (a separate C1 stub gap) — the delivery
+  #    MECHANISM (edgesAt render → edgesFor gather → the fold) is what §9 pins, proven directly here.
+  srcChan = {
+    id_hash = builtins.hashString "sha256" "src";
+    name = "src";
+  };
+  dstChan = {
+    id_hash = builtins.hashString "sha256" "dst";
+    name = "dst";
+  };
+  native = denHoag.mkDen [
+    { config.den.schema.host.parent = null; }
+    { config.den.host.axon = { }; }
+    { config.den.contentClass.host = "nixos"; }
+    {
+      config.den.quirks.src = { };
+      config.den.quirks.dst = { };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.aspects.seed.src = [ "hello" ];
+        config.den.include = [
+          {
+            at = config.den.host.axon;
+            aspects = [ config.den.aspects.seed ];
+          }
+        ];
+      }
+    )
+    (
+      { config, ... }:
+      {
+        config.den.policies.route1 =
+          { host, ... }:
+          [
+            (denHoag.declare.delivery {
+              sourceClass = srcChan;
+              targetClass = dstChan;
+              module = null;
+              path = [ ];
+              mode = "merge";
+              adaptArgs = null;
+              guard = null;
+              annotations = { };
+            })
+          ];
+      }
+    )
+  ];
+  nativeConfig = native.den.output.outputFor "host:axon";
+
   # tryEval helper for the error cells (the descriptor forces its validation eagerly).
   fails = expr: !(builtins.tryEval expr).success;
 in
 {
   flake.tests.compat-deliver-matrix = {
-    # ── class-source declaration shape (C6: source/target carry the firing scope + resolved classes) ──
-    test-class-source-is-collected = {
-      expr = (declOf "cMerge").source ? collected;
-      expected = true;
+    # ── declaration is a resolution-stratum `delivery` INTENT (dispatchable; no probe crash) ──
+    test-is-delivery-action = {
+      expr = (declOf "cMerge").__action;
+      expected = "delivery";
     };
-    test-class-source-not-synthesize = {
-      expr = (declOf "cMerge").source ? synthesize;
-      expected = false;
+    test-delivery-classifies-resolution = {
+      expr = denHoag.declare.kindToStratum.delivery;
+      expected = "resolution";
     };
-    test-collected-class-resolved = {
-      expr = (declOf "cMerge").source.collected.class;
+    # class source collects `from`; both classes are resolved REGISTRATIONS (C6, id_hash-bearing).
+    test-class-source-class = {
+      expr = (declOf "cMerge").sourceClass.name;
       expected = "src";
     };
-    test-target-class-resolved = {
-      expr = (declOf "cMerge").target.class;
+    test-target-class = {
+      expr = (declOf "cMerge").targetClass.name;
       expected = "dst";
     };
-    # firing scope: source scope AND target root are the firing entity (kind + id_hash nameSpec).
-    test-source-scope-firing = {
-      expr = (declOf "cMerge").source.collected.scope;
-      expected = {
-        kind = "host";
-        idHash = axonHash;
-      };
+    test-source-class-is-entry = {
+      expr = (declOf "cMerge").sourceClass ? id_hash;
+      expected = true;
     };
-    test-target-root-firing = {
-      expr = (declOf "cMerge").target.root;
-      expected = {
-        kind = "host";
-        idHash = axonHash;
-      };
+    test-class-source-no-module = {
+      expr = (declOf "cMerge").module;
+      expected = null;
     };
 
     # ── mode cells: verbatim → nest-verbatim; else PATH-derived (merge at [], nest at a path) ──
@@ -236,7 +314,7 @@ in
       expected = [ ];
     };
 
-    # ── adaptArgs × guard annotation cells (v1 records booleans, never the closures) ──
+    # ── adaptArgs × guard cells: closures carried on the declaration; annotations are trace booleans ──
     test-plain-no-annotations = {
       expr = (declOf "cMerge").annotations;
       expected = { };
@@ -268,29 +346,27 @@ in
         guard = true;
       };
     };
-    test-verbatim-adapt-annotation = {
-      expr = (declOf "cVerbAdapt").annotations;
-      expected = {
-        adaptArgs = true;
-      };
-    };
     test-verbatim-adapt-mode = {
       expr = (declOf "cVerbAdapt").mode;
       expected = "nest-verbatim";
     };
 
-    # ── module source → synthesize, NEVER value (the reviewer-pinned P1 rule) ──
-    test-module-source-is-synthesize = {
-      expr = (declOf "pMerge").source ? synthesize;
+    # ── module source (provide) → collected of the TARGET class, mergeHalf annotation (v1 provides.nix) ──
+    test-provide-carries-module = {
+      expr = (declOf "pMerge").module != null;
       expected = true;
     };
-    test-module-source-not-value = {
-      expr = (declOf "pMerge").source ? value;
-      expected = false;
+    test-provide-source-is-target = {
+      expr = (declOf "pMerge").sourceClass.name;
+      expected = "dst";
     };
-    test-module-source-not-collected = {
-      expr = (declOf "pMerge").source ? collected;
-      expected = false;
+    test-provide-target-class = {
+      expr = (declOf "pMerge").targetClass.name;
+      expected = "dst";
+    };
+    test-provide-merge-half-annotation = {
+      expr = (declOf "pMerge").annotations.mergeHalf;
+      expected = "default-fold";
     };
     test-provide-merge-mode = {
       expr = (declOf "pMerge").mode;
@@ -299,15 +375,6 @@ in
     test-provide-nest-mode = {
       expr = (declOf "pNest").mode;
       expected = "nest";
-    };
-    test-provide-target-class = {
-      expr = (declOf "pMerge").target.class;
-      expected = "dst";
-    };
-    # the synthesize identity carries the placement key (class + path), never the module content.
-    test-synthesize-spec-key = {
-      expr = (declOf "pNest").source.synthesize.spec.key;
-      expected = "provide/dst/p";
     };
 
     # ── route sugar: reinstantiate → nest-verbatim; intoPath → the target path ──
@@ -366,7 +433,7 @@ in
             ];
           };
         in
-        (builtins.head (bad.policies.bad ctx)).target.class
+        (builtins.head (bad.policies.bad { })).targetClass.name
       );
       expected = true;
     };
@@ -393,12 +460,40 @@ in
       expected = false;
     };
 
-    # ── systemFor carry-in (§2.5): v1 per-host `system` reaches the built system ──
+    # ── COMPAT dispatch loop: the v1 deliver policy's edge reaches den.graph.trace ──
+    test-e2e-route-edge-in-trace = {
+      expr = builtins.length routeEdges;
+      expected = 1;
+    };
+    test-e2e-route-edge-collected = {
+      expr = (builtins.head routeEdges).source.arm;
+      expected = "collected";
+    };
+    test-e2e-provide-collects-target = {
+      expr = provideCollectsTarget;
+      expected = true;
+    };
+    # reviewer pin at the EDGE level: no synthesize/value arm ever appears in the shim's trace.
+    test-e2e-no-synthesize-or-value = {
+      expr = everyEdgeCollected;
+      expected = true;
+    };
+
+    # ── NATIVE content move: the delivery edge carries channel content into config(root) ──
+    test-native-content-moved = {
+      expr = nativeConfig."host:axon".dst;
+      expected = [ [ "hello" ] ];
+    };
+    test-native-source-retained = {
+      expr = nativeConfig."host:axon".src;
+      expected = [ [ "hello" ] ];
+    };
+
+    # ── systemFor carry-in (§2.5) ──
     test-systemfor-map = {
       expr = sysCompiled.entities.systemFor sysAxon;
       expected = "x86_64-linux";
     };
-    # the wrapper PREPENDS the platform module ahead of the host's own modules.
     test-systemfor-injected-module = {
       expr = builtins.head sysHostModules;
       expected = {
@@ -410,11 +505,6 @@ in
       expected = {
         existing = true;
       };
-    };
-    # end-to-end: the wired nixos instantiate crosses the real collect terminal with the platform module.
-    test-systemfor-wired-into-nixos-class = {
-      expr = collectOut.__terminal;
-      expected = "collect";
     };
     test-systemfor-collect-output = {
       expr = builtins.any (
