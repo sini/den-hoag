@@ -429,6 +429,7 @@ let
   # kinds (whose instances ride at `den.<kind>`). `_`-prefixed keys are den-internal (reserved), never a
   # user surface, so they are exempt. A typo'd/unknown key aborts named, never silently drops.
   declaredKinds = builtins.attrNames (v1Decls.schema or { });
+  pluralizedKinds = map (k: k + "s") declaredKinds;
   # KEEP IN SYNC with flake-module.nix `v1OptionsModule.options` (the declared v1 surface) — a key
   # added there without a row here aborts every fleet; a key here without an option there is dead.
   knownSurfaceKeys = [
@@ -442,15 +443,10 @@ let
     "quirks"
     "contentClass"
     "default"
-    # Custom kind pluralizations / extra top-level keys from the user's config
-    "clusters"
-    "environments"
-    "groups"
-    "users"
-    "secretsConfig"
     "nixpkgs"
   ]
-  ++ declaredKinds;
+  ++ declaredKinds
+  ++ pluralizedKinds;
   unknownSurfaceKeys = builtins.filter (
     k: (builtins.substring 0 1 k != "_") && !(builtins.elem k knownSurfaceKeys)
   ) (builtins.attrNames v1Decls);
