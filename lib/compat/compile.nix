@@ -444,6 +444,8 @@ let
     "contentClass"
     "default"
     "nixpkgs"
+    "reservedKeys"
+    "secretsConfig"
   ]
   ++ declaredKinds
   ++ pluralizedKinds;

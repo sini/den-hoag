@@ -6,23 +6,14 @@
       v1Classes = v1.classes or { };
       nixosClass = v1Classes.nixos or { };
       darwinClass = v1Classes.darwin or { };
-
-      baseDefaults = {
-        nixos = {
-          os.forwardTo = "nixos";
-          homeManager.forwardTo = "homeManager";
-        };
-        darwin = {
-          os.forwardTo = "darwin";
-          homeManager.forwardTo = "homeManager";
-        };
-      };
+      homeManagerClass = v1Classes.homeManager or { };
     in
     v1
     // {
       classes = v1Classes // {
-        nixos = nixosClass // baseDefaults.nixos;
-        darwin = darwinClass // baseDefaults.darwin;
+        nixos = { forwardTo = "nixos"; } // nixosClass;
+        darwin = { forwardTo = "darwin"; } // darwinClass;
+        homeManager = { forwardTo = "homeManager"; } // homeManagerClass;
       };
     };
 }
