@@ -70,6 +70,35 @@ let
   traceIgloo = den.graph.trace iglooId;
   edge = denHoag.internal.edge;
 
+  # ── deferred (config-demanding) channel through the REAL terminal (PR #623 parity) ──────────────────
+  # `deferredProbe` emits a `probe` value that reads the PRODUCING class's config and consumes it in its
+  # nixos content. The consumer keeps an unbound `config` arg so gen-bind resolves the config-thunk (a
+  # fully-bound module skips resolution — gen-bind wrap.nix `allMatched`). Its own den instance (not the
+  # base fleet): a deferred channel is an E6 poison thunk in the FOLD — resolvable only at the terminal —
+  # so folding it into the base would poison the laziness probe's deepSeq of igloo's OWN output.
+  deferredMod =
+    { config, ... }:
+    {
+      config.den.quirks.probe = { };
+      config.den.aspects.deferredProbe = {
+        probe =
+          { config, ... }:
+          [ "host-is-${config.networking.hostName}" ];
+        nixos =
+          { config, probe, ... }:
+          {
+            networking.domain = builtins.head probe;
+          };
+      };
+      config.den.include = [
+        {
+          at = config.den.host.igloo;
+          aspects = [ config.den.aspects.deferredProbe ];
+        }
+      ];
+    };
+  resultDeferred = denHoag.mkDen (fleetModules ++ [ deferredMod ]);
+
   # provider edges → output-arm sinks (`outputs.demands.<kind>.<key>`); consumer edges → the subject's
   # `wiring` root bucket. Both materialize into config(igloo).
   demandArms = builtins.attrNames (outIgloo.outputs or { });
@@ -351,6 +380,15 @@ in
     test-nixos-hostname-web1 = {
       expr = result.nixosConfigurations.web-1.config.networking.hostName;
       expected = "web-1";
+    };
+    # deferred (config-demanding) channel resolution AT the real terminal (PR #623 parity): `deferredProbe`
+    # emits `probe = { config, ... }: [ "host-is-${config.networking.hostName}" ]` at igloo and consumes it
+    # in its nixos content; through crossNixos the config-thunk resolves against igloo's OWN nixos config,
+    # so `networking.domain` carries the resolved hostName. This exercises the deferredToThunk /
+    # channelBindingsAt true-branch end to end (not just a bare evalModules), asserting on the BUILT system.
+    test-deferred-channel-resolves-at-terminal = {
+      expr = resultDeferred.nixosConfigurations.igloo.config.networking.domain;
+      expected = "host-is-igloo";
     };
 
     # ══ no-effect-runtime tripwires (owner directive) ═══════════════════════════════════════════════

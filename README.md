@@ -69,6 +69,15 @@ pinned `flake.lock`:
 (import ./den-hoag).mkDen fleetModules
 ```
 
+### A worked fleet
+
+`ci/tests/_fixtures/fleet.nix` (`acceptance`) is a complete, copyable fleet exercising every concern —
+a two-host nixos fleet with users, a cluster `link`, the `projects` facet, two quirk channels, a
+deferred (config-demanding) channel, and a `database` demand cascade. Copy its module list as a
+starting point. Two things there are test plumbing to strip: the `permute` flag (it reorders unrelated
+policy modules to prove channel-order stability) and the `saboteur`/throwing-content aspect the
+end-to-end suite injects (a laziness probe, not part of the fixture).
+
 ### Authoring policies (binding contract)
 
 A policy is `den.policies.<name> = ctx: [ declarations ]`. **The `ctx` function MUST use an OPEN

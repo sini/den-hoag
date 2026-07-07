@@ -38,6 +38,14 @@ joint fixpoint, A11), and **B5** (neron channel order — self → imports → p
 mechanics of A3/A4/A11/A12; they are named where they appear in `lib/attributes/structural.nix` and
 `lib/attributes/resolved-aspects.nix`.
 
+**A15 legacy-edge seam (the `interpret` parameter).** The output fold's source interpreters are a REAL
+parameter: `mkOutputModules` takes `interpret ? { }` and `outputFor` threads it into `gen-edge.materialize`.
+Native den-hoag constructs only `collected`/`value` edge sources, so the default `{ }` is complete and
+`den.graph`/`output` are unaffected. den-compat teaches the fold its legacy `synthesize`/`rewalk` sources
+by setting `den.interpret = { synthesize = …; rewalk = …; }` in a fleet module — **without editing**
+`lib/attributes/output-modules.nix`. It rides `raw` (opaque functions), forced only when a legacy source
+is actually folded, never for a native fleet.
+
 ## Theory citations (§6)
 
 The libraries den-hoag delegates to carry the theory; the citations that matter at this layer:

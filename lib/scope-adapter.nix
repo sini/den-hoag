@@ -20,10 +20,8 @@ let
       a.emissionIndex < b.emissionIndex;
 in
 {
-  # gen-select context over the scope eval carried on a resolve result.
-  selectContext = result: select.adapters.scope.mkContext { inherit (result.eval) node get; };
-
-  # Predicate a selector against a scope node id.
+  # Predicate a selector against a scope node id (Law E6). The gen-select scope context is inlined here
+  # (its only den-hoag use); consumed by the entity-fleet suite's scope-adapter sanity check.
   matchId =
     result: selector: id:
     select.matches selector id (select.adapters.scope.mkContext { inherit (result.eval) node get; });

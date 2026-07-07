@@ -3,10 +3,12 @@
 #   (1) The gen-edge output fold. A graph accessor projects the resolve result into gen-edge's §2.3
 #       contract (nodes/childrenOf/parentOf/isolatedAt/channelsOf/edgesAt/nameOf/contentsOf), and
 #       `outputFor root = materialize { edges = toposort (edgesFor { graph, root }); projection =
-#       project { graph, root, dials }; interpret = {}; }` — THE toposorted fold, the only content path
+#       project { graph, root, dials }; interpret; }` — THE toposorted fold, the only content path
 #       (A15). `contentsOf` adapts gen-pipe channel contributions to gen-edge seeds (§2.10:
-#       value→content, dedup identity→key, producer→provenance). `interpret` is threaded empty here
-#       (den-hoag constructs no legacy edge); den-compat supplies rewalk/synthesize interpreters.
+#       value→content, dedup identity→key, producer→provenance). `interpret` is a PARAMETER (default
+#       `{ }`): native den-hoag constructs no `synthesize`/`rewalk` source, so it never supplies one;
+#       den-compat threads its rewalk/synthesize interpreters in through `den.interpret` (mkDen), so the
+#       legacy-edge seam is a real parameter here, not a source edit to this file.
 #
 #   (2) The per-class terminal crossing. `systems.<class>.<member>` instantiates each member (a scope
 #       node whose producing class is that class, carrying non-empty `class-modules` content) via the
@@ -45,6 +47,10 @@
   classesByName,
   classOfNode,
   demandEdges ? [ ],
+  # The gen-edge source interpreters (`{ synthesize ? …; rewalk ? …; }`), threaded through `den.interpret`.
+  # Native den-hoag constructs no synthesize/rewalk edge, so the default `{ }` is complete; den-compat
+  # supplies its legacy-edge interpreters here WITHOUT editing this file (spec §2.6, the A15 legacy seam).
+  interpret ? { },
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;
@@ -109,7 +115,7 @@ let
         inherit root;
         dials = { };
       };
-      interpret = { }; # threaded from den-compat when present; empty here
+      inherit interpret; # the source-interpreter seam (default { }); den-compat threads legacy interpreters
     };
 
   # The frozen edge trace of a root — the parity oracle input (Law A15, stable + equal for equal

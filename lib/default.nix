@@ -20,30 +20,6 @@
   flake,
 }:
 let
-  # threaded into sub-module imports; tasks 1–11 extend
-  deps = {
-    inherit
-      prelude
-      algebra
-      types
-      merge
-      schema
-      aspects
-      graph
-      scope
-      resolve
-      select
-      bind
-      dispatch
-      class
-      edge
-      product
-      settings
-      demand
-      pipe
-      flake
-      ;
-  };
   errors = import ./errors.nix;
   entity = import ./entity.nix { inherit prelude schema merge; };
   fleet = import ./fleet.nix { inherit prelude product errors; };
@@ -310,6 +286,19 @@ let
         };
       };
 
+      # den.interpret — the gen-edge source-interpreter seam (§2.6, the A15 legacy-edge path). Native
+      # den-hoag constructs only `collected`/`value` edge sources, so the default `{ }` is complete;
+      # den-compat sets `den.interpret = { synthesize = …; rewalk = …; }` here to teach the output fold how
+      # to interpret its legacy `synthesize`/`rewalk` sources — WITHOUT editing lib/attributes/output-modules.nix.
+      # `raw` (opaque functions), forced only when a legacy source is actually folded (never for a native fleet).
+      interpretDecl = {
+        options.den.interpret = merge.mkOption {
+          type = merge.types.raw;
+          default = { };
+          description = "gen-edge source interpreters `{ synthesize ? …; rewalk ? …; }` (§2.6, den-compat legacy-edge seam).";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
@@ -325,6 +314,7 @@ let
           demandKindsDecl
           demandContextDecl
           nixpkgsDecl
+          interpretDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -522,6 +512,7 @@ let
       output = attributesLib.mkOutputModules {
         result = structural.eval;
         inherit classesByName classOfNode demandEdges;
+        interpret = ent.config.den.interpret or { };
       };
 
       # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,
