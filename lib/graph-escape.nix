@@ -2,28 +2,17 @@
 # one layer down. den-hoag re-exposes it READ-ONLY as `den.graph` — the gen-scope result, the restricted
 # gen-product fleet, the per-root gen-edge edge set + frozen trace (the parity-oracle input, Law A15/A7),
 # and the gen-demand resolution. No wrapper API, no algorithm — `edges`/`trace` are direct gen-edge calls
-# over the same graph accessor attribute 12 folds (Law A1).
+# over the SAME per-root edge set attribute 12 folds (`edgesForRoot` = the default-fold edges ++ the
+# fleet-global demand edges), so `den.graph.trace` is exactly the topology `output.outputFor` materializes.
 { edge }:
 {
   scope,
   fleet,
-  graphAccessor,
+  edgesForRoot,
   demands,
 }:
 {
   inherit scope fleet demands;
-  edges =
-    root:
-    edge.edgesFor {
-      graph = graphAccessor;
-      inherit root;
-    };
-  trace =
-    root:
-    edge.trace (
-      edge.edgesFor {
-        graph = graphAccessor;
-        inherit root;
-      }
-    );
+  edges = root: edgesForRoot root;
+  trace = root: edge.trace (edgesForRoot root);
 }

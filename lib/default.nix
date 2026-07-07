@@ -296,6 +296,20 @@ let
         };
       };
 
+      # den.nixpkgs — the nixpkgs FLAKE (carrying `.lib.nixosSystem`) the `nixos` class's terminal crosses
+      # through (§2.10, the ONE gen-flake boundary). It rides `raw` (single-value passthrough, never merged
+      # or type-walked): lib/** stays nixpkgs-lib-free — nixpkgs enters as inert CONFIG data a consumer
+      # supplies, forced only when a nixos member is built at the terminal, never during the pure graph
+      # walk. Absent (null, the default) ⇒ the fleet stays pure: the `nixos` class defaults to the
+      # nixpkgs-free `collect` terminal and `nixosConfigurations` are collect artifacts, not NixOS systems.
+      nixpkgsDecl = {
+        options.den.nixpkgs = merge.mkOption {
+          type = merge.types.raw;
+          default = null;
+          description = "The nixpkgs flake the `nixos` class terminal crosses through (§2.10); null ⇒ nixpkgs-free `collect`.";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
@@ -310,15 +324,42 @@ let
           settingsDecl
           demandKindsDecl
           demandContextDecl
+          nixpkgsDecl
         ]
         ++ userModules;
         inherit denMeta;
       };
 
-      # v1 dims = every registered kind, canonical (name-sorted) order. den.linearization
-      # takes over the dim order in Task 6.
-      dimKinds = prelude.sort (a: b: a < b) (builtins.attrNames ent.registries);
       membershipTuples = ent.config.den.membership;
+
+      # Product dims = the CELL COORDINATE kinds — the leaf cell kind and its containment ANCESTORS (the
+      # parent chain root→leaf). A registered kind OUTSIDE that chain (a pure link/root kind like
+      # `cluster`: `parent = null`, nothing nests under it) is a scope root but NOT a fleet axis — making
+      # it a gen-product factor would attach its sole instance to every cell, since an unconstrained
+      # factor multiplies through gen-product's natural join (membership.nix Strategy 3). Excluding it
+      # keeps cells clean while the kind stays a first-class scope root (`rootScopeKinds`, below).
+      #
+      # For a fleet whose every kind lies on the leaf's containment chain (env←host←user) this is the
+      # prior all-kinds set — a no-op (canonical name-sorted; den.linearization takes over the dim ORDER
+      # in Task 6). The leaf kind must be a dimension even when it has no instances yet (`cellChildrenFor`
+      # reads the leaf coordinate off the sliced product), so the rule is chain-membership, not tuple-
+      # reference. A cell-free fleet (no leaf kind) keeps all registered kinds as dims (degenerate product).
+      containmentKinds =
+        let
+          chainOf =
+            k:
+            [ k ]
+            ++ (
+              let
+                p = ent.meta.${k}.parent;
+              in
+              if p == null then [ ] else chainOf p
+            );
+        in
+        if leafKind == null then builtins.attrNames ent.registries else chainOf leafKind;
+      dimKinds = prelude.sort (a: b: a < b) (
+        builtins.filter (k: builtins.elem k containmentKinds) (builtins.attrNames ent.registries)
+      );
 
       theFleet = fleet.mkFleet {
         inherit (ent) registries;
@@ -427,7 +468,24 @@ let
       # gen-bind `defaultMergeStrategy` adapter, the validator toggle, the terminal `instantiate`, the
       # `share.core` opt-in, and the A10 `coreStrategy` seam. Default terminal = the nixpkgs-free
       # `collect` (den-hoag stays pure; a real build supplies `crossNixos` per class).
-      classDecls = prelude.genAttrs classNames (name: ent.config.den.classes.${name} or { });
+      #
+      # The ONE real nixpkgs crossing (§2.10, Law A15): when `den.nixpkgs` is supplied, the `nixos` class
+      # crosses through `crossNixos` (gen-flake `terminals.nixosSystem`) by default — so `nixosConfigurations`
+      # are REAL NixOS systems — unless the class declares its own `instantiate`. The terminal builder is
+      # re-imported here with the supplied nixpkgs; lib/** stays nixpkgs-free (nixpkgs is inert config data
+      # threaded to the terminal, never imported). Every other class keeps the nixpkgs-free `collect` default.
+      npkgs = ent.config.den.nixpkgs or null;
+      crossTerminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = npkgs; };
+      classDecls = prelude.genAttrs classNames (
+        name:
+        let
+          decl = ent.config.den.classes.${name} or { };
+        in
+        if name == "nixos" && npkgs != null && !(decl ? instantiate) then
+          decl // { instantiate = crossTerminalLib.crossNixos; }
+        else
+          decl
+      );
       classesByName = concernClasses.compile {
         classes = classDecls;
         defaultInstantiate = terminalLib.collect;
@@ -457,10 +515,13 @@ let
 
       # The output stratum (attribute 12, Law A15): the gen-edge fold's graph accessor + `outputFor`/
       # `traceFor`, and the per-class terminal crossing (`systems.<class>.<member>`). Reads the FINAL
-      # eval; applied once here (like the narrow accessor).
+      # eval; applied once here (like the narrow accessor). `demandEdges` (the fleet's gen-demand
+      # resolution as inert gen-edge records, computed below) is folded into each root's edge set — A11
+      # closes the A9 staging where the demand edges did not yet join the fleet output. Lazy: a
+      # demand-free fleet's `demandEdges` is `[ ]`, so the fold is byte-identical to the pre-A11 output.
       output = attributesLib.mkOutputModules {
         result = structural.eval;
-        inherit classesByName classOfNode;
+        inherit classesByName classOfNode demandEdges;
       };
 
       # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,
@@ -557,13 +618,35 @@ let
         }) (builtins.filter (n: (allAspects.${n}.projects or [ ]) != [ ]) (builtins.attrNames allAspects));
 
       # The graph escape hatch (§2.11): the gen-scope result, the restricted fleet product, the per-root
-      # gen-edge edge set + frozen trace (the parity oracle input, Law A15), and the gen-demand resolution.
+      # gen-edge edge set + frozen trace (the parity oracle input, Law A15 — `output.edgesForRoot` folds
+      # in the demand edges, so the trace is the exact topology the output materializes), and the
+      # gen-demand resolution.
       graph = graphEscape {
         scope = structural.eval;
         fleet = theFleet;
-        graphAccessor = output.graphAccessor;
+        inherit (output) edgesForRoot;
         demands = demandResolution;
       };
+
+      # nixosConfigurations — the mkDen flake-output face (§2.10). The `nixos` class's per-member systems,
+      # re-keyed from the member scope-node id ("host:igloo") to the host entity NAME ("igloo"), so a
+      # consumer addresses `nixosConfigurations.<host>` exactly as a flake does. With `den.nixpkgs` set
+      # these are REAL NixOS systems (the `crossNixos` crossing → `config.networking.hostName` evaluates);
+      # absent, they are the nixpkgs-free `collect` artifacts (same class-major spine — one entry per host
+      # carrying nixos content). Forcing the attrset SPINE counts hosts without building any system (per-
+      # member lazy, Law A17); a real build is forced only when a member's `.config` is read.
+      nixosConfigurations = builtins.listToAttrs (
+        map (
+          memberId:
+          let
+            entry = (structural.eval.node memberId).decls.__entry or null;
+          in
+          {
+            name = if entry != null then entry.name else memberId;
+            value = output.systems.nixos.${memberId};
+          }
+        ) (builtins.attrNames output.systems.nixos)
+      );
     in
     {
       den = {
@@ -596,6 +679,10 @@ let
         # The graph escape hatch (§2.11), read-only.
         inherit graph;
       };
+      # The top-level assembly face (§2.10 acceptance): `graph` (the read-only escape hatch, also under
+      # `den.graph`) and `nixosConfigurations` (the flake-output NixOS systems, host-name-keyed) lifted
+      # beside `den` so a consumer reads `mkDen fleetModules → { den; graph; nixosConfigurations; }`.
+      inherit graph nixosConfigurations;
     };
 in
 {

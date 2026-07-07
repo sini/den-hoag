@@ -19,6 +19,17 @@
 # resolves them against the PRODUCING class+scope's config — the gen-merge/gen-flake terminal forces
 # them there (resolve-at-producing-scope, decision #27).
 #
+# DEMAND EDGES (A11 — the A9 staging closed here): `demandEdges` is the fleet's gen-demand resolution
+# rendered as inert gen-edge records (lib/demand.nix `toEdges`) — provider edges to output-arm sinks
+# (`demands.<kind>.<key>`) and consumer edges to the subject's `wiring` root. They are FLEET-GLOBAL (one
+# resolveAll per fleet, not per scope subtree), so `edgesFor`'s per-root subtree walk cannot gather them:
+# the provider edges target output ARMS (which `edgesFor` filters out entirely, it keeps only root
+# targets), and the consumer edges target a subject-identity root outside any single subtree. They are
+# therefore CONCATENATED onto the per-root edge set before the one toposorted fold — `edgesFor {…} ++
+# demandEdges` — so both join the fleet edge set (the trace) and materialize into config(root): providers
+# under `config.outputs.demands.*`, consumers under `config.<subjectHash>.wiring`. Empty for a demand-free
+# fleet ⇒ byte-identical to the pre-A11 fold (the append is `++ [ ]`).
+#
 # NO EFFECT RUNTIME: every body is field renames + attrset assembly + exactly one gen-edge call per
 # algorithm (edgesFor/toposort/project/materialize) — Law A1. Deps: prelude, edge (the fold),
 # bind (the config-thunk adaptation), classShare (the A10 gen-class tier-2 build path).
@@ -33,6 +44,7 @@
   result,
   classesByName,
   classOfNode,
+  demandEdges ? [ ],
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;
@@ -52,7 +64,10 @@ let
     parentOf = id: (result.node id).parent;
     isolatedAt = id: (result.node id).parent != null;
     channelsOf = id: builtins.filter (ch: !(isReserved ch)) (builtins.attrNames (received id));
-    edgesAt = _id: [ ]; # v1: no per-node declared content edges; demand-edge materialization is A11
+    # v1: no per-NODE declared content edges. den-hoag emits no aspect-scoped content edge; the only
+    # non-default edges in the fleet are the demand edges, and those are fleet-global (not attributable
+    # to any one node) — they join the fold by direct concatenation in `outputFor`/`traceFor`, not here.
+    edgesAt = _id: [ ];
     nameOf = id: id;
     # collection → edge-seed adaptation (§2.10). A deferred contribution's `value` is a poison thunk
     # (gen-pipe E6) — carried here UNFORCED (normalizeSeed never forces content), resolved only at a
@@ -71,17 +86,24 @@ let
       }) ((received id).${channel}.contributions or [ ]);
   };
 
+  # The full edge set folded at a root: the per-root default-fold edges (gen-edge derivation over the
+  # graph accessor) PLUS the fleet-global demand edges. Concatenation is A1 wiring; the derivation is the
+  # lib call. This is the single edge set both `outputFor` (materialize) and `traceFor` (the frozen trace)
+  # consume, so the demand edges join the fleet edge set exactly once and consistently in both views.
+  edgesForRoot =
+    root:
+    edge.edgesFor {
+      graph = graphAccessor;
+      inherit root;
+    }
+    ++ demandEdges;
+
   # config(root) = the gen-edge fold (Law A15 — the exact E1 signature; `toposort` and `project`'s
   # `graph` are both mandatory). No content path outside this fold.
   outputFor =
     root:
     edge.materialize {
-      edges = edge.toposort (
-        edge.edgesFor {
-          graph = graphAccessor;
-          inherit root;
-        }
-      );
+      edges = edge.toposort (edgesForRoot root);
       projection = edge.project {
         graph = graphAccessor;
         inherit root;
@@ -91,15 +113,9 @@ let
     };
 
   # The frozen edge trace of a root — the parity oracle input (Law A15, stable + equal for equal
-  # topologies). `den.graph.trace` re-exposes it.
-  traceFor =
-    root:
-    edge.trace (
-      edge.edgesFor {
-        graph = graphAccessor;
-        inherit root;
-      }
-    );
+  # topologies). `den.graph.trace` re-exposes it. Includes the demand edges (they are inert, value-
+  # sourced — `trace` renders only their identity, never resolved content, so it stays hashable).
+  traceFor = root: edge.trace (edgesForRoot root);
 
   # ── terminal crossing ────────────────────────────────────────────────────────────────────────────
   # Adapt a deferred gen-pipe contribution to a gen-bind config-thunk (resolve-at-producing-scope, PR
@@ -236,6 +252,7 @@ in
 {
   inherit
     graphAccessor
+    edgesForRoot
     outputFor
     traceFor
     systems
