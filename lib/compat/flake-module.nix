@@ -146,6 +146,9 @@ let
   # only grounded `neededBy`/`includes`/content. Severed (no `desugar` ⇒ the identity), a residual
   # `provides` key trips compile's sentinel (Law C5). Pure (Law C2): a v1-aspects → v1-aspects transform.
   legacyProvidesDesugar = legacy.provides.desugar or (aspects: aspects);
+  # C5 (Task 5) adds `legacyForwardsDesugar = legacy.forwards.desugar or (…)` here — same or-identity
+  # severance pattern — and composes it into `desugarLegacy` below; a residual `forwards` key then
+  # trips its own sentinel when the module is severed.
   desugarLegacy =
     v1:
     v1

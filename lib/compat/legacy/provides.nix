@@ -220,9 +220,9 @@ let
             # contentless seed stubs); everything else DEEP-merges the self-provide content onto the
             # carrier (rmerge), so self content and own content coexist. `includes` is stripped from
             # both sides of the rmerge to keep the additive semantics (rmerge would rhs-clobber a list).
-            selfLessIncludes =
+            selfContentBody =
               if r.selfContent == null then { } else builtins.removeAttrs r.selfContent [ "includes" ];
-            merged = rmerge (builtins.removeAttrs noProv [ "includes" ]) selfLessIncludes;
+            merged = rmerge (builtins.removeAttrs noProv [ "includes" ]) selfContentBody;
             allIncludes =
               (noProv.includes or [ ])
               ++ (if r.selfContent == null then [ ] else r.selfContent.includes or [ ])

@@ -53,6 +53,59 @@ let
   };
   selOf = name: shaped.${name}.neededBy;
 
+  # ── (A2) a PARAMETRIC provided value rides as an `includes` member (v1 applyProvide per firing
+  # scope; providedContent isParametric branch) — resolved with the cell's own host/user ctx. ───────
+  paramFn =
+    { user, ... }:
+    {
+      "home-manager".who = user.name;
+    };
+  shapedParam = desugar { P.provides.to-users = paramFn; };
+  paramCarrier = shapedParam."P/to-users";
+  # cheap resolution smoke: the parametric carrier radiates to a user cell AND its parametric include
+  # resolves there without error (forcing the cell's resolved-aspect keys drives the fixpoint).
+  paramDen =
+    (denHoag.mkDen [
+      {
+        config.den.schema = {
+          host.parent = null;
+          user.parent = "host";
+        };
+      }
+      {
+        config.den = {
+          host.h = { };
+          user.u = { };
+        };
+      }
+      (
+        { config, ... }:
+        {
+          config.den.membership = [
+            {
+              coords = {
+                host = config.den.host.h;
+                user = config.den.user.u;
+              };
+            }
+          ];
+        }
+      )
+      (
+        { config, ... }:
+        {
+          config.den.aspects = shapedParam;
+          config.den.include = [
+            {
+              at = config.den.host.h;
+              aspects = [ config.den.aspects.P ];
+            }
+          ];
+        }
+      )
+    ]).den;
+  paramCellKeys = map (n: n.key) (paramDen.structural.eval.get "user:u@host:h" "resolved-aspects");
+
   # ── (B) radiated positions: desugar output → denHoag.mkDen with precise den.include ─────────────
   bFleet = desugar {
     hostProv.provides.to-users = {
@@ -261,6 +314,25 @@ in
     # an aspect WITHOUT provides passes through byte-identical.
     test-plain-untouched = {
       expr = shaped.plain == { nixos.x = 9; };
+      expected = true;
+    };
+
+    # ── (A2) PARAMETRIC provided value ──────────────────────────────────────────────────────────────
+    # a function-valued provide rides as the carrier's sole `includes` member (not inlined as content).
+    test-parametric-rides-as-includes = {
+      expr =
+        (builtins.length (paramCarrier.includes or [ ]) == 1)
+        && builtins.isFunction (builtins.head paramCarrier.includes);
+      expected = true;
+    };
+    # …and the carrier still carries the static deliverable selector (readable without forcing the fn).
+    test-parametric-carrier-selector = {
+      expr = paramCarrier.neededBy.__sel == "kind" && paramCarrier.neededBy.kind == "user";
+      expected = true;
+    };
+    # cheap smoke: the parametric carrier radiates to the user cell and its include resolves per-cell.
+    test-parametric-resolves-at-cell = {
+      expr = builtins.elem "P/to-users" paramCellKeys;
       expected = true;
     };
 
