@@ -121,6 +121,13 @@ Recorded from the A5–A10 review; these are deliberate v1 ceilings, not bugs:
   provider + consumer gen-edge records join EVERY root's edge fold (they are not attributable to a single
   scope subtree — providers target output arms, consumers target a subject-identity root). A demand-free
   fleet's demand-edge set is empty, so the fold is byte-identical to a demand-free output.
+- **Per-root laziness ceiling = spines force, values stay lazy (owner tripwire (a)).** gen-edge's
+  `universe` computation forces `channelsOf` — the channel-PRESENCE spine of every node in the graph —
+  but never `contentsOf` (gen-edge Law E13: bucket content is never forced at derivation). So forcing
+  one root's output evaluates sibling roots' presence spines (and the enrichments those spines read)
+  while sibling channel VALUES stay unforced. The end-to-end suite proves both directions with a
+  poisoned sibling value (`test-laziness-sibling-does-not-block` / `test-laziness-throwing-sibling-is-real`).
+  Tightening the spine cost is the declared static-cone / `pipe.reads` optimization seam, out of v1 scope.
 
 ## Development
 
