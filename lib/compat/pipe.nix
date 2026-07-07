@@ -67,8 +67,9 @@ let
   #
   # deriving → a gen-pipe channel transformer (`ch -> derived channel`): filter→filter, transform→map,
   #   fold→fold (associative-only, B5). for→map — v1 `for` is a whole-list rewrite; gen-pipe `map` is the
-  #   order-pinned list operator, so both are the channel's `map` node (the elementwise/whole-list
-  #   distinction is a run-semantics detail the parity harness adjudicates, not a compile-vocabulary one).
+  #   per-element list operator, so both are the channel's `map` node, distinguished by the inert
+  #   `__derive.wholeList` marker `for` carries (see the `for` branch — it preserves what the run wiring
+  #   needs to apply whole-list vs per-element; a byte-identical record would lose it).
   # delivery → a gen-pipe `route` op rooted at `from`: to→a select-route carrying the target aspects
   #   (the value stays on its own channel for them to read); as→a channel→channel route to the named pipe.
   # site → an inert marker the emission/consumption site interprets: append→a contribution at the policy's
@@ -87,6 +88,9 @@ let
         apply = declare.pipe.filter stage.fn;
       }
     else if k == "transform" then
+      # per-ELEMENT map (den v1 `assemble-pipes.nix:283-284`: `map (v: … stage.fn (unwrap v)) values`).
+      # No `__derive.wholeList` marker ⇒ den-hoag's run wiring treats it as the per-element `map` op
+      # (the discriminator against `for` below, which shares this `op = "map"` node).
       {
         role = "derive";
         op = "map";
@@ -102,10 +106,28 @@ let
         };
       }
     else if k == "for" then
+      # v1 `for` applies fn to the WHOLE LIST (den v1 `assemble-pipes.nix:289-290`:
+      # `map seed (stage.fn (map unwrap values))`), whereas gen-pipe `map` is per-ELEMENT (gen-pipe
+      # `evaluate.nix:247`: `map (mapC d.f ch.name) …`). Both are the channel's `map` NODE, so the two
+      # compiled records would be byte-identical and the whole-list run semantics unrecoverable. The
+      # distinction is PRESERVED as an inert `__derive.wholeList` marker (gen-pipe reads `__derive`
+      # non-strictly — `deriveSeq` touches only `.op`/`.inputs`/`.f`, so the extra key is ignored by the
+      # channel algebra). den-hoag's run wiring (task #44) reads it: whole-list application when `true`,
+      # per-element `map` when `false`/absent (transform). No value is forced — the merge keeps `f` a thunk.
       {
         role = "derive";
         op = "map";
-        apply = declare.pipe.map stage.fn;
+        apply =
+          ch:
+          let
+            d = declare.pipe.map stage.fn ch;
+          in
+          d
+          // {
+            __derive = d.__derive // {
+              wholeList = true;
+            };
+          };
       }
     else if k == "to" then
       {

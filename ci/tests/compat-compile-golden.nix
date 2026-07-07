@@ -140,6 +140,13 @@ let
   sitePipeOp = builtins.head ((denCompat.compile pipeFx.sitePipe).policies.gatherPeers { });
   siteMark = k: builtins.head (builtins.filter (m: m.__pipeMark == k) sitePipeOp.marks);
 
+  # for (whole-list) vs transform (per-element): both are the `map` node; only `for`'s inert
+  # `__derive.wholeList` marker keeps the distinction the run wiring (task #44) needs. Ordered
+  # transform-then-for, so `.derived` is the `for` node and its single input is the `transform` node.
+  fvtOp = builtins.head ((denCompat.compile pipeFx.forVsTransform).policies.shapeStream { });
+  forDerived = fvtOp.derived;
+  transformDerived = builtins.head fvtOp.derived.__derive.inputs;
+
   # `den.quirks.<name>` → channel registration + the class/quirk key-overlap check.
   channelsCompiled = (denCompat.compile pipeFx.channelsFixture).channels;
 
@@ -313,6 +320,28 @@ in
     test-pipe-derive-base = {
       expr = (baseOf derivePipeOp.derived).id;
       expected = "metric";
+    };
+
+    # for vs transform: SAME `map` node, distinguished only by `for`'s inert `__derive.wholeList` marker
+    # (v1 `for` = whole-list assemble-pipes.nix:289-290; gen-pipe `map` = per-element evaluate.nix:247).
+    # Without the marker the two records are byte-identical and the whole-list run semantics are lost.
+    test-for-transform-both-map = {
+      expr = [
+        forDerived.op
+        transformDerived.op
+      ];
+      expected = [
+        "map"
+        "map"
+      ];
+    };
+    test-for-wholelist-marked = {
+      expr = forDerived.__derive.wholeList;
+      expected = true;
+    };
+    test-transform-not-wholelist = {
+      expr = transformDerived.__derive ? wholeList;
+      expected = false;
     };
 
     # ── §2.4 delivery stages: to → route selecting aspects; as → route to a target pipe ──────────

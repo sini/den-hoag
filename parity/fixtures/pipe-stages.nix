@@ -99,6 +99,22 @@ in
     ];
   };
 
+  # `transform` (per-element map) and `for` (whole-list map) compile to the SAME gen-pipe `map` NODE — v1
+  # `for` applies fn to the whole list (assemble-pipes.nix:289-290), gen-pipe `map` is per-element
+  # (evaluate.nix:247). The only distinguisher the compiled form keeps is `for`'s inert
+  # `__derive.wholeList = true` marker (absent on `transform`), which den-hoag's run wiring (task #44)
+  # reads to pick whole-list vs per-element application. Ordered transform-then-for so the outermost
+  # derived node is `for` and its single input is the `transform` node — the golden reads both directly.
+  forVsTransform = {
+    quirks.stream.description = "stream for the for-vs-transform witness";
+    policies.shapeStream = _ctx: [
+      (pipe.from "stream" [
+        (pipe.transform (v: v))
+        (pipe.for (vs: vs))
+      ])
+    ];
+  };
+
   # ── delivery stages: to → route selecting aspects; as → route to a target pipe (acceptance 1) ───────
   deliverToPipe = {
     quirks.ports.description = "firewall ports";
