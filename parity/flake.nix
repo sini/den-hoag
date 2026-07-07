@@ -34,13 +34,41 @@
         edge = import "${den-v1}/nix/lib/aspects/fx/edges/edge.nix" { lib = nixpkgsLib; };
         parity = import "${den-v1}/nix/lib/aspects/fx/edges/parity.nix" { lib = nixpkgsLib; };
       };
+
+      # The fully-wired two-sided harness (Task 7). `denCompat.parity` ships the PURE pieces (the frozen
+      # schema + the oracle BUILDERS); the parity flake is the only place with BOTH dev-time arms in scope,
+      # so it applies the v1 builder (`mkV1`) to the frozen den v1 flake + nixpkgs and hands the tests a
+      # ready `{ schema; traceHoag; traceV1; traceV1Legacy; fixtures; golden; }`. Every P-suite reads this
+      # one surface — the tests never re-wire an arm.
+      harness =
+        let
+          P = denCompat.parity;
+          v1arm = P.oracle.mkV1 {
+            denV1Flake = den-v1;
+            denV1Edge = denV1.edge;
+            inherit nixpkgsLib;
+            nixpkgs = inputs.nixpkgs;
+          };
+        in
+        {
+          inherit (P) schema;
+          traceHoag = P.oracle.traceHoag { inherit denCompat; };
+          inherit (v1arm) traceV1 traceV1Legacy;
+          fixtures = import ./fixtures/topologies.nix { };
+          golden = import ./golden/traces.nix;
+        };
     in
     gen.lib.mkCi {
       inherit inputs;
       name = "den-compat-parity";
       testModules = ./tests;
       specialArgs = {
-        inherit denCompat denV1 nixpkgsLib;
+        inherit
+          denCompat
+          denV1
+          nixpkgsLib
+          harness
+          ;
         corpus = inputs.corpus;
       };
     };

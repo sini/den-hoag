@@ -66,6 +66,11 @@
         prelude = inputs.gen-prelude.lib;
         schema = inputs.gen-schema.lib;
         edge = inputs.gen-edge.lib;
+        # gen-edge's core primitives (`edgeSortKey`/`renderName`/`traceEntryOf`) — the frozen trace
+        # renderer the parity harness renders BOTH arms into. gen-edge's public lib deliberately keeps
+        # these internal (it exposes `trace`, which uses them), so the harness imports the frozen core
+        # by source path — the SAME dev-time pattern the parity flake uses for den v1's `edge.nix`.
+        edgeCore = import "${inputs.gen-edge}/lib/core.nix" { prelude = inputs.gen-prelude.lib; };
       };
     };
 }

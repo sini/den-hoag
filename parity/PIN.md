@@ -76,6 +76,35 @@ No `forward`-with-derived-children (NTA-spawning) consumer exists in the corpus.
 NOT widened; Tier-2 derived-children NTA remains NOT implemented** (the plan's default holds). If a
 future corpus bump introduces such a consumer, re-open Open Question 2 here.
 
+### C7 census — freeform-child → provides synthesis consumer (C4–C6 watch-list item b)
+
+**None found.** `grep -rn --include='*.nix' 'provides\.' <corpus canonical>` (worktrees/.git excluded,
+480 `.nix` files) returns **0** declaration sites; the only `provides` tokens in the tree are incidental
+prose (comments, package descriptions, the `microvm-guests` *"provides-free"* label). So the v1
+freeform-child→provides synthesis pattern (`aspect.docker` ⇒ `provides.docker`) has **zero corpus
+consumers**, and the compat `legacy/provides` desugar (C4) is exercised only by synthetic witnesses (the
+C1 witness map's `providesLegacy`). This matches Open-Question-2's finding that the legacy severable
+surfaces are corpus-dead; if a future corpus bump adds a `provides` site, re-validate the C4 desugar here.
+
+## C7 parity-harness findings (first-corpus run, 2026-07-07)
+
+The C7 harness (`lib/compat/parity/`) evaluates fixtures through BOTH den v1 (`edgeTrace`) and den-hoag
+(`graph.edges`) and diffs on the frozen `T | P | S | M` sort key. Two schema-alignment findings + one
+domain finding, recorded in full in `lib/compat/parity/edge-schema.md` + `ledger.md`:
+
+- **F1 — entity id_hash divergence.** den v1 and gen-schema stamp DIFFERENT id_hashes for the same
+  `(kind, name)` (`host:igloo`: v1 `dd5c0a82…` vs hoag `8bba6f6a…`). The plan's "entity scopes on both
+  sides without translation" is empirically false; the harness name-normalizes entity scopes to
+  `<kind>:<name>` on both arms (den v1's own `normalizeTrace` precedent). HANDLED in `oracle.nix`.
+- **F2 — non-entity scope naming (OQ4).** v1 `mkScopeId` strings vs den-hoag opaque strings; a seeded
+  `nonEntityNameMap` translates the hoag arm; completeness is a first-full-corpus finding.
+- **Domain boundary.** den v1 folds CLASS content as edges; den-hoag folds QUIRK CHANNELS + demand + the
+  explicit deliver surface (class content rides the class-module path). The domains are largely disjoint,
+  so cross-arm parity is non-empty at C7 (all v1 class-folds `missing` on hoag, hoag quirk-folds `extra`).
+  Convergence is gated on the deliver-materialization completion (#44 / C7.5) + a default-fold
+  reconciliation. Pinned in `parity/golden/traces.nix`; the P1 suite tracks the boundary as a regression
+  gate.
+
 ## Forward-tier summary (the input to Task 5's witness set)
 
 - **Tier-1 static** (`path`, no `adaptArgs`) → plain `deliver`: the 3 `home-platform.nix` routes.

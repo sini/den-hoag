@@ -12,6 +12,7 @@
   prelude,
   schema,
   edge,
+  edgeCore,
   ...
 }@deps:
 let
@@ -93,8 +94,8 @@ in
   inherit (flakeModuleWiring) compileFull;
   inherit mkWiring;
   flakeModule = flakeModuleWiring.flakeModule;
-  # parity — the two-sided harness helper functions (frozen edge schema, oracle, firstDivergent
-  # triage), Task 7. Placeholder attrset until then so `compat.parity` is addressable (the scaffold
-  # reachability gate); Task 7 replaces this with `import ./parity { inherit denHoag prelude edge; }`.
-  parity = { };
+  # parity — the two-sided harness (frozen edge schema + the v1/hoag oracle + firstDivergent triage),
+  # Task 7. `schema` is fully self-contained; `oracle.traceHoag` needs only this tree; `oracle.mkV1` is a
+  # function of the dev-time-only harness inputs (den v1 flake + nixpkgs) the `parity/` flake supplies.
+  parity = import ./parity { inherit denHoag prelude edgeCore; };
 }
