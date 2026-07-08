@@ -121,6 +121,12 @@ let
       aspectRec ref.name
     else if builtins.isString ref then
       aspectRec ref
+    else if builtins.isAttrs ref then
+      let
+        dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
+        translated = translateAspect dummyName ref;
+      in
+      translated // ing.aspectEntry dummyName
     else
       builtins.trace "TRACE-C6: resolveAspectRef failed with type ${builtins.typeOf ref}" (
         errors.identityLaw "policy aspect reference" ref
@@ -255,6 +261,12 @@ let
           fullAspect = translated // ing.aspectEntry effect.name;
         in
         [ (declare.edge fullAspect) ]
+      else if builtins.isAttrs effect && !(effect ? id_hash) then
+        let
+          dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames effect));
+          translated = translateAspect dummyName effect;
+        in
+        [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
       else
         # Not an effect descriptor — a raw declaration a v1 body built directly. Pass it through; a
         # non-declaration surfaces at the den-hoag dispatch, not here.
