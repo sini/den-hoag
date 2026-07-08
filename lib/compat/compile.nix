@@ -172,7 +172,7 @@ let
     else if builtins.isAttrs ref then
       let
         dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
-        translated = translateAspect ing aspectRec dummyName ref;
+        translated = translateAspect ing aspectRec v1Classes dummyName ref;
       in
       translated // ing.aspectEntry dummyName
     else
@@ -199,7 +199,7 @@ let
   # to `{ includes = [ fn ]; }` (v1's own coercion), `excludes` folds into `meta.drop`, class keys are
   # grounded, and the v1-only structural keys are dropped.
   translateAspect =
-    ing: aspectRec: name: aspect:
+    ing: aspectRec: v1Classes: name: aspect:
     builtins.seq (sentinels.provides name aspect) (
       builtins.seq (noBatteriesForward name aspect) (
         let
@@ -252,7 +252,7 @@ let
       if builtins.isAttrs ref && ref ? name && !(ref ? id_hash) then
         # Inline aspect definition inside an include effect.
         let
-          translated = translateAspect ing aspectRec ref.name ref;
+          translated = translateAspect ing aspectRec v1Classes ref.name ref;
           fullAspect = translated // ing.aspectEntry ref.name;
         in
         [ (declare.edge fullAspect) ]
@@ -303,14 +303,14 @@ let
         # Inline aspect definition (a policy function evaluated to an aspect).
         # Translate it, stamp an id_hash, and emit an edge carrying the full record.
         let
-          translated = translateAspect ing aspectRec effect.name effect;
+          translated = translateAspect ing aspectRec v1Classes effect.name effect;
           fullAspect = translated // ing.aspectEntry effect.name;
         in
         [ (declare.edge fullAspect) ]
       else if builtins.isAttrs effect && !(effect ? id_hash) then
         let
           dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames effect));
-          translated = translateAspect ing aspectRec dummyName effect;
+          translated = translateAspect ing aspectRec v1Classes dummyName effect;
         in
         [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
       else
@@ -480,7 +480,7 @@ let
 
   defaultAspects =
     if hasDefault then {
-      __default = translateAspect ing aspectRec "__default" (v1Decls.default // { includes = defaultModuleIncludes; });
+      __default = translateAspect ing aspectRec v1Classes "__default" (v1Decls.default // { includes = defaultModuleIncludes; });
     } else { };
 
   defaultPolicies =
@@ -532,7 +532,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
               # Unnamed inline module/aspect
               let
                 dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
-                translated = translateAspect ing aspectRec dummyName ref;
+                translated = translateAspect ing aspectRec v1Classes dummyName ref;
               in
               [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
             else
@@ -589,7 +589,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
   };
 
   aspects =
-    builtins.mapAttrs (translateAspect ing aspectRec) v1Aspects
+    builtins.mapAttrs (translateAspect ing aspectRec v1Classes) v1Aspects
     // defaultAspects
     // compiledPolicies.conditionalAspects;
 
