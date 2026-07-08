@@ -108,7 +108,7 @@ let
   # verbatim) for `compile` to desugar. Only `flakeModuleCore` (not the legacy tag modules) declares
   # options here; the legacy surfaces join in their own tasks.
   evalV1 =
-    lib: userModules:
+    userModules:
     let
       # Fixpoint evaluation: user modules require `den` as a module argument, but `den` itself
       # includes `config.den` (the result of evaluating those modules). This mirrors how nixpkgs
@@ -116,7 +116,6 @@ let
       eval = schema.evalModuleTree {
         modules = flakeModuleCore ++ userModules;
         specialArgs = {
-          inherit lib;
           den = eval.config.den // {
             lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
             batteries = eval.config.den.batteries or { };
@@ -249,7 +248,7 @@ let
       ...
     }@args:
     let
-      v1Base = evalV1 lib [ ];
+      v1Base = evalV1 [ (prelude.optionalAttrs (lib != null) { _module.args = { inherit lib; }; }) ];
     in
     {
       # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
