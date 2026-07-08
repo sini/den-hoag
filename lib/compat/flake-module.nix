@@ -275,6 +275,13 @@ let
                   });
                   default = { };
                 };
+                policies = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
+                classes = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
+                hosts = lib.mkOption { type = lib.types.lazyAttrsOf (lib.types.lazyAttrsOf lib.types.unspecified); default = { }; };
+                homes = lib.mkOption { type = lib.types.lazyAttrsOf (lib.types.lazyAttrsOf lib.types.unspecified); default = { }; };
+                quirks = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
+                contentClass = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
+                batteries = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
               };
             };
             default = { };
