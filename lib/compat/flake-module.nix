@@ -254,13 +254,7 @@ let
       options.den =
         if lib != null then
           lib.mkOption {
-            type = lib.types.submoduleWith {
-              modules = [
-                {
-                  freeformType = lib.types.lazyAttrsOf lib.types.anything;
-                }
-              ];
-            };
+            type = lib.types.deferredModule;
             default = { };
             description = "The den v1 declaration surface (flake-parts permissive collector).";
           }
