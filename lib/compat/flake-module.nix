@@ -284,8 +284,9 @@ let
         else
           { };
 
+      v1Base = evalV1 [ ];
+
       config._module.args.den = 
-        let v1Base = evalV1 [ ]; in
         config.den // {
         lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
         batteries = v1Base.batteries or { };
@@ -306,7 +307,13 @@ let
       config.flake =
         let
           built = mkDen [
-            { den = config.den; }
+            {
+              den = config.den // {
+                policies = (v1Base.policies or { }) // (config.den.policies or { });
+                classes = (v1Base.classes or { }) // (config.den.classes or { });
+                aspects = (v1Base.aspects or { }) // (config.den.aspects or { });
+              };
+            }
             {
               _module.args =
                 prelude.optionalAttrs (lib != null) { inherit lib; }
