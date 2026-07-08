@@ -377,7 +377,7 @@ let
               ing.instances.${k}.${e.name}
             else
               { };
-          base = e // orig;
+          base = e // orig // (prelude.optionalAttrs (e ? name) { ${k + "Name"} = e.name; });
         in
         if k == "host" && !(base ? class) then base // { class = "nixos"; } else base;
 
