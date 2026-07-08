@@ -321,6 +321,31 @@ let
     else
       errors.unsupportedEffect kind;
 
+  # Coerce a v1 `den.policies.<name>` value to the inner `{ gate; fn }` a compiled policy wraps. v1
+  # `for`/`when` produce `{ __isPolicy = true; fn; }` records whose `fn` already gates on ctx (entity
+  # match / predicate); a bare function is an ungated body; a conditional-aspect record (`when` over an
+  # inline aspect) is handled separately (it compiles to an aspect, not a policy — see `compilePolicies`).
+  innerFn =
+    value:
+    if builtins.isAttrs value && (value.__isPolicy or false) then
+      value.fn
+    else if builtins.isFunction value then
+      value
+    else
+      throw "den-compat: policy: expected a function or a policy record (from for/when), got ${builtins.typeOf value}";
+
+  # A v1 `when`-over-inline-aspect record: `{ name = "<when>"; meta.guard; meta.aspects; includes; }`.
+  # These are conditional ASPECTS (the guard reads the in-flight path set, A9.1), not policies — v1
+  # emits them precisely to avoid the resolved-state cycle. They compile to den-hoag aspects.
+  #
+  # The `meta.guard` + `meta.aspects` PAIR is an unambiguous discriminator against the other two
+  # `den.policies.<name>` value shapes: a bare policy is a FUNCTION (no `meta` at all), and a v1
+  # `for`/`when`-over-a-policy record is `{ __isPolicy = true; name; fn; }` (an `fn`, and no
+  # `meta.aspects`). Only the inline-aspect conditional carries BOTH keys, so testing the pair never
+  # misclassifies a policy as an aspect (or vice versa).
+  isConditionalAspect =
+    value: builtins.isAttrs value && (value.meta or { }) ? guard && (value.meta or { }) ? aspects;
+
   # den-hoag policy: `ctx: [ declaration ]`. Wrap the v1 inner fn so its effects translate to
   # declarations. The wrapper is a bare `ctx:` (no destructuring) — v1 `for`/`when` gating already
   # lives inside `fn`, so den-hoag's dispatch runs it at every scope and `fn`'s own guard decides. The
