@@ -23,9 +23,14 @@ let
   # A delivery DESCRIPTOR (`deliver`/`route`/`provide`, deliver.nix) → a den-hoag `delivery` DECLARATION
   # (resolution stratum): the delivery INTENT — resolved class registrations + placement + the
   # trace-facing annotation booleans. The gen-edge record is rendered from this intent at the FIRING
-  # NODE by output-modules' `edgesAt` (which owns the firing scope + collected membership); no gen-edge
-  # record is built on the compile path (C2 — compile returns policy thunks; den-hoag dispatches them).
-  #
+  # scope by the engine itself (§14.2).
+  deliverLib = import ./deliver.nix { inherit prelude ingest errors; };
+
+  setFunctionArgs = f: args: {
+    __functor = self: f;
+    __functionArgs = args;
+  };
+
   # SOURCE ARM (v1-faithful): a class source → `collected` of the `from` class (edges/route.nix); a
   # MODULE source (provide) → `collected` of the TARGET class (edges/provides.nix:121-122 — the provided
   # module rides the target scope's OWN bucket and is carried by the default fold, hence `mergeHalf =
@@ -374,17 +379,17 @@ let
   # only at that kind's nodes.
   kindIncludePolicies = builtins.mapAttrs (
     kind: aspectRefs:
-    # `ctx: [ edge … ]` — a bare body (den-hoag dispatch runs it fleet-wide); the kind-scoping is the
-    # kind arg. Task 2's dispatch wiring narrows it; for C1 this is a declaration-producing policy.
-    _ctx:
-    map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
+    setFunctionArgs (
+      ctx:
+      if ctx ? ${kind} then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
+    ) { ${kind} = true; }
   ) ing.kindIncludes;
 
   # selfProvideInclude (Gap 1): a v1 `host.name==key` implicit auto-inclusion.
   # If an aspect's name EXACTLY matches the host's name, it is automatically included.
   # Represented as a fleet-wide policy matching the host name.
   selfProvideInclude = {
-    __selfProvideInclude =
+    __selfProvideInclude = setFunctionArgs (
       { host, ... }:
       if host != null then
         if host.name == "«probe»" then
@@ -399,7 +404,8 @@ let
         else
           [ ]
       else
-        [ ];
+        [ ]
+    ) { host = true; };
   };
 
   aspects =

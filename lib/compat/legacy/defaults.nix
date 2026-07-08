@@ -11,9 +11,18 @@
     v1
     // {
       classes = v1Classes // {
-        nixos = { forwardTo = "nixos"; } // nixosClass;
-        darwin = { forwardTo = "darwin"; } // darwinClass;
-        homeManager = { forwardTo = "homeManager"; } // homeManagerClass;
+        nixos = {
+          forwardTo = "nixos";
+        }
+        // nixosClass;
+        darwin = {
+          forwardTo = "darwin";
+        }
+        // darwinClass;
+        homeManager = {
+          forwardTo = "homeManager";
+        }
+        // homeManagerClass;
       };
     };
 }

@@ -103,10 +103,10 @@ let
       hostEntry = bindings.host or null;
       sys = if hostEntry == null then null else systemFor hostEntry;
       sysModule = if sys == null then [ ] else [ { nixpkgs.hostPlatform.system = sys; } ];
-      
+
       # 1. Direct instantiate from v1 host declaration (if explicit)
       directInstantiate = if hostEntry == null then null else instantiateFor hostEntry;
-      
+
       # 2. Schema default instantiate reconstructed from the channel (since v1 eval strips the schema)
       channelName = if hostEntry == null then null else channelFor hostEntry;
       resolvedChannel = channels.${channelName} or null;
@@ -121,9 +121,9 @@ let
       hostInstantiate = if directInstantiate != null then directInstantiate else schemaInstantiate;
       collected = terminal (args // { hostModules = sysModule ++ hostModules; });
     in
-    builtins.trace "TRACE_INST: name=${name} class=${classCfg.name} channelName=${toString channelName} direct=${toString (directInstantiate != null)} schema=${toString (schemaInstantiate != null)} resolved=${toString (resolvedChannel != null)}" (
-    if hostInstantiate != null then hostInstantiate { modules = collected.modules; } else collected
-    );
+    builtins.trace
+      "TRACE_INSTANTIATE collected.modules length: ${builtins.toString (builtins.length collected.modules)}"
+      (if hostInstantiate != null then hostInstantiate { modules = collected.modules; } else collected);
 
   # The pure bridge: `compile`'s output → a den-hoag `config.den.*` module. Instances become
   # `config.den.<kind>.<name>` FIELD-LESS — den-hoag entities carry no content (it comes from aspects),
@@ -160,57 +160,63 @@ let
       // instanceConfig;
     };
 
-  flakeOutputModule = { config, lib ? null, ... }: {
-    # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
-    # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
-    # while the strict `schema.evalModuleTree` in `mkDen` does the actual heavy lifting.
-    options.den =
-      if lib != null then
-        lib.mkOption {
-          type = lib.types.submoduleWith {
-            modules = [
-              {
-                freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
-              }
-            ];
-          };
-          default = { };
-          description = "The den v1 declaration surface (flake-parts permissive collector).";
-        }
-      else
-        { };
+  flakeOutputModule =
+    {
+      config,
+      lib ? null,
+      ...
+    }:
+    {
+      # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
+      # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
+      # while the strict `schema.evalModuleTree` in `mkDen` does the actual heavy lifting.
+      options.den =
+        if lib != null then
+          lib.mkOption {
+            type = lib.types.submoduleWith {
+              modules = [
+                {
+                  freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
+                }
+              ];
+            };
+            default = { };
+            description = "The den v1 declaration surface (flake-parts permissive collector).";
+          }
+        else
+          { };
 
-    config._module.args.den = config.den // {
-      lib = {
-        policy = {
-          resolve = {
-            to = kind: value: {
-              __policyEffect = "resolve";
-              value = if builtins.isAttrs value && value ? ${kind} then value.${kind} else value;
+      config._module.args.den = config.den // {
+        lib = {
+          policy = {
+            resolve = {
+              to = kind: value: {
+                __policyEffect = "resolve";
+                value = if builtins.isAttrs value && value ? ${kind} then value.${kind} else value;
+              };
             };
           };
         };
+        schema =
+          (schema.evalModuleTree {
+            modules = [
+              {
+                options.den.schema = schema.mkSchemaOption { };
+                config.den.schema = config.den.schema or { };
+              }
+            ];
+          }).config.den.schema;
       };
-      schema =
-        (schema.evalModuleTree {
-          modules = [
-            {
-              options.den.schema = schema.mkSchemaOption { };
-              config.den.schema = config.den.schema or { };
-            }
-          ];
-        }).config.den.schema;
-    };
 
-    config.flake =
-      let
-        built = mkDen [ { den = config.den; } ];
-      in
-      {
-        nixosConfigurations = built.nixosConfigurations or { };
-        darwinConfigurations = built.darwinConfigurations or { };
-      };
-  };
+      config.flake =
+        let
+          built = mkDen [ { den = config.den; } ];
+        in
+        {
+          nixosConfigurations = built.nixosConfigurations or { };
+          darwinConfigurations = built.darwinConfigurations or { };
+        };
+    };
 
   # The full driver: v1 modules → the den-hoag assembly. `flakeModule` supplies the v1
   # option declarations for `evalV1`; `compile` desugars; `mkFleetModule` bridges; `denHoag.mkDen` builds.
