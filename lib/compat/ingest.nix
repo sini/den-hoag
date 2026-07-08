@@ -212,7 +212,7 @@ let
   ingest =
     v1Decls:
     let
-      lib = v1Decls.lib or null;
+      lib = builtins.trace "V1DECLS HAS LIB? ${builtins.toString (v1Decls ? lib)}" (v1Decls.lib or null);
       v1Schema = v1Decls.schema or { };
       schemaDecls = buildSchema v1Schema;
 
