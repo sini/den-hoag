@@ -456,51 +456,54 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
   compiledPolicies = compilePolicies ing aspectRec v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → fire-at-kind policies: an aspect radiated to
-  # every instance of a kind. Re-expressed as a den-hoag policy that emits one `edge` per aspect, gated
-  # (by den-hoag dispatch) on the kind's own scope. The policy destructures the kind arg so it fires
-  # only at that kind's nodes.
+  # kind's own scope. The policy destructures the kind arg so it fires only at that kind's nodes.
   # We generate one policy PER item in `includes` to satisfy gen-hoag's rule that a single policy
   # must only produce declarations for a single stratum (e.g. `edge` vs `pipeOp`).
-  kindIncludePolicies = prelude.flattenAttrs (v: false) (builtins.mapAttrs (
-    kind: aspectRefs:
+  kindIncludePolicies =
     let
-      processRef =
-        ref: ctx:
-        if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __policyEffect) then
-          # It's a policy function or an effect record. Compile it as a policy.
-          compilePolicy ing aspectRec ref ctx
-        else if builtins.isAttrs ref && !(ref ? name) && !(ref ? id_hash) then
-          # Unnamed inline module/aspect
-          let
-            dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
-            translated = translateAspect dummyName ref;
-          in
-          [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
-        else
-          # It's a standard aspect reference.
-          [ (declare.edge (resolveAspectRef ing aspectRec ref)) ];
+      imap0 = f: l: builtins.genList (i: f i (builtins.elemAt l i)) (builtins.length l);
+      policyPairs = prelude.concatMap (kind:
+        let
+          aspectRefs = ing.kindIncludes.${kind};
+          processRef =
+            ref: ctx:
+            if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __policyEffect) then
+              # It's a policy function or an effect record. Compile it as a policy.
+              compilePolicy ing aspectRec ref ctx
+            else if builtins.isAttrs ref && !(ref ? name) && !(ref ? id_hash) then
+              # Unnamed inline module/aspect
+              let
+                dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
+                translated = translateAspect dummyName ref;
+              in
+              [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
+            else
+              # It's a standard aspect reference.
+              [ (declare.edge (resolveAspectRef ing aspectRec ref)) ];
 
-      mkPolicyForRef = ref:
-        if kind == "env" then
-          { env ? null, ... }@ctx:
-          if ctx ? env then processRef ref ctx else [ ]
-        else if kind == "host" then
-          { host ? null, ... }@ctx:
-          if ctx ? host then processRef ref ctx else [ ]
-        else if kind == "user" then
-          { user ? null, ... }@ctx:
-          if ctx ? user then processRef ref ctx else [ ]
-        else
-          { ... }@ctx:
-          if ctx ? ${kind} then processRef ref ctx
-          else if ctx == { } then [ (declare.edge { id_hash = "«probe»"; name = "«probe»"; }) ]
-          else [ ];
+          mkPolicyForRef = ref:
+            if kind == "env" then
+              { env ? null, ... }@ctx:
+              if ctx ? env then processRef ref ctx else [ ]
+            else if kind == "host" then
+              { host ? null, ... }@ctx:
+              if ctx ? host then processRef ref ctx else [ ]
+            else if kind == "user" then
+              { user ? null, ... }@ctx:
+              if ctx ? user then processRef ref ctx else [ ]
+            else
+              { ... }@ctx:
+              if ctx ? ${kind} then processRef ref ctx
+              else if ctx == { } then [ (declare.edge { id_hash = "«probe»"; name = "«probe»"; }) ]
+              else [ ];
+        in
+        imap0 (idx: ref: {
+          name = "__kindInclude__${kind}__${toString idx}";
+          value = mkPolicyForRef ref;
+        }) aspectRefs
+      ) (builtins.attrNames ing.kindIncludes);
     in
-    builtins.listToAttrs (prelude.imap0 (idx: ref: {
-      name = "__kindInclude__${kind}__${toString idx}";
-      value = mkPolicyForRef ref;
-    }) aspectRefs)
-  ) ing.kindIncludes);
+    builtins.listToAttrs policyPairs;
 
   # selfProvideInclude (Gap 1): a v1 `host.name==key` implicit auto-inclusion.
   # If an aspect's name EXACTLY matches the host's name, it is automatically included.
