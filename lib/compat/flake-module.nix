@@ -45,6 +45,19 @@ let
       default = { };
       inherit description;
     };
+  mergeSubmodule =
+    description:
+    schema.mkOption {
+      type = schema.types.submoduleWith {
+        modules = [
+          {
+            freeformType = schema.types.lazyAttrsOf schema.types.anything;
+          }
+        ];
+      };
+      default = { };
+      inherit description;
+    };
 
   # The v1 option surface as ONE freeform `den` submodule: each v1 concern is a `mergeOpt` sub-option (the
   # grammar rides untouched), and the `freeformType` absorbs any v1 config outside them (custom-kind
@@ -63,15 +76,15 @@ let
       type = schema.types.submodule {
         freeformType = schema.types.lazyAttrsOf schema.types.anything;
         options = {
-          hosts = mergeOpt "v1 `den.hosts.<system>.<name>` (two-level host definitions).";
-          homes = mergeOpt "v1 `den.homes.<system>.<name>` (standalone home-manager configurations).";
-          schema = mergeOpt "v1 `den.schema.<kind>` (containment kinds + kind-attached includes).";
-          aspects = mergeOpt "v1 `den.aspects.<name>` (aspect definitions).";
-          policies = mergeOpt "v1 `den.policies.<name>` (policy functions / for·when records).";
-          classes = mergeOpt "v1 `den.classes.<name>` (output class registrations).";
+          hosts = mergeSubmodule "v1 `den.hosts.<system>.<name>` (two-level host definitions).";
+          homes = mergeSubmodule "v1 `den.homes.<system>.<name>` (standalone home-manager configurations).";
+          schema = mergeSubmodule "v1 `den.schema.<kind>` (containment kinds + kind-attached includes).";
+          aspects = mergeSubmodule "v1 `den.aspects.<name>` (aspect definitions).";
+          policies = mergeSubmodule "v1 `den.policies.<name>` (policy functions / for·when records).";
+          classes = mergeSubmodule "v1 `den.classes.<name>` (output class registrations).";
           include = rawListOpt "v1 static entity-scoped aspect inclusions.";
-          quirks = mergeOpt "v1 `den.quirks.<name>` (quirk channels).";
-          contentClass = mergeOpt "v1 kind -> content-class overrides.";
+          quirks = mergeSubmodule "v1 `den.quirks.<name>` (quirk channels).";
+          contentClass = mergeSubmodule "v1 kind -> content-class overrides.";
           nixpkgs = mergeOpt "v1 `den.nixpkgs` (transparent pass-through to den-hoag).";
           batteries = mergeOpt "v1 `den.batteries` (legacy battery aspects).";
         };
@@ -257,31 +270,15 @@ let
             type = lib.types.submodule {
               freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
               options = {
-                aspects = lib.mkOption {
-                  type = lib.types.lazyAttrsOf (lib.types.lazyAttrsOf lib.types.unspecified);
-                  default = { };
-                };
-                schema = lib.mkOption {
-                  type = lib.types.lazyAttrsOf (lib.types.submodule {
-                    freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
-                    options.includes = lib.mkOption {
-                      type = lib.types.listOf lib.types.unspecified;
-                      default = [ ];
-                    };
-                    options.imports = lib.mkOption {
-                      type = lib.types.listOf lib.types.unspecified;
-                      default = [ ];
-                    };
-                  });
-                  default = { };
-                };
-                policies = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
-                classes = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
-                hosts = lib.mkOption { type = lib.types.lazyAttrsOf (lib.types.lazyAttrsOf lib.types.unspecified); default = { }; };
-                homes = lib.mkOption { type = lib.types.lazyAttrsOf (lib.types.lazyAttrsOf lib.types.unspecified); default = { }; };
-                quirks = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
-                contentClass = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
-                batteries = lib.mkOption { type = lib.types.lazyAttrsOf lib.types.unspecified; default = { }; };
+                aspects = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                schema = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                policies = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                classes = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                hosts = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                homes = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                quirks = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                contentClass = lib.mkOption { type = lib.types.deferredModule; default = { }; };
+                batteries = lib.mkOption { type = lib.types.deferredModule; default = { }; };
               };
             };
             default = { };
