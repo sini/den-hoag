@@ -195,10 +195,10 @@ in
       expected = false;
     };
 
-    # (a) — A4 declaration-stratum separation: a two-stratum policy aborts (naming edge + member).
-    test-mixed-stratum-aborts = {
-      expr = (builtins.tryEval (builtins.length mixed.policy)).success;
-      expected = false;
+    # (a) — A4 declaration-stratum separation: a two-stratum policy partitions instead of aborting.
+    test-mixed-stratum-partitions = {
+      expr = builtins.length mixed.policy;
+      expected = 2;
     };
 
     # (b) — a channel-named guard is never satisfied (no ctx key), so the policy never fires…

@@ -183,9 +183,47 @@ let
   # `includes` so cond-2 visibility holds at the deliverable descendants without materialising content
   # at the seed scope (ADJUDICATION 2 compensation); `selfMerge` folds a self-provide into the aspect.
   desugarOne =
-    aName: aspect:
+    v1Classes: v1Quirks: aName: aspect:
     let
-      provides = aspect.provides;
+      # V1 structural keys (those that are not class or channel content).
+      structuralKeysSet = {
+        settings = true;
+        includes = true;
+        neededBy = true;
+        meta = true;
+        tags = true;
+        projects = true;
+        name = true;
+        description = true;
+        id_hash = true;
+        provides = true;
+        policies = true;
+        excludes = true;
+        classes = true;
+        _ = true;
+      };
+      
+      # Keys that represent v1 class renames (from compile.nix).
+      v1ClassKeyMap = {
+        homeManager = "home-manager";
+      };
+
+      explicitProvides = aspect.provides or { };
+      
+      # Implicit nested provides: any key that isn't a known structure, class, or quirk, AND whose value is an attrset.
+      aspectKeys = builtins.attrNames aspect;
+      implicitProviderKeys = builtins.filter (k: 
+        builtins.isAttrs aspect.${k} &&
+        !(v1Classes ? ${k}) && 
+        !(v1Quirks ? ${k}) && 
+        !(structuralKeysSet ? ${k}) && 
+        !(builtins.elem k (builtins.attrValues v1ClassKeyMap)) &&
+        !(builtins.substring 0 2 k == "__")
+      ) aspectKeys;
+
+      implicitProvides = builtins.listToAttrs (map (k: { name = k; value = aspect.${k}; }) implicitProviderKeys);
+      provides = explicitProvides // implicitProvides;
+
       keys = builtins.attrNames provides;
       crossKeys = builtins.filter (k: k != aName) keys;
       hasSelf = builtins.elem aName keys;
@@ -199,23 +237,36 @@ let
       );
       seedStubs = map (key: { name = "${aName}/${key}"; }) crossKeys;
       selfContent = if hasSelf then mkSelfContent aName aspect provides.${aName} else null;
+      inherit implicitProviderKeys;
     };
 
   # The public desugar: v1-aspects map → v1-aspects map with every `provides` desugared. Aspects without
   # `provides` (incl. bare-function aspects) pass through untouched. Synth carrier names are `<a>/<key>`
   # — the `/` keeps them disjoint from user aspect identifiers (like compile.nix's `__kindInclude__`).
   desugar =
-    aspects:
+    v1:
     let
-      declaring = prelude.filterAttrs (_: a: builtins.isAttrs a && (a.provides or null) != null) aspects;
-      per = builtins.mapAttrs desugarOne declaring;
+      aspects = v1.aspects or { };
+      v1Classes = v1.classes or { };
+      v1Quirks = v1.quirks or { };
+
+      # An aspect is "declaring" if it explicitly defines `provides`, OR if it contains
+      # any unrecognized non-structural keys (which become implicit provides).
+      # To avoid duplicating the `implicitProviderKeys` filter logic, we can just apply
+      # `desugarOne` to EVERY aspect that is an attrset (it will just return empty synths/stubs for those without).
+      attrAspects = prelude.filterAttrs (_: builtins.isAttrs) aspects;
+      per = builtins.mapAttrs (desugarOne v1Classes v1Quirks) attrAspects;
       allSynths = prelude.foldl' (acc: r: acc // r.synths) { } (builtins.attrValues per);
       augmented = builtins.mapAttrs (
         aName: a:
-        if per ? ${aName} then
+        let
+          r = per.${aName} or null;
+        in
+        if r != null && (r.synths != { } || r.seedStubs != [ ] || r.selfContent != null || r.implicitProviderKeys != [ ]) then
           let
-            r = per.${aName};
-            noProv = builtins.removeAttrs a [ "provides" ];
+            # Strip explicit `provides` AND any keys we turned into implicit provides,
+            # so they don't trip the unknown aspect key check in `compile.nix`.
+            noProv = builtins.removeAttrs a ([ "provides" ] ++ r.implicitProviderKeys);
             # `includes` merge additively (carrier's own ++ any parametric self-content include ++ the
             # contentless seed stubs); everything else DEEP-merges the self-provide content onto the
             # carrier (rmerge), so self content and own content coexist. `includes` is stripped from

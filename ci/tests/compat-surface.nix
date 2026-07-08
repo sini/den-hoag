@@ -106,7 +106,7 @@ let
   #    formal ∈ ctx), so it fires only at scopes carrying a `host` coordinate — host + user cells (a user
   #    inherits its host) — and NEVER at a custom-kind scope (env/cluster carry only their own coordinate).
   match = denHoag.internal.dispatch.fromFunctionMatch;
-  denDefaultCond = builtins.functionArgs defaultC.policies.__denDefault;
+  denDefaultCond = builtins.functionArgs defaultC.policies.__denDefault_host;
   ent = k: {
     id_hash = k;
     name = k;
@@ -208,7 +208,7 @@ in
       };
       # den.default → the reserved `__default` aspect + the `__denDefault` radiation policy.
       test-default-registers-aspect-and-policy = {
-        expr = (defaultC.aspects ? __default) && (defaultC.policies ? __denDefault);
+        expr = (defaultC.aspects ? __default) && (defaultC.policies ? __denDefault_host);
         expected = true;
       };
       # den.default's `homeManager` class key grounds to `home-manager` (the v1ClassKeyMap).
@@ -274,7 +274,7 @@ in
       };
       # the kind-attached include (cluster.includes) lifts to a fire-at-kind policy (__kindInclude__cluster).
       test-schema-kind-include-policy = {
-        expr = schemaC.policies ? __kindInclude__cluster;
+        expr = schemaC.policies ? __kindInclude__cluster__0;
         expected = true;
       };
       # multi-system @system homes: two membership cells (one per host/system), ONE user registry entry.

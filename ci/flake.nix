@@ -13,9 +13,14 @@
       # suites (compat-scaffold, C1–C6). Rides den-hoag's own nix-unit CI (den-hoag = `path:..`).
       denCompat = den-hoag.compat;
       nixpkgsLib = import "${inputs.nixpkgs}/lib";
-      # Source tree of the den-hoag flake, for the A1 zero-machinery source scan (reads
-      # lib/**.nix text). The lib itself is pure/path-free, so the scan needs the store path.
       denHoagSrc = "${inputs.den-hoag}";
+      wrapWiring = wiring: wiring // {
+        mkDen = userModules: wiring.mkDen (userModules ++ [ { config._module.args.lib = nixpkgsLib; } ]);
+        evalV1 = userModules: wiring.evalV1 (userModules ++ [ { config._module.args.lib = nixpkgsLib; } ]);
+      };
+      denCompatWrapped = wrapWiring denCompat // {
+        mkWiring = legacy: wrapWiring (denCompat.mkWiring legacy);
+      };
     in
     gen.lib.mkCi {
       inherit inputs;
@@ -26,10 +31,10 @@
       specialArgs = {
         inherit
           denHoag
-          denCompat
           nixpkgsLib
           denHoagSrc
           ;
+        denCompat = denCompatWrapped;
         nixpkgs = inputs.nixpkgs;
       };
     };

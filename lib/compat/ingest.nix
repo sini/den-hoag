@@ -101,9 +101,9 @@ let
       declared = builtins.mapAttrs (_: k: { parent = k.parent or null; }) v1Schema;
       # Built-ins fill only what the v1 schema does not already pin.
       withBuiltins =
-        (if declared ? host then { } else { host.parent = null; })
-        // (if declared ? user then { } else { user.parent = "host"; })
-        // declared;
+        declared
+        // (if v1Schema ? host && v1Schema.host ? parent then { } else { host = { parent = null; }; })
+        // (if v1Schema ? user && v1Schema.user ? parent then { } else { user = { parent = "host"; }; });
       kinds = builtins.attrNames withBuiltins;
       checkParent =
         kind:

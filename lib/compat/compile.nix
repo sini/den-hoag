@@ -215,7 +215,7 @@ let
           let
             excludes = sanitized.excludes or [ ];
             withoutDropped = builtins.removeAttrs sanitized droppedAspectKeys;
-            validKeys = builtins.filter (k: structuralKeysSet ? ${k} || v1Classes ? ${v1ClassKeyMap.${k} or k}) (builtins.attrNames withoutDropped);
+            validKeys = builtins.filter (k: structuralKeysSet ? ${k} || v1Classes ? ${v1ClassKeyMap.${k} or k} || channels ? ${k}) (builtins.attrNames withoutDropped);
             grounded = prelude.foldl' (
               acc: k:
               let

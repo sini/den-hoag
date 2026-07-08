@@ -5,7 +5,7 @@
 # parametric class key + a quirk key, one `policy.include`, one class — against a snapshot derived
 # from first principles (id_hashes recomputed here, not copied from a run), and proves purity by
 # poisoning a parametric body with `throw` and showing the structural projection still computes.
-{ denCompat, denHoagSrc, ... }:
+{ denCompat, denHoagSrc, nixpkgsLib, ... }:
 let
   # The parametric class body is a THROW: if `compile` (or any structural read below) forced it, the
   # suite would abort. It never does — the aspect row is near-identity passthrough, values stay thunks.
@@ -118,6 +118,9 @@ let
       };
       config.den.aspects.system.ssh-peers = [ "axon-ip" ];
       config.den.classes.myclass = { };
+    }
+    {
+      config._module.args.lib = nixpkgsLib;
     }
   ];
 
@@ -291,8 +294,8 @@ in
       expected = [ "alice" ];
     };
     test-roundtrip-aspect-registry = {
-      expr = builtins.attrNames roundTrip.den.aspects;
-      expected = [ "system" ];
+      expr = builtins.sort (a: b: a < b) (builtins.attrNames roundTrip.den.aspects);
+      expected = [ "__default" "system" "wsl-host-aspect" ];
     };
     # the boundary entry's id_hash equals the entry mkDen independently stamps (identity coherence).
     test-roundtrip-id-coherent = {

@@ -139,6 +139,7 @@ let
   sysInstantiate = denCompat.mkNixosInstantiate {
     inherit (sysCompiled.entities) systemFor channelFor instantiateFor;
     terminal = stubTerminal;
+    denContext = sysCompiled;
   };
   sysInjected = sysInstantiate {
     name = "axon";

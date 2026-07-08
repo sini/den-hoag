@@ -1,4 +1,4 @@
-{ den, lib, ... }:
+{ den, lib ? null, ... }:
 let
   description = ''
     The `os` class is a convenience for settings that should be forwarded

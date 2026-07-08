@@ -1,0 +1,11 @@
+--- lib/compat/flake-module.nix
++++ lib/compat/flake-module.nix
+@@ -278,7 +278,7 @@
+ 
+       config.flake =
+         let
+-          built = mkDen [ { den = config.den; } ];
++          built = mkDen [ { den = config.den // prelude.optionalAttrs (lib != null) { inherit lib; }; } ];
+         in
+         {
+           nixosConfigurations = built.nixosConfigurations or { };

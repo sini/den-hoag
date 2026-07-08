@@ -29,7 +29,7 @@ let
   sel = denHoag.sel;
 
   # ── (A) desugar shape fixtures ──────────────────────────────────────────────────────────────────
-  shaped = desugar {
+  shaped = desugar { classes = { nixos = { }; }; aspects = {
     A = {
       provides = {
         to-users = {
@@ -50,7 +50,7 @@ let
     plain = {
       nixos.x = 9;
     }; # no provides — must pass through byte-identical
-  };
+  }; };
   selOf = name: shaped.${name}.neededBy;
 
   # ── (A2) a PARAMETRIC provided value rides as an `includes` member (v1 applyProvide per firing
@@ -60,7 +60,7 @@ let
     {
       "home-manager".who = user.name;
     };
-  shapedParam = desugar { P.provides.to-users = paramFn; };
+  shapedParam = desugar { classes = { nixos = { }; }; aspects = { P.provides.to-users = paramFn; }; };
   paramCarrier = shapedParam."P/to-users";
   # cheap resolution smoke: the parametric carrier radiates to a user cell AND its parametric include
   # resolves there without error (forcing the cell's resolved-aspect keys drives the fixpoint).
@@ -107,7 +107,7 @@ let
   paramCellKeys = map (n: n.key) (paramDen.structural.eval.get "user:u@host:h" "resolved-aspects");
 
   # ── (B) radiated positions: desugar output → denHoag.mkDen with precise den.include ─────────────
-  bFleet = desugar {
+  bFleet = desugar { classes = { nixos = { }; }; aspects = {
     hostProv.provides.to-users = {
       "home-manager".hp = 1;
     }; # placed at host:axon
@@ -126,7 +126,7 @@ let
       }; # self-provide, placed at host:axon
       "home-manager".ownBase = 0;
     };
-  };
+  }; };
 
   base = {
     config.den.schema = {
