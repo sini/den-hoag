@@ -126,7 +126,7 @@ let
   # `resolved-aspects` fixpoint's `forwardExpand` expects either concrete aspects or wrapped
   # functors (`__isWrappedFn = true`). This walks the `includes` tree and wraps lambdas.
   sanitizeAspect =
-    ing: aspectRec: v1Classes: aspect:
+    ing: aspectRec: v1Classes: v1Quirks: aspect:
     if builtins.isFunction aspect then
       {
         __isWrappedFn = true;
@@ -148,12 +148,12 @@ let
           in
           if missingArgs == [ ] then
             let res = aspect augmentedCtx; in
-            if builtins.isAttrs res then resolveAspectRef ing aspectRec v1Classes v1Quirks (sanitizeAspect ing aspectRec v1Classes res) else res
+            if builtins.isAttrs res then resolveAspectRef ing aspectRec v1Classes v1Quirks (sanitizeAspect ing aspectRec v1Classes v1Quirks res) else res
           else
             { id_hash = "noop-skip-${builtins.hashString "sha256" (builtins.toJSON args)}"; name = "noop"; };
       }
     else if builtins.isAttrs aspect then
-      aspect // (if aspect ? includes then { includes = map (sanitizeAspect ing aspectRec v1Classes) aspect.includes; } else { })
+      aspect // (if aspect ? includes then { includes = map (sanitizeAspect ing aspectRec v1Classes v1Quirks) aspect.includes; } else { })
     else
       aspect;
 
@@ -207,7 +207,7 @@ let
     builtins.seq (sentinels.provides name aspect) (
       builtins.seq (noBatteriesForward name aspect) (
         let
-          sanitized = sanitizeAspect ing aspectRec v1Classes aspect;
+          sanitized = sanitizeAspect ing aspectRec v1Classes v1Quirks aspect;
         in
         if builtins.isFunction sanitized then
           { includes = [ sanitized ]; }
