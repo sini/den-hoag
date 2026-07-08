@@ -48,7 +48,7 @@ let
   mergeSubmodule =
     description:
     schema.mkOption {
-      type = schema.types.submoduleWith {
+      type = schema.types.submodule {
         modules = [
           {
             freeformType = schema.types.lazyAttrsOf schema.types.anything;
