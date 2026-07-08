@@ -108,6 +108,19 @@ let
   # Aspect identity check.
   hasId = a: builtins.isAttrs a && a ? id_hash;
 
+  # V1 structural keys (those that are not class or channel content).
+  structuralKeysSet = {
+    settings = true;
+    includes = true;
+    neededBy = true;
+    meta = true;
+    tags = true;
+    projects = true;
+    name = true;
+    description = true;
+    id_hash = true;
+  };
+
   # Recursive sanitization for aspect `includes`. In den-hoag V1, `includes` could contain bare
   # lambdas (like `userContext`) that gen-merge conditionally evaluated. In gen-hoag V2, the
   # `resolved-aspects` fixpoint's `forwardExpand` expects either concrete aspects or wrapped
@@ -198,13 +211,14 @@ let
           let
             excludes = sanitized.excludes or [ ];
             withoutDropped = builtins.removeAttrs sanitized droppedAspectKeys;
+            validKeys = builtins.filter (k: structuralKeysSet ? ${k} || v1Classes ? ${v1ClassKeyMap.${k} or k}) (builtins.attrNames withoutDropped);
             grounded = prelude.foldl' (
               acc: k:
               let
                 k' = v1ClassKeyMap.${k} or k;
               in
-              builtins.removeAttrs acc [ k ] // { ${k'} = sanitized.${k}; }
-            ) withoutDropped (builtins.attrNames withoutDropped);
+              acc // { ${k'} = sanitized.${k}; }
+            ) { } validKeys;
             meta = grounded.meta or { };
             metaWithDrop =
               if excludes == [ ] then
