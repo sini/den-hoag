@@ -254,7 +254,29 @@ let
       options.den =
         if lib != null then
           lib.mkOption {
-            type = lib.types.deferredModule;
+            type = lib.types.submodule {
+              freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
+              options = {
+                aspects = lib.mkOption {
+                  type = lib.types.lazyAttrsOf (lib.types.lazyAttrsOf lib.types.unspecified);
+                  default = { };
+                };
+                schema = lib.mkOption {
+                  type = lib.types.lazyAttrsOf (lib.types.submodule {
+                    freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
+                    options.includes = lib.mkOption {
+                      type = lib.types.listOf lib.types.unspecified;
+                      default = [ ];
+                    };
+                    options.imports = lib.mkOption {
+                      type = lib.types.listOf lib.types.unspecified;
+                      default = [ ];
+                    };
+                  });
+                  default = { };
+                };
+              };
+            };
             default = { };
             description = "The den v1 declaration surface (flake-parts permissive collector).";
           }
