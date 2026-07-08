@@ -24,7 +24,12 @@
       # `nixpkgs` (the FLAKE — carrying `.lib.nixosSystem`) is threaded through for the end-to-end
       # terminal-crossing test (den-hoag's ONE nixpkgs boundary); every other suite ignores it (`...`).
       specialArgs = {
-        inherit denHoag denCompat nixpkgsLib denHoagSrc;
+        inherit
+          denHoag
+          denCompat
+          nixpkgsLib
+          denHoagSrc
+          ;
         nixpkgs = inputs.nixpkgs;
       };
     };

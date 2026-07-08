@@ -179,7 +179,8 @@ in
     };
     test-nixos-both-members-share = {
       expr =
-        builtins.all (id: builtins.hasAttr denHoag.internal.classShareCoreAttr den.output.systems.nixos.${id})
+        builtins.all
+          (id: builtins.hasAttr denHoag.internal.classShareCoreAttr den.output.systems.nixos.${id})
           [
             axonId
             bladeId
@@ -193,7 +194,9 @@ in
       expected = "collect";
     };
     test-home-manager-no-core-loc = {
-      expr = builtins.hasAttr denHoag.internal.classShareCoreAttr den.output.systems.home-manager.${cellId};
+      expr =
+        builtins.hasAttr denHoag.internal.classShareCoreAttr
+          den.output.systems.home-manager.${cellId};
       expected = false;
     };
 

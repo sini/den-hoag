@@ -128,7 +128,10 @@ let
   # to rebuild class-carrying entries. Self-referential `tree` (options read `tree.config.den.schema`)
   # is the documented gen-schema pattern (laziness ties the knot).
   buildRegistries =
-    { schemaDecls, instanceNames }:
+    {
+      schemaDecls,
+      instanceNames,
+    }:
     let
       kinds = builtins.attrNames schemaDecls;
       tree = schema.evalModuleTree {
@@ -233,7 +236,9 @@ let
       // customInstances;
 
       instanceNames = builtins.mapAttrs (_: insts: builtins.attrNames insts) instances;
-      registries = buildRegistries { inherit schemaDecls instanceNames; };
+      registries = buildRegistries {
+        inherit schemaDecls instanceNames;
+      };
 
       membership = buildMembership {
         inherit bindings;
@@ -280,6 +285,24 @@ let
       );
       systemFor = host: systemByHostId.${host.id_hash} or null;
 
+      # channelFor: v1's per-host `channel` string.
+      channelByHostId = builtins.listToAttrs (
+        map (name: {
+          name = registries.host.${name}.id_hash;
+          value = flatHosts.${name}.channel or "nixos-unstable";
+        }) (builtins.attrNames flatHosts)
+      );
+      channelFor = host: channelByHostId.${host.id_hash} or "nixos-unstable";
+
+      # instantiateFor (§2.5 carry-in): v1's per-host `instantiate` function.
+      instantiateByHostId = builtins.listToAttrs (
+        map (name: {
+          name = registries.host.${name}.id_hash;
+          value = flatHosts.${name}.instantiate or null;
+        }) (builtins.attrNames flatHosts)
+      );
+      instantiateFor = host: instantiateByHostId.${host.id_hash} or null;
+
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
       classRegistry = builtinClasses // prelude.genAttrs declaredClassNames classEntry;
@@ -306,6 +329,8 @@ let
         membership
         contentClass
         systemFor
+        channelFor
+        instantiateFor
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;

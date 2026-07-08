@@ -88,6 +88,9 @@ let
   mkNixosInstantiate =
     {
       systemFor,
+      channelFor,
+      instantiateFor,
+      channels ? { },
       terminal,
     }:
     args@{
@@ -100,8 +103,27 @@ let
       hostEntry = bindings.host or null;
       sys = if hostEntry == null then null else systemFor hostEntry;
       sysModule = if sys == null then [ ] else [ { nixpkgs.hostPlatform.system = sys; } ];
+      
+      # 1. Direct instantiate from v1 host declaration (if explicit)
+      directInstantiate = if hostEntry == null then null else instantiateFor hostEntry;
+      
+      # 2. Schema default instantiate reconstructed from the channel (since v1 eval strips the schema)
+      channelName = if hostEntry == null then null else channelFor hostEntry;
+      resolvedChannel = channels.${channelName} or null;
+      schemaInstantiate =
+        if resolvedChannel == null then
+          null
+        else if classCfg.name == "darwin" then
+          resolvedChannel.darwinSystem or null
+        else
+          resolvedChannel.nixosSystem or null;
+
+      hostInstantiate = if directInstantiate != null then directInstantiate else schemaInstantiate;
+      collected = terminal (args // { hostModules = sysModule ++ hostModules; });
     in
-    terminal (args // { hostModules = sysModule ++ hostModules; });
+    builtins.trace "TRACE_INST: name=${name} class=${classCfg.name} channelName=${toString channelName} direct=${toString (directInstantiate != null)} schema=${toString (schemaInstantiate != null)} resolved=${toString (resolvedChannel != null)}" (
+    if hostInstantiate != null then hostInstantiate { modules = collected.modules; } else collected
+    );
 
   # The pure bridge: `compile`'s output → a den-hoag `config.den.*` module. Instances become
   # `config.den.<kind>.<name>` FIELD-LESS — den-hoag entities carry no content (it comes from aspects),
@@ -111,14 +133,15 @@ let
   # nixos class carries the compat systemFor-injecting instantiate (§2.5 carry-in), so `den.hosts`'
   # per-host platform reaches the built system.
   mkFleetModule =
-    compiled:
+    v1Decls: compiled:
     let
       instanceConfig = builtins.mapAttrs (
         _kind: insts: builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;
       nixosInstantiate = mkNixosInstantiate {
-        inherit (compiled.entities) systemFor;
+        inherit (compiled.entities) systemFor channelFor instantiateFor;
         terminal = denHoag.internal.terminal.collect;
+        channels = v1Decls.channels or { };
       };
     in
     {
@@ -234,8 +257,11 @@ let
   };
   mkDen =
     userModules:
+    let
+      v1Decls = evalV1 userModules;
+    in
     denHoag.mkDen [
-      (mkFleetModule (compile (desugarLegacy (evalV1 userModules))))
+      (mkFleetModule v1Decls (compile (desugarLegacy v1Decls)))
       interpretModule
     ];
 in

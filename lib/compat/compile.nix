@@ -472,6 +472,8 @@ builtins.seq surfaceTotalityOk {
       membership
       contentClass
       systemFor
+      channelFor
+      instantiateFor
       ;
   };
   inherit aspects policies;
