@@ -246,7 +246,7 @@ let
       config,
       lib ? null,
       ...
-    }:
+    }@args:
     {
       # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
       # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
@@ -283,7 +283,14 @@ let
 
       config.flake =
         let
-          built = mkDen [ { den = config.den // prelude.optionalAttrs (lib != null) { inherit lib; }; } ];
+          built = mkDen [
+            { den = config.den; }
+            {
+              _module.args =
+                prelude.optionalAttrs (lib != null) { inherit lib; }
+                // prelude.optionalAttrs (args ? inputs) { inherit (args) inputs; };
+            }
+          ];
         in
         {
           nixosConfigurations = built.nixosConfigurations or { };
