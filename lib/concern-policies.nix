@@ -40,7 +40,9 @@
               acts = declare.checkStratum name (base.produce id ctx);
             in
             map (a: a // { __policy = name; }) acts;
-          probeCtx = prelude.genAttrs (builtins.attrNames base.condition) (_: probeEntry) // { __isProbe = true; };
+          probeCtx = prelude.genAttrs (builtins.attrNames base.condition) (_: probeEntry) // {
+            __isProbe = true;
+          };
           # If the policy crashes on the probe (e.g. den v1 compat policies reading host.class),
           # catch it and default to a dummy non-enrich output so it falls into the 'policy' group.
           probeActs =
@@ -54,9 +56,12 @@
             # But wait, if probeActs == [ ], it was marked as enrich.
             # If we want to ensure v1 policies that return empty on probe don't get misclassified,
             # we can check if the policy explicitly carries an __isEnrich flag.
-            if fn ? __isEnrich then fn.__isEnrich
-            else if probeActs == [ ] then false # Default to false for empty probe to avoid structural crashes
-            else prelude.all (a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich") probeActs;
+            if fn ? __isEnrich then
+              fn.__isEnrich
+            else if probeActs == [ ] then
+              false # Default to false for empty probe to avoid structural crashes
+            else
+              prelude.all (a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich") probeActs;
         in
         {
           inherit (base)

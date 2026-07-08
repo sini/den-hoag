@@ -20,7 +20,8 @@ let
         inherit structuralKeysSet;
       };
     };
-    resolve = className: nodeId:
+    resolve =
+      className: nodeId:
       # Return the classes.${className} module for all present aspects on this node.
       # denHoag.aspectsAt evaluates the presence guard and settings override.
       let
@@ -49,10 +50,10 @@ let
       __policyEffect = "exclude";
       value = aspect;
     };
-    
+
     # Expose the delivery descriptors from deliver.nix.
     inherit (deliverLib) deliver route provide;
-    
+
     pipe = {
       from = pipeName: stages: {
         __policyEffect = "pipe";
@@ -60,18 +61,52 @@ let
           inherit pipeName stages;
         };
       };
-      filter = fn: { __pipeStage = "filter"; inherit fn; };
-      transform = fn: { __pipeStage = "transform"; inherit fn; };
-      fold = init: fn: { __pipeStage = "fold"; inherit init fn; };
-      for = fn: { __pipeStage = "for"; inherit fn; };
-      to = aspects: { __pipeStage = "to"; inherit aspects; };
-      as = targetPipeName: { __pipeStage = "as"; inherit targetPipeName; };
-      append = value: { __pipeStage = "append"; inherit value; };
-      expose = { __pipeStage = "expose"; };
-      broadcast = fn: { __pipeStage = "broadcast"; inherit fn; };
-      collect = fn: { __pipeStage = "collect"; inherit fn; };
-      collectAll = fn: { __pipeStage = "collectAll"; inherit fn; };
-      withProvenance = { __pipeStage = "withProvenance"; };
+      filter = fn: {
+        __pipeStage = "filter";
+        inherit fn;
+      };
+      transform = fn: {
+        __pipeStage = "transform";
+        inherit fn;
+      };
+      fold = init: fn: {
+        __pipeStage = "fold";
+        inherit init fn;
+      };
+      for = fn: {
+        __pipeStage = "for";
+        inherit fn;
+      };
+      to = aspects: {
+        __pipeStage = "to";
+        inherit aspects;
+      };
+      as = targetPipeName: {
+        __pipeStage = "as";
+        inherit targetPipeName;
+      };
+      append = value: {
+        __pipeStage = "append";
+        inherit value;
+      };
+      expose = {
+        __pipeStage = "expose";
+      };
+      broadcast = fn: {
+        __pipeStage = "broadcast";
+        inherit fn;
+      };
+      collect = fn: {
+        __pipeStage = "collect";
+        inherit fn;
+      };
+      collectAll = fn: {
+        __pipeStage = "collectAll";
+        inherit fn;
+      };
+      withProvenance = {
+        __pipeStage = "withProvenance";
+      };
     };
     mkPolicy = name: fn: fn;
   };
@@ -97,5 +132,11 @@ let
 
 in
 {
-  inherit aspects policy resolveEntity capture home-env;
+  inherit
+    aspects
+    policy
+    resolveEntity
+    capture
+    home-env
+    ;
 }

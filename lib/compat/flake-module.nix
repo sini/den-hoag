@@ -43,6 +43,7 @@ let
     schema.mkOption {
       type = schema.types.anything;
       default = { };
+  v1Anything = import ./v1-type.nix { inherit lib; };
       inherit description;
     };
 
