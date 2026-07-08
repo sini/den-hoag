@@ -131,6 +131,7 @@ let
     {
       schemaDecls,
       instanceNames,
+      lib ? null,
     }:
     let
       kinds = builtins.attrNames schemaDecls;
@@ -149,6 +150,7 @@ let
             );
           }
         ];
+        specialArgs = prelude.optionalAttrs (lib != null) { inherit lib; };
       };
     in
     prelude.genAttrs kinds (kindName: tree.config.den.${kindName});
@@ -210,6 +212,7 @@ let
   ingest =
     v1Decls:
     let
+      lib = v1Decls.lib or null;
       v1Schema = v1Decls.schema or { };
       schemaDecls = buildSchema v1Schema;
 
@@ -237,7 +240,7 @@ let
 
       instanceNames = builtins.mapAttrs (_: insts: builtins.attrNames insts) instances;
       registries = buildRegistries {
-        inherit schemaDecls instanceNames;
+        inherit schemaDecls instanceNames lib;
       };
 
       membership = buildMembership {

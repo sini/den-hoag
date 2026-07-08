@@ -110,8 +110,14 @@ let
     moduleArgs = {
       settings = true;
       aspects = true;
+      env = true;
       host = true;
       user = true;
+      # legacy flake-scope injected bindings
+      lib = true;
+      inputs = true;
+      den = true;
+      withSystem = true;
     };
     aspectModules = [
       neededByModule

@@ -18,6 +18,7 @@
   schema,
   compile,
   legacy,
+  deliverLib,
 }:
 let
   # A `raw` option holds any v1 value unmerged (single-def passthrough) — the v1 grammar (parametric
@@ -37,7 +38,15 @@ let
       inherit description;
     };
 
-  # The v1 option surface as ONE freeform `den` submodule: each v1 concern is a `raw` sub-option (the
+  mergeOpt =
+    description:
+    schema.mkOption {
+      type = schema.types.anything;
+      default = { };
+      inherit description;
+    };
+
+  # The v1 option surface as ONE freeform `den` submodule: each v1 concern is a `mergeOpt` sub-option (the
   # grammar rides untouched), and the `freeformType` absorbs any v1 config outside them (custom-kind
   # instances, `den.default`, …) so an arbitrary den-scoped corpus module evaluates without a schema
   # edit. Declared as a single submodule (not `options.den.<x>` groups) so it never collides with a
@@ -52,30 +61,78 @@ let
       default = { };
       description = "The den v1 declaration surface (read by the compat two-eval, desugared by compile).";
       type = schema.types.submodule {
-        freeformType = schema.types.lazyAttrsOf schema.types.raw;
+        freeformType = schema.types.lazyAttrsOf schema.types.anything;
         options = {
-          hosts = rawOpt "v1 `den.hosts.<system>.<name>` (two-level host definitions).";
-          homes = rawOpt "v1 `den.homes.<system>.<name>` (standalone home-manager configurations).";
-          schema = rawOpt "v1 `den.schema.<kind>` (containment kinds + kind-attached includes).";
-          aspects = rawOpt "v1 `den.aspects.<name>` (aspect definitions).";
-          policies = rawOpt "v1 `den.policies.<name>` (policy functions / for·when records).";
-          classes = rawOpt "v1 `den.classes.<name>` (output class registrations).";
+          hosts = mergeOpt "v1 `den.hosts.<system>.<name>` (two-level host definitions).";
+          homes = mergeOpt "v1 `den.homes.<system>.<name>` (standalone home-manager configurations).";
+          schema = mergeOpt "v1 `den.schema.<kind>` (containment kinds + kind-attached includes).";
+          aspects = mergeOpt "v1 `den.aspects.<name>` (aspect definitions).";
+          policies = mergeOpt "v1 `den.policies.<name>` (policy functions / for·when records).";
+          classes = mergeOpt "v1 `den.classes.<name>` (output class registrations).";
           include = rawListOpt "v1 static entity-scoped aspect inclusions.";
-          quirks = rawOpt "v1 `den.quirks.<name>` (quirk channels).";
-          contentClass = rawOpt "v1 kind -> content-class overrides.";
-          nixpkgs = rawOpt "v1 `den.nixpkgs` (transparent pass-through to den-hoag).";
+          quirks = mergeOpt "v1 `den.quirks.<name>` (quirk channels).";
+          contentClass = mergeOpt "v1 kind -> content-class overrides.";
+          nixpkgs = mergeOpt "v1 `den.nixpkgs` (transparent pass-through to den-hoag).";
+          batteries = mergeOpt "v1 `den.batteries` (legacy battery aspects).";
         };
       };
     };
   };
 
-  flakeModuleCore = [ v1OptionsModule ];
+  legacyBatteries = [
+    ./legacy/batteries/define-user.nix
+    ./legacy/batteries/flake-parts/inputs.nix
+    ./legacy/batteries/flake-parts/self.nix
+    ./legacy/batteries/flake-scope.nix
+    ./legacy/batteries/forward.nix
+    ./legacy/batteries/hjem.nix
+    ./legacy/batteries/home-manager.nix
+    ./legacy/batteries/host-aspects.nix
+    ./legacy/batteries/hostname.nix
+    ./legacy/batteries/import-tree.nix
+    ./legacy/batteries/insecure/insecure.nix
+    ./legacy/batteries/maid.nix
+    ./legacy/batteries/os-class.nix
+    ./legacy/batteries/os-user.nix
+    ./legacy/batteries/primary-user.nix
+    ./legacy/batteries/tty-autologin.nix
+    ./legacy/batteries/unfree/unfree.nix
+    ./legacy/batteries/user-shell.nix
+    ./legacy/batteries/vm-autologin.nix
+    ./legacy/batteries/wsl.nix
+  ];
+
+  flakeModuleCore = [ v1OptionsModule ] ++ legacyBatteries;
 
   # Eval the v1 modules in the v1-shaped tree and read back `config.den` (the v1 declaration surface,
   # verbatim) for `compile` to desugar. Only `flakeModuleCore` (not the legacy tag modules) declares
   # options here; the legacy surfaces join in their own tasks.
   evalV1 =
-    userModules: (schema.evalModuleTree { modules = flakeModuleCore ++ userModules; }).config.den;
+    userModules:
+    let
+      # Fixpoint evaluation: user modules require `den` as a module argument, but `den` itself
+      # includes `config.den` (the result of evaluating those modules). This mirrors how nixpkgs
+      # `lib.evalModules` passes `config` to modules.
+      eval = schema.evalModuleTree {
+        modules = flakeModuleCore ++ userModules;
+        specialArgs = {
+          den = eval.config.den // {
+            lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
+            batteries = eval.config.den.batteries or { };
+            schema =
+              (schema.evalModuleTree {
+                modules = [
+                  {
+                    options.den.schema = schema.mkSchemaOption { };
+                    config.den.schema = eval.config.den.schema or { };
+                  }
+                ];
+              }).config.den.schema;
+          };
+        };
+      };
+    in
+    eval.config.den;
 
   # The compat nixos instantiate wrapper (§2.5 carry-in): v1's per-host `system` never reaches
   # den-hoag's pipeline (den-hoag entities are field-less), so it is injected HERE, at the terminal —
@@ -91,6 +148,7 @@ let
       channelFor,
       instantiateFor,
       channels ? { },
+      denContext,
       terminal,
     }:
     args@{
@@ -119,7 +177,16 @@ let
           resolvedChannel.nixosSystem or null;
 
       hostInstantiate = if directInstantiate != null then directInstantiate else schemaInstantiate;
-      collected = terminal (args // { hostModules = sysModule ++ hostModules; });
+      # INJECT `den` into `bindings` so gen-bind provides it as a module argument during `__configThunk` resolution!
+      collected = terminal (
+        args
+        // {
+          hostModules = sysModule ++ hostModules;
+          bindings = bindings // {
+            den = denContext;
+          };
+        }
+      );
       extractedModules = collected.modules or collected.hostModules or [ ];
     in
     if hostInstantiate != null then hostInstantiate { modules = extractedModules; } else collected;
@@ -137,10 +204,25 @@ let
       instanceConfig = builtins.mapAttrs (
         _kind: insts: builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;
+      denContext = v1Decls // {
+        lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
+        batteries = v1Decls.batteries or { };
+        schema =
+          (schema.evalModuleTree {
+            modules = [
+              {
+                options.den.schema = schema.mkSchemaOption { };
+                config.den.schema = v1Decls.schema or { };
+              }
+            ];
+          }).config.den.schema;
+      };
+
       nixosInstantiate = mkNixosInstantiate {
         inherit (compiled.entities) systemFor channelFor instantiateFor;
         terminal = denHoag.internal.terminal.collect;
         channels = v1Decls.channels or { };
+        inherit denContext;
       };
     in
     {
@@ -186,16 +268,8 @@ let
           { };
 
       config._module.args.den = config.den // {
-        lib = {
-          policy = {
-            resolve = {
-              to = kind: value: {
-                __policyEffect = "resolve";
-                value = if builtins.isAttrs value && value ? ${kind} then value.${kind} else value;
-              };
-            };
-          };
-        };
+        lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
+        batteries = (evalV1 [ ]).batteries or { };
         schema =
           (schema.evalModuleTree {
             modules = [
@@ -209,7 +283,7 @@ let
 
       config.flake =
         let
-          built = mkDen [ { den = config.den; } ];
+          built = mkDen [ { den = config.den // prelude.optionalAttrs (lib != null) { inherit lib; }; } ];
         in
         {
           nixosConfigurations = built.nixosConfigurations or { };

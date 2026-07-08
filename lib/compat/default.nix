@@ -68,6 +68,7 @@ let
         prelude
         schema
         compile
+        deliverLib
         ;
       legacy = legacyArg;
     };

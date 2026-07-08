@@ -122,7 +122,9 @@ let
     else if builtins.isString ref then
       aspectRec ref
     else
-      errors.identityLaw "policy aspect reference" ref;
+      builtins.trace "TRACE-C6: resolveAspectRef failed with type ${builtins.typeOf ref}" (
+        errors.identityLaw "policy aspect reference" ref
+      );
 
   # NOT-IMPLEMENTED-BY-CENSUS (C1 surface totality): an aspect carrying `meta.__forward` is a
   # `den.batteries.forward` manifestation (v1 forward.nix `forwardItem`). The shim has no desugar for it
@@ -182,16 +184,28 @@ let
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
   # checks pass; a stray string would abort named.
   translateEffect =
-    ing: aspectRec: effect:
+    ing: aspectRec: ctx: effect:
     let
-      kind = effect.__policyEffect or null;
+      kind = if builtins.isAttrs effect then effect.__policyEffect or null else null;
     in
     # A delivery descriptor (deliver/route/provide, deliver.nix) → a den-hoag `delivery` declaration
     # (intent; the gen-edge record is rendered at the firing node by output-modules' edgesAt).
     if effect.__delivery or false then
       translateDelivery ing effect
     else if kind == "include" then
-      [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
+      let
+        ref = if builtins.isFunction effect.value then effect.value ctx else effect.value;
+        _trace = builtins.trace "TRACE-REF: kind=include, effect.value type=${builtins.typeOf effect.value}, ref type=${builtins.typeOf ref}" true;
+      in
+      if builtins.isAttrs ref && ref ? name && !(ref ? id_hash) then
+        # Inline aspect definition inside an include effect.
+        let
+          translated = translateAspect ref.name ref;
+          fullAspect = translated // ing.aspectEntry ref.name;
+        in
+        [ (declare.edge fullAspect) ]
+      else
+        [ (declare.edge (resolveAspectRef aspectRec ref)) ]
     else if kind == "exclude" then
       [ (declare.drop (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "resolve" then
@@ -233,9 +247,18 @@ let
       # content. The entity carries its own instantiate/intoAttr metadata (read at output assembly).
       [ (declare.spawn { instantiate = effect.value; }) ]
     else if kind == null then
-      # Not an effect descriptor — a raw declaration a v1 body built directly. Pass it through; a
-      # non-declaration surfaces at the den-hoag dispatch, not here.
-      [ effect ]
+      if builtins.isAttrs effect && effect ? name then
+        # Inline aspect definition (a policy function evaluated to an aspect).
+        # Translate it, stamp an id_hash, and emit an edge carrying the full record.
+        let
+          translated = translateAspect effect.name effect;
+          fullAspect = translated // ing.aspectEntry effect.name;
+        in
+        [ (declare.edge fullAspect) ]
+      else
+        # Not an effect descriptor — a raw declaration a v1 body built directly. Pass it through; a
+        # non-declaration surfaces at the den-hoag dispatch, not here.
+        [ effect ]
     else
       errors.unsupportedEffect kind;
 
@@ -268,11 +291,52 @@ let
   # declarations. The wrapper is a bare `ctx:` (no destructuring) — v1 `for`/`when` gating already
   # lives inside `fn`, so den-hoag's dispatch runs it at every scope and `fn`'s own guard decides. The
   # translation of each effect is eager only when the body runs (per ctx); compile itself never runs it.
-  # NB: a SYNTHESIZED policy whose own destructuring must gate dispatch (canTake via functionArgs)
   # MUST bypass this wrapper — it erases the formals. See `defaultPolicy` (__denDefault) below.
+  # (Fixed: compilePolicy guards evaluation based on the policy's required arguments.
+  # If the context lacks a required argument, it returns `[ ]` instead of throwing.)
   compilePolicy =
     ing: aspectRec: value: ctx:
-    prelude.concatMap (translateEffect ing aspectRec) (innerFn value ctx);
+    let
+      fn = innerFn value;
+      getFunctionArgs =
+        f:
+        if builtins.isFunction f then
+          builtins.functionArgs f
+        else if builtins.isAttrs f && f ? __functionArgs then
+          f.__functionArgs
+        else
+          { };
+      args = getFunctionArgs fn;
+      missingArgs = builtins.filter (k: !args.${k} && !(ctx ? ${k})) (builtins.attrNames args);
+      isProbe = ctx.__isProbe or false;
+
+      augmentEntity =
+        k: e:
+        let
+          orig =
+            if builtins.isAttrs e && e ? name && ing.instances ? ${k} && ing.instances.${k} ? ${e.name} then
+              ing.instances.${k}.${e.name}
+            else
+              { };
+          base = e // orig;
+        in
+        if k == "host" && !(base ? class) then base // { class = "nixos"; } else base;
+
+      augmentedCtx =
+        if isProbe then
+          prelude.genAttrs (builtins.attrNames args) (k: {
+            id_hash = "«probe»";
+            name = "«probe»";
+            class = "nixos";
+            settings = { };
+          })
+        else
+          builtins.mapAttrs augmentEntity ctx;
+    in
+    if isProbe || missingArgs == [ ] then
+      prelude.concatMap (translateEffect ing aspectRec augmentedCtx) (fn augmentedCtx)
+    else
+      [ ];
 
   compilePolicies =
     ing: aspectRec: policies:
@@ -379,28 +443,38 @@ let
   # only at that kind's nodes.
   kindIncludePolicies = builtins.mapAttrs (
     kind: aspectRefs:
+    let
+      processRef =
+        ref: ctx:
+        if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __policyEffect) then
+          # It's a policy function or an effect record. Compile it as a policy.
+          compilePolicy ing aspectRec ref ctx
+        else
+          # It's a standard aspect reference.
+          [ (declare.edge (resolveAspectRef aspectRec ref)) ];
+    in
     if kind == "env" then
       {
         env ? null,
         ...
       }@ctx:
-      if ctx ? env then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
+      if ctx ? env then prelude.concatMap (ref: processRef ref ctx) aspectRefs else [ ]
     else if kind == "host" then
       {
         host ? null,
         ...
       }@ctx:
-      if ctx ? host then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
+      if ctx ? host then prelude.concatMap (ref: processRef ref ctx) aspectRefs else [ ]
     else if kind == "user" then
       {
         user ? null,
         ...
       }@ctx:
-      if ctx ? user then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
+      if ctx ? user then prelude.concatMap (ref: processRef ref ctx) aspectRefs else [ ]
     else
       { ... }@ctx:
       if ctx ? ${kind} then
-        map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
+        prelude.concatMap (ref: processRef ref ctx) aspectRefs
       else if ctx == { } then
         [
           (declare.edge {
@@ -481,6 +555,8 @@ let
     "nixpkgs"
     "reservedKeys"
     "secretsConfig"
+    "batteries"
+    "lib"
   ]
   ++ declaredKinds
   ++ pluralizedKinds;
