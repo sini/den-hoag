@@ -438,21 +438,17 @@ let
     } else { };
 
   defaultPolicies =
-    let
-      imap0 = f: l: builtins.genList (i: f i (builtins.elemAt l i)) (builtins.length l);
-    in
     if hasDefault then
       {
-        __denDefault =
-          { ... }@ctx:
-          if ctx ? host || ctx ? user || ctx ? home then
-            [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ]
-          else
-            [ ];
-      } // builtins.listToAttrs (imap0 (idx: ref: {
-        name = "__defaultPolicy__${toString idx}";
-        value = { ... }@ctx: if ctx ? host || ctx ? user || ctx ? home then compilePolicy ing aspectRec ref ctx else [ ];
-      }) defaultPolicyIncludes)
+        __denDefault_host = { host, ... }: [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
+        __denDefault_user = { user, ... }: [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
+        __denDefault_home = { home, ... }: [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
+      } // builtins.listToAttrs (prelude.concatMap (idx:
+        let ref = builtins.elemAt defaultPolicyIncludes idx; in [
+        { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec ref ctx; }
+        { name = "__defaultPolicy_user_${toString idx}"; value = { user, ... }@ctx: compilePolicy ing aspectRec ref ctx; }
+        { name = "__defaultPolicy_home_${toString idx}"; value = { home, ... }@ctx: compilePolicy ing aspectRec ref ctx; }
+      ]) (builtins.genList (i: i) (builtins.length defaultPolicyIncludes)))
     else
       { };
 
