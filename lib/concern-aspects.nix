@@ -55,6 +55,18 @@ let
       };
     };
 
+  # Legacy den-hoag V1 `includes` — parsed into edges, but must pass through gen-aspects without
+  # being absorbed as a deferredModule (which would crash trying to evaluate policy lambdas).
+  includesModule =
+    { ... }:
+    {
+      options.includes = merge.mkOption {
+        type = merge.types.raw;
+        default = [ ];
+        description = "Legacy V1 includes list — safely ignored by gen-aspects, processed into policies by compile.nix.";
+      };
+    };
+
   # Settings SCHEMA (§2.6 source 1) — the aspect's declared `{ <bare-field> = { default; merge ? }; }`.
   # A facet (§2.2), NOT a nested aspect: declared as a structured option so lib/settings.nix reads it
   # as the static field-spec for `gen-settings.mkSchema`. `raw` holds each field record unmerged.
@@ -121,6 +133,7 @@ let
     };
     aspectModules = [
       neededByModule
+      includesModule
       settingsModule
       idModule
     ]
