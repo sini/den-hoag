@@ -444,11 +444,14 @@ let
     if hasDefault then
       {
         __denDefault =
-          { host, ... }:
-          [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
+          { ... }@ctx:
+          if ctx ? host || ctx ? user || ctx ? home then
+            [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ]
+          else
+            [ ];
       } // builtins.listToAttrs (imap0 (idx: ref: {
         name = "__defaultPolicy__${toString idx}";
-        value = { host, ... }@ctx: if ctx ? host then compilePolicy ing aspectRec ref ctx else [ ];
+        value = { ... }@ctx: if ctx ? host || ctx ? user || ctx ? home then compilePolicy ing aspectRec ref ctx else [ ];
       }) defaultPolicyIncludes)
     else
       { };
