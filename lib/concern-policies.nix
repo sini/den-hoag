@@ -97,6 +97,6 @@
       # compiled `pipe.from` transform/filter/fold/route is CONSUMED (before this, it compiled but never
       # reached the DAG). Site `marks` (append/expose/collect/broadcast) are per-scope emission wiring,
       # not compose ops, and stay on the per-node declaration.
-      pipeOps = prelude.concatMap (r: r.__pipeOps) rules;
+      pipeOps = prelude.concatMap (s: s.__pipeOps) rulesSets;
     };
 }
