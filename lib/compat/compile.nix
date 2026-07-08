@@ -428,15 +428,28 @@ let
   # both host and user). `__`-prefixed names cannot collide with a user aspect/policy (den reserves `__`).
   # Absent (`den.default` unset) ⇒ no aspect, no policy — byte-identical to a fixture without it.
   hasDefault = (v1Decls.default or { }) != { };
+  defaultIncludes = (v1Decls.default or { }).includes or [ ];
+  defaultModuleIncludes = builtins.filter (v: !(builtins.isFunction v || (builtins.isAttrs v && v ? __policyEffect))) defaultIncludes;
+  defaultPolicyIncludes = builtins.filter (v: builtins.isFunction v || (builtins.isAttrs v && v ? __policyEffect)) defaultIncludes;
+
   defaultAspects =
-    if hasDefault then { __default = translateAspect "__default" v1Decls.default; } else { };
-  defaultPolicy =
+    if hasDefault then {
+      __default = translateAspect "__default" (v1Decls.default // { includes = defaultModuleIncludes; });
+    } else { };
+
+  defaultPolicies =
+    let
+      imap0 = f: l: builtins.genList (i: f i (builtins.elemAt l i)) (builtins.length l);
+    in
     if hasDefault then
       {
         __denDefault =
           { host, ... }:
           [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
-      }
+      } // builtins.listToAttrs (imap0 (idx: ref: {
+        name = "__defaultPolicy__${toString idx}";
+        value = { host, ... }@ctx: if ctx ? host then compilePolicy ing aspectRec ref ctx else [ ];
+      }) defaultPolicyIncludes)
     else
       { };
 
@@ -541,7 +554,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
   # `compiledPolicies`.
   policies =
     compiledPolicies.policies
-    // defaultPolicy
+    // defaultPolicies
     // selfProvideInclude
     // kindIncludePolicies;
 
