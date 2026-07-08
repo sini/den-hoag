@@ -228,7 +228,10 @@ in
     # ── policy row (policy.include → declare.edge, entry-valued) ─────────────────────────────────
     test-policy-name = {
       expr = builtins.attrNames compiled.policies;
-      expected = [ "attachSystem" ];
+      expected = [
+        "__selfProvideInclude"
+        "attachSystem"
+      ];
     };
     test-include-becomes-edge = {
       expr = edgeDecl.__action;

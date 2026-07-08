@@ -161,7 +161,7 @@ let
   # ══ SEVERABILITY PROOF (C6) — the four wirings share ONE compile core, sentinels, and errors; only
   #    `desugarLegacy` (hence `compileFull` / `mkDen`) differs by which legacy modules are present
   #    (default.nix `mkWiring`). ══════════════════════════════════════════════════════════════════════
-  full = denCompat; # both legacy modules (the full flakeModule surface)
+  full = denCompat.mkWiring { inherit (denCompat.legacy) provides forwards; }; # both legacy modules (the full flakeModule surface)
   core = denCompat.mkWiring { }; # flakeModuleCore ALONE (both desugars or-identity)
   provOnly = denCompat.mkWiring { inherit (denCompat.legacy) provides; };
   fwdOnly = denCompat.mkWiring { inherit (denCompat.legacy) forwards; };

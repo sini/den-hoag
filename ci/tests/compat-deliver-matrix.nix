@@ -137,7 +137,7 @@ let
   sysAxon = sysCompiled.entities.registries.host.axon;
   stubTerminal = args: args;
   sysInstantiate = denCompat.mkNixosInstantiate {
-    inherit (sysCompiled.entities) systemFor;
+    inherit (sysCompiled.entities) systemFor channelFor instantiateFor;
     terminal = stubTerminal;
   };
   sysInjected = sysInstantiate {

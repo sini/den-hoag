@@ -120,10 +120,9 @@ let
 
       hostInstantiate = if directInstantiate != null then directInstantiate else schemaInstantiate;
       collected = terminal (args // { hostModules = sysModule ++ hostModules; });
+      extractedModules = collected.modules or collected.hostModules or [ ];
     in
-    builtins.trace
-      "TRACE_INSTANTIATE collected.modules length: ${builtins.toString (builtins.length collected.modules)}"
-      (if hostInstantiate != null then hostInstantiate { modules = collected.modules; } else collected);
+    if hostInstantiate != null then hostInstantiate { modules = extractedModules; } else collected;
 
   # The pure bridge: `compile`'s output → a den-hoag `config.den.*` module. Instances become
   # `config.den.<kind>.<name>` FIELD-LESS — den-hoag entities carry no content (it comes from aspects),

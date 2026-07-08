@@ -304,7 +304,7 @@ let
     name: classCfg: id:
     [ freeformAbsorber ]
     ++ (bind.wrapAll {
-      modules = (outputFor id).${name} or [ ];
+      modules = ((result.get id "class-modules").${name} or [ ]) ++ ((outputFor id).${name} or [ ]);
       bindings = bindingsAt id;
       defaultMergeStrategy = classCfg.defaultMergeStrategy;
     }).modules;
@@ -348,7 +348,7 @@ let
           name = id; # the member (scope node) id keys the class-major output map
           value = classCfg.instantiate {
             name = id; # the terminal contract's `name` is the member id
-            hostModules = (outputFor id).${name} or [ ];
+            hostModules = ((result.get id "class-modules").${name} or [ ]) ++ ((outputFor id).${name} or [ ]);
             inherit classCfg;
             bindings = bindingsAt id;
           };

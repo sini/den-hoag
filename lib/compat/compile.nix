@@ -189,7 +189,7 @@ let
     # A delivery descriptor (deliver/route/provide, deliver.nix) → a den-hoag `delivery` declaration
     # (intent; the gen-edge record is rendered at the firing node by output-modules' edgesAt).
     if effect.__delivery or false then
-      [ (translateDelivery ing effect) ]
+      translateDelivery ing effect
     else if kind == "include" then
       [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "exclude" then
@@ -379,18 +379,48 @@ let
   # only at that kind's nodes.
   kindIncludePolicies = builtins.mapAttrs (
     kind: aspectRefs:
-    setFunctionArgs (
-      ctx:
-      if ctx ? ${kind} then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
-    ) { ${kind} = true; }
+    if kind == "env" then
+      {
+        env ? null,
+        ...
+      }@ctx:
+      if ctx ? env then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
+    else if kind == "host" then
+      {
+        host ? null,
+        ...
+      }@ctx:
+      if ctx ? host then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
+    else if kind == "user" then
+      {
+        user ? null,
+        ...
+      }@ctx:
+      if ctx ? user then map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs else [ ]
+    else
+      { ... }@ctx:
+      if ctx ? ${kind} then
+        map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
+      else if ctx == { } then
+        [
+          (declare.edge {
+            id_hash = "«probe»";
+            name = "«probe»";
+          })
+        ]
+      else
+        [ ]
   ) ing.kindIncludes;
 
   # selfProvideInclude (Gap 1): a v1 `host.name==key` implicit auto-inclusion.
   # If an aspect's name EXACTLY matches the host's name, it is automatically included.
   # Represented as a fleet-wide policy matching the host name.
   selfProvideInclude = {
-    __selfProvideInclude = setFunctionArgs (
-      { host, ... }:
+    __selfProvideInclude =
+      {
+        host ? null,
+        ...
+      }:
       if host != null then
         if host.name == "«probe»" then
           [
@@ -404,8 +434,7 @@ let
         else
           [ ]
       else
-        [ ]
-    ) { host = true; };
+        [ ];
   };
 
   aspects =

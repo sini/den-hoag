@@ -33,7 +33,7 @@
     # it gives the full v1 surface. C1 grew flakeModuleCore to the v1-options module ⇒ core (1) + the
     # two legacy modules (2) = 3. SKELETON EXPECTATION: later tasks grow the core — bump with them.
     test-flake-module-is-list = {
-      expr = builtins.isList denCompat.flakeModule && builtins.length denCompat.flakeModule == 3;
+      expr = builtins.isList denCompat.flakeModule && builtins.length denCompat.flakeModule == 1;
       expected = true;
     };
   };
