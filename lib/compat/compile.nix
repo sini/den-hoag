@@ -141,9 +141,13 @@ let
           let
             args = self.__functionArgs;
             missingArgs = builtins.filter (k: !args.${k} && !(ctx ? ${k})) (builtins.attrNames args);
+            augmentedCtx = builtins.mapAttrs (k: v:
+              if builtins.isAttrs v && v ? name then v // { ${k + "Name"} = v.name; }
+              else v
+            ) ctx;
           in
           if missingArgs == [ ] then
-            let res = aspect ctx; in
+            let res = aspect augmentedCtx; in
             if builtins.isAttrs res then resolveAspectRef ing aspectRec v1Classes (sanitizeAspect ing aspectRec v1Classes res) else res
           else
             { id_hash = "noop-skip-${builtins.hashString "sha256" (builtins.toJSON args)}"; name = "noop"; };
