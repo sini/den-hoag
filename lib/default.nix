@@ -60,6 +60,18 @@ let
     "nixos"
     "home-manager"
     "k8s-manifests"
+    "darwin"
+    "colmena"
+    "nix-on-droid"
+    "disko"
+    "devshell"
+    "microvm"
+    "flake-parts"
+    "homeLinux"
+    "homeDarwin"
+    "homeAarch64"
+    "droid"
+    "patch"
   ];
   classEntries = prelude.genAttrs classNames (name: {
     id_hash = builtins.hashString "sha256" "den-class:${name}";
