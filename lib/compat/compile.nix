@@ -334,7 +334,13 @@ let
           builtins.mapAttrs augmentEntity ctx;
     in
     if isProbe || missingArgs == [ ] then
-      prelude.concatMap (translateEffect ing aspectRec augmentedCtx) (fn augmentedCtx)
+      let
+        res = fn augmentedCtx;
+      in
+      if builtins.isList res then
+        prelude.concatMap (translateEffect ing aspectRec augmentedCtx) res
+      else
+        translateEffect ing aspectRec augmentedCtx res
     else
       [ ];
 
