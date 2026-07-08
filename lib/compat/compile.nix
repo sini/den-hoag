@@ -236,7 +236,7 @@ let
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
   # checks pass; a stray string would abort named.
   translateEffect =
-    ing: aspectRec: ctx: effect:
+    ing: aspectRec: v1Classes: ctx: effect:
     let
       kind = if builtins.isAttrs effect then effect.__policyEffect or null else null;
     in
@@ -257,9 +257,9 @@ let
         in
         [ (declare.edge fullAspect) ]
       else
-        [ (declare.edge (resolveAspectRef ing aspectRec ref)) ]
+        [ (declare.edge (resolveAspectRef ing aspectRec v1Classes ref)) ]
     else if kind == "exclude" then
-      [ (declare.drop (resolveAspectRef ing aspectRec effect.value)) ]
+      [ (declare.drop (resolveAspectRef ing aspectRec v1Classes effect.value)) ]
     else if kind == "resolve" then
       # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
       # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
@@ -307,7 +307,8 @@ let
           fullAspect = translated // ing.aspectEntry effect.name;
         in
         [ (declare.edge fullAspect) ]
-      else if builtins.isAttrs effect && !(effect ? id_hash) then
+      else if builtins.isAttrs effect then
+        # Unnamed inline module/aspect
         let
           dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames effect));
           translated = translateAspect ing aspectRec v1Classes dummyName effect;
@@ -320,31 +321,6 @@ let
     else
       errors.unsupportedEffect kind;
 
-  # Coerce a v1 `den.policies.<name>` value to the inner `{ gate; fn }` a compiled policy wraps. v1
-  # `for`/`when` produce `{ __isPolicy = true; fn; }` records whose `fn` already gates on ctx (entity
-  # match / predicate); a bare function is an ungated body; a conditional-aspect record (`when` over an
-  # inline aspect) is handled separately (it compiles to an aspect, not a policy — see `compilePolicies`).
-  innerFn =
-    value:
-    if builtins.isAttrs value && (value.__isPolicy or false) then
-      value.fn
-    else if builtins.isFunction value then
-      value
-    else
-      throw "den-compat: policy: expected a function or a policy record (from for/when), got ${builtins.typeOf value}";
-
-  # A v1 `when`-over-inline-aspect record: `{ name = "<when>"; meta.guard; meta.aspects; includes; }`.
-  # These are conditional ASPECTS (the guard reads the in-flight path set, A9.1), not policies — v1
-  # emits them precisely to avoid the resolved-state cycle. They compile to den-hoag aspects.
-  #
-  # The `meta.guard` + `meta.aspects` PAIR is an unambiguous discriminator against the other two
-  # `den.policies.<name>` value shapes: a bare policy is a FUNCTION (no `meta` at all), and a v1
-  # `for`/`when`-over-a-policy record is `{ __isPolicy = true; name; fn; }` (an `fn`, and no
-  # `meta.aspects`). Only the inline-aspect conditional carries BOTH keys, so testing the pair never
-  # misclassifies a policy as an aspect (or vice versa).
-  isConditionalAspect =
-    value: builtins.isAttrs value && (value.meta or { }) ? guard && (value.meta or { }) ? aspects;
-
   # den-hoag policy: `ctx: [ declaration ]`. Wrap the v1 inner fn so its effects translate to
   # declarations. The wrapper is a bare `ctx:` (no destructuring) — v1 `for`/`when` gating already
   # lives inside `fn`, so den-hoag's dispatch runs it at every scope and `fn`'s own guard decides. The
@@ -353,7 +329,7 @@ let
   # (Fixed: compilePolicy guards evaluation based on the policy's required arguments.
   # If the context lacks a required argument, it returns `[ ]` instead of throwing.)
   compilePolicy =
-    ing: aspectRec: value: ctx:
+    ing: aspectRec: v1Classes: value: ctx:
     let
       fn = innerFn value;
       getFunctionArgs =
@@ -396,14 +372,14 @@ let
         res = fn augmentedCtx;
       in
       if builtins.isList res then
-        prelude.concatMap (translateEffect ing aspectRec augmentedCtx) res
+        prelude.concatMap (translateEffect ing aspectRec v1Classes augmentedCtx) res
       else
-        translateEffect ing aspectRec augmentedCtx res
+        translateEffect ing aspectRec v1Classes augmentedCtx res
     else
       [ ];
 
   compilePolicies =
-    ing: aspectRec: policies:
+    ing: aspectRec: v1Classes: policies:
     let
       names = builtins.attrNames policies;
       # Partition: `when`-over-inline-aspect values become aspects (conditional activation), everything
@@ -414,7 +390,7 @@ let
       policyNames = builtins.filter (n: !(isAspectValued n)) names;
     in
     {
-      policies = prelude.genAttrs policyNames (name: compilePolicy ing aspectRec policies.${name});
+      policies = prelude.genAttrs policyNames (name: compilePolicy ing aspectRec v1Classes policies.${name});
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
         name:
@@ -491,9 +467,9 @@ let
         __denDefault_home = { home, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes { name = "__default"; })) ];
       } // builtins.listToAttrs (prelude.concatMap (idx:
         let ref = builtins.elemAt defaultPolicyIncludes idx; in [
-        { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec ref ctx; }
-        { name = "__defaultPolicy_user_${toString idx}"; value = { user, ... }@ctx: compilePolicy ing aspectRec ref ctx; }
-        { name = "__defaultPolicy_home_${toString idx}"; value = { home, ... }@ctx: compilePolicy ing aspectRec ref ctx; }
+        { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
+        { name = "__defaultPolicy_user_${toString idx}"; value = { user, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
+        { name = "__defaultPolicy_home_${toString idx}"; value = { home, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
       ]) (builtins.genList (i: i) (builtins.length defaultPolicyIncludes)))
     else
       { };
@@ -509,9 +485,9 @@ let
   # `aspectRec`), and `aspects` reads ONLY `.conditionalAspects`. So the dependency graph is
   # `policies → aspectRec → aspects → conditionalAspects`, a DAG (`conditionalAspects ⊥ aspectRec`);
   # laziness ties the knot without a loop.
-aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
+  aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
 
-  compiledPolicies = compilePolicies ing aspectRec v1Policies;
+  compiledPolicies = compilePolicies ing aspectRec v1Classes v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → fire-at-kind policies: an aspect radiated to
   # kind's own scope. The policy destructures the kind arg so it fires only at that kind's nodes.
@@ -527,7 +503,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
             ref: ctx:
             if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __policyEffect) then
               # It's a policy function or an effect record. Compile it as a policy.
-              compilePolicy ing aspectRec ref ctx
+              compilePolicy ing aspectRec v1Classes ref ctx
             else if builtins.isAttrs ref && !(ref ? name) && !(ref ? id_hash) then
               # Unnamed inline module/aspect
               let
@@ -537,7 +513,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
               [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
             else
               # It's a standard aspect reference.
-              [ (declare.edge (resolveAspectRef ing aspectRec ref)) ];
+              [ (declare.edge (resolveAspectRef ing aspectRec v1Classes ref)) ];
 
           mkPolicyForRef = ref:
             if kind == "env" then
@@ -581,7 +557,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
             })
           ]
         else if v1Aspects ? ${host.name} then
-          [ (declare.edge (resolveAspectRef ing aspectRec host.name)) ]
+          [ (declare.edge (resolveAspectRef ing aspectRec v1Classes host.name)) ]
         else
           [ ]
       else
