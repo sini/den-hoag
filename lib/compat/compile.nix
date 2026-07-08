@@ -372,7 +372,7 @@ let
       augmentEntity =
         k: e:
         let
-          _trace2 = builtins.trace "AUGMENT_ENTITY type for ${k}: ${builtins.typeOf e}" null;
+          _trace2 = builtins.trace "AUGMENT_ENTITY keys for ${k}: ${builtins.toJSON (if builtins.isAttrs e then builtins.attrNames e else e)}" null;
           entityName = if builtins.isAttrs e && e ? name then e.name else if builtins.isAttrs e && e ? id_hash then e.name else null;
           orig =
             if entityName != null && ing.instances ? ${k + "s"} && ing.instances.${k + "s"} ? ${entityName} then
