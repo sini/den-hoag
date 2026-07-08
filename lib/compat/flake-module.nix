@@ -234,7 +234,7 @@ let
       nixosInstantiate = mkNixosInstantiate {
         inherit (compiled.entities) systemFor channelFor instantiateFor;
         terminal = denHoag.internal.terminal.collect;
-        channels = v1Decls.channels or { };
+        channels = v1Decls.quirks or { };
         inherit denContext;
       };
     in
