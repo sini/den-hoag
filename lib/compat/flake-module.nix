@@ -180,7 +180,8 @@ let
 
       # 2. Schema default instantiate reconstructed from the channel (since v1 eval strips the schema)
       channelName = if hostEntry == null then null else channelFor hostEntry;
-      resolvedChannel = channels.${channelName} or null;
+      _traceChannels = builtins.trace "TRACE_CHANNELS: host=${name}, channelName=${toString channelName}, channelKeys=${builtins.toJSON (builtins.attrNames channels)}" null;
+      resolvedChannel = builtins.seq _traceChannels (channels.${channelName} or null);
       schemaInstantiate =
         if resolvedChannel == null then
           null
