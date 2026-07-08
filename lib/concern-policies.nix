@@ -38,9 +38,13 @@
             id: ctx:
             map (a: a // { __policy = name; }) (base.produce id ctx);
           
+          # probeCtx = prelude.genAttrs (builtins.attrNames base.condition) (_: probeEntry);
+          # res = builtins.tryEval (produceRaw "«probe»" probeCtx);
+          # probeSuccess = res.success;
+          
           probeCtx = prelude.genAttrs (builtins.attrNames base.condition) (_: probeEntry);
-          res = builtins.tryEval (produceRaw "«probe»" probeCtx);
-          probeSuccess = res.success;
+          res = { success = true; value = produceRaw "«probe»" probeCtx; };
+          probeSuccess = true;
           probeActs = if probeSuccess then res.value else [ ];
           
           isEnrich =
