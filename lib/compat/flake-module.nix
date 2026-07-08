@@ -247,6 +247,9 @@ let
       lib ? null,
       ...
     }@args:
+    let
+      v1Base = evalV1 [ ];
+    in
     {
       # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
       # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
@@ -283,8 +286,6 @@ let
           }
         else
           { };
-
-      v1Base = evalV1 [ ];
 
       config._module.args.den = 
         config.den // {
