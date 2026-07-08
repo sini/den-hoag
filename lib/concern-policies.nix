@@ -30,73 +30,68 @@
         name = "«probe»";
       };
 
-      mkRule =
+      mkRules =
         name: fn:
         let
           base = dispatch.fromFunction fn;
-          produce =
+          produceRaw =
             id: ctx:
-            let
-              acts = declare.checkStratum name (base.produce id ctx);
-            in
-            map (a: a // { __policy = name; }) acts;
+            map (a: a // { __policy = name; }) (base.produce id ctx);
+          
           probeCtx = prelude.genAttrs (builtins.attrNames base.condition) (_: probeEntry) // {
             __isProbe = true;
           };
-          # If the policy crashes on the probe (e.g. den v1 compat policies reading host.class),
-          # catch it and default to a dummy non-enrich output so it falls into the 'policy' group.
-          probeActs =
-            let
-              res = builtins.tryEval (produce "«probe»" probeCtx);
-            in
-            if res.success then res.value else [ { __action = "spawn"; } ];
-          stratum = if probeActs == [ ] then "structural" else declare.stratumOf (builtins.head probeActs);
+          res = builtins.tryEval (produceRaw "«probe»" probeCtx);
+          probeSuccess = res.success;
+          probeActs = if probeSuccess then res.value else [ ];
+          
           isEnrich =
-            # Only mark as enrich if we got SUCCESSFUL empty output, or explicit enrich actions.
-            # But wait, if probeActs == [ ], it was marked as enrich.
-            # If we want to ensure v1 policies that return empty on probe don't get misclassified,
-            # we can check if the policy explicitly carries an __isEnrich flag.
             if fn ? __isEnrich then
               fn.__isEnrich
-            else if probeActs == [ ] then
-              false # Default to false for empty probe to avoid structural crashes
+            else if probeSuccess && probeActs != [ ] then
+              prelude.all (a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich") probeActs
             else
-              prelude.all (a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich") probeActs;
+              false;
+              
+          mk = suffix: group: filterFn: {
+            inherit (base) condition nac priority overrides;
+            identity = "${name}_${suffix}";
+            inherit group;
+            produce = id: ctx: builtins.filter filterFn (produceRaw id ctx);
+          };
+          
+          enrichRules =
+            if isEnrich then
+              [ (mk "enrich" "structural" (a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich")) ]
+            else
+              [ ];
+              
+          policyRules =
+            if isEnrich then
+              [ ]
+            else
+              let
+                hasStructural = (!probeSuccess) || probeActs == [ ] || prelude.any (a: declare.stratumOf a == "structural") probeActs;
+                hasResolution = (!probeSuccess) || probeActs == [ ] || prelude.any (a: declare.stratumOf a == "resolution") probeActs;
+                hasCollection = (!probeSuccess) || probeActs == [ ] || prelude.any (a: declare.stratumOf a == "collection") probeActs;
+                hasDemand = (!probeSuccess) || probeActs == [ ] || prelude.any (a: declare.stratumOf a == "demand") probeActs;
+              in
+              (if hasStructural then [ (mk "policy" "structural" (a: declare.stratumOf a == "structural" && declare.kindOf a != "enrich")) ] else [ ]) ++
+              (if hasResolution then [ (mk "resolution" "resolution" (a: declare.stratumOf a == "resolution")) ] else [ ]) ++
+              (if hasCollection then [ (mk "collection" "collection" (a: declare.stratumOf a == "collection")) ] else [ ]) ++
+              (if hasDemand then [ (mk "demand" "demand" (a: declare.stratumOf a == "demand")) ] else [ ]);
+              
+          __pipeOps = builtins.filter (a: (a.__action or null) == "pipeOp") probeActs;
         in
         {
-          inherit (base)
-            condition
-            nac
-            priority
-            overrides
-            ;
-          inherit produce;
-          identity = name;
-          # REQUIRED by gen-dispatch: multi-group dispatch (attr 4's stratified groupOrder)
-          # throws on rules without an explicit group — this is lib contract, not metadata.
-          group = stratum;
-          __isEnrich = isEnrich;
-          # The collection-stratum `pipeOp` declarations this policy produces (den-compat's compiled
-          # `pipe.from name [stages]`). The gen-pipe op DAG (`derived`/`routes`) rides the SAME sentinel
-          # probe already run above — a `pipe.from` body is ctx-INDEPENDENT (its stages are static
-          # closures), so the probe yields the pipeOp regardless of where the policy dispatches. Surfaced
-          # here (not only per-node) because the fleet gen-pipe `compose` is ONE static DAG, seeded before
-          # the eval — the derived channels + routes must join it fleet-wide (the demand-channel seam),
-          # exactly like `den.quirks` ops, never per-firing-scope.
-          __pipeOps = builtins.filter (a: (a.__action or null) == "pipeOp") probeActs;
+          inherit enrichRules policyRules __pipeOps;
         };
 
-      rules = prelude.mapAttrsToList mkRule policies;
-      strip =
-        r:
-        removeAttrs r [
-          "__isEnrich"
-          "__pipeOps"
-        ];
+      rulesSets = prelude.mapAttrsToList mkRules policies;
     in
     {
-      enrich = map strip (builtins.filter (r: r.__isEnrich) rules);
-      policy = map strip (builtins.filter (r: !r.__isEnrich) rules);
+      enrich = prelude.concatMap (s: s.enrichRules) rulesSets;
+      policy = prelude.concatMap (s: s.policyRules) rulesSets;
       # The fleet-wide pipe operator declarations (collection stratum) — den-hoag threads their
       # `derived` channels + `routes` into the ONE gen-pipe compose (default.nix `policyOps`), so a
       # compiled `pipe.from` transform/filter/fold/route is CONSUMED (before this, it compiled but never
