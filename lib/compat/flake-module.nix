@@ -256,17 +256,17 @@ let
         if lib != null then
           lib.mkOption {
             type = lib.types.submodule {
-              freeformType = lib.types.lazyAttrsOf lib.types.anything;
+              freeformType = lib.types.lazyAttrsOf v1Anything;
               options = {
                 schema = lib.mkOption {
                   type = lib.types.lazyAttrsOf (lib.types.submodule {
-                    freeformType = lib.types.lazyAttrsOf lib.types.anything;
+                    freeformType = lib.types.lazyAttrsOf v1Anything;
                     options.includes = lib.mkOption {
-                      type = lib.types.listOf lib.types.anything;
+                      type = lib.types.listOf v1Anything;
                       default = [ ];
                     };
                     options.imports = lib.mkOption {
-                      type = lib.types.listOf lib.types.anything;
+                      type = lib.types.listOf v1Anything;
                       default = [ ];
                     };
                   });
