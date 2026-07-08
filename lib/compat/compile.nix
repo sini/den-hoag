@@ -126,7 +126,7 @@ let
   # `resolved-aspects` fixpoint's `forwardExpand` expects either concrete aspects or wrapped
   # functors (`__isWrappedFn = true`). This walks the `includes` tree and wraps lambdas.
   sanitizeAspect =
-    ing: aspectRec: aspect:
+    ing: aspectRec: v1Classes: aspect:
     if builtins.isFunction aspect then
       {
         __isWrappedFn = true;
@@ -144,12 +144,12 @@ let
           in
           if missingArgs == [ ] then
             let res = aspect ctx; in
-            if builtins.isAttrs res then resolveAspectRef ing aspectRec (sanitizeAspect ing aspectRec res) else res
+            if builtins.isAttrs res then resolveAspectRef ing aspectRec v1Classes (sanitizeAspect ing aspectRec v1Classes res) else res
           else
             { id_hash = "noop-skip-${builtins.hashString "sha256" (builtins.toJSON args)}"; name = "noop"; };
       }
     else if builtins.isAttrs aspect then
-      aspect // (if aspect ? includes then { includes = map (sanitizeAspect ing aspectRec) aspect.includes; } else { })
+      aspect // (if aspect ? includes then { includes = map (sanitizeAspect ing aspectRec v1Classes) aspect.includes; } else { })
     else
       aspect;
 
@@ -162,7 +162,7 @@ let
   # gap the delivery content path exposed). The full record's `name` gives `gen-aspects.key` the same
   # key a `neededBy` inclusion produces (dedup-coherent), and `id_hash` satisfies `declare.edge`'s A2.
   resolveAspectRef =
-    ing: aspectRec: ref:
+    ing: aspectRec: v1Classes: ref:
     if builtins.isAttrs ref && ref ? id_hash then
       ref
     else if builtins.isAttrs ref && ref ? name then
@@ -203,7 +203,7 @@ let
     builtins.seq (sentinels.provides name aspect) (
       builtins.seq (noBatteriesForward name aspect) (
         let
-          sanitized = sanitizeAspect ing aspectRec aspect;
+          sanitized = sanitizeAspect ing aspectRec v1Classes aspect;
         in
         if builtins.isFunction sanitized then
           { includes = [ sanitized ]; }
@@ -486,9 +486,9 @@ let
   defaultPolicies =
     if hasDefault then
       {
-        __denDefault_host = { host, ... }: [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
-        __denDefault_user = { user, ... }: [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
-        __denDefault_home = { home, ... }: [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
+        __denDefault_host = { host, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes { name = "__default"; })) ];
+        __denDefault_user = { user, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes { name = "__default"; })) ];
+        __denDefault_home = { home, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes { name = "__default"; })) ];
       } // builtins.listToAttrs (prelude.concatMap (idx:
         let ref = builtins.elemAt defaultPolicyIncludes idx; in [
         { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec ref ctx; }
