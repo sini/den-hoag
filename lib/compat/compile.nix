@@ -148,7 +148,7 @@ let
           in
           if missingArgs == [ ] then
             let res = aspect augmentedCtx; in
-            if builtins.isAttrs res then resolveAspectRef ing aspectRec v1Classes (sanitizeAspect ing aspectRec v1Classes res) else res
+            if builtins.isAttrs res then resolveAspectRef ing aspectRec v1Classes v1Quirks (sanitizeAspect ing aspectRec v1Classes res) else res
           else
             { id_hash = "noop-skip-${builtins.hashString "sha256" (builtins.toJSON args)}"; name = "noop"; };
       }
@@ -166,7 +166,7 @@ let
   # gap the delivery content path exposed). The full record's `name` gives `gen-aspects.key` the same
   # key a `neededBy` inclusion produces (dedup-coherent), and `id_hash` satisfies `declare.edge`'s A2.
   resolveAspectRef =
-    ing: aspectRec: v1Classes: ref:
+    ing: aspectRec: v1Classes: v1Quirks: ref:
     if builtins.isAttrs ref && ref ? id_hash then
       ref
     else if builtins.isAttrs ref && ref ? name then
@@ -261,9 +261,9 @@ let
         in
         [ (declare.edge fullAspect) ]
       else
-        [ (declare.edge (resolveAspectRef ing aspectRec v1Classes ref)) ]
+        [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks ref)) ]
     else if kind == "exclude" then
-      [ (declare.drop (resolveAspectRef ing aspectRec v1Classes effect.value)) ]
+      [ (declare.drop (resolveAspectRef ing aspectRec v1Classes v1Quirks effect.value)) ]
     else if kind == "resolve" then
       # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
       # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
@@ -494,9 +494,9 @@ let
   defaultPolicies =
     if hasDefault then
       {
-        __denDefault_host = { host, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes { name = "__default"; })) ];
-        __denDefault_user = { user, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes { name = "__default"; })) ];
-        __denDefault_home = { home, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes { name = "__default"; })) ];
+        __denDefault_host = { host, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks { name = "__default"; })) ];
+        __denDefault_user = { user, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks { name = "__default"; })) ];
+        __denDefault_home = { home, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks { name = "__default"; })) ];
       } // builtins.listToAttrs (prelude.concatMap (idx:
         let ref = builtins.elemAt defaultPolicyIncludes idx; in [
         { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
@@ -545,7 +545,7 @@ let
               [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
             else
               # It's a standard aspect reference.
-              [ (declare.edge (resolveAspectRef ing aspectRec v1Classes ref)) ];
+              [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks ref)) ];
 
           mkPolicyForRef = ref:
             if kind == "env" then
@@ -589,7 +589,7 @@ let
             })
           ]
         else if v1Aspects ? ${host.name} then
-          [ (declare.edge (resolveAspectRef ing aspectRec v1Classes host.name)) ]
+          [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks host.name)) ]
         else
           [ ]
       else
