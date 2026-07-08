@@ -257,7 +257,7 @@ let
             type = lib.types.submoduleWith {
               modules = [
                 {
-                  freeformType = lib.types.lazyAttrsOf lib.types.unspecified;
+                  freeformType = lib.types.lazyAttrsOf lib.types.anything;
                 }
               ];
             };
