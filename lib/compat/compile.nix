@@ -372,12 +372,13 @@ let
       augmentEntity =
         k: e:
         let
+          entityName = if builtins.isAttrs e && e ? name then e.name else if builtins.isAttrs e && e ? __entityId then e.__entityId else null;
           orig =
-            if builtins.isAttrs e && e ? name && ing.instances ? ${k} && ing.instances.${k} ? ${e.name} then
-              ing.instances.${k}.${e.name}
+            if entityName != null && ing.instances ? ${k + "s"} && ing.instances.${k + "s"} ? ${entityName} then
+              ing.instances.${k + "s"}.${entityName}
             else
               { };
-          base = e // orig // (prelude.optionalAttrs (e ? name) { ${k + "Name"} = e.name; });
+          base = e // orig // (prelude.optionalAttrs (entityName != null) { ${k + "Name"} = entityName; name = entityName; });
         in
         if k == "host" && !(base ? class) then base // { class = "nixos"; } else base;
 
