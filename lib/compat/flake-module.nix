@@ -48,13 +48,11 @@ let
   mergeSubmodule =
     description:
     schema.mkOption {
-      type = schema.types.submodule {
-        modules = [
-          {
-            freeformType = schema.types.lazyAttrsOf schema.types.anything;
-          }
-        ];
-      };
+      type = schema.types.submodule [
+        {
+          freeformType = schema.types.lazyAttrsOf schema.types.anything;
+        }
+      ];
       default = { };
       inherit description;
     };
