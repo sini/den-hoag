@@ -114,7 +114,7 @@ let
   # gap the delivery content path exposed). The full record's `name` gives `gen-aspects.key` the same
   # key a `neededBy` inclusion produces (dedup-coherent), and `id_hash` satisfies `declare.edge`'s A2.
   resolveAspectRef =
-    aspectRec: ref:
+    ing: aspectRec: ref:
     if builtins.isAttrs ref && ref ? id_hash then
       ref
     else if builtins.isAttrs ref && ref ? name then
@@ -211,9 +211,9 @@ let
         in
         [ (declare.edge fullAspect) ]
       else
-        [ (declare.edge (resolveAspectRef aspectRec ref)) ]
+        [ (declare.edge (resolveAspectRef ing aspectRec ref)) ]
     else if kind == "exclude" then
-      [ (declare.drop (resolveAspectRef aspectRec effect.value)) ]
+      [ (declare.drop (resolveAspectRef ing aspectRec effect.value)) ]
     else if kind == "resolve" then
       # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
       # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
@@ -435,7 +435,7 @@ let
       {
         __denDefault =
           { host, ... }:
-          [ (declare.edge (resolveAspectRef aspectRec { name = "__default"; })) ];
+          [ (declare.edge (resolveAspectRef ing aspectRec { name = "__default"; })) ];
       }
     else
       { };
@@ -469,7 +469,7 @@ let
           compilePolicy ing aspectRec ref ctx
         else
           # It's a standard aspect reference.
-          [ (declare.edge (resolveAspectRef aspectRec ref)) ];
+          [ (declare.edge (resolveAspectRef ing aspectRec ref)) ];
     in
     if kind == "env" then
       {
@@ -522,7 +522,7 @@ let
             })
           ]
         else if v1Aspects ? ${host.name} then
-          [ (declare.edge (resolveAspectRef aspectRec host.name)) ]
+          [ (declare.edge (resolveAspectRef ing aspectRec host.name)) ]
         else
           [ ]
       else
