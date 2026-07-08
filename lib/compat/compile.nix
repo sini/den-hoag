@@ -105,6 +105,41 @@ let
     "_"
   ];
 
+  # Aspect identity check.
+  hasId = a: builtins.isAttrs a && a ? id_hash;
+
+  # Recursive sanitization for aspect `includes`. In den-hoag V1, `includes` could contain bare
+  # lambdas (like `userContext`) that gen-merge conditionally evaluated. In gen-hoag V2, the
+  # `resolved-aspects` fixpoint's `forwardExpand` expects either concrete aspects or wrapped
+  # functors (`__isWrappedFn = true`). This walks the `includes` tree and wraps lambdas.
+  sanitizeAspect =
+    ing: aspectRec: aspect:
+    if builtins.isFunction aspect then
+      {
+        __isWrappedFn = true;
+        __functionArgs =
+          if builtins.isFunction aspect then
+            builtins.functionArgs aspect
+          else if builtins.isAttrs aspect && aspect ? __functionArgs then
+            aspect.__functionArgs
+          else
+            { };
+        __functor = self: ctx:
+          let
+            args = self.__functionArgs;
+            missingArgs = builtins.filter (k: !args.${k} && !(ctx ? ${k})) (builtins.attrNames args);
+          in
+          if missingArgs == [ ] then
+            let res = aspect ctx; in
+            if builtins.isAttrs res then resolveAspectRef ing aspectRec (sanitizeAspect ing aspectRec res) else res
+          else
+            { id_hash = "noop-skip-${builtins.hashString "sha256" (builtins.toJSON args)}"; name = "noop"; };
+      }
+    else if builtins.isAttrs aspect then
+      aspect // (if aspect ? includes then { includes = map (sanitizeAspect ing aspectRec) aspect.includes; } else { })
+    else
+      aspect;
+
   # Resolve a v1 aspect REFERENCE to the den-hoag aspect record den-hoag's resolution consumes. Accepts
   # an already-resolved record (pass through), a `{ name; … }` record, or a bare name string. `aspectRec`
   # (threaded from the inner block) maps a name to the FULL compiled aspect record — content + id_hash +
@@ -124,7 +159,7 @@ let
     else if builtins.isAttrs ref then
       let
         dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
-        translated = translateAspect dummyName ref;
+        translated = translateAspect ing aspectRec dummyName ref;
       in
       translated // ing.aspectEntry dummyName
     else
@@ -151,28 +186,25 @@ let
   # to `{ includes = [ fn ]; }` (v1's own coercion), `excludes` folds into `meta.drop`, class keys are
   # grounded, and the v1-only structural keys are dropped.
   translateAspect =
-    name: aspect:
-    # LEGACY SURFACE SENTINEL (C5): `provides` must have been desugared by legacy/provides.nix (applied
-    # by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is severed —
-    # fail LOUDLY naming the surface rather than dropping the declaration (sentinels.nix / errors.nix).
-    # SURFACE TOTALITY (C1): `meta.__forward` (the batteries.forward manifestation) has no desugar path —
-    # a named abort, not a silent passthrough (noBatteriesForward).
+    ing: aspectRec: name: aspect:
     builtins.seq (sentinels.provides name aspect) (
       builtins.seq (noBatteriesForward name aspect) (
-        if builtins.isFunction aspect then
-          { includes = [ aspect ]; }
+        let
+          sanitized = sanitizeAspect ing aspectRec aspect;
+        in
+        if builtins.isFunction sanitized then
+          { includes = [ sanitized ]; }
         else
           let
-            excludes = aspect.excludes or [ ];
-            withoutDropped = builtins.removeAttrs aspect droppedAspectKeys;
+            excludes = sanitized.excludes or [ ];
+            withoutDropped = builtins.removeAttrs sanitized droppedAspectKeys;
             grounded = prelude.foldl' (
               acc: k:
               let
                 k' = v1ClassKeyMap.${k} or k;
               in
-              builtins.removeAttrs acc [ k ] // { ${k'} = aspect.${k}; }
+              builtins.removeAttrs acc [ k ] // { ${k'} = sanitized.${k}; }
             ) withoutDropped (builtins.attrNames withoutDropped);
-            # Fold `excludes` into `meta.drop` (aspect-level constraint) without clobbering a declared drop.
             meta = grounded.meta or { };
             metaWithDrop =
               if excludes == [ ] then
@@ -206,7 +238,7 @@ let
       if builtins.isAttrs ref && ref ? name && !(ref ? id_hash) then
         # Inline aspect definition inside an include effect.
         let
-          translated = translateAspect ref.name ref;
+          translated = translateAspect ing aspectRec ref.name ref;
           fullAspect = translated // ing.aspectEntry ref.name;
         in
         [ (declare.edge fullAspect) ]
@@ -257,14 +289,14 @@ let
         # Inline aspect definition (a policy function evaluated to an aspect).
         # Translate it, stamp an id_hash, and emit an edge carrying the full record.
         let
-          translated = translateAspect effect.name effect;
+          translated = translateAspect ing aspectRec effect.name effect;
           fullAspect = translated // ing.aspectEntry effect.name;
         in
         [ (declare.edge fullAspect) ]
       else if builtins.isAttrs effect && !(effect ? id_hash) then
         let
           dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames effect));
-          translated = translateAspect dummyName effect;
+          translated = translateAspect ing aspectRec dummyName effect;
         in
         [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
       else
@@ -434,7 +466,7 @@ let
 
   defaultAspects =
     if hasDefault then {
-      __default = translateAspect "__default" (v1Decls.default // { includes = defaultModuleIncludes; });
+      __default = translateAspect ing aspectRec "__default" (v1Decls.default // { includes = defaultModuleIncludes; });
     } else { };
 
   defaultPolicies =
@@ -486,7 +518,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
               # Unnamed inline module/aspect
               let
                 dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
-                translated = translateAspect dummyName ref;
+                translated = translateAspect ing aspectRec dummyName ref;
               in
               [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
             else
@@ -543,7 +575,7 @@ aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
   };
 
   aspects =
-    builtins.mapAttrs translateAspect v1Aspects
+    builtins.mapAttrs (translateAspect ing aspectRec) v1Aspects
     // defaultAspects
     // compiledPolicies.conditionalAspects;
 
