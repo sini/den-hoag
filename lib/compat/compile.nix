@@ -677,5 +677,17 @@ builtins.seq surfaceTotalityOk {
       errors.quirkClassOverlap (builtins.head overlap)
     else
       builtins.mapAttrs (_: pipeLib.channelOf) quirks;
-  classes = builtins.mapAttrs translateClass v1Classes;
+  classes =
+    let
+      customClasses = builtins.mapAttrs translateClass v1Classes;
+      defaultClasses = {
+        nixos = translateClass "nixos" { };
+        darwin = translateClass "darwin" { };
+        "home-manager" = translateClass "home-manager" { };
+        colmena = translateClass "colmena" { };
+        "nix-on-droid" = translateClass "nix-on-droid" { };
+        disko = translateClass "disko" { };
+      };
+    in
+    defaultClasses // customClasses;
 }
