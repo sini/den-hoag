@@ -43,10 +43,8 @@ let
     schema.mkOption {
       type = schema.types.anything;
       default = { };
-  v1Anything = import ./v1-type.nix { inherit lib; };
       inherit description;
     };
-
 
   # The v1 option surface as ONE freeform `den` submodule: each v1 concern is a `mergeOpt` sub-option (the
   # grammar rides untouched), and the `freeformType` absorbs any v1 config outside them (custom-kind
@@ -254,23 +252,28 @@ let
       # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
       # while the strict `schema.evalModuleTree` in `mkDen` does the actual heavy lifting.
       options.den =
+        let
+          v1Anything = import ./v1-type.nix { inherit lib; };
+        in
         if lib != null then
           lib.mkOption {
             type = lib.types.submodule {
               freeformType = lib.types.lazyAttrsOf v1Anything;
               options = {
                 schema = lib.mkOption {
-                  type = lib.types.lazyAttrsOf (lib.types.submodule {
-                    freeformType = lib.types.lazyAttrsOf v1Anything;
-                    options.includes = lib.mkOption {
-                      type = lib.types.listOf v1Anything;
-                      default = [ ];
-                    };
-                    options.imports = lib.mkOption {
-                      type = lib.types.listOf v1Anything;
-                      default = [ ];
-                    };
-                  });
+                  type = lib.types.lazyAttrsOf (
+                    lib.types.submodule {
+                      freeformType = lib.types.lazyAttrsOf v1Anything;
+                      options.includes = lib.mkOption {
+                        type = lib.types.listOf v1Anything;
+                        default = [ ];
+                      };
+                      options.imports = lib.mkOption {
+                        type = lib.types.listOf v1Anything;
+                        default = [ ];
+                      };
+                    }
+                  );
                   default = { };
                 };
               };
