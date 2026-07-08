@@ -236,11 +236,6 @@ let
             instantiate = nixosInstantiate;
           };
         };
-        hosts = prelude.mapAttrs (sys: hostsMap:
-          prelude.mapAttrs (name: _:
-            { intoAttr = [ "nixosConfigurations" name ]; }
-          ) hostsMap
-        ) (instanceConfig.hosts or { });
         nixpkgs = compiled.nixpkgs or null;
       }
       // instanceConfig;
