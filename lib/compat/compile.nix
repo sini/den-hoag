@@ -240,7 +240,7 @@ let
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
   # checks pass; a stray string would abort named.
   translateEffect =
-    ing: aspectRec: v1Classes: ctx: effect:
+    ing: aspectRec: v1Classes: v1Quirks: ctx: effect:
     let
       kind = if builtins.isAttrs effect then effect.__policyEffect or null else null;
     in
@@ -358,7 +358,7 @@ let
   # (Fixed: compilePolicy guards evaluation based on the policy's required arguments.
   # If the context lacks a required argument, it returns `[ ]` instead of throwing.)
   compilePolicy =
-    ing: aspectRec: v1Classes: value: ctx:
+    ing: aspectRec: v1Classes: v1Quirks: value: ctx:
     let
       fn = innerFn value;
       getFunctionArgs =
@@ -403,14 +403,14 @@ let
         res = fn augmentedCtx;
       in
       if builtins.isList res then
-        prelude.concatMap (translateEffect ing aspectRec v1Classes augmentedCtx) res
+        prelude.concatMap (translateEffect ing aspectRec v1Classes v1Quirks augmentedCtx) res
       else
-        translateEffect ing aspectRec v1Classes augmentedCtx res
+        translateEffect ing aspectRec v1Classes v1Quirks augmentedCtx res
     else
       [ ];
 
   compilePolicies =
-    ing: aspectRec: v1Classes: policies:
+    ing: aspectRec: v1Classes: v1Quirks: policies:
     let
       names = builtins.attrNames policies;
       # Partition: `when`-over-inline-aspect values become aspects (conditional activation), everything
@@ -421,7 +421,7 @@ let
       policyNames = builtins.filter (n: !(isAspectValued n)) names;
     in
     {
-      policies = prelude.genAttrs policyNames (name: compilePolicy ing aspectRec v1Classes policies.${name});
+      policies = prelude.genAttrs policyNames (name: compilePolicy ing aspectRec v1Classes v1Quirks policies.${name});
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
         name:
@@ -499,9 +499,9 @@ let
         __denDefault_home = { home, ... }: [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks { name = "__default"; })) ];
       } // builtins.listToAttrs (prelude.concatMap (idx:
         let ref = builtins.elemAt defaultPolicyIncludes idx; in [
-        { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
-        { name = "__defaultPolicy_user_${toString idx}"; value = { user, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
-        { name = "__defaultPolicy_home_${toString idx}"; value = { home, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
+        { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec v1Classes v1Quirks ref ctx; }
+        { name = "__defaultPolicy_user_${toString idx}"; value = { user, ... }@ctx: compilePolicy ing aspectRec v1Classes v1Quirks ref ctx; }
+        { name = "__defaultPolicy_home_${toString idx}"; value = { home, ... }@ctx: compilePolicy ing aspectRec v1Classes v1Quirks ref ctx; }
       ]) (builtins.genList (i: i) (builtins.length defaultPolicyIncludes)))
     else
       { };
@@ -519,7 +519,7 @@ let
   # laziness ties the knot without a loop.
   aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
 
-  compiledPolicies = compilePolicies ing aspectRec v1Classes v1Policies;
+  compiledPolicies = compilePolicies ing aspectRec v1Classes v1Quirks v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → fire-at-kind policies: an aspect radiated to
   # kind's own scope. The policy destructures the kind arg so it fires only at that kind's nodes.
@@ -535,7 +535,7 @@ let
             ref: ctx:
             if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __policyEffect) then
               # It's a policy function or an effect record. Compile it as a policy.
-              compilePolicy ing aspectRec v1Classes ref ctx
+              compilePolicy ing aspectRec v1Classes v1Quirks ref ctx
             else if builtins.isAttrs ref && !(ref ? name) && !(ref ? id_hash) then
               # Unnamed inline module/aspect
               let
