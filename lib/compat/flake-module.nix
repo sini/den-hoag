@@ -284,9 +284,14 @@ let
         else
           { };
 
-      config._module.args.den = config.den // {
+      config._module.args.den = 
+        let v1Base = evalV1 [ ]; in
+        config.den // {
         lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
-        batteries = (evalV1 [ ]).batteries or { };
+        batteries = v1Base.batteries or { };
+        policies = (v1Base.policies or { }) // (config.den.policies or { });
+        classes = (v1Base.classes or { }) // (config.den.classes or { });
+        aspects = (v1Base.aspects or { }) // (config.den.aspects or { });
         schema =
           (schema.evalModuleTree {
             modules = [
