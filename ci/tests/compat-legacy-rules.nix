@@ -116,6 +116,17 @@ let
   };
   # The user-to-host route is ADAPTER-BEARING (adaptArgs osConfig) — its descriptor carries adaptArgs.
   r6RouteDesc = builtins.head r6RouteOut;
+  # v1's user-to-host is UNCONDITIONAL (no elem-gate), but a synthetic home whose host carries NO OS class
+  # leaves `intoClass = host.class or null` = null — the ONE case v1 leaves undefined, which the shim
+  # renders as a DEFINED inert no-op (`__dropped`), never a crash or misroute (os-user.nix; ruling B2 pt 3).
+  r6ClasslessInert = builtins.head (r6UserRoute {
+    user = {
+      name = "alice";
+    };
+    host = {
+      name = "h";
+    };
+  });
 
   # ── R7 — v1 lambda arg adaptation (loud): the lambda is PRESERVED (never _:{}-substituted) ────────────
   # A satisfied policy lambda runs verbatim → yields its effect. A _:{} substitution would yield [ ].
@@ -344,6 +355,20 @@ in
         routePresent = true;
         adapterBearing = true;
         to = "nixos";
+      };
+    };
+    # v1's user-to-host is UNCONDITIONAL — but a classless host (a synthetic home with no host OS class) has
+    # no OS to route into, so `host.class or null` = null is the DEFINED inert no-op (dropped), never a
+    # misroute (ruling B2 pt 3). The real (nixos) user cell above routes, so this pins the DROP arm — not a
+    # universal no-op — and mirrors os-to-host's elem-gate drop for the (differently-gated) user route.
+    test-r6-classless-host-inert = {
+      expr = {
+        classless = r6ClasslessInert.__dropped;
+        realRoutes = r6RouteDesc.__dropped;
+      };
+      expected = {
+        classless = true;
+        realRoutes = false;
       };
     };
 

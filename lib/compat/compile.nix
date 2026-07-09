@@ -37,10 +37,13 @@ let
   # v1's value-gate into its `intoClass`: os-to-host's `elem host.class [nixos darwin]` false ⇒ `null`;
   # a synthetic `user@host` home with no OS class ⇒ `null`. That null target must stay INERT, NOT misroute
   # to a default. It is still emitted (a resolution-stratum declaration, so the route classifies as
-  # resolution, not enrich) but flagged `__dropped`; output-modules `deliveryEdgesAt` skips it. A dummy
-  # sentinel entry satisfies `declare.delivery`'s A2 requireEntry without a registry lookup (the edge is
-  # never rendered, so its class name is irrelevant). An UNKNOWN (non-null) class name still aborts LOUDLY
-  # at resolveBucket — `null` is the ONE defined no-op.
+  # resolution, not enrich) but flagged `__dropped`; output-modules `deliveryEdgesAt` skips it.
+  # `droppedTargetSentinel` is a FABRICATED non-registry record: it carries an `id_hash`, so it passes
+  # `declare.delivery`'s A2 `requireEntry` BY SHAPE (that check tests for the field, not registry
+  # membership) without a registry lookup. This is a DELIBERATE spoof of the identity check, CONFINED to
+  # the dropped arm (`dropped = d.target == null`) — harmless precisely because a dropped delivery is NEVER
+  # rendered (`deliveryEdgesAt` skips it), so the sentinel's class name is never read. An UNKNOWN (non-null)
+  # class name still aborts LOUDLY at resolveBucket — `null` is the ONE defined no-op.
   droppedTargetSentinel = {
     id_hash = "«dropped-delivery-target»";
     name = "«dropped»";
