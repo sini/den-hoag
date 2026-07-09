@@ -14,10 +14,11 @@
 {
   denHoagSrc,
   nixpkgsLib,
+  denCompat,
   ...
 }:
 let
-  inherit (nixpkgsLib) hasInfix;
+  inherit (nixpkgsLib) hasInfix hasSuffix;
 
   # ── the CORE file set — lib/ MINUS lib/compat/ (explicit + checked-in, like zero-machinery.nix: adding
   #    a core file forces a visible edit here, which is the point). KEEP IN SYNC with `find lib -name
@@ -190,6 +191,90 @@ let
         ) (builtins.attrNames e);
     in
     walk "";
+
+  # ── (4) LEGACY SIBLING ISOLATION — each legacy surface (lib/compat/legacy/*) is a PURE ISOLATED battery
+  #    over the shared primitive; no legacy module imports another legacy MODULE (that would recouple the
+  #    surfaces the severability law severs independently). SOLE exception: legacy/defaults.nix is the
+  #    COMPOSITION ROOT — it may import legacy/batteries/*. Every other legacy file imports ONLY the shared
+  #    `deliver.nix` primitive (forwards → ../deliver.nix; os-class/os-user → ../../deliver.nix). ─────────
+  legacyFiles = builtins.filter (f: nixpkgsLib.hasPrefix "legacy/" f) compatFiles;
+  importPathsOf = f: capturesOf "import +(\\.\\.?/[a-zA-Z0-9_./-]+\\.nix)" (readCompat f);
+  # an import is ALLOWED iff it is the shared `deliver.nix` primitive, OR it is a `batteries/*` import from
+  # the composition root. ANYTHING else a legacy file imports is a sibling recoupling (forces a review).
+  legacyImportAllowed =
+    f: p: hasSuffix "/deliver.nix" p || (f == "legacy/defaults.nix" && hasInfix "batteries/" p);
+  siblingOffenders = builtins.concatMap (
+    f:
+    map (p: "${f}:${p}") (
+      builtins.filter (p: p != null && !(legacyImportAllowed f p)) (importPathsOf f)
+    )
+  ) legacyFiles;
+
+  # ── (5) SHARED-PRIMITIVE EXPRESSION — every legacy desugar emits records in the SHARED deliver/edge
+  #    vocabulary ONLY: a `deliver`/`route` descriptor via the public deliver surface (`__delivery`), or a
+  #    `synthesize` SOURCE RECORD per the frozen edge schema. No bespoke record shapes — a NEW legacy record
+  #    kind is a deliberate SCHEMA-VERSION event, not a drive-by. ALGEBRA (the invariant's rationale): a
+  #    forward is `select(S) → transform(M) → project(T, P)` over the shared edge primitive; `os-to-host` is
+  #    the built-in forward INSTANCE with `T = fn(ctx) → host.class`. So the batteries are forward instances,
+  #    not new machinery — their route bodies emit the SAME `__delivery` descriptor the deliver surface does.
+  sharedRecordKinds = [
+    "__delivery" # a deliver/route descriptor (the public deliver surface)
+    "synthesize" # a gen-edge synthesize source record (the frozen edge schema)
+  ];
+  recordKind =
+    r:
+    if !(builtins.isAttrs r) then
+      "non-record"
+    else if r ? __delivery then
+      "__delivery"
+    else if r ? synthesize then
+      "synthesize"
+    else
+      "bespoke:${builtins.concatStringsSep "," (builtins.attrNames r)}";
+  fwd = denCompat.legacy.forwards;
+  bat = denCompat.legacy.defaults.batteries;
+  # the record each legacy desugar emits (probed at a representative input):
+  emittedRecordKinds = [
+    # forwards: tier-1 (static) → a deliver descriptor; complex (adapter-bearing) → a synthesize record.
+    (recordKind (
+      fwd.forward {
+        fromClass = "a";
+        intoClass = "b";
+      }
+    ))
+    (recordKind (
+      fwd.forward {
+        fromClass = "a";
+        intoClass = "b";
+        adaptArgs = _: { };
+      }
+    ))
+    # os-class / os-user built-in forward instances: their route body emits a deliver descriptor.
+    (recordKind (
+      builtins.head (
+        (bat.os-class.desugar { }).policies.os-to-host.fn {
+          host = {
+            name = "h";
+            class = "nixos";
+          };
+        }
+      )
+    ))
+    (recordKind (
+      builtins.head (
+        (bat.os-user.desugar { }).policies.user-to-host.fn {
+          user = {
+            name = "u";
+          };
+          host = {
+            name = "h";
+            class = "nixos";
+          };
+        }
+      )
+    ))
+  ];
+  bespokeRecordKinds = builtins.filter (k: !(builtins.elem k sharedRecordKinds)) emittedRecordKinds;
 in
 {
   flake.tests.boundary = {
@@ -226,6 +311,32 @@ in
     test-core-file-list-complete = {
       expr = builtins.sort (a: b: a < b) coreFiles == builtins.sort (a: b: a < b) actualCore;
       expected = true;
+    };
+
+    # (4) legacy SIBLING ISOLATION — no legacy module imports a legacy sibling; only the shared deliver
+    # primitive (+ defaults → batteries, the composition root). A recoupling import fails here.
+    test-legacy-sibling-isolation = {
+      expr = siblingOffenders;
+      expected = [ ];
+    };
+
+    # (5) SHARED-PRIMITIVE EXPRESSION — every legacy desugar emits records in the shared deliver/edge
+    # vocabulary only (`__delivery` descriptor | `synthesize` source record). A bespoke record kind fails
+    # here (a deliberate schema-version event, never a drive-by).
+    test-legacy-shared-record-vocabulary = {
+      expr = bespokeRecordKinds;
+      expected = [ ];
+    };
+    # the concrete emitted kinds pin the algebra: forward tier-1 = deliver, complex = synthesize, and the
+    # os/user built-in forward instances = deliver (T = fn(ctx) → host.class).
+    test-legacy-emitted-record-kinds = {
+      expr = emittedRecordKinds;
+      expected = [
+        "__delivery"
+        "synthesize"
+        "__delivery"
+        "__delivery"
+      ];
     };
   };
 }
