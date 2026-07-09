@@ -146,9 +146,16 @@ in
 
         # Hardcode `pipe.expose` semantics for `resolved-users` from children
         childrenVal = self.get id "children";
-        childIds = if builtins.isAttrs childrenVal then builtins.attrNames childrenVal else if builtins.isList childrenVal then childrenVal else [ ];
-        
-        exposedRecords = prelude.concatMap (cid:
+        childIds =
+          if builtins.isAttrs childrenVal then
+            builtins.attrNames childrenVal
+          else if builtins.isList childrenVal then
+            childrenVal
+          else
+            [ ];
+
+        exposedRecords = prelude.concatMap (
+          cid:
           let
             contribs = (self.get cid "local-collection-data")."resolved-users" or [ ];
           in

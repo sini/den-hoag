@@ -128,7 +128,8 @@ let
         v1ClassKeyMap = {
           homeManager = "home-manager";
         };
-        isNestedKey = k:
+        isNestedKey =
+          k:
           !(structuralKeysSet ? ${k})
           && !(classes ? ${v1ClassKeyMap.${k} or k} || classes ? ${k})
           && !(quirks ? ${k})
@@ -137,21 +138,28 @@ let
         nestedKeys = builtins.filter isNestedKey (builtins.attrNames value);
 
         # Recurse into nested aspects
-        recursedNested = builtins.listToAttrs (map (k: {
-          name = k;
-          value = injectAspectPaths classes quirks (if path == "" then k else "${path}.${k}") value.${k};
-        }) nestedKeys);
+        recursedNested = builtins.listToAttrs (
+          map (k: {
+            name = k;
+            value = injectAspectPaths classes quirks (if path == "" then k else "${path}.${k}") value.${k};
+          }) nestedKeys
+        );
 
         # Check if the current node itself is an aspect
         hasAspectContent = builtins.any (k: !isNestedKey k) (builtins.attrNames value);
-        
+
         thisAspect = value // recursedNested;
-        injected = if hasAspectContent && path != "" then
-          thisAspect // { _aspectPath = path; name = path; }
-        else
-          thisAspect;
+        injected =
+          if hasAspectContent && path != "" then
+            thisAspect
+            // {
+              _aspectPath = path;
+              name = path;
+            }
+          else
+            thisAspect;
       in
-        injected
+      injected
     else
       value;
 
@@ -163,11 +171,7 @@ let
     let
       # Extract ALL _module.args from userModules first so they are available to filterModule
       extractedModuleArgs = prelude.foldl' (
-        acc: m:
-        if builtins.isAttrs m && m ? _module then
-          acc // (m._module.args or { })
-        else
-          acc
+        acc: m: if builtins.isAttrs m && m ? _module then acc // (m._module.args or { }) else acc
       ) { } userModules;
 
       availableArgs = extractedModuleArgs // {
@@ -192,15 +196,8 @@ let
               else
                 { };
             newImports =
-              if attrs ? imports && builtins.isList attrs.imports then
-                map filterModule attrs.imports
-              else
-                [ ];
-            newModule =
-              if attrs ? _module then
-                { inherit (attrs) _module; }
-              else
-                { };
+              if attrs ? imports && builtins.isList attrs.imports then map filterModule attrs.imports else [ ];
+            newModule = if attrs ? _module then { inherit (attrs) _module; } else { };
           in
           newModule
           // (prelude.optionalAttrs (newOptions ? den) { options = newOptions; })
@@ -220,14 +217,18 @@ let
             hasUnsatisfiableArg = prelude.any (
               name:
               !fArgs.${name}
-              && !(builtins.elem name [ "config" "options" "lib" "pkgs" "modulesPath" "_module" ])
+              && !(builtins.elem name [
+                "config"
+                "options"
+                "lib"
+                "pkgs"
+                "modulesPath"
+                "_module"
+              ])
               && !(availableArgs ? ${name})
             ) (builtins.attrNames fArgs);
           in
-          if hasUnsatisfiableArg then
-            _: { }
-          else
-            args: filterModuleAttrs (m args)
+          if hasUnsatisfiableArg then _: { } else args: filterModuleAttrs (m args)
         else
           filterModuleAttrs m;
 
@@ -242,52 +243,90 @@ let
         # are the BASE, then evalV1's own overrides (den, withSystem) win.
         specialArgs = extractedModuleArgs // {
           isCompatEval = true;
-          flake-parts-lib = extractedModuleArgs.flake-parts-lib or (
-            if extractedModuleArgs ? inputs && extractedModuleArgs.inputs ? flake-parts then
-              extractedModuleArgs.inputs.flake-parts.lib
-            else
-              null
-          );
-          den = let
-            envVal = eval.config.den.schema.environment or {};
-            envTrace = builtins.mapAttrs (k: v: if builtins.isAttrs v then builtins.attrNames v else builtins.typeOf v) envVal;
-          in builtins.trace "SCHEMA ENV DETAILED: ${builtins.toJSON envTrace}" (eval.config.den // {
-            lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
-            batteries = eval.config.den.batteries or { };
-            classes = denHoag.classes // (eval.config.den.classes or { });
-            policies = { host-to-users = { __isPolicy = true; fn = _: [ ]; }; } // (eval.config.den.policies or { });
-            aspects = injectAspectPaths (denHoag.classes // (eval.config.den.classes or { })) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
-            schema =
-              let
-                res = (schema.evalModuleTree {
-                  modules = [
-                    {
-                      options.den.schema = schema.mkSchemaOption { };
-                      config.den.schema = eval.config.den.schema or { };
-                    }
-                  ];
-                }).config.den.schema;
-                envVal = res.environment or {};
-                envTrace = builtins.mapAttrs (k: v: if builtins.isAttrs v then builtins.attrNames v else builtins.typeOf v) envVal;
-              in builtins.trace "RETURNED SCHEMA ENV DETAILED: ${builtins.toJSON envTrace}" res;
-          });
-          withSystem = extractedModuleArgs.withSystem or (_sys: fn: fn { self' = { }; inputs' = { }; });
+          flake-parts-lib =
+            extractedModuleArgs.flake-parts-lib or (
+              if extractedModuleArgs ? inputs && extractedModuleArgs.inputs ? flake-parts then
+                extractedModuleArgs.inputs.flake-parts.lib
+              else
+                null
+            );
+          den =
+            let
+              envVal = eval.config.den.schema.environment or { };
+              envTrace = builtins.mapAttrs (
+                k: v: if builtins.isAttrs v then builtins.attrNames v else builtins.typeOf v
+              ) envVal;
+            in
+            builtins.trace "SCHEMA ENV DETAILED: ${builtins.toJSON envTrace}" (
+              eval.config.den
+              // {
+                lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
+                batteries = eval.config.den.batteries or { };
+                classes = denHoag.classes // (eval.config.den.classes or { });
+                policies = {
+                  host-to-users = {
+                    __isPolicy = true;
+                    fn = _: [ ];
+                  };
+                }
+                // (eval.config.den.policies or { });
+                aspects = injectAspectPaths (
+                  denHoag.classes // (eval.config.den.classes or { })
+                ) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
+                schema =
+                  let
+                    res =
+                      (schema.evalModuleTree {
+                        modules = [
+                          {
+                            options.den.schema = schema.mkSchemaOption { };
+                            config.den.schema = eval.config.den.schema or { };
+                          }
+                        ];
+                      }).config.den.schema;
+                    envVal = res.environment or { };
+                    envTrace = builtins.mapAttrs (
+                      k: v: if builtins.isAttrs v then builtins.attrNames v else builtins.typeOf v
+                    ) envVal;
+                  in
+                  builtins.trace "RETURNED SCHEMA ENV DETAILED: ${builtins.toJSON envTrace}" res;
+              }
+            );
+          withSystem =
+            extractedModuleArgs.withSystem or (
+              _sys: fn:
+              fn {
+                self' = { };
+                inputs' = { };
+              }
+            );
         };
       };
     in
     let
       _traceEnvironments =
         let
-          prodEnv = eval.config.den.environments.prod or {};
+          prodEnv = eval.config.den.environments.prod or { };
           prodKeys = builtins.attrNames prodEnv;
           hasGetDomain = prodEnv ? getDomainFor;
         in
         builtins.trace "PROD ENV KEYS IN EVALV1: keys=${builtins.toJSON prodKeys}, hasGetDomainFor=${builtins.toJSON hasGetDomain}" null;
     in
-    builtins.seq _traceEnvironments (eval.config.den // {
-      policies = { host-to-users = { __isPolicy = true; fn = _: [ ]; }; } // (eval.config.den.policies or { });
-      aspects = injectAspectPaths (denHoag.classes // (eval.config.den.classes or { })) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
-    });
+    builtins.seq _traceEnvironments (
+      eval.config.den
+      // {
+        policies = {
+          host-to-users = {
+            __isPolicy = true;
+            fn = _: [ ];
+          };
+        }
+        // (eval.config.den.policies or { });
+        aspects = injectAspectPaths (
+          denHoag.classes // (eval.config.den.classes or { })
+        ) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
+      }
+    );
 
   # The compat nixos instantiate wrapper (§2.5 carry-in): v1's per-host `system` never reaches
   # den-hoag's pipeline (den-hoag entities are field-less), so it is injected HERE, at the terminal —
@@ -320,7 +359,23 @@ let
       _traceBindingsKeys = builtins.trace "BINDINGS_KEYS: host=${name}, keys=${builtins.toJSON (builtins.attrNames bindings)}, defaultQuirks=${builtins.toJSON (builtins.attrNames defaultQuirkBindings)}" null;
       hostEntry = bindings.host or null;
       _traceHostEntry = builtins.trace "HOST_ENTRY: host=${name}, keys=${builtins.toJSON (if hostEntry == null then null else builtins.attrNames hostEntry)}" null;
-      _traceBindingsVal = builtins.trace "BINDINGS_VAL: host=${name}, val=${builtins.toJSON (builtins.mapAttrs (k: v: if v == null then "null" else if builtins.isAttrs v then (if v ? name then "attrs:${v.name}" else "attrs") else if builtins.isList v then "list" else if builtins.isFunction v then "fun" else "scalar") bindings)}" null;
+      _traceBindingsVal = builtins.trace "BINDINGS_VAL: host=${name}, val=${
+        builtins.toJSON (
+          builtins.mapAttrs (
+            k: v:
+            if v == null then
+              "null"
+            else if builtins.isAttrs v then
+              (if v ? name then "attrs:${v.name}" else "attrs")
+            else if builtins.isList v then
+              "list"
+            else if builtins.isFunction v then
+              "fun"
+            else
+              "scalar"
+          ) bindings
+        )
+      }" null;
       sys = if hostEntry == null then null else systemFor hostEntry;
       sysModule = if sys == null then [ ] else [ { nixpkgs.hostPlatform.system = sys; } ];
 
@@ -344,32 +399,40 @@ let
         if resolvedChannel == null then
           [ ]
         else if classCfg.name == "darwin" then
-          if resolvedChannel ? home-manager-module.darwin && resolvedChannel.home-manager-module.darwin != null then
+          if
+            resolvedChannel ? home-manager-module.darwin && resolvedChannel.home-manager-module.darwin != null
+          then
             [ resolvedChannel.home-manager-module.darwin ]
           else
             [ ]
+        else if
+          resolvedChannel ? home-manager-module.nixos && resolvedChannel.home-manager-module.nixos != null
+        then
+          [ resolvedChannel.home-manager-module.nixos ]
         else
-          if resolvedChannel ? home-manager-module.nixos && resolvedChannel.home-manager-module.nixos != null then
-            [ resolvedChannel.home-manager-module.nixos ]
-          else
-            [ ];
+          [ ];
 
       splitString = sep: s: builtins.filter builtins.isString (builtins.split sep s);
 
-      nestPath = path: value:
-        if path == [ ] then
-          value
-        else
-          { ${builtins.head path} = nestPath (builtins.tail path) value; };
+      nestPath =
+        path: value:
+        if path == [ ] then value else { ${builtins.head path} = nestPath (builtins.tail path) value; };
 
-      recursiveMerge = lh: rh:
+      recursiveMerge =
+        lh: rh:
         if builtins.isAttrs lh && builtins.isAttrs rh then
-          builtins.zipAttrsWith (name: values:
-            if builtins.length values == 1 then
-              builtins.head values
-            else
-              recursiveMerge (builtins.elemAt values 0) (builtins.elemAt values 1)
-          ) [ lh rh ]
+          builtins.zipAttrsWith
+            (
+              name: values:
+              if builtins.length values == 1 then
+                builtins.head values
+              else
+                recursiveMerge (builtins.elemAt values 0) (builtins.elemAt values 1)
+            )
+            [
+              lh
+              rh
+            ]
         else
           rh;
 
@@ -377,8 +440,8 @@ let
         let
           resolved = bindings.__resolvedSettings or { };
           presentAspectNames = builtins.attrNames resolved;
-          nestedSettingsList = map (name:
-            nestPath (splitString "\\." name) (resolved.${name}.value or { })
+          nestedSettingsList = map (
+            name: nestPath (splitString "\\." name) (resolved.${name}.value or { })
           ) presentAspectNames;
         in
         builtins.foldl' recursiveMerge { } nestedSettingsList;
@@ -397,9 +460,12 @@ let
                 _traceSettings = builtins.trace "SETTINGS_MERGE for ${e.name}: inlineKeys=${builtins.toJSON (builtins.attrNames (v1Instance.settings or { }))}, resolvedKeys=${builtins.toJSON (builtins.attrNames resolvedSettings)}, mergedKeys=${builtins.toJSON (builtins.attrNames mergedSettings)}" null;
               in
               builtins.seq _traceSettings (
-              e // v1Instance // {
-                settings = mergedSettings;
-              })
+                e
+                // v1Instance
+                // {
+                  settings = mergedSettings;
+                }
+              )
             else
               e // v1Instance
           else
@@ -413,36 +479,48 @@ let
           let
             sys = systemFor hostEntry;
           in
-          if sys != null then
-            denContext.hosts.${sys}.${hostEntry.name} or { }
-          else
-            { };
+          if sys != null then denContext.hosts.${sys}.${hostEntry.name} or { } else { };
 
       envName = hostCfg.environment or "prod";
       v1Env = instances.environment.${envName} or { };
       envEntry = bindings.environment or { name = envName; };
-      environmentVal = builtins.trace "V1ENV FOR ${name} KEYS: ${builtins.toJSON (builtins.attrNames v1Env)}" (envEntry // v1Env);
+      environmentVal =
+        builtins.trace "V1ENV FOR ${name} KEYS: ${builtins.toJSON (builtins.attrNames v1Env)}"
+          (envEntry // v1Env);
 
-      allBindings = (augmentBindings (injectRelationships (defaultQuirkBindings // bindings // {
-        den = denContext;
-      }))) // {
-        environment = environmentVal;
-      };
+      allBindings =
+        (augmentBindings (
+          injectRelationships (
+            defaultQuirkBindings
+            // bindings
+            // {
+              den = denContext;
+            }
+          )
+        ))
+        // {
+          environment = environmentVal;
+        };
 
-       _traceHostModules =
+      _traceHostModules =
         let
-          showModule = m:
+          showModule =
+            m:
             if builtins.isPath m then
               builtins.toString m
             else if builtins.isFunction m then
               "lambda"
             else if builtins.isAttrs m then
-              (if m ? _file then m._file
-               else if m ? key then m.key
-               else if m ? config && builtins.isAttrs m.config then
-                 "attrs-config:keys=${builtins.concatStringsSep "," (builtins.attrNames m.config)}"
-               else
-                 "attrs:keys=${builtins.concatStringsSep "," (builtins.attrNames m)}")
+              (
+                if m ? _file then
+                  m._file
+                else if m ? key then
+                  m.key
+                else if m ? config && builtins.isAttrs m.config then
+                  "attrs-config:keys=${builtins.concatStringsSep "," (builtins.attrNames m.config)}"
+                else
+                  "attrs:keys=${builtins.concatStringsSep "," (builtins.attrNames m)}"
+              )
             else
               builtins.typeOf m;
           names = map showModule hostModules;
@@ -476,13 +554,22 @@ let
       collected = terminal (
         args
         // {
-          hostModules = [ { _module.args = allBindings; } compatAliasModule ] ++ sysModule ++ hostModules;
+          hostModules = [
+            { _module.args = allBindings; }
+            compatAliasModule
+          ]
+          ++ sysModule
+          ++ hostModules;
           bindings = allBindings;
         }
       );
       extractedModules = collected.modules or collected.hostModules or [ ];
     in
-    if builtins.seq _traceBindingsKeys (builtins.seq _traceHostEntry (builtins.seq _traceBindingsVal (hostInstantiate != null))) then
+    if
+      builtins.seq _traceBindingsKeys (
+        builtins.seq _traceHostEntry (builtins.seq _traceBindingsVal (hostInstantiate != null))
+      )
+    then
       hostInstantiate {
         modules = hmModule ++ extractedModules;
         specialArgs = allBindings;
@@ -558,9 +645,9 @@ let
             regs = compiled.entities.registries or { };
             res = regs // rawInstances;
             _traceInstances = builtins.trace "INSTANCES KEYS: ${builtins.toJSON (builtins.attrNames res)}
-ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment or {}))}
-CLUSTER KEYS: ${builtins.toJSON (builtins.attrNames (res.cluster or {}))}
-PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or {}))}" null;
+ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment or { }))}
+CLUSTER KEYS: ${builtins.toJSON (builtins.attrNames (res.cluster or { }))}
+PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or { }))}" null;
           in
           builtins.seq _traceInstances res;
       };
@@ -604,119 +691,131 @@ PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or {}
       { }
     else
       {
-      # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
-      # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
-      # while the strict `schema.evalModuleTree` in `mkDen` does the actual heavy lifting.
-       options.den =
-        let
-          v1Anything = import ./v1-type.nix {
-            inherit lib;
-            aspectNames = builtins.attrNames (v1Base.aspects or { });
-          };
-        in
-        if lib != null then
-          lib.mkOption {
-            type = lib.types.submodule {
-              freeformType = lib.types.lazyAttrsOf v1Anything;
-              options = {
-                schema = lib.mkOption {
-                  type = lib.types.lazyAttrsOf (
-                    lib.types.submodule {
-                      freeformType = lib.types.lazyAttrsOf v1Anything;
-                      options.includes = lib.mkOption {
-                        type = lib.types.listOf v1Anything;
-                        default = [ ];
-                      };
-                      options.imports = lib.mkOption {
-                        type = lib.types.listOf v1Anything;
-                        default = [ ];
-                      };
-                    }
-                  );
-                  default = { };
+        # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
+        # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
+        # while the strict `schema.evalModuleTree` in `mkDen` does the actual heavy lifting.
+        options.den =
+          let
+            v1Anything = import ./v1-type.nix {
+              inherit lib;
+              aspectNames = builtins.attrNames (v1Base.aspects or { });
+            };
+          in
+          if lib != null then
+            lib.mkOption {
+              type = lib.types.submodule {
+                freeformType = lib.types.lazyAttrsOf v1Anything;
+                options = {
+                  schema = lib.mkOption {
+                    type = lib.types.lazyAttrsOf (
+                      lib.types.submodule {
+                        freeformType = lib.types.lazyAttrsOf v1Anything;
+                        options.includes = lib.mkOption {
+                          type = lib.types.listOf v1Anything;
+                          default = [ ];
+                        };
+                        options.imports = lib.mkOption {
+                          type = lib.types.listOf v1Anything;
+                          default = [ ];
+                        };
+                      }
+                    );
+                    default = { };
+                  };
                 };
               };
-            };
-            default = { };
-            description = "The den v1 declaration surface (flake-parts permissive collector).";
-          }
-        else
-          { };
+              default = { };
+              description = "The den v1 declaration surface (flake-parts permissive collector).";
+            }
+          else
+            { };
 
-      config._module.args.den = 
-        config.den // {
-        lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
-        batteries = v1Base.batteries or { };
-        policies = (v1Base.policies or { }) // (config.den.policies or { });
-        classes = denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { });
-        aspects = injectAspectPaths (denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { })) (config.den.quirks or { }) "" ((v1Base.aspects or { }) // (config.den.aspects or { }));
-        schema =
-          (schema.evalModuleTree {
-            modules = [
+        config._module.args.den = config.den // {
+          lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
+          batteries = v1Base.batteries or { };
+          policies = (v1Base.policies or { }) // (config.den.policies or { });
+          classes = denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { });
+          aspects = injectAspectPaths (
+            denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { })
+          ) (config.den.quirks or { }) "" ((v1Base.aspects or { }) // (config.den.aspects or { }));
+          schema =
+            (schema.evalModuleTree {
+              modules = [
+                {
+                  options.den.schema = schema.mkSchemaOption { };
+                  config.den.schema = config.den.schema or { };
+                }
+              ];
+            }).config.den.schema;
+        };
+
+        config.flake =
+          let
+            built = mkDen [
               {
-                options.den.schema = schema.mkSchemaOption { };
-                config.den.schema = config.den.schema or { };
+                den = config.den // {
+                  policies = (v1Base.policies or { }) // (config.den.policies or { });
+                  classes = denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { });
+                  aspects = injectAspectPaths (
+                    denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { })
+                  ) (config.den.quirks or { }) "" ((v1Base.aspects or { }) // (config.den.aspects or { }));
+                };
+              }
+              {
+                _module.args =
+                  prelude.optionalAttrs (lib != null) { inherit lib; }
+                  // prelude.optionalAttrs (args ? inputs) { inherit (args) inputs; }
+                  // prelude.optionalAttrs (args ? self) { inherit (args) self; }
+                  // prelude.optionalAttrs (rootPath != null) { inherit rootPath; };
               }
             ];
-          }).config.den.schema;
-      };
 
-       config.flake =
-        let
-          built = mkDen [
-            {
-              den = config.den // {
-                policies = (v1Base.policies or { }) // (config.den.policies or { });
-                classes = denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { });
-                aspects = injectAspectPaths (denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { })) (config.den.quirks or { }) "" ((v1Base.aspects or { }) // (config.den.aspects or { }));
-              };
-            }
-            {
-              _module.args =
-                prelude.optionalAttrs (lib != null) { inherit lib; }
-                // prelude.optionalAttrs (args ? inputs) { inherit (args) inputs; }
-                // prelude.optionalAttrs (args ? self) { inherit (args) self; }
-                // prelude.optionalAttrs (rootPath != null) { inherit rootPath; };
-            }
-          ];
-
-          findHost = name:
-            let
-              allSystems = builtins.attrValues (config.den.hosts or { });
-              found = builtins.filter (systemHosts: systemHosts ? ${name}) allSystems;
-            in
-            if found == [ ] then null else (builtins.head found).${name};
-
-          hasAttr = targetAttr: hostName:
-            let
-              host = findHost hostName;
-            in
-            if host == null then
-              true
-            else
+            findHost =
+              name:
               let
-                class = host.class or (if builtins.match ".*darwin" (host.system or "") != null then "darwin" else "nixos");
-                defaultInto = if class == "darwin" then [ "darwinConfigurations" ] else [ "nixosConfigurations" ];
-                into = host.intoAttr or defaultInto;
+                allSystems = builtins.attrValues (config.den.hosts or { });
+                found = builtins.filter (systemHosts: systemHosts ? ${name}) allSystems;
               in
-              builtins.elem targetAttr into;
+              if found == [ ] then null else (builtins.head found).${name};
 
-          filterHosts = targetAttr: hosts:
-            builtins.listToAttrs (
-              builtins.concatMap (
-                name:
-                if hasAttr targetAttr name then
-                  [ { inherit name; value = hosts.${name}; } ]
-                else
-                  [ ]
-              ) (builtins.attrNames hosts)
-            );
-        in
-        {
-          nixosConfigurations = filterHosts "nixosConfigurations" (built.nixosConfigurations or { });
-          darwinConfigurations = filterHosts "darwinConfigurations" (built.darwinConfigurations or { });
-        };
-    };
+            hasAttr =
+              targetAttr: hostName:
+              let
+                host = findHost hostName;
+              in
+              if host == null then
+                true
+              else
+                let
+                  class =
+                    host.class or (if builtins.match ".*darwin" (host.system or "") != null then "darwin" else "nixos");
+                  defaultInto = if class == "darwin" then [ "darwinConfigurations" ] else [ "nixosConfigurations" ];
+                  into = host.intoAttr or defaultInto;
+                in
+                builtins.elem targetAttr into;
+
+            filterHosts =
+              targetAttr: hosts:
+              builtins.listToAttrs (
+                builtins.concatMap (
+                  name:
+                  if hasAttr targetAttr name then
+                    [
+                      {
+                        inherit name;
+                        value = hosts.${name};
+                      }
+                    ]
+                  else
+                    [ ]
+                ) (builtins.attrNames hosts)
+              );
+          in
+          {
+            nixosConfigurations = filterHosts "nixosConfigurations" (built.nixosConfigurations or { });
+            darwinConfigurations = filterHosts "darwinConfigurations" (built.darwinConfigurations or { });
+          };
+      };
 
   # The full driver: v1 modules → the den-hoag assembly. `flakeModule` supplies the v1
   # option declarations for `evalV1`; `compile` desugars; `mkFleetModule` bridges; `denHoag.mkDen` builds.
@@ -753,23 +852,24 @@ PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or {}
         v1ClassKeyMap = {
           homeManager = "home-manager";
         };
-        isNestedKey = k:
+        isNestedKey =
+          k:
           !(structuralKeysSet ? ${k})
           && !(classes ? ${v1ClassKeyMap.${k} or k} || classes ? ${k})
           && !(quirks ? ${k})
           && (builtins.isAttrs value.${k} || builtins.isFunction value.${k});
-        
+
         nestedKeys = builtins.filter isNestedKey (builtins.attrNames value);
         aspectKeys = builtins.filter (k: !isNestedKey k) (builtins.attrNames value);
-        
+
         thisAspect =
           if path != "" && (aspectKeys != [ ] || nestedKeys == [ ]) then
             { ${path} = builtins.removeAttrs value nestedKeys; }
           else
             { };
-            
-        nestedAspects = prelude.foldl' (acc: k:
-          acc // flattenAspects classes quirks (if path == "" then k else "${path}.${k}") value.${k}
+
+        nestedAspects = prelude.foldl' (
+          acc: k: acc // flattenAspects classes quirks (if path == "" then k else "${path}.${k}") value.${k}
         ) { } nestedKeys;
       in
       thisAspect // nestedAspects
@@ -784,13 +884,20 @@ PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or {}
       classes = denHoag.classes // (v1.classes or { });
       quirks = v1.quirks or { };
       flatAspects = flattenAspects classes quirks "" (v1.aspects or { });
-      v1WithFlat = v1 // { aspects = flatAspects; };
+      v1WithFlat = v1 // {
+        aspects = flatAspects;
+      };
 
       v1d = legacyDefaultsDesugar v1WithFlat;
       v1f = legacyForwardsDesugar v1d;
-      desugaredAspects = builtins.mapAttrs (name: aspect:
+      desugaredAspects = builtins.mapAttrs (
+        name: aspect:
         if builtins.isAttrs aspect then
-          aspect // { _aspectPath = name; name = name; }
+          aspect
+          // {
+            _aspectPath = name;
+            name = name;
+          }
         else
           aspect
       ) (legacyProvidesDesugar v1f);
@@ -822,25 +929,20 @@ PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or {}
     let
       v1Decls = evalV1 userModules;
       extractedModuleArgs = prelude.foldl' (
-        acc: m:
-        if builtins.isAttrs m && m ? _module then
-          acc // (m._module.args or { })
-        else
-          acc
+        acc: m: if builtins.isAttrs m && m ? _module then acc // (m._module.args or { }) else acc
       ) { } userModules;
       inputs = extractedModuleArgs.inputs or { };
       lib = extractedModuleArgs.lib or (inputs.nixpkgs.lib or null);
-      
+
       v1DeclsWithRegistry = v1Decls // {
         _lazyDatabase = built.den;
         _evalModules = lib.evalModules;
         _rawSchema = v1Decls.schema or { };
       };
 
-
       compiled = compile (desugarLegacy v1DeclsWithRegistry);
       denModule = mkFleetModule v1Decls compiled inputs lib;
-      
+
       built = denHoag.mkDen [
         denModule
         interpretModule

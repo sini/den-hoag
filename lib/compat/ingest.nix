@@ -99,7 +99,8 @@ let
       registry = (v1Decls.den.users.registry or { }) // (v1Decls.users.registry or { });
       registryNames = builtins.attrNames registry;
 
-      getHostAccessGroups = hostName: hostCfg:
+      getHostAccessGroups =
+        hostName: hostCfg:
         let
           envName = hostCfg.environment or "prod";
           envGate = (v1Decls.environments.${envName} or { }).system-access-groups or [ ];
@@ -110,10 +111,10 @@ let
           hostGrant = (fleetAccess.by-host.${hostName} or { groups = [ ]; }).groups;
           allGrants = prelude.unique (envGrant ++ hostGrant ++ hostGate);
         in
-          if effectiveGate == [ ] then
-            allGrants
-          else
-            builtins.filter (g: builtins.elem g effectiveGate) allGrants;
+        if effectiveGate == [ ] then
+          allGrants
+        else
+          builtins.filter (g: builtins.elem g effectiveGate) allGrants;
 
       aclBindings = prelude.concatMap (
         hostName:
@@ -149,17 +150,21 @@ let
     let
       declared = builtins.mapAttrs (
         name: k:
-        k // {
+        k
+        // {
           parent = k.parent or (if name == "user" then "host" else null);
         }
       ) v1Schema;
       # Built-ins fill only what the v1 schema does not already pin.
-      withBuiltins =
-        {
-          host = { parent = null; };
-          user = { parent = "host"; };
-        }
-        // declared;
+      withBuiltins = {
+        host = {
+          parent = null;
+        };
+        user = {
+          parent = "host";
+        };
+      }
+      // declared;
       kinds = builtins.attrNames withBuiltins;
       checkParent =
         kind:
@@ -176,12 +181,15 @@ let
   # a kind). Empty for a schema without kind-includes.
   kindIncludesOf =
     v1Schema:
-    prelude.filterAttrs (_: v: v != [ ]) (builtins.mapAttrs (k: v:
-      let
-        incs = v.includes or [ ];
-      in
-      if k == "host" then incs ++ [ "core.users.resolved-user-emitter" ] else incs
-    ) v1Schema);
+    prelude.filterAttrs (_: v: v != [ ]) (
+      builtins.mapAttrs (
+        k: v:
+        let
+          incs = v.includes or [ ];
+        in
+        if k == "host" then incs ++ [ "core.users.resolved-user-emitter" ] else incs
+      ) v1Schema
+    );
 
   # Build id_hash-bearing registries via gen-schema — the SAME evalModuleTree shape `entity.build`
   # uses, so identity is byte-identical to what mkDen stamps. Instances are stamped MINIMAL (`{ }`, so
@@ -300,10 +308,14 @@ let
       customInstances = prelude.genAttrs customKinds (k: v1Decls.${k} or (v1Decls.${k + "s"} or { }));
 
       instances = {
-        host = builtins.mapAttrs (name: h: h // {
-          class = h.class or "nixos";
-          accessGroups = hubResult.getHostAccessGroups name h;
-        }) flatHosts;
+        host = builtins.mapAttrs (
+          name: h:
+          h
+          // {
+            class = h.class or "nixos";
+            accessGroups = hubResult.getHostAccessGroups name h;
+          }
+        ) flatHosts;
         user = prelude.genAttrs userNames (_: { });
       }
       // customInstances;

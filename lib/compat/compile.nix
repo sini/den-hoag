@@ -31,21 +31,36 @@ let
     let
       # Hoist fields out of listified link contexts (from structural.nix fix)
       # e.g., if context.user = [ { resolved-users = <val>; }, ... ], then context.resolved-users = [ <val>, ... ]
-      schemaNames = builtins.attrNames (ing.schema or {});
-      reservedKeys = [ "system" "identity" "uid" "gid" "linger" "name" "hasAspect" ] ++ schemaNames;
-      hoistedFields = prelude.foldl' (acc: k:
+      schemaNames = builtins.attrNames (ing.schema or { });
+      reservedKeys = [
+        "system"
+        "identity"
+        "uid"
+        "gid"
+        "linger"
+        "name"
+        "hasAspect"
+      ]
+      ++ schemaNames;
+      hoistedFields = prelude.foldl' (
+        acc: k:
         if builtins.isList (ctx.${k} or null) && builtins.elem k schemaNames then
-          prelude.foldl' (acc2: ctxItem:
+          prelude.foldl' (
+            acc2: ctxItem:
             if builtins.isAttrs ctxItem then
-              prelude.foldl' (acc3: fieldK:
+              prelude.foldl' (
+                acc3: fieldK:
                 if !(builtins.elem fieldK reservedKeys) then
-                  acc3 // { ${fieldK} = (acc3.${fieldK} or []) ++ [ ctxItem.${fieldK} ]; }
-                else acc3
+                  acc3 // { ${fieldK} = (acc3.${fieldK} or [ ]) ++ [ ctxItem.${fieldK} ]; }
+                else
+                  acc3
               ) acc2 (builtins.attrNames ctxItem)
-            else acc2
+            else
+              acc2
           ) acc ctx.${k}
-        else acc
-      ) {} (builtins.attrNames ctx);
+        else
+          acc
+      ) { } (builtins.attrNames ctx);
 
       ctxWithHoisted = hoistedFields // ctx;
 
@@ -190,7 +205,10 @@ let
   # functors (`__isWrappedFn = true`). This walks the `includes` tree and wraps lambdas.
   sanitizeAspect =
     ing: aspectRec: v1Classes: v1Quirks: name: aspect:
-    if builtins.isFunction aspect || (builtins.isAttrs aspect && aspect ? __functor && !(aspect.__isWrappedFn or false)) then
+    if
+      builtins.isFunction aspect
+      || (builtins.isAttrs aspect && aspect ? __functor && !(aspect.__isWrappedFn or false))
+    then
       {
         __isWrappedFn = true;
         id_hash = (ing.aspectEntry name).id_hash or null;
@@ -232,7 +250,9 @@ let
                   rawOrig =
                     if k == "user" && entityName != null && ing.v1UsersRegistry ? ${entityName} then
                       ing.v1UsersRegistry.${entityName}
-                    else if entityName != null && ing.hydratedInstances ? ${k} && ing.hydratedInstances.${k} ? ${entityName} then
+                    else if
+                      entityName != null && ing.hydratedInstances ? ${k} && ing.hydratedInstances.${k} ? ${entityName}
+                    then
                       ing.hydratedInstances.${k}.${entityName}
                     else
                       { };
@@ -572,20 +592,33 @@ let
       # as the user cell is already instantiated via gen-product.
       let
         shared = effect.__shared or false;
-        kindClasses = if effect ? __resolveKind && ing._rawSchema ? ${effect.__resolveKind} then ing._rawSchema.${effect.__resolveKind}.classes or [ ] else [ ];
+        kindClasses =
+          if effect ? __resolveKind && ing._rawSchema ? ${effect.__resolveKind} then
+            ing._rawSchema.${effect.__resolveKind}.classes or [ ]
+          else
+            [ ];
         bindings = effect.value;
         # If there is exactly one binding and it's an entity, emit a link edge.
         bindingKeys = builtins.attrNames bindings;
         singleBindingKey = if builtins.length bindingKeys == 1 then builtins.elemAt bindingKeys 0 else null;
-        targetEntry = if singleBindingKey != null && builtins.isAttrs bindings.${singleBindingKey} && bindings.${singleBindingKey} ? id_hash then bindings.${singleBindingKey} else null;
-        
-        decl = if shared && targetEntry != null then
-          declare.link { target = targetEntry; }
-        else
-          (if shared then declare.spawnShared else declare.spawn) {
-            classes = (effect.includes or [ ]) ++ kindClasses;
-            inherit bindings;
-          };
+        targetEntry =
+          if
+            singleBindingKey != null
+            && builtins.isAttrs bindings.${singleBindingKey}
+            && bindings.${singleBindingKey} ? id_hash
+          then
+            bindings.${singleBindingKey}
+          else
+            null;
+
+        decl =
+          if shared && targetEntry != null then
+            declare.link { target = targetEntry; }
+          else
+            (if shared then declare.spawnShared else declare.spawn) {
+              classes = (effect.includes or [ ]) ++ kindClasses;
+              inherit bindings;
+            };
       in
       [ decl ]
     else if kind == "spawn" then
@@ -793,34 +826,40 @@ let
 in
 { ... }@v1Decls:
 let
-  _rawIng =
-    ingest.ingest v1Decls
-    // {
-      inherit findAspectName;
-      _originalFlatAspects = v1Decls._originalFlatAspects or (v1Decls.aspects or { });
-      secretsConfig = v1Decls.secretsConfig or { };
-      _lazyDatabase = v1Decls._lazyDatabase or null;
-      _evalModules = v1Decls._evalModules or null;
-      _rawSchema = v1Decls._rawSchema or null;
-      v1UsersRegistry = (v1Decls.den.users.registry or { }) // (v1Decls.users.registry or { });
-    };
+  _rawIng = ingest.ingest v1Decls // {
+    inherit findAspectName;
+    _originalFlatAspects = v1Decls._originalFlatAspects or (v1Decls.aspects or { });
+    secretsConfig = v1Decls.secretsConfig or { };
+    _lazyDatabase = v1Decls._lazyDatabase or null;
+    _evalModules = v1Decls._evalModules or null;
+    _rawSchema = v1Decls._rawSchema or null;
+    v1UsersRegistry = (v1Decls.den.users.registry or { }) // (v1Decls.users.registry or { });
+  };
 
-  ing = _rawIng // {
-    hydratedInstances =
-      if _rawIng ? _evalModules && _rawIng ? _rawSchema then
-        builtins.mapAttrs (k: instancesOfKind:
-          if (_rawIng._rawSchema or { }) ? ${k} && _rawIng._rawSchema.${k} ? imports then
-            builtins.mapAttrs (entityName: rawOrig:
-              (_rawIng._evalModules {
-                modules = _rawIng._rawSchema.${k}.imports ++ [ (rawOrig // { name = entityName; }) ( { lib, ... }: { freeformType = lib.types.lazyAttrsOf (lib.types.raw or lib.types.unspecified); } ) ];
-              }).config
-            ) instancesOfKind
-          else
-            instancesOfKind
-        ) _rawIng.instances
-      else
-        _rawIng.instances;
-  } // (prelude.optionalAttrs (v1Decls ? lib) { inherit (v1Decls) lib; });
+  ing =
+    _rawIng
+    // {
+      hydratedInstances =
+        if _rawIng ? _evalModules && _rawIng ? _rawSchema then
+          builtins.mapAttrs (
+            k: instancesOfKind:
+            if (_rawIng._rawSchema or { }) ? ${k} && _rawIng._rawSchema.${k} ? imports then
+              builtins.mapAttrs (
+                entityName: rawOrig:
+                (_rawIng._evalModules {
+                  modules = _rawIng._rawSchema.${k}.imports ++ [
+                    (rawOrig // { name = entityName; })
+                    ({ lib, ... }: { freeformType = lib.types.lazyAttrsOf (lib.types.raw or lib.types.unspecified); })
+                  ];
+                }).config
+              ) instancesOfKind
+            else
+              instancesOfKind
+          ) _rawIng.instances
+        else
+          _rawIng.instances;
+    }
+    // (prelude.optionalAttrs (v1Decls ? lib) { inherit (v1Decls) lib; });
   v1Aspects = v1Decls.aspects or { };
   v1Policies = v1Decls.policies or { };
   v1Classes = v1Decls.classes or { };
@@ -1062,39 +1101,61 @@ let
   compatEnrichPolicies =
     let
       structuralKeysSet = {
-        settings = true; includes = true; neededBy = true; meta = true;
-        tags = true; projects = true; name = true; description = true; id_hash = true;
+        settings = true;
+        includes = true;
+        neededBy = true;
+        meta = true;
+        tags = true;
+        projects = true;
+        name = true;
+        description = true;
+        id_hash = true;
       };
-      
-      aspectEnrichPolicy = name: aspectFields:
+
+      aspectEnrichPolicy =
+        name: aspectFields:
         let
           # Only include keys that are defined, not structural, and not from the legacy class surface
-          v1ClassKeyMap = { homeManager = "home-manager"; };
-          customKeys = builtins.filter (k: 
-            !(structuralKeysSet ? ${k}) && 
-            !(v1Classes ? ${v1ClassKeyMap.${k} or k} || v1Classes ? ${k}) &&
-            !(v1Quirks ? ${k}) &&
-            (builtins.isAttrs aspectFields.${k} || builtins.isFunction aspectFields.${k})
+          v1ClassKeyMap = {
+            homeManager = "home-manager";
+          };
+          customKeys = builtins.filter (
+            k:
+            !(structuralKeysSet ? ${k})
+            && !(v1Classes ? ${v1ClassKeyMap.${k} or k} || v1Classes ? ${k})
+            && !(v1Quirks ? ${k})
+            && (builtins.isAttrs aspectFields.${k} || builtins.isFunction aspectFields.${k})
           ) (builtins.attrNames aspectFields);
         in
-        if customKeys == [ ] then null
-        else {
-          "__compatEnrich__${name}" = { ... }@ctx:
-            builtins.map (k: declare.enrich { key = k; value = aspectFields.${k}; }) customKeys;
-        };
-        
-      policiesList = builtins.filter (x: x != null) (
-        prelude.mapAttrsToList aspectEnrichPolicy v1Aspects
-      );
+        if customKeys == [ ] then
+          null
+        else
+          {
+            "__compatEnrich__${name}" =
+              { ... }@ctx:
+              builtins.map (
+                k:
+                declare.enrich {
+                  key = k;
+                  value = aspectFields.${k};
+                }
+              ) customKeys;
+          };
+
+      policiesList = builtins.filter (x: x != null) (prelude.mapAttrsToList aspectEnrichPolicy v1Aspects);
     in
     prelude.foldl' (acc: p: acc // p) { } policiesList;
 
   # The synthetic `__kindInclude__<kind>` / `__denDefault` / `__selfProvideInclude` / `__compatEnrich__*`
-  # policy names cannot collide with a compiled `den.policies.<name>`: den reserves the `__` prefix for 
-  # internal keys, and a v1 policy name is a user-authored identifier that never uses it — so this 
+  # policy names cannot collide with a compiled `den.policies.<name>`: den reserves the `__` prefix for
+  # internal keys, and a v1 policy name is a user-authored identifier that never uses it — so this
   # namespace is disjoint from `compiledPolicies`.
   policies =
-    compiledPolicies.policies // defaultPolicies // selfProvideInclude // kindIncludePolicies // compatEnrichPolicies;
+    compiledPolicies.policies
+    // defaultPolicies
+    // selfProvideInclude
+    // kindIncludePolicies
+    // compatEnrichPolicies;
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
   # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys

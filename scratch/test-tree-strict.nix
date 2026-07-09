@@ -7,24 +7,30 @@ let
   };
   modules = inputs.import-tree ../../sini/nix-config/modules;
   lib = inputs.nixpkgs-unstable.lib;
-  
+
   lock = builtins.fromJSON (builtins.readFile ../flake.lock);
   fetch = name: builtins.fetchTree lock.nodes.${lock.nodes.root.inputs.${name}}.locked;
   dep = name: (v: if builtins.isFunction v then v { } else v) (import (fetch name));
-  
+
   prelude = dep "gen-prelude";
   schema = dep "gen-schema";
   edge = dep "gen-edge";
   edgeCore = edge.core or edge;
-  
+
   denHoag = import ../default.nix {
     inherit prelude schema edge;
   };
-  
+
   compat = import ../lib/compat {
-    inherit denHoag prelude schema edge edgeCore;
+    inherit
+      denHoag
+      prelude
+      schema
+      edge
+      edgeCore
+      ;
   };
-  
+
   # Evaluate v1Decls
   v1Decls = compat.evalV1 [
     modules
@@ -36,11 +42,11 @@ let
       };
     }
   ];
-  
+
   compiled = compat.compileFull v1Decls;
-  
+
   fleetModule = compat.mkFleetModule v1Decls compiled inputs;
-  
+
   builtDen = denHoag.mkDen [
     fleetModule
   ];

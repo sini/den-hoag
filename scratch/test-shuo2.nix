@@ -3,11 +3,15 @@ let
   desugar = import ../lib/compat/legacy/provides.nix { inherit prelude; };
   v1Decls = {
     aspects.blade = {
-      sini = { includes = []; };
-      shuo = { includes = []; };
+      sini = {
+        includes = [ ];
+      };
+      shuo = {
+        includes = [ ];
+      };
     };
-    classes = {};
-    quirks = {};
+    classes = { };
+    quirks = { };
   };
 in
 desugar.desugar v1Decls

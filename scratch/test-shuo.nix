@@ -5,11 +5,15 @@ let
   };
   v1Decls = {
     aspects.blade = {
-      sini = { includes = []; };
-      shuo = { includes = []; };
+      sini = {
+        includes = [ ];
+      };
+      shuo = {
+        includes = [ ];
+      };
     };
-    classes = {};
-    quirks = {};
+    classes = { };
+    quirks = { };
   };
   out = denCompat.legacy.provides.desugar v1Decls;
 in

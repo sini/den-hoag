@@ -1,6 +1,6 @@
 let
   res = import ./test-compiled.nix;
-  
+
   flake = builtins.getFlake (toString ../../sini/nix-config);
   inputs = flake.inputs // {
     den = {
@@ -9,24 +9,30 @@ let
   };
   modules = inputs.import-tree ../../sini/nix-config/modules;
   lib = inputs.nixpkgs-unstable.lib;
-  
+
   lock = builtins.fromJSON (builtins.readFile ../flake.lock);
   fetch = name: builtins.fetchTree lock.nodes.${lock.nodes.root.inputs.${name}}.locked;
   dep = name: (v: if builtins.isFunction v then v { } else v) (import (fetch name));
-  
+
   prelude = dep "gen-prelude";
   schema = dep "gen-schema";
   edge = dep "gen-edge";
   edgeCore = edge.core or edge;
-  
+
   denHoag = import ../default.nix {
     inherit prelude schema edge;
   };
-  
+
   compat = import ../lib/compat {
-    inherit denHoag prelude schema edge edgeCore;
+    inherit
+      denHoag
+      prelude
+      schema
+      edge
+      edgeCore
+      ;
   };
-  
+
   v1Decls = compat.evalV1 [
     modules
     {
@@ -37,11 +43,13 @@ let
       };
     }
   ];
-  
+
   wiring = compat.mkWiring compat.legacy;
-  
+
   classes = denHoag.classes // (v1Decls.classes or { });
   quirks = v1Decls.quirks or { };
   flatAspects = wiring.desugarLegacy v1Decls;
 in
-builtins.filter (n: builtins.match ".*hostsfile.*" n != null) (builtins.attrNames flatAspects.aspects)
+builtins.filter (n: builtins.match ".*hostsfile.*" n != null) (
+  builtins.attrNames flatAspects.aspects
+)

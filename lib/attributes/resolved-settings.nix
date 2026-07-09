@@ -143,49 +143,50 @@ let
                   coords
                 ];
 
-             present = self.get id "resolved-aspects";
-             dedupPresent =
-               let
-                 grouped = prelude.groupBy (a: a.content.name or a.key) present;
-                 selectBest = name: list:
-                   if builtins.length list == 1 then
-                     builtins.head list
-                   else
-                     let
-                       wrappers = builtins.filter (a: a.key != (a.content.name or a.key)) list;
-                     in
-                     if wrappers != [ ] then builtins.head wrappers else builtins.head list;
-               in
-               builtins.attrValues (builtins.mapAttrs selectBest grouped);
-             resolutionActs = (self.get id "declarations").actions.resolution or [ ];
- 
-             # ONE resolveAll batch over every present aspect at this node (cross-aspect `ref` routing
-             # is by id_hash across the batch, §2.8). Keyed by aspect name for the narrow accessor.
-             batch = map (
-               a:
-               let
-                 aspectEntry = entryOf a.content;
-               in
-               {
-                 schema = settingsLib.mkSchemaFor aspectEntry (a.content.settings or { });
-                 layers =
-                   prelude.concatMap (sliceFixed: layersAtSlice aspectEntry sliceFixed) chain
-                   ++ policyLayersAt resolutionActs coords aspectEntry;
-                 key = a.content.name or a.key;
-               }
-             ) dedupPresent;
-             resolved = settings.resolveAll { inherit batch; };
-           in
-           prelude.foldl' (
-             acc: a:
-             acc
-             // {
-               ${a.content.name or a.key} = {
-                 value = resolved.value.${a.content.name or a.key};
-                 provenance = resolved.provenance.${a.content.name or a.key};
-               };
-             }
-           ) { } dedupPresent;
+            present = self.get id "resolved-aspects";
+            dedupPresent =
+              let
+                grouped = prelude.groupBy (a: a.content.name or a.key) present;
+                selectBest =
+                  name: list:
+                  if builtins.length list == 1 then
+                    builtins.head list
+                  else
+                    let
+                      wrappers = builtins.filter (a: a.key != (a.content.name or a.key)) list;
+                    in
+                    if wrappers != [ ] then builtins.head wrappers else builtins.head list;
+              in
+              builtins.attrValues (builtins.mapAttrs selectBest grouped);
+            resolutionActs = (self.get id "declarations").actions.resolution or [ ];
+
+            # ONE resolveAll batch over every present aspect at this node (cross-aspect `ref` routing
+            # is by id_hash across the batch, §2.8). Keyed by aspect name for the narrow accessor.
+            batch = map (
+              a:
+              let
+                aspectEntry = entryOf a.content;
+              in
+              {
+                schema = settingsLib.mkSchemaFor aspectEntry (a.content.settings or { });
+                layers =
+                  prelude.concatMap (sliceFixed: layersAtSlice aspectEntry sliceFixed) chain
+                  ++ policyLayersAt resolutionActs coords aspectEntry;
+                key = a.content.name or a.key;
+              }
+            ) dedupPresent;
+            resolved = settings.resolveAll { inherit batch; };
+          in
+          prelude.foldl' (
+            acc: a:
+            acc
+            // {
+              ${a.content.name or a.key} = {
+                value = resolved.value.${a.content.name or a.key};
+                provenance = resolved.provenance.${a.content.name or a.key};
+              };
+            }
+          ) { } dedupPresent;
       };
     };
 

@@ -11,7 +11,7 @@ let
   v1 = denHoag.compat.evalV1 userModules;
   compiled = denHoag.compat.compileFull v1;
 in
-  {
-    axonKeys = builtins.attrNames compiled.entities.instances.host.axon-01;
-    axonVal = compiled.entities.instances.host.axon-01;
-  }
+{
+  axonKeys = builtins.attrNames compiled.entities.instances.host.axon-01;
+  axonVal = compiled.entities.instances.host.axon-01;
+}
