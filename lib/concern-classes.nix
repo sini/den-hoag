@@ -14,7 +14,7 @@
 {
   # classes           : { <name> = { wrap ? {}; instantiate ? <default>; share ? {}; coreStrategy ? id; }; }
   # defaultInstantiate : the terminal used when a class declares none (den-hoag's nixpkgs-free `collect`,
-  #                      or a nixpkgs-bound `crossNixos` supplied by den-compat / a user).
+  #                      or a nixpkgs-bound `crossNixos` supplied by a user).
   compile =
     {
       classes,

@@ -60,7 +60,7 @@
           # throws on rules without an explicit group — this is lib contract, not metadata.
           group = stratum;
           __isEnrich = isEnrich;
-          # The collection-stratum `pipeOp` declarations this policy produces (den-compat's compiled
+          # The collection-stratum `pipeOp` declarations this policy produces (an external consumer's compiled
           # `pipe.from name [stages]`). The gen-pipe op DAG (`derived`/`routes`) rides the SAME sentinel
           # probe already run above — a `pipe.from` body is ctx-INDEPENDENT (its stages are static
           # closures), so the probe yields the pipeOp regardless of where the policy dispatches. Surfaced

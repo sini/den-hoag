@@ -32,7 +32,7 @@
 let
   # A config-demanding aspect channel value (a `{ config, ... }: …` thunk) is the deferred (per-member)
   # contribution. Under the §27 raw channel key it rides as a BARE function (functionArgs directly); the
-  # legacy gen-aspects freeform path wrapped it as a functor carrying `__functionArgs` — both forms are
+  # older gen-aspects freeform path wrapped it as a functor carrying `__functionArgs` — both forms are
   # detected here. Plain data (lists/attrsets with no config demand) is class-invariant and rides as-is.
   configArgNames = [
     "config"

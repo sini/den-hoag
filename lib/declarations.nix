@@ -109,12 +109,12 @@ let
     builtins.seq a (actions.drop { aspect = a; });
 
   # `delivery { sourceClass; targetClass; module ? null; path ? []; mode; adaptArgs ? null;
-  # guard ? null; annotations ? {}; }` — resolution: a v1 delivery-edge INTENT (den-compat's
+  # guard ? null; annotations ? {}; }` — resolution: a v1 delivery-edge INTENT (an external consumer's
   # `deliver`/`route`/`provide`). The gen-edge record is rendered from this at the FIRING NODE by
   # output-modules' `edgesAt` (which owns the firing scope + collected membership) — the declaration
   # itself is inert intent. `sourceClass`/`targetClass` are class REGISTRATIONS (identity-law A2,
   # entry-checked EAGERLY like `edge`); the remaining fields are placement + closures den-hoag applies
-  # at materialization. A native den-hoag fleet emits none of these — only den-compat does.
+  # at materialization. A native den-hoag fleet emits none of these — only an external consumer does.
   delivery =
     args:
     let

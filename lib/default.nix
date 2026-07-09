@@ -123,7 +123,7 @@ let
   # The classes concern (§2.4) + the terminal crossing (§2.10, Law A15). `concernClasses.compile`
   # turns `den.classes` declarations into class config records; `terminalLib` is the ONE gen-flake
   # crossing (lib/output/terminal.nix) — den-hoag stays nixpkgs-free by defaulting classes to the
-  # `collect` terminal (nixpkgs-free), with `crossNixos` available for den-compat / a real build.
+  # `collect` terminal (nixpkgs-free), with `crossNixos` available for a real build.
   concernClasses = import ./concern-classes.nix { inherit prelude bind; };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
@@ -311,16 +311,16 @@ let
         };
       };
 
-      # den.interpret — the gen-edge source-interpreter seam (§2.6, the A15 legacy-edge path). Native
+      # den.interpret — the gen-edge source-interpreter seam (§2.6, the A15 external-source path). Native
       # den-hoag constructs only `collected`/`value` edge sources, so the default `{ }` is complete;
-      # den-compat sets `den.interpret = { synthesize = …; rewalk = …; }` here to teach the output fold how
-      # to interpret its legacy `synthesize`/`rewalk` sources — WITHOUT editing lib/attributes/output-modules.nix.
-      # `raw` (opaque functions), forced only when a legacy source is actually folded (never for a native fleet).
+      # an external consumer sets `den.interpret = { synthesize = …; rewalk = …; }` here to teach the output fold how
+      # to interpret its external `synthesize`/`rewalk` sources — WITHOUT editing lib/attributes/output-modules.nix.
+      # `raw` (opaque functions), forced only when an external source is actually folded (never for a native fleet).
       interpretDecl = {
         options.den.interpret = merge.mkOption {
           type = merge.types.raw;
           default = { };
-          description = "gen-edge source interpreters `{ synthesize ? …; rewalk ? …; }` (§2.6, den-compat legacy-edge seam).";
+          description = "gen-edge source interpreters `{ synthesize ? …; rewalk ? …; }` (§2.6, the external source-interpreter seam).";
         };
       };
 

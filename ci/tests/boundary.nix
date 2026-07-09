@@ -1,0 +1,231 @@
+# compat/core BOUNDARY tripwire (Task 8 M1 item v) — the PERMANENT STRUCTURAL encoding of the
+# "coupling we had before" lesson: den-hoag core must not KNOW about the den-compat shim. Three
+# mechanical guards over the source text (the zero-machinery.nix `readFile` token-scan precedent —
+# a tripwire, not a proof; its value is bluntness):
+#
+#   1. TOKEN SCAN     — no CORE file (lib/ outside lib/compat/) contains compat/legacy MACHINERY
+#                       vocabulary. The shim depends on core; core is shim-blind.
+#   2. IMPORT DIRECTION — no core file imports from lib/compat/. Dependencies point ONE way (compat → core).
+#   3. SEAM ENUMERATION — the shim consumes ONLY the checked-in set of core `denHoag.*` surfaces; a NEW
+#                       one fails here, so the seam is reviewed whenever it grows.
+#
+# EXCLUSIONS: `ci/tests/**` and `parity/**` may say anything (they TEST the shim); `lib/compat/**` is the
+# shim itself. Only the core file list below is scanned.
+{
+  denHoagSrc,
+  nixpkgsLib,
+  ...
+}:
+let
+  inherit (nixpkgsLib) hasInfix;
+
+  # ── the CORE file set — lib/ MINUS lib/compat/ (explicit + checked-in, like zero-machinery.nix: adding
+  #    a core file forces a visible edit here, which is the point). KEEP IN SYNC with `find lib -name
+  #    '*.nix' -not -path 'lib/compat/*'`; a `test-core-file-list-complete` guard below catches drift. ──
+  coreFiles = [
+    "default.nix"
+    "errors.nix"
+    "entity.nix"
+    "fleet.nix"
+    "build-roots.nix"
+    "scope-adapter.nix"
+    "declarations.nix"
+    "concern-policies.nix"
+    "concern-aspects.nix"
+    "concern-quirks.nix"
+    "concern-classes.nix"
+    "linearization.nix"
+    "settings.nix"
+    "projects.nix"
+    "demand.nix"
+    "graph-escape.nix"
+    "attributes/default.nix"
+    "attributes/structural.nix"
+    "attributes/resolved-aspects.nix"
+    "attributes/collections.nix"
+    "attributes/resolved-settings.nix"
+    "attributes/class-modules.nix"
+    "attributes/output-modules.nix"
+    "output/terminal.nix"
+    "output/class-share.nix"
+  ];
+  readCore = f: builtins.readFile "${denHoagSrc}/lib/${f}";
+
+  # ── (1) forbidden compat/legacy MACHINERY tokens — each is UNAMBIGUOUS shim vocabulary (a comment or a
+  #    code reference to one is core knowing about the shim). Tuned to actual vocabulary; the EXCLUSIONS
+  #    note below records the words deliberately NOT forbidden and why (they are core vocabulary, not shim
+  #    coupling — renaming them would erase real meaning, the opposite of the guard's intent). ───────────
+  forbiddenTokens = [
+    "compat" # the shim's name (`den-compat`/`denCompat`) + its dir path (`compat/`) — the import guard too
+    "legacy" # the legacy-surface machinery (provides/forwards/self-provide) + the "legacy-edge" seam framing
+    "denCompat" # the shim's public handle (redundant with `compat`, explicit for legibility)
+    "selfProvide" # R5 self-named-aspect machinery
+    "self-provide" # (kebab spelling)
+    "os-to-host" # the os-class battery route (R3)
+    "user-to-host" # the os-user battery route (R6)
+    "forwardTo" # the legacy forward class surface
+    "compileFull" # a shim compile entry (post-legacy-desugar)
+    "mkFleetModule" # the shim's compile→config.den bridge
+    "desugarLegacy" # the shim's legacy-desugar composition
+    "compileCanTake" # the shim's formal-preserving route compile path
+    "__denCanTake" # the shim's canTake-route marker
+  ];
+  # EXCLUSIONS (core VOCABULARY, deliberately not forbidden):
+  #   `v1`                    — den-hoag IS den v2; comparative design-provenance comments (e.g. "§B4a
+  #                             replaces v1's provides.to-users") are ARCHITECTURE documentation, not shim
+  #                             coupling. Forbidding it would delete provenance citations.
+  #   `synthesize` / `rewalk` — gen-edge SOURCE ARMS (core edge vocabulary); the output fold names them as
+  #                             the source kinds its `interpret` seam can carry.
+  #   `interpret`             — the `den.interpret` raw OPTION is a core SEAM surface (see the seam list
+  #                             below), not shim vocabulary.
+  #   bare `provides`/`forwards` — English verbs ("a policy body forwards its ctx", "Task 2 provides the
+  #                             builder"); the SHIM surfaces are caught by `forwardTo` + `self-provide`.
+  tokenOffenders = builtins.concatMap (
+    f:
+    let
+      t = readCore f;
+    in
+    map (tok: "${f}:${tok}") (builtins.filter (tok: hasInfix tok t) forbiddenTokens)
+  ) coreFiles;
+
+  # ── (2) IMPORT DIRECTION — a core file importing from lib/compat/ reverses the dependency. `compat`
+  #    (token 1) already catches the path fragment `compat/`; this asserts the specific import expressions
+  #    separately for a legible, standalone failure. ─────────────────────────────────────────────────────
+  importOffenders = builtins.filter (
+    f:
+    let
+      t = readCore f;
+    in
+    hasInfix "import ./compat" t || hasInfix "import ../compat" t || hasInfix "/compat/" t
+  ) coreFiles;
+
+  # ── (3) SEAM ENUMERATION — the ONLY core `denHoag.*` surfaces the shim may consume. A comment-anchored
+  #    constant + a scan of lib/compat/** that asserts its `denHoag.<top>` references are a subset. A NEW
+  #    core surface reached from the shim fails here, forcing this list (and a boundary review) to grow. ──
+  #
+  #   API surfaces (denHoag.<x>):
+  #     mkDen     — the four-concern driver (the shim's whole output target).
+  #     classes   — the class-tag entry registry (identity-law class entries).
+  #     declare   — the declaration-constructor vocabulary (edge/drop/spawn/member/delivery).
+  #     sel       — the selector vocabulary (neededBy / nameMatches predicates).
+  #     internal  — the non-public builders; the shim reaches ONLY `internal.terminal.collect` (the
+  #                 nixpkgs-free terminal for its systemFor-injecting instantiate wrapper).
+  #   CONFIG surfaces the shim SETS on mkDen input (`config.den.*`, via the module system — NOT denHoag.<x>
+  #   calls, so not scanned): aspects, policies, classes, quirks, include, membership, contentClass,
+  #   schema, <kind> instances, nixpkgs, interpret (the M1 declared-classes + interpret seams ride here).
+  #   INJECTED deps (flake-wired, not denHoag.<x>): prelude, schema (gen-schema), edge/edgeCore (gen-edge).
+  seamApiSurfaces = [
+    "mkDen"
+    "classes"
+    "declare"
+    "sel"
+    "internal"
+  ];
+  seamInternalSurfaces = [ "terminal" ];
+
+  # Scan the shim source for `denHoag.<ident>` and `inherit (denHoag) <idents>` references.
+  compatDir = "${denHoagSrc}/lib/compat";
+  isNix = n: nixpkgsLib.hasSuffix ".nix" n;
+  # every .nix under lib/compat (top + legacy + legacy/batteries + parity), recursively.
+  filesUnder =
+    rel:
+    let
+      entries = builtins.readDir "${compatDir}/${rel}";
+      names = builtins.attrNames entries;
+    in
+    builtins.concatMap (
+      n:
+      if entries.${n} == "directory" then
+        filesUnder "${rel}${n}/"
+      else if isNix n then
+        [ "${rel}${n}" ]
+      else
+        [ ]
+    ) names;
+  compatFiles = filesUnder "";
+  readCompat = f: builtins.readFile "${compatDir}/${f}";
+
+  # Extract the capture groups of a pattern over a text (builtins.split: matches are the capture lists).
+  capturesOf =
+    pat: t: builtins.concatMap (m: if builtins.isList m then m else [ ]) (builtins.split pat t);
+  refsIn =
+    t:
+    capturesOf "denHoag\\.(internal\\.)?([a-zA-Z_][a-zA-Z0-9_]*)" t
+    ++ builtins.concatMap (grp: nixpkgsLib.splitString " " grp) (
+      # `inherit (denHoag) a b c;` — capture the space-separated ident run before `;`.
+      capturesOf "inherit \\(denHoag\\) ([a-zA-Z0-9_ ]+)" t
+    );
+  # top-level denHoag surfaces referenced anywhere in the shim (drop the `internal.` group + noise).
+  allRefs = builtins.concatMap (f: refsIn (readCompat f)) compatFiles;
+  topRefs = builtins.filter (
+    # drop nulls (unmatched optional group), the `internal.` prefix capture, and the internal sub-surfaces
+    # (asserted separately) — leaving the top-level `denHoag.<x>` API surfaces the shim references.
+    r:
+    r != null
+    && r != ""
+    && r != "internal"
+    && r != "internal."
+    && !(builtins.elem r seamInternalSurfaces)
+  ) allRefs;
+  seamViolations = nixpkgsLib.unique (
+    builtins.filter (r: !(builtins.elem r seamApiSurfaces)) topRefs
+  );
+
+  # actual core-file-list drift guard: the on-disk core set == the checked-in list.
+  actualCore =
+    let
+      walk =
+        rel:
+        let
+          e = builtins.readDir "${denHoagSrc}/lib/${rel}";
+        in
+        builtins.concatMap (
+          n:
+          if e.${n} == "directory" then
+            (if n == "compat" then [ ] else walk "${rel}${n}/")
+          else if isNix n then
+            [ "${rel}${n}" ]
+          else
+            [ ]
+        ) (builtins.attrNames e);
+    in
+    walk "";
+in
+{
+  flake.tests.boundary = {
+    # (1) no compat/legacy MACHINERY token in any core file.
+    test-no-compat-tokens-in-core = {
+      expr = tokenOffenders;
+      expected = [ ];
+    };
+
+    # (2) no core file imports from lib/compat/ (the dependency points compat → core, never the reverse).
+    test-no-core-imports-compat = {
+      expr = importOffenders;
+      expected = [ ];
+    };
+
+    # (3) the shim consumes ONLY the enumerated core API surfaces — a new one fails here (seam review).
+    test-shim-consumes-only-seam = {
+      expr = seamViolations;
+      expected = [ ];
+    };
+    # the internal-surface sub-seam is exactly `terminal` (the collect terminal) — a new `internal.<x>`
+    # reached from the shim widens the private-surface coupling and must be reviewed.
+    test-shim-internal-seam = {
+      expr = nixpkgsLib.unique (
+        builtins.concatMap (
+          f: capturesOf "denHoag\\.internal\\.([a-zA-Z_][a-zA-Z0-9_]*)" (readCompat f)
+        ) compatFiles
+      );
+      expected = [ "terminal" ];
+    };
+
+    # the checked-in core file list has not drifted from the on-disk core set (adding a core file must
+    # add it here, so it is actually scanned by guards 1–2).
+    test-core-file-list-complete = {
+      expr = builtins.sort (a: b: a < b) coreFiles == builtins.sort (a: b: a < b) actualCore;
+      expected = true;
+    };
+  };
+}

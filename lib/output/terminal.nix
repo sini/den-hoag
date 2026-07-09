@@ -56,7 +56,7 @@ in
       extraModules = [ ];
     };
 
-  # collect — a nixpkgs-free default terminal. den-hoag's lib stays pure: absent a user/den-compat
+  # collect — a nixpkgs-free default terminal. den-hoag's lib stays pure: absent a a user or an external consumer
   # terminal carrying nixpkgs, a class instantiates to its wrapped-module artifact (inspectable,
   # forces no nixpkgs). The output map's spine (per-member keys) is forced without forcing an
   # artifact, so "one instantiate per member" is a spine count, and a real build swaps `crossNixos` in.

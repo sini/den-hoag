@@ -7,8 +7,8 @@
 #       (A15). `contentsOf` adapts gen-pipe channel contributions to gen-edge seeds (§2.10:
 #       value→content, dedup identity→key, producer→provenance). `interpret` is a PARAMETER (default
 #       `{ }`): native den-hoag constructs no `synthesize`/`rewalk` source, so it never supplies one;
-#       den-compat threads its rewalk/synthesize interpreters in through `den.interpret` (mkDen), so the
-#       legacy-edge seam is a real parameter here, not a source edit to this file.
+#       an external consumer threads its rewalk/synthesize interpreters in through `den.interpret` (mkDen), so the
+#       external source-interpreter seam is a real parameter here, not a source edit to this file.
 #
 #   (2) The per-class terminal crossing. `systems.<class>.<member>` instantiates each member (a scope
 #       node whose producing class is that class, carrying non-empty `class-modules` content) via the
@@ -48,8 +48,8 @@
   classOfNode,
   demandEdges ? [ ],
   # The gen-edge source interpreters (`{ synthesize ? …; rewalk ? …; }`), threaded through `den.interpret`.
-  # Native den-hoag constructs no synthesize/rewalk edge, so the default `{ }` is complete; den-compat
-  # supplies its legacy-edge interpreters here WITHOUT editing this file (spec §2.6, the A15 legacy seam).
+  # Native den-hoag constructs no synthesize/rewalk edge, so the default `{ }` is complete; an external consumer
+  # supplies its external source interpreters here WITHOUT editing this file (spec §2.6, the A15 external-source seam).
   interpret ? { },
 }:
 let
@@ -96,7 +96,7 @@ let
     in
     if cn != null && ((classModulesAt id).${cn} or [ ]) != [ ] then [ cn ] else [ ];
 
-  # Delivery declarations (den-compat's `deliver`/`route`/`provide`, `declare.delivery`) dispatched at a
+  # Delivery declarations (an external consumer's `deliver`/`route`/`provide`, `declare.delivery`) dispatched at a
   # node → gen-edge records, rendered HERE where the firing scope (the node id) and the collected
   # membership are known (the declaration itself is inert intent; C2). A native den-hoag fleet emits no
   # `delivery` declaration, so this is `[ ]` for it — byte-identical to the pre-delivery fold. Per-node
@@ -156,7 +156,7 @@ let
     isolatedAt = id: (result.node id).parent != null;
     channelsOf =
       id: builtins.filter (ch: !(isReserved ch)) (builtins.attrNames (received id)) ++ classBucketsOf id;
-    # den-hoag emits no aspect-scoped content edge natively; the per-node declared edges are den-compat's
+    # den-hoag emits no aspect-scoped content edge natively; the per-node declared edges are an external consumer's
     # delivery declarations (rendered above), and the fleet-global demand edges join by concatenation in
     # `outputFor`/`traceFor`. A delivery-free, demand-free fleet keeps `edgesAt id = [ ]`.
     edgesAt = deliveryEdgesAt;
@@ -216,7 +216,7 @@ let
         inherit root;
         dials = { };
       };
-      inherit interpret; # the source-interpreter seam (default { }); den-compat threads legacy interpreters
+      inherit interpret; # the source-interpreter seam (default { }); an external consumer threads external interpreters
     };
 
   # The frozen edge trace of a root — the parity oracle input (Law A15, stable + equal for equal
