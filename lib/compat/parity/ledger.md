@@ -14,6 +14,21 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
 | L4 | 2026-07-07 | quirkChannel | `root:host:igloo/feat \|  \| collected:host:igloo/feat \| merge` (EXTRA on hoag) | domain-boundary | hoag quirk-fold has no v1 counterpart (v1 folds quirk content into classes) | reconcile |
 | L5 | 2026-07-07 | multiHost | `root:host:iceberg/homeManager \|  \| collected:host:iceberg/homeManager \| merge` | domain-boundary | **R5-CONVERGED (2026-07-09):** both hosts' nixos class folds now MATCH (self-named aspects, R5); matched 0→2, extra 0. Two-host union of the L3 convergence; residual = per-host L3 residual ×2. See §L3/L5-R5 note. | R5 (self-provide) |
 | L6 | 2026-07-07 | classFold | `root:host:igloo/nixos \|  \| collected:host:igloo/nixos \| merge` (CONVERGED — now MATCHED) + 5 residual `missing` | domain-boundary | #44 / C7.5: class-content-as-fold-content landed. den-hoag's PRODUCING-class default fold byte-matches v1's nixos class fold (matched 0→1, extra 0). Residual missing = v1's `os` base class + os→nixos / hm→nixos (synthesize) / user→nixos routes + host homeManager default (v1's hierarchical multi-class model vs den-hoag flat one-class-per-scope). | output-modules.nix channelsOf/contentsOf |
+| B1 | 2026-07-09 | (battery: define-user) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B2 | 2026-07-09 | (battery: flake-parts) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B3 | 2026-07-09 | (battery: flake-scope) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B4 | 2026-07-09 | (battery: hjem) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B5 | 2026-07-09 | (battery: host-aspects) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B6 | 2026-07-09 | (battery: hostname) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B7 | 2026-07-09 | (battery: import-tree) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B8 | 2026-07-09 | (battery: insecure) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B9 | 2026-07-09 | (battery: maid) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B10 | 2026-07-09 | (battery: primary-user) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B11 | 2026-07-09 | (battery: tty-autologin) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B12 | 2026-07-09 | (battery: unfree) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B13 | 2026-07-09 | (battery: user-shell) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B14 | 2026-07-09 | (battery: vm-autologin) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| B15 | 2026-07-09 | (battery: wsl) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
 
 ## Notes
 
@@ -54,6 +69,14 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   reconciliation, still classified domain-boundary here, not papered over. The P1 goldens
   (`parity/golden/traces.nix` plainHostUser/multiHost) are re-goldened to the converged state; the
   structural suite's `test-boundary-parity-false` stays green (both still carry residual `missing`).
+
+- **B1–B15 non-ported batteries (§10 R6).** The v1 battery set at the frozen pin has 17 members; the
+  compat shim ports only the two the corpus exercises (`os-class` → R2/R3, `os-user` → R2/R6, both in
+  `lib/compat/legacy/batteries/`). The other 15 are NON-PORTED under R6's corpus-relative scope — no
+  hallucinated content. Each is recorded as an `intentional-v2-semantic` row (B1–B15) so the P6 ship gate
+  reads the full accounting from the ledger; the `nonPortedBatteries` Nix list in
+  `lib/compat/legacy/defaults.nix` is the code-side cross-reference. A corpus bump that exercises one
+  re-opens its port (flip its row to a live divergence + port the battery).
 
 - **Scope** — the corpus is the five `parity/fixtures/topologies.nix` topologies (plain host+user, quirk
   channel, class-fold, multi-host, spawn negative-control). The fuller synthetic set (isolated-guest,

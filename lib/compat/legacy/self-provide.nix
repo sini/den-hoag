@@ -34,10 +34,12 @@ in
 {
   _denCompat.legacy = "self-provide";
 
-  # selfIncludesOf { compiled, aspectEntry } → [ den.include record ]. `compiled` is the compile core's
-  # output (entities.registries / entities.instances / aspects); `aspectEntry name` is ingest.nix's
-  # id_hash convention (`{ id_hash = sha256("den-aspect:<name>"); name; }`) so the emitted aspect record
-  # is BYTE-IDENTICAL to the one a `neededBy`/`policy.include` inclusion carries (compile.nix
+  # selfIncludesOf { compiled, aspectEntry } → [ den.include record ]. A POST-compile augmentation that
+  # reads ONLY the compile output (`compiled.aspects` + `compiled.entities.registries`) — never the scope
+  # graph, never resolved state (Law C2: the name-overlap is a structural read of declarations). `compiled`
+  # is the compile core's output (entities.registries / entities.instances / aspects); `aspectEntry name`
+  # is ingest.nix's id_hash convention (`{ id_hash = sha256("den-aspect:<name>"); name; }`) so the emitted
+  # aspect record is BYTE-IDENTICAL to the one a `neededBy`/`policy.include` inclusion carries (compile.nix
   # `resolveAspectRef` / `aspectRec`: content `// aspectEntry name`) — dedup-coherent, A2-valid.
   selfIncludesOf =
     {

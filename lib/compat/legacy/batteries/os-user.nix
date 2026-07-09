@@ -68,7 +68,7 @@ in
                 path = [
                   "users"
                   "users"
-                  (user.name or user.userName or "")
+                  user.name # den-hoag ctx entities canonicalize to `.name` (ingest); v1's `user.userName`
                 ];
                 adaptArgs = args: args // { osConfig = args.config; };
               }

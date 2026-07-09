@@ -15,8 +15,10 @@
 # `collect` terminal for it and — since it is never any scope's PRODUCING class — no phantom fold edge) is
 # the faithful, no-core-edit model: it enters ingest's `classRegistry`, so `resolveBucket` (classes ∪
 # channels) resolves `os` for the route's `fromClass` (R3). (A RESOLVED aspect literally keying `os = {…}`
-# additionally needs `os ∈ classNames` for `classifyKey` — the general `extraClassNames` param, deferred:
-# no synthetic convergence fixture resolves an os-keyed aspect; the corpus census C8/C9 decides it.)
+# additionally needs `os ∈ classNames` for `classifyKey` — the general `extraClassNames` param. This is a
+# MANDATORY C8 pre-item — corpus os-keyed aspects are certain (owner ruling, spec §10 R2); a
+# declared-classes surface feeding the three-branch dispatch is required before the full-corpus run. No
+# synthetic convergence fixture resolves an os-keyed aspect, so it is not built here.)
 #
 # SEVERABLE (Law C5): a pure v1 → v1 desugar applied by flake-module.nix `desugarLegacy` when this battery
 # is in the wiring's legacy set. Severed ⇒ the identity; an aspect's `os` key then aborts as an unknown

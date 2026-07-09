@@ -59,7 +59,6 @@ let
 
   # ── R4 — den.default radiation (defaults.nix genAttrs [host user home]) + built-in membership ─────────
   r4Compiled = denCompat.compileFull ruleWitnesses.R4.decls;
-  r4BuiltinPolicies = denCompat.legacy.defaults.builtinPolicyNames;
 
   # ── R5 — self-named-aspect auto-include (resolve-entity.nix:48-63) + SEVERABILITY ─────────────────────
   r5Decls = ruleWitnesses.R5.decls;
@@ -214,20 +213,21 @@ in
 
     # ── R4 ────────────────────────────────────────────────────────────────────────────────────────────
     # den.default → the reserved __default aspect + the __denDefault radiation policy (compile core), and
-    # the built-in battery membership (os-to-host, user-to-host) is the pinned den.default membership.
+    # the built-in battery membership: after the batteries desugar → compile, the pinned membership policies
+    # (os-to-host, user-to-host) are STRUCTURALLY present in the compiled policy set (not read back from the
+    # battery's own declared name list — a structural check, not a tautology).
     test-r4-radiation-and-membership = {
       expr = {
         defaultAspect = r4Compiled.aspects ? __default;
         radiationPolicy = r4Compiled.policies ? __denDefault;
-        builtinMembership = r4BuiltinPolicies;
+        osToHost = r2Compiled.policies ? os-to-host;
+        userToHost = r2Compiled.policies ? user-to-host;
       };
       expected = {
         defaultAspect = true;
         radiationPolicy = true;
-        builtinMembership = [
-          "os-to-host"
-          "user-to-host"
-        ];
+        osToHost = true;
+        userToHost = true;
       };
     };
 
