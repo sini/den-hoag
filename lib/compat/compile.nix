@@ -354,13 +354,28 @@ let
               || v1Classes ? ${v1ClassKeyMap.${k} or k}
               || (builtins.elem (v1ClassKeyMap.${k} or k) [ "nixos" "darwin" "home-manager" "colmena" "nix-on-droid" "disko" ])
               || v1Quirks ? ${k}
+              || k == "os"
             ) (builtins.attrNames withoutDropped);
             grounded = prelude.foldl' (
               acc: k:
-              let
-                k' = v1ClassKeyMap.${k} or k;
-              in
-              acc // { ${k'} = sanitized.${k}; }
+              if k == "os" then
+                let
+                  recursiveUpdate = lhs: rhs:
+                    if builtins.isAttrs lhs && builtins.isAttrs rhs then
+                      builtins.foldl' (a: k2: a // {
+                        ${k2} = if a ? ${k2} then recursiveUpdate a.${k2} rhs.${k2} else rhs.${k2};
+                      }) lhs (builtins.attrNames rhs)
+                    else rhs;
+                in
+                acc // {
+                  nixos = if acc ? nixos then recursiveUpdate acc.nixos sanitized.os else sanitized.os;
+                  darwin = if acc ? darwin then recursiveUpdate acc.darwin sanitized.os else sanitized.os;
+                }
+              else
+                let
+                  k' = v1ClassKeyMap.${k} or k;
+                in
+                acc // { ${k'} = sanitized.${k}; }
             ) { } validKeys;
             meta = grounded.meta or { };
             metaWithDrop =

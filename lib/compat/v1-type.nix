@@ -30,5 +30,7 @@ let
 in
 mkOptionType {
   name = "v1Anything";
+  check = _: true;
+  deprecationMessage = null;
   merge = loc: defs: mergeV1AnythingVals loc (map (d: d.value) defs);
 }

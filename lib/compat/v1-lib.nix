@@ -35,6 +35,7 @@ let
     resolve = {
       to = kind: value: {
         __policyEffect = "resolve";
+        __shared = true;
         value = if builtins.isAttrs value && value ? ${kind} then value.${kind} else value;
       };
     };

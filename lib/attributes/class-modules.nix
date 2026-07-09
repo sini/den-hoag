@@ -41,9 +41,8 @@ let
     let
       content = aspect.content;
       keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
-      _trace = builtins.trace "classContentOf: aspectName=${content.name or "none"}, keys=${builtins.toJSON keys}" null;
     in
-    builtins.seq _trace (prelude.foldl' (
+    prelude.foldl' (
       acc: k:
       if classifyKey content.name k == "class" then
         let
@@ -54,7 +53,7 @@ let
         if m == { } then acc else acc // { ${k} = (acc.${k} or [ ]) ++ [ m ]; }
       else
         acc
-    ) { } keys);
+    ) { } keys;
 
   mergeBuckets =
     acc: m:
@@ -75,7 +74,6 @@ in
       self: id:
       let
         resolvedAspects = self.get id "resolved-aspects";
-        _traceAspects = if id == "host:cortex" || id == "host:axon-01" then builtins.trace "RESOLVED_ASPECTS for ${id}: count=${builtins.toString (builtins.length resolvedAspects)}, names=${builtins.concatStringsSep ", " (map (a: a.content.name) resolvedAspects)}" null else null;
         resolutionActs = (self.get id "declarations").actions.resolution or [ ];
 
         base = prelude.foldl' (acc: a: mergeBuckets acc (classContentOf a)) emptyBuckets resolvedAspects;
@@ -106,6 +104,6 @@ in
           }
         ) withInject reroutes;
       in
-      builtins.seq _traceAspects withReroute;
+      withReroute;
   };
 }

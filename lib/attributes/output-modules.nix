@@ -263,7 +263,9 @@ let
           v
       ) ctx;
     in
-    ctxWithHasAspect // channelBindingsAt id;
+    ctxWithHasAspect // channelBindingsAt id // {
+      __resolvedSettings = result.get id "resolved-settings";
+    };
 
   memberClassName =
     id:

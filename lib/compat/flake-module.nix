@@ -248,30 +248,46 @@ let
             else
               null
           );
-          den = eval.config.den // {
+          den = let
+            envVal = eval.config.den.schema.environment or {};
+            envTrace = builtins.mapAttrs (k: v: if builtins.isAttrs v then builtins.attrNames v else builtins.typeOf v) envVal;
+          in builtins.trace "SCHEMA ENV DETAILED: ${builtins.toJSON envTrace}" (eval.config.den // {
             lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
             batteries = eval.config.den.batteries or { };
             classes = denHoag.classes // (eval.config.den.classes or { });
             policies = { host-to-users = { __isPolicy = true; fn = _: [ ]; }; } // (eval.config.den.policies or { });
             aspects = injectAspectPaths (denHoag.classes // (eval.config.den.classes or { })) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
             schema =
-              (schema.evalModuleTree {
-                modules = [
-                  {
-                    options.den.schema = schema.mkSchemaOption { };
-                    config.den.schema = eval.config.den.schema or { };
-                  }
-                ];
-              }).config.den.schema;
-          };
+              let
+                res = (schema.evalModuleTree {
+                  modules = [
+                    {
+                      options.den.schema = schema.mkSchemaOption { };
+                      config.den.schema = eval.config.den.schema or { };
+                    }
+                  ];
+                }).config.den.schema;
+                envVal = res.environment or {};
+                envTrace = builtins.mapAttrs (k: v: if builtins.isAttrs v then builtins.attrNames v else builtins.typeOf v) envVal;
+              in builtins.trace "RETURNED SCHEMA ENV DETAILED: ${builtins.toJSON envTrace}" res;
+          });
           withSystem = extractedModuleArgs.withSystem or (_sys: fn: fn { self' = { }; inputs' = { }; });
         };
       };
     in
-    eval.config.den // {
+    let
+      _traceEnvironments =
+        let
+          prodEnv = eval.config.den.environments.prod or {};
+          prodKeys = builtins.attrNames prodEnv;
+          hasGetDomain = prodEnv ? getDomainFor;
+        in
+        builtins.trace "PROD ENV KEYS IN EVALV1: keys=${builtins.toJSON prodKeys}, hasGetDomainFor=${builtins.toJSON hasGetDomain}" null;
+    in
+    builtins.seq _traceEnvironments (eval.config.den // {
       policies = { host-to-users = { __isPolicy = true; fn = _: [ ]; }; } // (eval.config.den.policies or { });
       aspects = injectAspectPaths (denHoag.classes // (eval.config.den.classes or { })) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
-    };
+    });
 
   # The compat nixos instantiate wrapper (§2.5 carry-in): v1's per-host `system` never reaches
   # den-hoag's pipeline (den-hoag entities are field-less), so it is injected HERE, at the terminal —
@@ -290,6 +306,7 @@ let
       denContext,
       terminal,
       injectRelationships ? (ctx: ctx),
+      instances ? { },
     }:
     args@{
       name,
@@ -337,9 +354,57 @@ let
           else
             [ ];
 
-      allBindings = injectRelationships (defaultQuirkBindings // bindings // {
-        den = denContext;
-      });
+      splitString = sep: s: builtins.filter builtins.isString (builtins.split sep s);
+
+      nestPath = path: value:
+        if path == [ ] then
+          value
+        else
+          { ${builtins.head path} = nestPath (builtins.tail path) value; };
+
+      recursiveMerge = lh: rh:
+        if builtins.isAttrs lh && builtins.isAttrs rh then
+          builtins.zipAttrsWith (name: values:
+            if builtins.length values == 1 then
+              builtins.head values
+            else
+              recursiveMerge (builtins.elemAt values 0) (builtins.elemAt values 1)
+          ) [ lh rh ]
+        else
+          rh;
+
+      resolvedSettings =
+        let
+          resolved = bindings.__resolvedSettings or { };
+          presentAspectNames = builtins.attrNames resolved;
+          nestedSettingsList = map (name:
+            nestPath (splitString "\\." name) (resolved.${name}.value or { })
+          ) presentAspectNames;
+        in
+        builtins.foldl' recursiveMerge { } nestedSettingsList;
+
+      augmentBindings =
+        binds:
+        builtins.mapAttrs (
+          k: e:
+          if builtins.isAttrs e && e ? name && instances ? ${k} && instances.${k} ? ${e.name} then
+            let
+              v1Instance = instances.${k}.${e.name};
+            in
+            if k == "host" then
+              let
+                mergedSettings = recursiveMerge resolvedSettings (v1Instance.settings or { });
+                _traceSettings = builtins.trace "SETTINGS_MERGE for ${e.name}: inlineKeys=${builtins.toJSON (builtins.attrNames (v1Instance.settings or { }))}, resolvedKeys=${builtins.toJSON (builtins.attrNames resolvedSettings)}, mergedKeys=${builtins.toJSON (builtins.attrNames mergedSettings)}" null;
+              in
+              builtins.seq _traceSettings (
+              e // v1Instance // {
+                settings = mergedSettings;
+              })
+            else
+              e // v1Instance
+          else
+            e
+        ) binds;
 
       hostCfg =
         if hostEntry == null then
@@ -353,13 +418,18 @@ let
           else
             { };
 
-      strippedHostCfg =
-        if hostCfg ? networking then
-          { inherit (hostCfg) networking; }
-        else
-          { };
+      envName = hostCfg.environment or "prod";
+      v1Env = instances.environment.${envName} or { };
+      envEntry = bindings.environment or { name = envName; };
+      environmentVal = builtins.trace "V1ENV FOR ${name} KEYS: ${builtins.toJSON (builtins.attrNames v1Env)}" (envEntry // v1Env);
 
-      _traceHostModules =
+      allBindings = (augmentBindings (injectRelationships (defaultQuirkBindings // bindings // {
+        den = denContext;
+      }))) // {
+        environment = environmentVal;
+      };
+
+       _traceHostModules =
         let
           showModule = m:
             if builtins.isPath m then
@@ -378,34 +448,43 @@ let
           names = map showModule hostModules;
         in
         builtins.trace "HOST_MODULES for ${name}: [${builtins.concatStringsSep "; " names}]" null;
-      compatAliasModule = { lib, config, ... }: {
-        options.den = {
-          host = lib.mkOption { type = lib.types.anything; default = { }; };
-          user = lib.mkOption { type = lib.types.anything; default = { }; };
-          environment = lib.mkOption { type = lib.types.anything; default = { }; };
-          cluster = lib.mkOption { type = lib.types.anything; default = { }; };
-          group = lib.mkOption { type = lib.types.anything; default = { }; };
+      compatAliasModule = { lib, ... }: {
+        key = "compatAliasModule";
+        _file = "compatAliasModule";
+        options.den = lib.mkOption {
+          type = lib.types.anything;
+          default = { };
         };
-        config.den = {
-          host = config.den.hosts or { };
-          user = config.den.users or { };
-          environment = config.den.environments or { };
-          cluster = config.den.clusters or { };
-          group = config.den.groups or { };
-        };
+        config = lib.mkMerge [
+          {
+            den = builtins.removeAttrs (allBindings.den or { }) [
+              "host" "hosts" "user" "users" "environment" "environments" "cluster" "clusters" "group" "groups"
+            ];
+          }
+          {
+            den.host = lib.mkForce (instances.host or { });
+            den.hosts = lib.mkForce (instances.host or { });
+            den.user = lib.mkForce (instances.user or { });
+            den.users = lib.mkForce (instances.user or { });
+            den.environment = lib.mkForce (instances.environment or { });
+            den.environments = lib.mkForce (instances.environment or { });
+            den.cluster = lib.mkForce (instances.cluster or { });
+            den.clusters = lib.mkForce (instances.cluster or { });
+            den.group = lib.mkForce (instances.group or { });
+            den.groups = lib.mkForce (instances.group or { });
+          }
+        ];
       };
-
-      collected = builtins.seq _traceHostModules (terminal (
+      collected = terminal (
         args
         // {
-          hostModules = [ { _module.args = allBindings; } compatAliasModule ] ++ sysModule ++ hostModules ++ [ strippedHostCfg ];
+          hostModules = [ { _module.args = allBindings; } compatAliasModule ] ++ sysModule ++ hostModules;
           bindings = allBindings;
         }
-      ));
+      );
       extractedModules = collected.modules or collected.hostModules or [ ];
-      _traceExtracted = builtins.trace "EXTRACTED_MODULES for ${name}: ${builtins.concatStringsSep ", " (map (m: if builtins.isPath m then builtins.toString m else if builtins.isAttrs m && m ? _file then m._file else if builtins.isAttrs m && m ? key then m.key else builtins.typeOf m) extractedModules)}" null;
     in
-    if builtins.seq _traceBindingsKeys (builtins.seq _traceHostEntry (builtins.seq _traceBindingsVal (builtins.seq _traceExtracted (hostInstantiate != null)))) then
+    if builtins.seq _traceBindingsKeys (builtins.seq _traceHostEntry (builtins.seq _traceBindingsVal (hostInstantiate != null))) then
       hostInstantiate {
         modules = hmModule ++ extractedModules;
         specialArgs = allBindings;
@@ -473,6 +552,17 @@ let
           };
         inherit denContext;
         injectRelationships = compiled.injectRelationships or (ctx: ctx);
+        instances =
+          let
+            rawInstances = compiled.entities.instances or { };
+            regs = compiled.entities.registries or { };
+            res = regs // rawInstances;
+            _traceInstances = builtins.trace "INSTANCES KEYS: ${builtins.toJSON (builtins.attrNames res)}
+ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment or {}))}
+CLUSTER KEYS: ${builtins.toJSON (builtins.attrNames (res.cluster or {}))}
+PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or {}))}" null;
+          in
+          builtins.seq _traceInstances res;
       };
     in
     {
@@ -571,7 +661,7 @@ let
           }).config.den.schema;
       };
 
-      config.flake =
+       config.flake =
         let
           built = mkDen [
             {
@@ -589,10 +679,42 @@ let
                 // prelude.optionalAttrs (rootPath != null) { inherit rootPath; };
             }
           ];
+
+          findHost = name:
+            let
+              allSystems = builtins.attrValues (config.den.hosts or { });
+              found = builtins.filter (systemHosts: systemHosts ? ${name}) allSystems;
+            in
+            if found == [ ] then null else (builtins.head found).${name};
+
+          hasAttr = targetAttr: hostName:
+            let
+              host = findHost hostName;
+            in
+            if host == null then
+              true
+            else
+              let
+                class = host.class or (if builtins.match ".*darwin" (host.system or "") != null then "darwin" else "nixos");
+                defaultInto = if class == "darwin" then [ "darwinConfigurations" ] else [ "nixosConfigurations" ];
+                into = host.intoAttr or defaultInto;
+              in
+              builtins.elem targetAttr into;
+
+          filterHosts = targetAttr: hosts:
+            builtins.listToAttrs (
+              builtins.concatMap (
+                name:
+                if hasAttr targetAttr name then
+                  [ { inherit name; value = hosts.${name}; } ]
+                else
+                  [ ]
+              ) (builtins.attrNames hosts)
+            );
         in
         {
-          nixosConfigurations = built.nixosConfigurations or { };
-          darwinConfigurations = built.darwinConfigurations or { };
+          nixosConfigurations = filterHosts "nixosConfigurations" (built.nixosConfigurations or { });
+          darwinConfigurations = filterHosts "darwinConfigurations" (built.darwinConfigurations or { });
         };
     };
 
@@ -640,7 +762,11 @@ let
         nestedKeys = builtins.filter isNestedKey (builtins.attrNames value);
         aspectKeys = builtins.filter (k: !isNestedKey k) (builtins.attrNames value);
         
-        thisAspect = { ${path} = value; };
+        thisAspect =
+          if path != "" && (aspectKeys != [ ] || nestedKeys == [ ]) then
+            { ${path} = builtins.removeAttrs value nestedKeys; }
+          else
+            { };
             
         nestedAspects = prelude.foldl' (acc: k:
           acc // flattenAspects classes quirks (if path == "" then k else "${path}.${k}") value.${k}
