@@ -86,8 +86,10 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   as a CELL under the host root, so the user-cell os/user routes DO fire but target the host root, not a
   user root — a scope-MODEL boundary (the C8/C9 spawn/user-root reconciliation) — plus v1's homeManager
   default fold (the home-manager battery, unported R6). NOT-flipped-and-why: those user-root edges are
-  C8 oracle input, not a failure. darwin routing is deferred (the darwin OUTPUT class is unregistered;
-  corpus is nixos-only).
+  C8 oracle input, not a failure. darwin routing is deferred (the darwin OUTPUT class + terminal are
+  unregistered until M2; a darwin host aborts LOUDLY at resolveBucket until then). The SYNTHETIC parity
+  fixtures are nixos-only; the REAL nix-config corpus HAS darwin hosts (plan P2 "do not filter darwin"),
+  so registering the darwin output class is MANDATORY M2 scope — re-verify the PIN.md host survey there.
 
 - **B1–B15 non-ported batteries (§10 R6).** The v1 battery set at the frozen pin has 17 members; the
   compat shim ports only the two the corpus exercises (`os-class` → R2/R3, `os-user` → R2/R6, both in

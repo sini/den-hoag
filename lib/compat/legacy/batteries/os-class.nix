@@ -57,14 +57,18 @@ in
         # UNCONDITIONAL route emission classifies as RESOLUTION (a value-CONDITIONAL emission would produce
         # nothing at the value-less probe and misclassify as enrich, then crash on firing).
         #
-        # `intoClass = host.class or null` routes to the host's OS class (v1 semantics). The v1 value-gate
-        # `host ? class` (INERT for a synthetic `user@host` home, which has no OS class) is preserved as a
-        # NULL TARGET: an absent/null host class → `intoClass = null` → a DEFINED NO-OP delivery (dropped at
-        # materialization, compile.nix `__dropped`), so a classless host stays INERT (never misroutes to a
-        # default) exactly as v1. The other half of v1's gate — `host.class ∈ {nixos,darwin}` — is relaxed
-        # to canTake host-presence: the corpus has only nixos/darwin hosts (PIN.md), so a corpus host always
-        # routes to its real OS class; a non-{nixos,darwin} registered class would route there too (an
-        # accepted relaxation), and an UNREGISTERED target class aborts LOUDLY (never a silent misroute).
+        # EXACT v1 value-gate (os-class.nix:26-43): v1 is
+        #   `lib.optional (host ? class && builtins.elem host.class [ "nixos" "darwin" ]) (route {…})`
+        # — a route ONLY for a host whose OS class is nixos or darwin, INERT otherwise. The shim reproduces
+        # it PROBE-SAFE by moving the gate from the EMISSION (which must be unconditional — a value-
+        # conditional body emits nothing at the value-less stratum probe → misclassifies as enrich → crashes
+        # on firing) to the `intoClass` FIELD (classification reads `__action`/stratum, not `intoClass`):
+        # the route record is always emitted, but its target is `host.class` iff `host.class ∈
+        # {nixos,darwin}`, else `null`. A `null` intoClass is the value-gate's INERT ARM — a DEFINED NO-OP
+        # delivery (dropped at materialization, compile.nix `__dropped`). So a classless/synthetic
+        # `user@host` home (no class), a null class, AND a non-OS class (e.g. wsl) are ALL inert, matching
+        # v1's elem-gate byte-for-byte — no divergence. (darwin routes once its output class is registered,
+        # M2; until then a darwin host aborts LOUDLY at resolveBucket — never a silent mis-fire.)
         os-to-host = {
           __denCanTake = "host";
           fn =
@@ -72,7 +76,16 @@ in
             [
               (deliverLib.route {
                 fromClass = "os";
-                intoClass = host.class or null;
+                intoClass =
+                  if
+                    builtins.elem (host.class or null) [
+                      "nixos"
+                      "darwin"
+                    ]
+                  then
+                    host.class
+                  else
+                    null;
                 path = [ ];
               })
             ];

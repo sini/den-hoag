@@ -47,8 +47,9 @@ let
       class = "nixos";
     };
   };
-  # v1's `host ? class` gate: a synthetic `user@host` home (no class FIELD) or an explicit null class must
-  # stay INERT — the route renders a `__dropped` no-op delivery, NEVER a misroute to a default (ruling B2).
+  # v1's EXACT value-gate (os-class.nix:26-43, `host ? class && elem host.class [nixos darwin]`): a
+  # synthetic `user@host` home (no class FIELD), an explicit null class, OR a non-OS class (wsl) must ALL
+  # stay INERT — the route renders a `__dropped` no-op delivery, NEVER a misroute (ruling B2, elem-gate).
   r3SyntheticInert = builtins.head (r3Route {
     host = {
       name = "laptop";
@@ -60,6 +61,34 @@ let
       class = null;
     };
   });
+  r3WslInert = builtins.head (r3Route {
+    host = {
+      name = "h";
+      class = "wsl";
+    };
+  });
+
+  # END-TO-END os-edge count under the FULL fleet (batteries auto-applied): a host's os route materializes
+  # `collected:host/os` ONLY when host.class ∈ {nixos,darwin}. `wsl` is REGISTERED as a declared class so a
+  # spurious route would NOT abort at resolveBucket — proving the elem-gate (not registration) drops it.
+  osEdgeCount =
+    hostClass:
+    let
+      b = denCompat.mkDen [
+        {
+          config.den = {
+            hosts.x86_64-linux.h = {
+              class = hostClass;
+              users.u = { };
+            };
+            classes.wsl = { };
+          };
+        }
+      ];
+      den = b.den;
+      edges = builtins.concatMap (r: den.graph.edges r) (builtins.attrNames den.scopeRoots);
+    in
+    builtins.length (builtins.filter (e: (e.source.collected.class or null) == "os") edges);
 
   # ── R4 — den.default radiation (defaults.nix genAttrs [host user home]) + built-in membership ─────────
   r4Compiled = denCompat.compileFull ruleWitnesses.R4.decls;
@@ -205,8 +234,10 @@ in
         host = false;
       };
     };
-    # routes to the host's OS class: an os → host.class (nixos) delivery. (darwin routing needs the darwin
-    # output class registered — deferred, corpus-unexercised: the corpus has only nixos hosts, PIN.md.)
+    # routes to the host's OS class: an os → host.class (nixos) delivery. (darwin ∈ the elem-gate, so a
+    # darwin host WOULD route — but the darwin OUTPUT class + terminal are M2 scope, so a darwin host aborts
+    # LOUDLY at resolveBucket until then. The SYNTHETIC fixtures are nixos-only; the REAL nix-config corpus
+    # HAS darwin hosts (plan P2 do-not-filter), so M2 registers darwin — re-verify the PIN.md survey there.)
     test-r3-routes-to-host-class = {
       expr = (builtins.head r3ToNixos).targetClass.name;
       expected = "nixos";
@@ -229,19 +260,34 @@ in
         to = "nixos";
       };
     };
-    # CLASSLESS-HOST INERT (ruling B2, v1 `host ? class` parity): a synthetic home (no class field) OR an
-    # explicit null class → a `__dropped` no-op delivery (dropped at materialization, renders no edge),
-    # never a misroute to a default. A real nixos host is NOT dropped (routes).
-    test-r3-classless-host-inert = {
+    # v1 ELEM-GATE PARITY (ruling B2): os-to-host routes IFF host.class ∈ {nixos,darwin} — a synthetic home
+    # (no class field), an explicit null class, AND a non-OS class (wsl) each yield a `__dropped` no-op
+    # (renders no edge), never a misroute; a real nixos host is NOT dropped (routes).
+    test-r3-elem-gate-inert = {
       expr = {
         synthetic = r3SyntheticInert.__dropped;
         nullClass = r3NullClassInert.__dropped;
+        wsl = r3WslInert.__dropped;
         realHostRoutes = (builtins.head r3ToNixos).__dropped;
       };
       expected = {
         synthetic = true;
         nullClass = true;
+        wsl = true;
         realHostRoutes = false;
+      };
+    };
+    # END-TO-END: on the full fleet a nixos host materializes exactly one `collected:host/os` edge; a wsl
+    # host (wsl a REGISTERED class, so the drop is the elem-gate's not a resolveBucket abort) materializes
+    # NONE — v1 elem-gate fidelity through materialization.
+    test-r3-elem-gate-e2e = {
+      expr = {
+        nixos = osEdgeCount "nixos";
+        wsl = osEdgeCount "wsl";
+      };
+      expected = {
+        nixos = 1;
+        wsl = 0;
       };
     };
 

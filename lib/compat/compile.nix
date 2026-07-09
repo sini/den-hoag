@@ -32,13 +32,15 @@ let
   # "default-fold"`). NEVER `synthesize` (that is only v1's __complexForward adapter arm, Task 5) and
   # NEVER `value` (v1's frozen sourceKey has no value arm — a value edge could never byte-match, P1).
   # Class-name strings resolve to registrations HERE (C6, unknown → named abort); names never survive on.
-  # A NULL-TARGET delivery is a DEFINED NO-OP (materializes to no edge). v1's built-in os/user routes gate
-  # on `host ? class` — a synthetic `user@host` home (no OS class) leaves the route INERT — so a route
-  # whose `intoClass` resolves to null (an absent/null host class) must stay inert, NOT misroute to a
-  # default. The null case is emitted (probe-safe: still a resolution-stratum declaration, so a
-  # value-conditional route classifies as resolution, not enrich) but flagged `__dropped`; output-modules
-  # `deliveryEdgesAt` skips it. A dummy sentinel entry satisfies `declare.delivery`'s A2 requireEntry
-  # without a registry lookup (the edge is never rendered, so its class name is irrelevant).
+  # A NULL-TARGET delivery is a DEFINED NO-OP (materializes to no edge) — the canTake-era value-gate's
+  # INERT ARM. A built-in route emits UNCONDITIONALLY (probe-safe classification, compileCanTake) but folds
+  # v1's value-gate into its `intoClass`: os-to-host's `elem host.class [nixos darwin]` false ⇒ `null`;
+  # a synthetic `user@host` home with no OS class ⇒ `null`. That null target must stay INERT, NOT misroute
+  # to a default. It is still emitted (a resolution-stratum declaration, so the route classifies as
+  # resolution, not enrich) but flagged `__dropped`; output-modules `deliveryEdgesAt` skips it. A dummy
+  # sentinel entry satisfies `declare.delivery`'s A2 requireEntry without a registry lookup (the edge is
+  # never rendered, so its class name is irrelevant). An UNKNOWN (non-null) class name still aborts LOUDLY
+  # at resolveBucket — `null` is the ONE defined no-op.
   droppedTargetSentinel = {
     id_hash = "«dropped-delivery-target»";
     name = "«dropped»";

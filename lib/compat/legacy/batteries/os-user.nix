@@ -46,8 +46,14 @@ in
         # (compile.nix preserves the `{ user, host, ... }` formals): den-hoag fires it only at a user cell
         # (both coordinates present), and the stratum probe's sentinel user+host make the UNCONDITIONAL
         # route classify as RESOLUTION. `user.name` = v1's `user.userName` (den-hoag ctx canonicalizes to
-        # `.name`); `intoClass = host.class or null` — a synthetic `user@host` home has no host OS class, so
-        # the null target renders a DEFINED NO-OP (dropped), INERT exactly as v1's `host ? class` gate.
+        # `.name`).
+        #
+        # NB: UNLIKE os-class's os-to-host, v1's user-to-host is UNCONDITIONAL — `intoClass = host.class`
+        # with NO `elem host.class [nixos darwin]` gate (verified against the frozen pin) — so a user
+        # routes to its host's REAL OS class whatever it is (a `wsl` host's user routes to wsl). The shim
+        # therefore does NOT add the elem-gate here; `intoClass = host.class or null` only guards the ONE
+        # case v1 leaves undefined: a synthetic `user@host` home has NO host OS class, so the null target
+        # renders a DEFINED NO-OP (dropped) — INERT (there is no OS to route into), never a crash.
         user-to-host = {
           __denCanTake = "user-host";
           fn =
