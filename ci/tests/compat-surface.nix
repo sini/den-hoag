@@ -39,8 +39,16 @@ let
     channelKeys = builtins.mapAttrs (n: _: builtins.attrNames c.channels.${n}) c.channels;
   };
   # runBodies fixtures: run each compiled policy body at a probe ctx and force each declaration's spine
-  # (the effect → declaration half). Only fixtures with ctx-agnostic (`_ctx:`) bodies are flagged.
-  runB = c: builtins.mapAttrs (_: p: map builtins.attrNames (p { })) c.policies;
+  # (the effect → declaration half). Only fixtures with ctx-agnostic (`_ctx:`) bodies are flagged. The
+  # ambient built-in routes (os-to-host / user-to-host, auto-applied via compileFull) are FORMAL-PRESERVING
+  # canTake policies (`{ host, ... }@ctx:`), so calling them with `{ }` is invalid — they are skipped here
+  # (functionArgs non-empty), leaving each fixture's own bare-ctx policies to run. This suite pins the
+  # fixture surfaces; the ambient routes are exercised by compat-legacy-rules / the parity harness.
+  runB =
+    c:
+    builtins.mapAttrs (
+      _: p: if builtins.functionArgs p == { } then map builtins.attrNames (p { }) else [ ]
+    ) c.policies;
   accept =
     fx:
     let

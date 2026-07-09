@@ -104,16 +104,33 @@ let
         (if declared ? host then { } else { host.parent = null; })
         // (if declared ? user then { } else { user.parent = "host"; })
         // declared;
-      kinds = builtins.attrNames withBuiltins;
+      # v1's `host.class` (nixos/darwin) is a STRUCTURAL entity FIELD (den v1 host entities carry it), NOT
+      # aspect content — so the host kind DECLARES it as an instance field (gen-schema kind `options`),
+      # `raw` + default null (a synthetic `user@host` home, or a class-less custom host, carries none). The
+      # field rides the entity into the policy ctx, so the built-in `os-to-host`/`user-to-host` routes
+      # (R3/R6) can gate on `ctx.host.class ∈ {nixos,darwin}` exactly as v1 does. id_hash is name-derived
+      # (sha256 "host|name=<name>"), so adding a field does NOT perturb entity identity.
+      withHostClassField =
+        withBuiltins
+        // prelude.optionalAttrs (withBuiltins ? host) {
+          host = withBuiltins.host // {
+            options.class = schema.mkOption {
+              type = schema.types.raw;
+              default = null;
+              description = "v1 host OS class (nixos/darwin) — the R3/R6 route gate reads it (compat).";
+            };
+          };
+        };
+      kinds = builtins.attrNames withHostClassField;
       checkParent =
         kind:
         let
-          p = withBuiltins.${kind}.parent;
+          p = withHostClassField.${kind}.parent;
         in
         if p == null || builtins.elem p kinds then true else errors.unknownParentKind kind p;
       _checked = builtins.all checkParent kinds;
     in
-    builtins.seq _checked withBuiltins;
+    builtins.seq _checked withHostClassField;
 
   # Kind-attached includes (`den.schema.<kind>.includes = [ <aspect> ]`) → `{ <kind> = [ <aspectName> ]; }`,
   # the raw material `compile` turns into fire-at-kind policies (an aspect radiated to every instance of
@@ -278,6 +295,11 @@ let
       );
       systemFor = host: systemByHostId.${host.id_hash} or null;
 
+      # Per-host OS class NAME (v1 `host.class`, defaulting `nixos`) keyed by host name — the value
+      # mkFleetModule stamps onto the den-hoag host entity's declared `class` field (§ os-class R3 gate).
+      # A host with no v1 `class` defaults to `nixos` (den v1's implicit default host class).
+      hostClassName = builtins.mapAttrs (_: h: h.class or "nixos") flatHosts;
+
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
       classRegistry = builtinClasses // prelude.genAttrs declaredClassNames classEntry;
@@ -304,6 +326,7 @@ let
         membership
         contentClass
         systemFor
+        hostClassName
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;

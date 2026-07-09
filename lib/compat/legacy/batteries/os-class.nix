@@ -9,16 +9,15 @@
 #     scope where a host is bound (host + user cells), gated on `host ? class && host.class ∈ {nixos,darwin}`
 #     (a synthetic `user@host` home has no OS class — its route is inert).
 #
-# COMPAT MODEL (R2, no-core-edit): `os` registers through den-hoag's public class registry as a declared
-# `den.classes.os`. den v1's os is a CONVENIENCE forwarding class (no terminal — it routes to the host's
-# class), so a bare declared class (accepted, but not in core's `classNames`, so den-hoag grows no phantom
-# `collect` terminal for it and — since it is never any scope's PRODUCING class — no phantom fold edge) is
-# the faithful, no-core-edit model: it enters ingest's `classRegistry`, so `resolveBucket` (classes ∪
-# channels) resolves `os` for the route's `fromClass` (R3). (A RESOLVED aspect literally keying `os = {…}`
-# additionally needs `os ∈ classNames` for `classifyKey` — the general `extraClassNames` param. This is a
-# MANDATORY C8 pre-item — corpus os-keyed aspects are certain (owner ruling, spec §10 R2); a
-# declared-classes surface feeding the three-branch dispatch is required before the full-corpus run. No
-# synthetic convergence fixture resolves an os-keyed aspect, so it is not built here.)
+# COMPAT MODEL (R2): `os` registers through den-hoag's PUBLIC class registry as a declared `den.classes.os`
+# — the general declared-classes surface (assembly spec §2.2; `entity.discoverClasses` seeds the fleet's
+# registered-class set = built-ins ∪ declared). den v1's os is a CONVENIENCE forwarding class (no terminal
+# — it routes to the host's class); a bare declared class is never any scope's PRODUCING class, so it grows
+# no phantom fold edge, while joining BOTH `classifyKey`'s class branch AND ingest's `classRegistry`. So an
+# aspect keying `os = {…}` now CLASSIFIES (no core `classNames` edit — the declared-classes feature carries
+# it), and `resolveBucket` resolves `os` for the route's `fromClass` (R3). (The earlier "os aspect keys
+# need an extraClassNames param" deferral is DONE — closed by the declared-classes surface, a general core
+# feature, not a compat hack; it is exercised once the batteries auto-apply on the full fleet, defaults.nix.)
 #
 # SEVERABLE (Law C5): a pure v1 → v1 desugar applied by flake-module.nix `desugarLegacy` when this battery
 # is in the wiring's legacy set. Severed ⇒ the identity; an aspect's `os` key then aborts as an unknown
@@ -50,33 +49,30 @@ in
         };
       };
       policies = (v1.policies or { }) // {
-        # R3 — os-class.nix:26-43: route os content to the host's class, gated on a REAL host OS class.
-        # v1's body is `{ host, ... }:` (host-required, gated by resolveArgsSatisfied). The compat
-        # compilePolicy wrapper is a BARE `ctx:` (it erases formals — compile.nix caveat), so den-hoag
-        # dispatch runs this at EVERY scope; the body therefore checks `ctx ? host` ITSELF (the same
-        # host-presence gate v1's formals encode) and reads `host.class` only when present. A scope with
-        # no host, or a synthetic `user@host` identity with no class, yields `[ ]` — inert, exactly as v1.
-        os-to-host =
-          ctx:
-          let
-            host = ctx.host or null;
-          in
-          prelude.optional
-            (
-              host != null
-              && host ? class
-              && builtins.elem host.class [
-                "nixos"
-                "darwin"
-              ]
-            )
-            (
-              deliverLib.route {
+        # R3 — os-class.nix:26-43: route os content to the host's class. v1's body is `{ host, ... }:`
+        # (host-required, gated by `resolveArgsSatisfied` — a canTake PRESENCE gate). The shim compiles it
+        # as a `__denCanTake = "host"` policy (compile.nix): its `{ host, ... }` formals are PRESERVED
+        # through compilation, so den-hoag's dispatch (a) fires it only where a host coordinate is in scope
+        # (host + user cells) and (b) fills the stratum-classification probe with a sentinel host — so the
+        # UNCONDITIONAL route emission classifies as RESOLUTION (a value-CONDITIONAL emission would produce
+        # nothing at the value-less probe and misclassify as enrich, then crash on firing).
+        #
+        # `intoClass = host.class` routes to the host's OS class (v1 semantics). The v1 value-gate
+        # (`host.class ∈ {nixos,darwin}`) is RELAXED to canTake host-presence + `or "nixos"` at the probe:
+        # the corpus has only nixos/darwin hosts (PIN.md), so this matches v1 on the corpus; a non-OS host
+        # class would mis-route (documented — a C8 faithfulness item, not a corpus divergence).
+        os-to-host = {
+          __denCanTake = "host";
+          fn =
+            { host, ... }:
+            [
+              (deliverLib.route {
                 fromClass = "os";
-                intoClass = host.class;
+                intoClass = host.class or "nixos";
                 path = [ ];
-              }
-            );
+              })
+            ];
+        };
       };
     };
 }

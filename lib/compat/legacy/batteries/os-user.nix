@@ -41,38 +41,29 @@ in
       };
       policies = (v1.policies or { }) // {
         # R6 — os-user.nix `user-to-host`: route user content to the host's OS `users.users.<name>`,
-        # injecting `osConfig = config` (the adapter-bearing route). v1's `{ user, host, ... }:` becomes a
-        # BARE `ctx:` here (the compilePolicy wrapper erases formals — compile.nix caveat), so the body
-        # checks `ctx ? user`/`ctx ? host` itself (the presence gate v1's formals encode). Gated on a real
-        # host OS class (a synthetic `user@host` home has none — inert). `user.name` = v1's `user.userName`.
-        user-to-host =
-          ctx:
-          let
-            user = ctx.user or null;
-            host = ctx.host or null;
-          in
-          prelude.optional
-            (
-              user != null
-              && host != null
-              && host ? class
-              && builtins.elem host.class [
-                "nixos"
-                "darwin"
-              ]
-            )
-            (
-              deliverLib.route {
+        # injecting `osConfig = config` (the adapter-bearing route). v1's `{ user, host, ... }:` is a
+        # canTake presence gate on BOTH user AND host, compiled here as `__denCanTake = "user-host"`
+        # (compile.nix preserves the `{ user, host, ... }` formals): den-hoag fires it only at a user cell
+        # (both coordinates present), and the stratum probe's sentinel user+host make the UNCONDITIONAL
+        # route classify as RESOLUTION. `user.name` = v1's `user.userName` (den-hoag ctx canonicalizes to
+        # `.name`); `intoClass = host.class` (the corpus's nixos/darwin, `or "nixos"` at the probe).
+        user-to-host = {
+          __denCanTake = "user-host";
+          fn =
+            { user, host, ... }:
+            [
+              (deliverLib.route {
                 fromClass = "user";
-                intoClass = host.class;
+                intoClass = host.class or "nixos";
                 path = [
                   "users"
                   "users"
-                  user.name # den-hoag ctx entities canonicalize to `.name` (ingest); v1's `user.userName`
+                  user.name
                 ];
                 adaptArgs = args: args // { osConfig = args.config; };
-              }
-            );
+              })
+            ];
+        };
       };
     };
 }

@@ -133,8 +133,17 @@ let
   mkFleetModule =
     compiled:
     let
+      # Instances cross FIELD-LESS (den-hoag entities carry no content), EXCEPT the host's `class` field:
+      # v1's `host.class` is structural entity data the built-in os/user routes gate on (R3/R6), so the host
+      # kind declares it (ingest.nix `buildSchema`) and it is stamped here from the compile-side
+      # `hostClassName` map. Every other kind's instances stay `{ }`.
+      hostClassName = compiled.entities.hostClassName or { };
       instanceConfig = builtins.mapAttrs (
-        _kind: insts: builtins.mapAttrs (_: _: { }) insts
+        kind: insts:
+        if kind == "host" then
+          builtins.mapAttrs (name: _: { class = hostClassName.${name} or null; }) insts
+        else
+          builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;
       nixosInstantiate = mkNixosInstantiate {
         inherit (compiled.entities) systemFor;
@@ -175,22 +184,25 @@ let
   #   • forwards → v1 → v1: strips `den.classes.<c>.forwardTo` (the compile-visible forward surface).
   legacyProvidesDesugar = legacy.provides.desugar or (aspects: aspects);
   legacyForwardsDesugar = legacy.forwards.desugar or (v1: v1);
-  # Forwards desugars the FULL v1 (it reshapes `classes`); provides desugars the resulting `aspects`.
-  # Compose forwards-first so provides sees the post-forward aspect set.
-  #
-  # R4 + R2/R3/R6 (spec §10) — the built-in battery membership (legacy/defaults.nix) is NOT folded in
-  # here. v1's default batteries (os-class, os-user) register classes + built-in routes on EVERY fleet;
-  # auto-applying them uniformly would (a) perturb every non-legacy C5 severability fixture (the batteries
-  # ARE a legacy surface, so their unconditional application breaks the "sever ⇒ byte-identical" law) and
-  # (b) add os/user class registrations no synthetic convergence fixture exercises. So the ports are
-  # WITNESSED by direct desugar application (ci/tests/compat-legacy-rules.nix), and auto-application to the
-  # fleet — with the full battery set + its deliver-surface interaction — is the C8/C9 corpus-arm work.
-  # The routes never fire on the current corpus regardless (compat host entries carry no `.class`), so
-  # deferring auto-application does not change the L3/L5 residual (parity/ledger.md).
+  # R4 + R2/R3/R6 (spec §10) — the v1-AMBIENT battery membership (legacy/defaults.nix): den v1's default
+  # batteries (os-class, os-user) are part of den's module set, so `den.default.includes` gains os-to-host
+  # / user-to-host and `den.classes` gains os/user on EVERY fleet. The shim reproduces that ambient default
+  # by folding the batteries' v1→v1 desugar into `desugarLegacy` — so under the FULL `flakeModule` (both
+  # legacy present) every compat fleet carries the built-in classes + routes, matching v1. SEVERABLE:
+  # severing `legacy.defaults` (a subset wiring, `mkWiring`) drops the fold (`or (v1: v1)`), so the ambient
+  # defaults vanish — its own C5 witness. Because the batteries ARE this ambient v1 semantics, the C5
+  # core-vs-full byte-identity assertions on non-legacy fixtures are SCOPED to the non-ambient surface
+  # (compat-legacy-severed header): severed ⇒ ambient absent, so a full-vs-core diff is EXPECTED to carry
+  # the ambient delta, not a severability break.
+  legacyDefaultsDesugar = legacy.defaults.desugar or (v1: v1);
+  # Compose the pre-compile desugars: batteries FIRST (they add `den.classes`/`den.policies` the compile
+  # core then processes as ordinary vocabulary — os/user become REGISTERED classes via `discoverClasses`),
+  # then forwards (reshapes `classes`), then provides (reshapes the resulting `aspects`).
   desugarLegacy =
     v1:
     let
-      v1f = legacyForwardsDesugar v1;
+      v1b = legacyDefaultsDesugar v1;
+      v1f = legacyForwardsDesugar v1b;
     in
     v1f
     // {

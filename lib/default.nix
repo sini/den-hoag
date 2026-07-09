@@ -139,14 +139,30 @@ let
       # gains its three-branch channel branch. Rebuilt per mkDen because channels are user config.
       discoveredChannels = entity.discoverChannels userModules;
       channelSet = prelude.genAttrs discoveredChannels (_: true);
+
+      # §2.2 REGISTERED-CLASS set — the built-in `classNames` UNION the fleet's DECLARED classes
+      # (`config.den.classes.<name>`, a static-decl probe like the channel probe). The spec's three-branch
+      # dispatch keys on a "registered class name", not a built-in one: a declared class joins the class
+      # branch of `classifyKey`, gains a `class` content bucket (gen-aspects `cnf.classes`), a class entry,
+      # and a terminal — everything a built-in class has. `classNames` (the core constant) is UNCHANGED;
+      # the extension is per-fleet, computed here from user config. `effectiveClassEntries` mirrors the
+      # top-level `classEntries` identity convention (sha256 "den-class:<name>") over the widened set.
+      discoveredClasses = entity.discoverClasses userModules;
+      effectiveClassNames =
+        classNames ++ builtins.filter (n: !(builtins.elem n classNames)) discoveredClasses;
+      effectiveClassEntries = prelude.genAttrs effectiveClassNames (name: {
+        id_hash = builtins.hashString "sha256" "den-class:${name}";
+        inherit name;
+      });
+
       denAspects = import ./concern-aspects.nix {
         inherit
           prelude
           aspects
           merge
-          classNames
           errors
           ;
+        classNames = effectiveClassNames;
         quirkChannels = channelSet;
       };
 
@@ -466,8 +482,8 @@ let
         if cc == null then
           null
         else if builtins.isString cc then
-          classEntries.${cc}
-            or (throw "den-hoag: den.contentClass names unknown class `${cc}` (known: ${builtins.concatStringsSep ", " classNames})")
+          effectiveClassEntries.${cc}
+            or (throw "den-hoag: den.contentClass names unknown class `${cc}` (known: ${builtins.concatStringsSep ", " effectiveClassNames})")
         else
           cc;
       metaWithClass = builtins.mapAttrs (
@@ -491,7 +507,7 @@ let
       # threaded to the terminal, never imported). Every other class keeps the nixpkgs-free `collect` default.
       npkgs = ent.config.den.nixpkgs or null;
       crossTerminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = npkgs; };
-      classDecls = prelude.genAttrs classNames (
+      classDecls = prelude.genAttrs effectiveClassNames (
         name:
         let
           decl = ent.config.den.classes.${name} or { };
@@ -519,7 +535,7 @@ let
           dimKinds
           projectors
           ;
-        inherit classNames;
+        classNames = effectiveClassNames;
         inherit (denAspects) classifyKey;
       };
 
@@ -675,10 +691,11 @@ let
         linearization = lin;
         scopeRoots = scopeRoots;
         inherit structural;
-        # The quirks concern surface: class entries (the class-tag vocabulary), the ONE composed
-        # channel DAG, and the fleet channel outputs (`.at pos` → per-position channel values, and the
-        # input to the class-relative read `internal.consumeAt`).
-        classes = classEntries;
+        # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
+        # fleet's DECLARED classes, §2.2), the ONE composed channel DAG, and the fleet channel outputs
+        # (`.at pos` → per-position channel values, and the input to the class-relative read
+        # `internal.consumeAt`).
+        classes = effectiveClassEntries;
         inherit quirkDag receivedOutputs;
         # Settings resolution surface (§2.6/§2.7/§2.8): the compiled scoped-override layers, and the
         # narrow accessor `aspectsAt <nodeId> = { <aspectName> = { present; settings; }; }` (A10).

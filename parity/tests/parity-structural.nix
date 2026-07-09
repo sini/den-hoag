@@ -107,13 +107,16 @@ in
       ];
     };
 
-    # #44 / C7.5 CONVERGENCE: the class-fold fixture is the first cross-arm fixture whose `matched` set is
-    # non-empty — den-hoag's producing-class default fold now byte-matches v1's nixos class fold. This is
-    # the measurable teeth of the class-content-as-fold-content mechanism: a REGRESSION that empties this
-    # match (class content no longer folding) fails here, distinct from the still-open residual boundary.
+    # CONVERGENCE (Task 8 M1): den-hoag byte-matches v1 on BOTH host-scoped edges — the producing-class
+    # nixos fold (class-content-as-fold-content) AND the os→host.class route (the ambient os-class battery's
+    # formal-preserving canTake route). A REGRESSION that drops either match fails here, distinct from the
+    # residual user-scope boundary (v1 user-as-root vs den-hoag user-as-cell).
     test-class-fold-converges = {
       expr = results.classFold.matched;
-      expected = [ "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge" ];
+      expected = [
+        "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge"
+        "root:host:igloo/nixos |  | collected:host:igloo/os | merge"
+      ];
     };
     # …and the hoag arm stays EXACT — producing-class scoping never emits a phantom k8s/home-manager fold
     # (the `class-modules` over-report the terminal's `contentIdsOf` also guards against), so `extra` is empty.

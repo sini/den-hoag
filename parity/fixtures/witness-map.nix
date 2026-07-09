@@ -485,16 +485,14 @@ rec {
     R2 = {
       rule = "R2 — legacy class registry";
       v1Source = "v1 den.classes at pin: os/user (convenience-forward), darwin/wsl (os-class/wsl batteries)";
-      # The battery desugar registers `den.classes.os`/`user` (no aspect key here — an os-KEYED resolved
-      # aspect additionally needs the extraClassNames general param, deferred; see legacy/batteries).
       decls = { };
-      note = "the corpus-exercised class vocabulary (os, user) registers through the public class registry as declared `den.classes.<name>` (legacy/batteries) — enters resolveBucket, no core classNames edit, no phantom terminal/fold (never a producing class)";
+      note = "the corpus-exercised class vocabulary (os, user) registers through the PUBLIC declared-classes surface (`config.den.classes.<name>` → assembly §2.2 registered-class set via entity.discoverClasses); an aspect keying `os` now CLASSIFIES + resolveBucket resolves it — no core classNames edit, no phantom terminal/fold (never a producing class)";
     };
     R3 = {
       rule = "R3 — os → host.class routing";
       v1Source = "modules/aspects/batteries/os-class.nix:26-43 (`os-to-host` route, gated host.class ∈ {nixos,darwin})";
       decls = { };
-      note = "the os-to-host route compiles to a policy (bare-ctx to survive compilePolicy's formal-erasure) gated on `ctx.host.class ∈ {nixos,darwin}` → route os→host.class; fires only for a real host OS class, inert for a synthetic user@host home";
+      note = "os-to-host compiles to a FORMAL-PRESERVING canTake route (compile.nix compileCanTake): the `{ host, ... }` formals ARE the canTake presence gate; it emits UNCONDITIONALLY so it classifies as RESOLUTION (a value-conditional emission is invisible to concern-policies' value-less stratum probe → misclassifies as enrich → crashes on firing), intoClass = host.class; MATERIALIZES the `collected:host/os` edge (parity L3/L5 os-route flip)";
     };
     R4 = {
       rule = "R4 — den.default radiation + built-in membership";

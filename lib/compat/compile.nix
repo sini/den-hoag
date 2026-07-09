@@ -247,19 +247,45 @@ let
     ing: aspectRec: value: ctx:
     prelude.concatMap (translateEffect ing aspectRec) (innerFn value ctx);
 
+  # A `__denCanTake` policy — the FORMAL-PRESERVING compile path (the twin of the bare-ctx `compilePolicy`
+  # for policies whose OWN destructuring must gate dispatch, not an internal for/when guard). A shim
+  # built-in route (os-to-host / user-to-host, legacy/batteries) declares `{ __denCanTake = <shape>; fn =
+  # { <coords>, ... }: [ effects ]; }`. This wraps `fn` with the SHAPE's LITERAL formals — so den-hoag's
+  # `dispatch.fromFunction` reads them as the canTake condition (the policy fires only where those
+  # coordinates are in scope) AND concern-policies' stratum probe fills them with sentinel entries, so the
+  # route's UNCONDITIONAL emission classifies as RESOLUTION. (A value-conditional body would emit nothing
+  # at the value-less probe → misclassify as enrich → crash on firing.) Nix cannot build a formal set from
+  # a runtime list, so the shapes are a small fixed set — the two the corpus's built-in routes need.
+  compileCanTake =
+    ing: aspectRec: value:
+    let
+      translate = ctx: prelude.concatMap (translateEffect ing aspectRec) (value.fn ctx);
+    in
+    if value.__denCanTake == "host" then
+      { host, ... }@ctx: translate ctx
+    else if value.__denCanTake == "user-host" then
+      { user, host, ... }@ctx: translate ctx
+    else
+      errors.unsupportedEffect "canTake:${value.__denCanTake}";
+
   compilePolicies =
     ing: aspectRec: policies:
     let
       names = builtins.attrNames policies;
-      # Partition: `when`-over-inline-aspect values become aspects (conditional activation), everything
-      # else becomes a policy. A list value (from `for`/`when` over a policy list) stays a policy list —
-      # den-hoag flattens a list-valued policy the same way (each element gates itself).
+      # Partition: `when`-over-inline-aspect values become aspects (conditional activation); a
+      # `__denCanTake` value becomes a FORMAL-PRESERVING policy (canTake-gated built-in route); everything
+      # else becomes a bare-ctx policy. A list value (from `for`/`when` over a policy list) stays a policy
+      # list — den-hoag flattens a list-valued policy the same way (each element gates itself).
       isAspectValued = name: isConditionalAspect policies.${name};
+      isCanTake = name: builtins.isAttrs policies.${name} && policies.${name} ? __denCanTake;
       aspectNames = builtins.filter isAspectValued names;
-      policyNames = builtins.filter (n: !(isAspectValued n)) names;
+      canTakeNames = builtins.filter isCanTake names;
+      policyNames = builtins.filter (n: !(isAspectValued n) && !(isCanTake n)) names;
     in
     {
-      policies = prelude.genAttrs policyNames (name: compilePolicy ing aspectRec policies.${name});
+      policies =
+        prelude.genAttrs policyNames (name: compilePolicy ing aspectRec policies.${name})
+        // prelude.genAttrs canTakeNames (name: compileCanTake ing aspectRec policies.${name});
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
         name:
@@ -421,6 +447,7 @@ builtins.seq surfaceTotalityOk {
       membership
       contentClass
       systemFor
+      hostClassName
       ;
   };
   inherit aspects policies;

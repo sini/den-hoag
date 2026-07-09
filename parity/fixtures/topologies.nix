@@ -21,10 +21,11 @@
 { }:
 {
   # Plain host + single user with a SELF-NAMED host aspect (`den.aspects.igloo` for host `igloo` — the
-  # dominant v1 idiom). v1 renders 6 class-fold/route/forward edges. Post-R5 (legacy/self-provide auto-
-  # includes the self-named aspect, spec §10), hoag renders the ONE producing-class nixos fold, which
-  # byte-matches v1 — the L3 convergence (matched 0→1, extra 0). The 5 residual v1 edges (homeManager
-  # fold, os routes, hm synthesize, user nest) are the class-model boundary R5 alone does not close.
+  # dominant v1 idiom). v1 renders 6 class-fold/route/forward edges. Post-R5+R3, hoag byte-matches v1 on
+  # BOTH host-scoped edges — the producing-class nixos fold (R5 self-provide auto-include) AND the
+  # os→host.class route (R3 ambient os-class battery) — matched 2, extra 0 (Task 8 M1). The 4 residual v1
+  # edges (homeManager fold + the 3 USER-scoped edges) are the unported hm battery + the user-as-root vs
+  # user-as-cell scope-model boundary (parity/ledger.md).
   plainHostUser = {
     name = "plain-host-user";
     crossArm = true;
@@ -36,8 +37,9 @@
 
   # A quirk channel (`feat`) radiated to every host via a kind-attached include. hoag folds it into a
   # `collected:host/feat` default-fold edge; v1 does NOT surface a per-channel edge (it consumes quirk
-  # content into the class folds). So the arms diverge in BOTH directions: the `feat` edge is `extra` on
-  # hoag, the 6 class-fold edges are `missing` — the clearest witness of the disjoint-domain finding.
+  # content into the class folds) — so the `feat` edge is `extra` on hoag (the disjoint-domain witness).
+  # The ambient os→host route ALSO matches here (matched 1); no self-named aspect, so the nixos fold is
+  # `missing`. This is the fixture where the two divergence directions coexist.
   quirkChannel = {
     name = "quirk-channel";
     crossArm = true;
@@ -49,14 +51,12 @@
     };
   };
 
-  # Class-content default fold (#44 / C7.5 convergence witness). A `base` aspect carrying `nixos` class
-  # content is included at every host (`den.schema.host.includes`), so den-hoag's host:igloo now has a
-  # non-empty `nixos` class bucket — and (post-C7.5) the default fold emits its PRODUCING-class edge
-  # `collected:host:igloo/nixos | merge`, which BYTE-MATCHES v1's nixos class fold. This is the first
-  # cross-arm fixture with a non-empty `matched` set: the class-content-as-fold-content mechanism landed.
-  # The 5 still-`missing` v1 edges are the residual domain boundary (v1's `os` base class + os→nixos /
-  # home-manager→nixos / user→nixos class-composition routes + host homeManager default, none of which
-  # den-hoag's flat one-class-per-scope contentClass model injects) — L6 in the ledger.
+  # Class-content default fold. A `base` aspect carrying `nixos` class content is included at every host
+  # (`den.schema.host.includes`), so den-hoag's host:igloo has a non-empty `nixos` class bucket and its
+  # producing-class default fold emits `collected:host:igloo/nixos | merge`, byte-matching v1. Post-M1 the
+  # ambient os→host route ALSO matches (matched 2, extra 0). The 4 residual `missing` v1 edges are the host
+  # homeManager fold (unported hm battery) + the 3 USER-scoped edges (v1 user-as-root vs den-hoag
+  # user-as-cell scope-model boundary) — the C8/C9 reconciliation (parity/ledger.md).
   classFold = {
     name = "class-fold";
     crossArm = true;
@@ -68,9 +68,9 @@
   };
 
   # Two hosts across two systems (the multi-system `@system` shape) — exercises root enumeration + per-root
-  # trace concatenation on both arms. Each host has a self-named aspect, so post-R5 BOTH producing-class
-  # nixos folds byte-match v1 (matched 0→2, extra 0) — the L5 convergence, the two-host union of L3's
-  # boundary (the residual is the per-host L3 residual ×2).
+  # trace concatenation on both arms. Each host has a self-named aspect, so post-R5+R3 BOTH host-scoped
+  # edges per host (nixos fold + os route) byte-match v1 (matched 4, extra 0) — the two-host union of L3.
+  # The 8 residual are the per-host homeManager fold ×2 + the six user-scoped edges (scope-model boundary).
   multiHost = {
     name = "multi-host";
     crossArm = true;

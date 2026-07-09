@@ -10,9 +10,9 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
 | --- | ---------- | --------------- | ----------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------- | -------- |
 | L1 | 2026-07-07 | (all) | entity scope `<kind>:<id_hash>` — v1 `dd5c0a82…` ≠ hoag `8bba6f6a…` for `host:igloo` (handled — no live key) | schema-alignment | HANDLED — harness name-normalizes entity scopes to `<kind>:<name>` (F1) | oracle.nix |
 | L2 | 2026-07-07 | (all, non-ent) | non-entity scope naming — v1 `mkScopeId` (`""`→`<root>`) vs hoag opaque (handled — no live key) | schema-alignment | HANDLED (seed) — `nonEntityNameMap`; completeness = first full-corpus (F2) | oracle.nix / OQ4 |
-| L3 | 2026-07-07 | plainHostUser | `root:host:igloo/homeManager \|  \| collected:host:igloo/homeManager \| merge` | domain-boundary | **R5-CONVERGED (2026-07-09):** the nixos class fold now MATCHES (self-named aspect auto-included, spec §10 R5); matched 0→1, extra 0. firstDivergent moved to the homeManager fold. Residual (5) = the C8/C9 default-fold + forward reconciliation. See §L3/L5-R5 note. | R5 (self-provide) |
-| L4 | 2026-07-07 | quirkChannel | `root:host:igloo/feat \|  \| collected:host:igloo/feat \| merge` (EXTRA on hoag) | domain-boundary | hoag quirk-fold has no v1 counterpart (v1 folds quirk content into classes) | reconcile |
-| L5 | 2026-07-07 | multiHost | `root:host:iceberg/homeManager \|  \| collected:host:iceberg/homeManager \| merge` | domain-boundary | **R5-CONVERGED (2026-07-09):** both hosts' nixos class folds now MATCH (self-named aspects, R5); matched 0→2, extra 0. Two-host union of the L3 convergence; residual = per-host L3 residual ×2. See §L3/L5-R5 note. | R5 (self-provide) |
+| L3 | 2026-07-07 | plainHostUser | `root:host:igloo/homeManager \|  \| collected:host:igloo/homeManager \| merge` | domain-boundary | **R5+R3-CONVERGED (2026-07-09):** BOTH host-scoped edges match — the nixos fold (R5 self-named aspect) AND the os→host route (R3 ambient battery, formal-preserving canTake). matched 0→2, extra 0. Residual (4) = homeManager fold (unported battery) + 3 USER-scoped edges (v1 user-as-root vs hoag user-as-cell). See §L3/L5 notes. | R5+R3 (self-provide + os-class) |
+| L4 | 2026-07-07 | quirkChannel | `root:host:igloo/feat \|  \| collected:host:igloo/feat \| merge` (EXTRA on hoag) | domain-boundary | hoag quirk-fold has no v1 counterpart (v1 folds quirk content into classes); the os→host route ALSO matches here now (matched 1) | reconcile |
+| L5 | 2026-07-07 | multiHost | `root:host:iceberg/homeManager \|  \| collected:host:iceberg/homeManager \| merge` | domain-boundary | **R5+R3-CONVERGED (2026-07-09):** both hosts' nixos folds + os routes match; matched 0→4, extra 0. Two-host union of the L3 convergence; residual (8) = per-host homeManager fold ×2 + 6 user-scoped edges. See §L3/L5 notes. | R5+R3 (self-provide + os-class) |
 | L6 | 2026-07-07 | classFold | `root:host:igloo/nixos \|  \| collected:host:igloo/nixos \| merge` (CONVERGED — now MATCHED) + 5 residual `missing` | domain-boundary | #44 / C7.5: class-content-as-fold-content landed. den-hoag's PRODUCING-class default fold byte-matches v1's nixos class fold (matched 0→1, extra 0). Residual missing = v1's `os` base class + os→nixos / hm→nixos (synthesize) / user→nixos routes + host homeManager default (v1's hierarchical multi-class model vs den-hoag flat one-class-per-scope). | output-modules.nix channelsOf/contentsOf |
 | B1 | 2026-07-09 | (battery: define-user) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
 | B2 | 2026-07-09 | (battery: flake-parts) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
@@ -69,6 +69,25 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   reconciliation, still classified domain-boundary here, not papered over. The P1 goldens
   (`parity/golden/traces.nix` plainHostUser/multiHost) are re-goldened to the converged state; the
   structural suite's `test-boundary-parity-false` stays green (both still carry residual `missing`).
+
+- **§L3/L5 R3 os-route convergence (Task 8 M1, 2026-07-09, appended).** Building on the R5 nixos-fold
+  convergence, the declared-classes core feature (assembly §2.2 — `config.den.classes.<name>` joins the
+  registered-class set via `entity.discoverClasses`) + the v1-ambient battery auto-application (os-class /
+  os-user apply on every fleet under the full flakeModule) + the host `class` entity field (so the R3 gate
+  reads `host.class`) let the built-in **os-to-host route MATERIALIZE**: it byte-matches v1's
+  `collected:host:<h>/os | merge` on every host. matched: plainHostUser 1→2, multiHost 2→4, classFold 1→2,
+  quirkChannel 0→1. **extra stays 0** on every arm. The route is a FORMAL-PRESERVING canTake policy
+  (`compile.nix` `compileCanTake`): a value-conditional emission (`host.class ∈ {nixos,darwin}`) is
+  INVISIBLE to concern-policies' value-less stratum probe (it emits nothing → misclassifies as enrich →
+  crashes on firing), so the route emits UNCONDITIONALLY given its `{ host, ... }` formals (canTake
+  presence gate) with `intoClass = host.class or "nixos"`; the v1 value-gate is relaxed to canTake +
+  the corpus's nixos/darwin invariant (PIN.md). The REMAINING residual is now purely v1's USER-scoped
+  edges (`root:user:<u>/…`) — v1 resolves a user as its OWN instantiation root (v1 `resolve.to`), den-hoag
+  as a CELL under the host root, so the user-cell os/user routes DO fire but target the host root, not a
+  user root — a scope-MODEL boundary (the C8/C9 spawn/user-root reconciliation) — plus v1's homeManager
+  default fold (the home-manager battery, unported R6). NOT-flipped-and-why: those user-root edges are
+  C8 oracle input, not a failure. darwin routing is deferred (the darwin OUTPUT class is unregistered;
+  corpus is nixos-only).
 
 - **B1–B15 non-ported batteries (§10 R6).** The v1 battery set at the frozen pin has 17 members; the
   compat shim ports only the two the corpus exercises (`os-class` → R2/R3, `os-user` → R2/R6, both in

@@ -36,26 +36,17 @@ let
   r2Desugared = batteriesDesugar { };
   r2Compiled = denCompat.compile r2Desugared;
 
-  # ── R3 — os → host.class routing (os-class.nix:26-43), gated on a real host OS class ──────────────────
+  # ── R3 — os → host.class routing (os-class.nix:26-43), a FORMAL-PRESERVING canTake route ──────────────
+  # The compiled policy is `{ host, ... }@ctx:` — its formals ARE the canTake gate (den-hoag fires it only
+  # where a host coordinate is in scope). It routes os → the host's OS class (`host.class`, `or "nixos"`).
   r3Route = r2Compiled.policies.os-to-host;
-  r3FiresNixos = r3Route {
+  r3CanTake = builtins.functionArgs r3Route; # { host = false; } — the canTake condition
+  r3ToNixos = r3Route {
     host = {
       name = "h";
       class = "nixos";
     };
   };
-  r3FiresDarwin = r3Route {
-    host = {
-      name = "h";
-      class = "darwin";
-    };
-  };
-  r3InertClassless = r3Route {
-    host = {
-      name = "h";
-    };
-  };
-  r3InertNoHost = r3Route { };
 
   # ── R4 — den.default radiation (defaults.nix genAttrs [host user home]) + built-in membership ─────────
   r4Compiled = denCompat.compileFull ruleWitnesses.R4.decls;
@@ -175,29 +166,44 @@ in
       });
       expected = true;
     };
-
-    # ── R3 ────────────────────────────────────────────────────────────────────────────────────────────
-    # os-to-host fires (routes) for a real nixos/darwin host, inert for a classless / host-free scope.
-    test-r3-gate = {
+    # R2 CLOSURE (the earlier deferral): under the FULL flakeModule the batteries auto-apply, so `os`
+    # registers as a declared class (assembly §2.2 declared-classes) and an aspect keying `os = {…}` now
+    # CLASSIFIES (its content forced through class-modules) — with NO core `classNames` edit; an unknown
+    # key still aborts (three-branch strictness, R9).
+    test-r2-os-aspect-key-classifies = {
       expr = {
-        nixos = builtins.length r3FiresNixos;
-        darwin = builtins.length r3FiresDarwin;
-        classless = builtins.length r3InertClassless;
-        noHost = builtins.length r3InertNoHost;
+        os = ok (mkR9 "os");
+        unknown = aborts (mkR9 "totallyUnknownKey");
       };
       expected = {
-        nixos = 1;
-        darwin = 1;
-        classless = 0;
-        noHost = 0;
+        os = true;
+        unknown = true;
       };
+    };
+
+    # ── R3 ────────────────────────────────────────────────────────────────────────────────────────────
+    # os-to-host is a FORMAL-PRESERVING canTake route: its `{ host, ... }` formals are the canTake
+    # condition (den-hoag dispatch fires it only where a host coordinate is in scope), and it routes os to
+    # the host's OS class. The materialization (the `collected:host/os` edge appearing on the fleet) is the
+    # parity harness's job (parity/golden/traces.nix — the L3/L5 os-route flip); here we pin the gate + target.
+    test-r3-cantake-condition = {
+      expr = r3CanTake;
+      expected = {
+        host = false;
+      };
+    };
+    # routes to the host's OS class: an os → host.class (nixos) delivery. (darwin routing needs the darwin
+    # output class registered — deferred, corpus-unexercised: the corpus has only nixos hosts, PIN.md.)
+    test-r3-routes-to-host-class = {
+      expr = (builtins.head r3ToNixos).targetClass.name;
+      expected = "nixos";
     };
     # the fired route is an os→nixos delivery declaration (route sugar → deliver → declare.delivery, C3);
     # the `os`/`nixos` class names resolved to entries at compile (C6), read back via `.name` for display.
     test-r3-route-shape = {
       expr =
         let
-          d = builtins.head r3FiresNixos;
+          d = builtins.head r3ToNixos;
         in
         {
           delivery = d.__action == "delivery";

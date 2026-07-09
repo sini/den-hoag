@@ -70,6 +70,34 @@ let
     in
     builtins.attrNames (probe.config.den.quirks or { });
 
+  # Discover the DECLARED output-class NAMES the same freeform-probe way `discoverChannels` reads the
+  # quirks: a schema-less tree freeform-absorbs every `den.*` config the user modules set and exposes
+  # `den.classes`' attr names WITHOUT forcing any class record (attrNames = spine only). mkDen needs the
+  # declared class names up front to seed the REGISTERED-CLASS set — assembly spec §2.2 says an aspect key
+  # is a facet, a REGISTERED class name, or a channel; the registered set is core's built-ins UNION the
+  # fleet's declared classes. Declaring a class here (a) declares its `class` content bucket on the aspect
+  # schema (gen-aspects `cnf.classes`), (b) admits its name to `classifyKey`'s class branch, and (c) gives
+  # it a class entry + a terminal. `den.classes` names are static decls, so this probe is as sound as the
+  # kind/channel probes. (The class RECORD — wrap/instantiate/share — is read later, from the built tree.)
+  discoverClasses =
+    userModules:
+    let
+      probe = merge.evalModuleTree {
+        modules = [
+          {
+            options.den = merge.mkOption {
+              default = { };
+              type = merge.types.submodule {
+                freeformType = merge.types.lazyAttrsOf merge.types.anything;
+              };
+            };
+          }
+        ]
+        ++ userModules;
+      };
+    in
+    builtins.attrNames (probe.config.den.classes or { });
+
   # Build the schema module tree once; user modules declare config.den.schema.<kind>
   # and the instances config.den.<kind>.<name>. Returns { kinds; registries; meta;
   # topology; roots; config; } where:
@@ -128,5 +156,6 @@ in
     classOf
     discoverKinds
     discoverChannels
+    discoverClasses
     ;
 }

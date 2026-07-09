@@ -158,19 +158,39 @@ let
     };
   };
 
-  # ══ SEVERABILITY PROOF (C6) — the four wirings share ONE compile core, sentinels, and errors; only
+  # ══ SEVERABILITY PROOF (C6) — the wirings share ONE compile core, sentinels, and errors; only
   #    `desugarLegacy` (hence `compileFull` / `mkDen`) differs by which legacy modules are present
   #    (default.nix `mkWiring`). ══════════════════════════════════════════════════════════════════════
-  full = denCompat; # both legacy modules (the full flakeModule surface)
-  core = denCompat.mkWiring { }; # flakeModuleCore ALONE (both desugars or-identity)
-  provOnly = denCompat.mkWiring { inherit (denCompat.legacy) provides; };
-  fwdOnly = denCompat.mkWiring { inherit (denCompat.legacy) forwards; };
+  #
+  # AMBIENT-DELTA SCOPING (Task 8 M1): the built-in batteries (legacy/defaults.nix — os-class/os-user)
+  # are v1's DEFAULT module set, so under the full flakeModule they add os/user classes + os-to-host /
+  # user-to-host policies to EVERY fleet (v1's ambient semantics). That is a REAL severable surface — its
+  # own severability is witnessed below (`test-defaults-ambient-*`) — but it is ORTHOGONAL to the
+  # provides/forwards severance these H/I comparisons pin. So the provides/forwards comparison HOLDS THE
+  # AMBIENT CONSTANT: every compared wiring carries `ambient` (defaults + self-provide), and only
+  # provides/forwards vary. This scopes the byte-identity to the non-ambient surface WITHOUT weakening it
+  # (a provides/forwards leak still moves the projection); the ambient's presence/absence is tested
+  # separately. `mkWiring { }` (flakeModuleCore ALONE — no ambient) is exercised by the ambient witness.
+  ambient = {
+    inherit (denCompat.legacy) defaults self-provide;
+  };
+  full = denCompat; # the full flakeModule: ambient + provides + forwards
+  core = denCompat.mkWiring ambient; # ambient held, provides+forwards severed
+  provOnly = denCompat.mkWiring (ambient // { inherit (denCompat.legacy) provides; });
+  fwdOnly = denCompat.mkWiring (ambient // { inherit (denCompat.legacy) forwards; });
   wirings = [
     full
     core
     provOnly
     fwdOnly
   ];
+
+  # The ambient witness: a bare wiring (NO legacy at all — flakeModuleCore alone) vs an ambient wiring.
+  # Severing legacy/defaults.nix removes the v1-ambient os/user classes + os-to-host/user-to-host routes,
+  # so they appear ONLY when defaults is present — the defaults-surface severability, kept honest.
+  bare = denCompat.mkWiring { }; # flakeModuleCore ALONE
+  ambientWiring = denCompat.mkWiring { inherit (denCompat.legacy) defaults; };
+  ambientProbe = w: (w.compileFull { }).policies or { };
 
   # NON-LEGACY fixtures (no `provides`, no `forwardTo`): the legacy desugars are or-identity on them, so
   # every wiring must compile them byte-identically. `edgeRoute` emits real trace edges (a channel→channel
@@ -508,6 +528,30 @@ in
     test-legacy-import-single-site = {
       expr = legacyImportSites;
       expected = [ "default.nix" ];
+    };
+
+    # ══ (L) AMBIENT (defaults) severability (Task 8 M1) — the v1-ambient batteries add os-to-host /
+    #    user-to-host ONLY when legacy/defaults.nix is present; severing it (flakeModuleCore alone) drops
+    #    them. This is the ambient's OWN severability witness (the H/I comparisons hold it constant).
+    test-defaults-ambient-present = {
+      expr = {
+        os = (ambientProbe ambientWiring) ? os-to-host;
+        user = (ambientProbe ambientWiring) ? user-to-host;
+      };
+      expected = {
+        os = true;
+        user = true;
+      };
+    };
+    test-defaults-ambient-severed = {
+      expr = {
+        os = (ambientProbe bare) ? os-to-host;
+        user = (ambientProbe bare) ? user-to-host;
+      };
+      expected = {
+        os = false;
+        user = false;
+      };
     };
   };
 }
