@@ -272,9 +272,18 @@ let
   # { <coords>, ... }: [ effects ]; }`. This wraps `fn` with the SHAPE's LITERAL formals — so den-hoag's
   # `dispatch.fromFunction` reads them as the canTake condition (the policy fires only where those
   # coordinates are in scope) AND concern-policies' stratum probe fills them with sentinel entries, so the
-  # route's UNCONDITIONAL emission classifies as RESOLUTION. (A value-conditional body would emit nothing
-  # at the value-less probe → misclassify as enrich → crash on firing.) Nix cannot build a formal set from
-  # a runtime list, so the shapes are a small fixed set — the two the corpus's built-in routes need.
+  # route's UNCONDITIONAL emission classifies as RESOLUTION. Nix cannot build a formal set from a runtime
+  # list, so the shapes are a small fixed set — the two the corpus's built-in routes need.
+  #
+  # THE GENERAL PATTERN + HAZARD (not os-specific): concern-policies classifies a policy's stratum by
+  # PROBING it at a VALUE-LESS sentinel context. So any policy whose emission is CONDITIONAL on a ctx VALUE
+  # (not just coordinate PRESENCE) emits nothing at the probe → is misclassified as an enrich policy → and,
+  # when it fires at a real scope and produces a resolution declaration (delivery/edge) in the enrich
+  # stratum, CRASHES LOUDLY (`attribute 'key' missing` in the enrich delta). The fix for the built-in
+  # routes is this path (emit UNCONDITIONALLY given the canTake coordinates, gate on PRESENCE only; a
+  # value-absent target renders a `__dropped` no-op — translateDelivery). A CORPUS USER policy that emits
+  # value-conditionally will hit the same misclassification — a C8 watch item: it aborts loudly by design
+  # (never silently mis-fires), and the resolution is to rewrite it in the canTake + null-target-drop shape.
   compileCanTake =
     ing: aspectRec: value:
     let
