@@ -127,7 +127,12 @@ let
   # a kind). Empty for a schema without kind-includes.
   kindIncludesOf =
     v1Schema:
-    prelude.filterAttrs (_: v: v != [ ]) (builtins.mapAttrs (_: k: k.includes or [ ]) v1Schema);
+    prelude.filterAttrs (_: v: v != [ ]) (builtins.mapAttrs (k: v:
+      let
+        incs = v.includes or [ ];
+      in
+      if k == "host" then incs ++ [ "core.users.resolved-user-emitter" ] else incs
+    ) v1Schema);
 
   # Build id_hash-bearing registries via gen-schema — the SAME evalModuleTree shape `entity.build`
   # uses, so identity is byte-identical to what mkDen stamps. Instances are stamped MINIMAL (`{ }`, so
