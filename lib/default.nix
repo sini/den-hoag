@@ -80,7 +80,10 @@ let
   concernPolicies = import ./concern-policies.nix { inherit prelude dispatch declare; };
 
   # The aspects concern — compiles `den.aspects` onto gen-aspects (the neededBy/guard/drop surface
-  # + §2.2 key dispatch). `aspectSchema.mkAspectOption` declares `options.den.aspects`.
+  # + §2.2 key dispatch). This TOP-LEVEL instance is used ONLY for `internal.classifyKey` (which reads
+  # `classNames`, never moduleArgs), so `kindNames = [ ]` here is inert — the eval-load-bearing instance is
+  # the per-mkDen `denAspects` (below), which threads the DISCOVERED kinds. `aspectSchema.mkAspectOption`
+  # declares `options.den.aspects` from that kind-aware instance.
   concernAspects = import ./concern-aspects.nix {
     inherit
       prelude
@@ -89,6 +92,7 @@ let
       classNames
       errors
       ;
+    kindNames = [ ];
   };
 
   # Attribute assembly (structural attrs 1–6 + resolution attrs 7/9 + collection/settings/output) + the
@@ -164,6 +168,11 @@ let
           ;
         classNames = effectiveClassNames;
         quirkChannels = channelSet;
+        # Kind-generic aspect moduleArgs — the DECLARED schema kinds (assembly §2.2), so an aspect body may
+        # destructure any custom kind (`{ datacenter, rack, ... }:`) exactly like `{ host, user, ... }:`,
+        # with ZERO kind-name literals in core. `denMeta` (= `entity.discoverKinds userModules`, defined
+        # below in this `let`) is the probed schema; a fleet declaring only host/user is byte-identical.
+        kindNames = builtins.attrNames denMeta;
       };
 
       # den-managed module: the fleet membership channel. Task 1 bootstrap surface — the

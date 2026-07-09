@@ -16,6 +16,11 @@
   merge,
   classNames,
   quirkChannels ? { },
+  # The entity KIND names bindable as aspect moduleArgs (`{ host, user, datacenter, ... }:`). Kinds are
+  # USER-DECLARED schema (assembly spec §2.2), so core is kind-AGNOSTIC: mkDen derives this from the
+  # discovered schema (`entity.discoverKinds`) at assembly. REQUIRED (no default) so this file carries ZERO
+  # kind-name literals — the standard `host`/`user` set arrives from the probe, never a core constant.
+  kindNames,
   errors,
 }:
 let
@@ -107,12 +112,14 @@ let
   # instance / every `meta`.
   cnf = {
     classes = prelude.genAttrs classNames (_: { });
+    # `settings`/`aspects` are the FACET vocabulary (static, kind-independent); the entity coordinates are
+    # the DECLARED kinds (kind-generic — zero kind-name literals; `datacenter`/`rack`/… bind exactly like
+    # `host`/`user`). gen-aspects uses this set to tell a class-content module fn from a parametric guard fn.
     moduleArgs = {
       settings = true;
       aspects = true;
-      host = true;
-      user = true;
-    };
+    }
+    // prelude.genAttrs kindNames (_: true);
     aspectModules = [
       neededByModule
       settingsModule
