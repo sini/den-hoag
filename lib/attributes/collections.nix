@@ -99,8 +99,13 @@ in
             let
               v = a.content.${chName} or null;
               deferredV = isConfigThunk v;
+              _traceUserContent =
+                if chName == "resolved-users" && v != null then
+                  builtins.trace "FOUND resolved-users in ${a.key}: ${builtins.toJSON (builtins.attrNames v)}" null
+                else
+                  null;
             in
-            if v == null then
+            if builtins.seq _traceUserContent (v == null) then
               [ ]
             # den-framed class-ambiguity: a class-shaped (config-demanding) emission at a null-class
             # scope names the aspect, channel, and scope — the producing scope binds no class to

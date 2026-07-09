@@ -37,17 +37,15 @@ let
   forwardExpand =
     self: id: ctx: seen0: aspectList:
     let
-      activeHasAspect = ref:
+      activeHasAspect =
+        ref:
         let
           targetKey = keyOf ref;
           resolvedList = self.get id "resolved-aspects";
         in
         builtins.any (n: n.key == targetKey) resolvedList;
-      ctxWithHasAspect = builtins.mapAttrs (k: v:
-        if builtins.isAttrs v then
-          v // { hasAspect = activeHasAspect; }
-        else
-          v
+      ctxWithHasAspect = builtins.mapAttrs (
+        k: v: if builtins.isAttrs v then v // { hasAspect = activeHasAspect; } else v
       ) ctx;
     in
     prelude.foldl'
@@ -65,8 +63,13 @@ let
               ${key} = true;
             };
             childResult = forwardExpand self id ctx newSeen (concrete.includes or [ ]);
+            _traceWrapperContent =
+              if builtins.match ".*resolved-user.*" key != null then
+                builtins.trace "FOUND RESOLVED USER KEY: ${key}, IS_FUNCTOR: ${builtins.toJSON (concrete.__isWrappedFn or false)}" null
+              else
+                null;
           in
-          {
+          builtins.seq _traceWrapperContent {
             seen = childResult.seen;
             nodes =
               acc.nodes
