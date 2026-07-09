@@ -73,6 +73,7 @@ let
     "droid"
     "patch"
     "wsl"
+    "os"
   ];
   classEntries = prelude.genAttrs classNames (name: {
     id_hash = builtins.hashString "sha256" "den-class:${name}";

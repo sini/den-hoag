@@ -221,7 +221,9 @@ let
         !(builtins.substring 0 2 k == "__")
       ) aspectKeys;
 
-      implicitProvides = builtins.listToAttrs (map (k: { name = k; value = aspect.${k}; }) implicitProviderKeys);
+      _traceKeys = if aName == "blade" then builtins.trace "TRACE_BLADE_KEYS: aspectKeys = ${builtins.toJSON aspectKeys}, implicitProviderKeys = ${builtins.toJSON implicitProviderKeys}" null else null;
+
+      implicitProvides = builtins.seq _traceKeys (builtins.listToAttrs (map (k: { name = k; value = aspect.${k}; }) implicitProviderKeys));
       provides = explicitProvides // implicitProvides;
 
       keys = builtins.attrNames provides;

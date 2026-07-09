@@ -26,6 +26,43 @@ let
   # scope by the engine itself (§14.2).
   deliverLib = import ./deliver.nix { inherit prelude ingest errors; };
 
+  injectRelationships =
+    ing: ctx:
+    let
+      step =
+        currCtx:
+        let
+          findRelation =
+            k: e:
+            if builtins.isAttrs e then
+              let
+                entityName = if e ? name then e.name else if e ? id_hash then e.name else null;
+                orig =
+                  if entityName != null && ing.instances ? ${k} && ing.instances.${k} ? ${entityName} then
+                    ing.instances.${k}.${entityName}
+                  else
+                    { };
+                relKeys = builtins.filter (
+                  attr:
+                  let
+                    val = orig.${attr} or null;
+                  in
+                  ing.registries ? ${attr}
+                  && builtins.isString val
+                  && ing.registries.${attr} ? ${val}
+                  && !(currCtx ? ${attr})
+                ) (builtins.attrNames orig);
+              in
+              prelude.foldl' (acc: attr: acc // { ${attr} = ing.registries.${attr}.${orig.${attr}}; }) { } relKeys
+            else
+              { };
+          relationsList = map (k: findRelation k currCtx.${k}) (builtins.attrNames currCtx);
+          allRelations = prelude.foldl' (acc: r: acc // r) { } relationsList;
+        in
+        if allRelations == { } then currCtx else step (currCtx // allRelations);
+    in
+    step ctx;
+
   setFunctionArgs = f: args: {
     __functor = self: f;
     __functionArgs = args;
@@ -126,10 +163,13 @@ let
   # `resolved-aspects` fixpoint's `forwardExpand` expects either concrete aspects or wrapped
   # functors (`__isWrappedFn = true`). This walks the `includes` tree and wraps lambdas.
   sanitizeAspect =
-    ing: aspectRec: v1Classes: v1Quirks: aspect:
+    ing: aspectRec: v1Classes: v1Quirks: name: aspect:
     if builtins.isFunction aspect then
       {
         __isWrappedFn = true;
+        id_hash = (ing.aspectEntry name).id_hash or null;
+        name = "${name}-wrapper";
+        __aspectName = name;
         __functionArgs =
           if builtins.isFunction aspect then
             builtins.functionArgs aspect
@@ -140,20 +180,81 @@ let
         __functor = self: ctx:
           let
             args = self.__functionArgs;
-            missingArgs = builtins.filter (k: !args.${k} && !(ctx ? ${k})) (builtins.attrNames args);
-            augmentedCtx = builtins.mapAttrs (k: v:
-              if builtins.isAttrs v && v ? name then v // { ${k + "Name"} = v.name; }
-              else v
-            ) ctx;
+            ctxWithExtras = injectRelationships ing (
+              (prelude.optionalAttrs (ing ? secretsConfig) { inherit (ing) secretsConfig; })
+              // (prelude.optionalAttrs (ing ? lib) { inherit (ing) lib; })
+              // ctx
+            );
+            missingArgs = builtins.filter (k: !args.${k} && !(ctxWithExtras ? ${k})) (builtins.attrNames args);
+            augmentEntity =
+              k: e:
+              let
+                entityName = if builtins.isAttrs e && e ? name then e.name else if builtins.isAttrs e && e ? id_hash then e.name else null;
+                orig =
+                  if entityName != null && ing.instances ? ${k} && ing.instances.${k} ? ${entityName} then
+                    ing.instances.${k}.${entityName}
+                  else
+                    { };
+                base = e // orig // (prelude.optionalAttrs (entityName != null) {
+                  ${k + "Name"} = entityName;
+                  name = entityName;
+                  hasAspect = e.hasAspect or (activeHasAspect ing k entityName);
+                });
+              in
+              if k == "host" && !(base ? class) then base // { class = "nixos"; } else base;
+            augmentedCtx = builtins.mapAttrs augmentEntity ctxWithExtras;
+            evaluateQuirks =
+              attrs:
+              if builtins.isAttrs attrs then
+                builtins.mapAttrs (
+                  k: v:
+                  if v1Quirks ? ${k} && builtins.isFunction v then
+                    v augmentedCtx
+                  else
+                    v
+                ) attrs
+              else
+                attrs;
           in
           if missingArgs == [ ] then
-            let res = aspect augmentedCtx; in
-            if builtins.isAttrs res then resolveAspectRef ing aspectRec v1Classes v1Quirks (sanitizeAspect ing aspectRec v1Classes v1Quirks res) else res
+            let
+              res = evaluateQuirks (aspect augmentedCtx);
+              resWithName = if self.__aspectName != null && builtins.isAttrs res then res // { name = self.__aspectName; } // (prelude.optionalAttrs (self ? id_hash) { inherit (self) id_hash; }) else res;
+            in
+            if builtins.isAttrs resWithName then
+              let
+                rewritten = prelude.foldl' (
+                  acc: k:
+                  let
+                    k' = v1ClassKeyMap.${k} or k;
+                  in
+                  acc // { ${k'} = resWithName.${k}; }
+                ) { } (builtins.attrNames resWithName);
+              in
+              sanitizeAspect ing aspectRec v1Classes v1Quirks self.__aspectName rewritten
+            else
+              resWithName
           else
             { id_hash = "noop-skip-${builtins.hashString "sha256" (builtins.toJSON args)}"; name = "noop"; };
       }
     else if builtins.isAttrs aspect then
-      aspect // (if aspect ? includes then { includes = map (sanitizeAspect ing aspectRec v1Classes v1Quirks) aspect.includes; } else { })
+      let
+        hasQuirkFn = builtins.any (k: v1Quirks ? ${k} && builtins.isFunction aspect.${k}) (builtins.attrNames aspect);
+      in
+      if hasQuirkFn then
+        let
+          quirkFnKeys = builtins.filter (k: v1Quirks ? ${k} && builtins.isFunction aspect.${k}) (builtins.attrNames aspect);
+          quirkArgsList = map (k: builtins.functionArgs aspect.${k}) quirkFnKeys;
+          combinedArgs = prelude.foldl' (acc: args:
+            acc // builtins.mapAttrs (name: req:
+              if acc ? ${name} then acc.${name} && req else req
+            ) args
+          ) { } quirkArgsList;
+          wrapped = sanitizeAspect ing aspectRec v1Classes v1Quirks name (_ctx: aspect);
+        in
+        wrapped // { __functionArgs = combinedArgs; }
+      else
+        aspect // (if aspect ? includes then { includes = map (resolveAspectRef ing aspectRec v1Classes v1Quirks) aspect.includes; } else { })
     else
       aspect;
 
@@ -167,12 +268,31 @@ let
   # key a `neededBy` inclusion produces (dedup-coherent), and `id_hash` satisfies `declare.edge`'s A2.
   resolveAspectRef =
     ing: aspectRec: v1Classes: v1Quirks: ref:
-    if builtins.isAttrs ref && ref ? id_hash then
+    let
+      foundName = (ing.findAspectName or (_: null)) ref;
+      refName = if builtins.isAttrs ref && ref ? name then ref.name else if builtins.isString ref then ref else "anon";
+      _traceRef = builtins.trace "RESOLVE ASPECT REF FOR: ${refName}, foundName: ${if foundName != null then foundName else "null"}" null;
+    in
+    builtins.seq _traceRef (
+    if foundName != null then
+      aspectRec foundName
+    else if builtins.isAttrs ref && ref ? id_hash then
       ref
-    else if builtins.isAttrs ref && ref ? name then
+    else if builtins.isAttrs ref && ref ? name && (ing._originalFlatAspects ? ${ref.name} || ref.name == "__default") then
       aspectRec ref.name
+    else if builtins.isAttrs ref && ref ? name then
+      let
+        translated = translateAspect ing aspectRec v1Classes v1Quirks ref.name ref;
+      in
+      translated // ing.aspectEntry ref.name
     else if builtins.isString ref then
       aspectRec ref
+    else if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __isWrappedFn) then
+      let
+        dummyName = "inline-aspect-fn-" + builtins.hashString "sha256" (builtins.toJSON (ref.__functionArgs or (builtins.functionArgs ref)));
+        translated = translateAspect ing aspectRec v1Classes v1Quirks dummyName ref;
+      in
+      translated // ing.aspectEntry dummyName
     else if builtins.isAttrs ref then
       let
         dummyName = "inline-aspect-" + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
@@ -180,9 +300,23 @@ let
       in
       translated // ing.aspectEntry dummyName
     else
-      builtins.trace "TRACE-C6: resolveAspectRef failed with type ${builtins.typeOf ref}" (
-        errors.identityLaw "policy aspect reference" ref
-      );
+      errors.identityLaw "policy aspect reference" ref
+    );
+
+  activeHasAspect = ing: k: entityName: ref:
+    let
+      nodeId = "${k}:${entityName}";
+      targetKey = (ing.findAspectName or (_: null)) ref;
+      resolvedList =
+        if ing ? _lazyDatabase && ing._lazyDatabase != null && ing._lazyDatabase ? structural then
+          ing._lazyDatabase.structural.eval.get nodeId "resolved-aspects"
+        else
+          [ ];
+    in
+    if targetKey == null then
+      false
+    else
+      builtins.any (n: n.key == targetKey) resolvedList;
 
   # NOT-IMPLEMENTED-BY-CENSUS (C1 surface totality): an aspect carrying `meta.__forward` is a
   # `den.batteries.forward` manifestation (v1 forward.nix `forwardItem`). The shim has no desugar for it
@@ -207,15 +341,20 @@ let
     builtins.seq (sentinels.provides name aspect) (
       builtins.seq (noBatteriesForward name aspect) (
         let
-          sanitized = sanitizeAspect ing aspectRec v1Classes v1Quirks aspect;
+          sanitized = sanitizeAspect ing aspectRec v1Classes v1Quirks name aspect;
         in
-        if builtins.isFunction sanitized then
+        if builtins.isFunction sanitized || (builtins.isAttrs sanitized && sanitized ? __isWrappedFn) then
           { includes = [ sanitized ]; }
         else
           let
             excludes = sanitized.excludes or [ ];
             withoutDropped = builtins.removeAttrs sanitized droppedAspectKeys;
-            validKeys = builtins.filter (k: structuralKeysSet ? ${k} || v1Classes ? ${v1ClassKeyMap.${k} or k} || v1Quirks ? ${k}) (builtins.attrNames withoutDropped);
+            validKeys = builtins.filter (k:
+              structuralKeysSet ? ${k}
+              || v1Classes ? ${v1ClassKeyMap.${k} or k}
+              || (builtins.elem (v1ClassKeyMap.${k} or k) [ "nixos" "darwin" "home-manager" "colmena" "nix-on-droid" "disko" ])
+              || v1Quirks ? ${k}
+            ) (builtins.attrNames withoutDropped);
             grounded = prelude.foldl' (
               acc: k:
               let
@@ -250,8 +389,7 @@ let
       translateDelivery ing effect
     else if kind == "include" then
       let
-        ref = if builtins.isFunction effect.value then effect.value ctx else effect.value;
-        _trace = builtins.trace "TRACE-REF: kind=include, effect.value type=${builtins.typeOf effect.value}, ref type=${builtins.typeOf ref}" true;
+        ref = if builtins.isFunction effect.value || (builtins.isAttrs effect.value && effect.value ? __isWrappedFn) then effect.value ctx else effect.value;
       in
       if builtins.isAttrs ref && ref ? name && !(ref ? id_hash) then
         # Inline aspect definition inside an include effect.
@@ -336,7 +474,7 @@ let
     else if builtins.isFunction value then
       value
     else
-      throw "den-compat: policy: expected a function or a policy record (from for/when), got ${builtins.typeOf value}";
+      throw "den-compat: policy: expected a function or a policy record (from for/when), got ${builtins.typeOf value}: ${if builtins.isAttrs value then builtins.toJSON (builtins.attrNames value) else builtins.toString value}";
 
   # A v1 `when`-over-inline-aspect record: `{ name = "<when>"; meta.guard; meta.aspects; includes; }`.
   # These are conditional ASPECTS (the guard reads the in-flight path set, A9.1), not policies — v1
@@ -370,20 +508,28 @@ let
         else
           { };
       args = getFunctionArgs fn;
-      missingArgs = builtins.filter (k: !args.${k} && !(ctx ? ${k})) (builtins.attrNames args);
+      ctxWithExtras = injectRelationships ing (
+        (prelude.optionalAttrs (ing ? secretsConfig) { inherit (ing) secretsConfig; })
+        // (prelude.optionalAttrs (ing ? lib) { inherit (ing) lib; })
+        // ctx
+      );
+      missingArgs = builtins.filter (k: !args.${k} && !(ctxWithExtras ? ${k})) (builtins.attrNames args);
       isProbe = ctx.__isProbe or false;
 
       augmentEntity =
         k: e:
         let
-          _trace2 = builtins.trace "AUGMENT_ENTITY keys for ${k}: ${builtins.toJSON (if builtins.isAttrs e then builtins.attrNames e else e)}" null;
           entityName = if builtins.isAttrs e && e ? name then e.name else if builtins.isAttrs e && e ? id_hash then e.name else null;
           orig =
-            if entityName != null && ing.instances ? ${k + "s"} && ing.instances.${k + "s"} ? ${entityName} then
-              ing.instances.${k + "s"}.${entityName}
+            if entityName != null && ing.instances ? ${k} && ing.instances.${k} ? ${entityName} then
+              ing.instances.${k}.${entityName}
             else
               { };
-          base = builtins.seq _trace2 (e // orig // (prelude.optionalAttrs (entityName != null) { ${k + "Name"} = entityName; name = entityName; }));
+          base = e // orig // (prelude.optionalAttrs (entityName != null) {
+            ${k + "Name"} = entityName;
+            name = entityName;
+            hasAspect = e.hasAspect or (activeHasAspect ing k entityName);
+          });
         in
         if k == "host" && !(base ? class) then base // { class = "nixos"; } else base;
 
@@ -396,7 +542,7 @@ let
             settings = { };
           })
         else
-          builtins.mapAttrs augmentEntity ctx;
+          builtins.mapAttrs augmentEntity ctxWithExtras;
     in
     if isProbe || missingArgs == [ ] then
       let
@@ -455,11 +601,40 @@ let
 in
 { ... }@v1Decls:
 let
-  ing = ingest.ingest v1Decls;
+  ing = ingest.ingest v1Decls // {
+    inherit findAspectName;
+    _originalFlatAspects = v1Decls._originalFlatAspects or (v1Decls.aspects or { });
+    secretsConfig = v1Decls.secretsConfig or { };
+    _lazyDatabase = v1Decls._lazyDatabase or null;
+  } // (prelude.optionalAttrs (v1Decls ? lib) { inherit (v1Decls) lib; });
   v1Aspects = v1Decls.aspects or { };
   v1Policies = v1Decls.policies or { };
   v1Classes = v1Decls.classes or { };
   v1Quirks = v1Decls.quirks or { };
+
+  _originalFlatAspects = ing._originalFlatAspects;
+  flatAspectsList = map (name: { inherit name; val = _originalFlatAspects.${name}; }) (builtins.attrNames _originalFlatAspects);
+
+  findAspectName = ref:
+    if builtins.isAttrs ref && ref ? _aspectPath then
+      ref._aspectPath
+    else if builtins.isString ref then
+      if _originalFlatAspects ? ${ref} then ref else null
+    else if builtins.isAttrs ref && ref ? name && _originalFlatAspects ? ${ref.name} then
+      ref.name
+    else
+      # Find in flatAspectsList
+      let
+        stripMeta = x: if builtins.isAttrs x then removeAttrs x [ "_aspectPath" "name" "id_hash" ] else x;
+        targetVal = stripMeta ref;
+        matches = builtins.filter (item: stripMeta item.val == targetVal) flatAspectsList;
+      in
+      if matches != [ ] then
+        (builtins.head matches).name
+      else
+        null;
+
+
 
   # `den.default` (v1 modules/aspects/defaults.nix:15-19): the default aspect, injected THERE via
   # `lib.genAttrs [ "host" "user" "home" ]` as a schema `includes = [ den.default ]` for EXACTLY the three

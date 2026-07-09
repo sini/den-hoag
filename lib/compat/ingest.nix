@@ -98,12 +98,19 @@ let
   buildSchema =
     v1Schema:
     let
-      declared = builtins.mapAttrs (_: k: { parent = k.parent or null; }) v1Schema;
+      declared = builtins.mapAttrs (
+        name: k:
+        k // {
+          parent = k.parent or (if name == "user" then "host" else null);
+        }
+      ) v1Schema;
       # Built-ins fill only what the v1 schema does not already pin.
       withBuiltins =
-        declared
-        // (if v1Schema ? host && v1Schema.host ? parent then { } else { host = { parent = null; }; })
-        // (if v1Schema ? user && v1Schema.user ? parent then { } else { user = { parent = "host"; }; });
+        {
+          host = { parent = null; };
+          user = { parent = "host"; };
+        }
+        // declared;
       kinds = builtins.attrNames withBuiltins;
       checkParent =
         kind:
@@ -141,7 +148,9 @@ let
           { config.den.schema = schemaDecls; }
         ]
         ++ map (kindName: {
-          options.den.${kindName} = schema.mkInstanceRegistry tree.config.den.schema.${kindName} { };
+          options.den.${kindName} = schema.mkInstanceRegistry tree.config.den.schema.${kindName} {
+            strict = schemaDecls.${kindName}.strict or true;
+          };
         }) kinds
         ++ [
           {
@@ -205,14 +214,17 @@ let
   # class row here). Curried so `compile` hands `deliver` (Task 2) a registry-closed resolver.
   resolveClass =
     classRegistry: policy: name:
-    classRegistry.${name} or (errors.unknownClass policy name);
+    if name == null then
+      throw "RESOLVE_CLASS_NULL_NAME: policy=${policy}, classRegistry=${builtins.toJSON (builtins.attrNames classRegistry)}"
+    else
+      classRegistry.${name} or (errors.unknownClass policy name);
 
   # The top-level boundary: v1Decls → the entry-valued ingestion record every later pass reads. Nothing
   # here evaluates a parametric body, reads a scope graph, or reads resolved state (Law C2).
   ingest =
     v1Decls:
     let
-      lib = builtins.trace "V1DECLS HAS LIB? ${builtins.toString (v1Decls ? lib)}" (v1Decls.lib or null);
+      lib = v1Decls.lib or null;
       v1Schema = v1Decls.schema or { };
       schemaDecls = buildSchema v1Schema;
 
@@ -233,7 +245,7 @@ let
       customInstances = prelude.genAttrs customKinds (k: v1Decls.${k} or (v1Decls.${k + "s"} or { }));
 
       instances = {
-        host = flatHosts;
+        host = builtins.mapAttrs (_: h: h // { class = h.class or "nixos"; }) flatHosts;
         user = prelude.genAttrs userNames (_: { });
       }
       // customInstances;

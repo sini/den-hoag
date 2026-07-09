@@ -81,6 +81,7 @@ let
       bind
       merge
       classShare
+      aspects
       ;
   };
 in

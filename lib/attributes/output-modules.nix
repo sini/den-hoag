@@ -41,6 +41,7 @@
   bind,
   merge,
   classShare,
+  aspects,
 }:
 {
   result,
@@ -242,9 +243,27 @@ let
       _: contribs: map (c: if c.deferred then deferredToThunk c else c.value) contribs
     ) local;
 
+  activeHasAspect = id: ref:
+    let
+      targetKey = aspects.key ref;
+      resolvedList = result.get id "resolved-aspects";
+    in
+    builtins.any (n: n.key == targetKey) resolvedList;
+
   # The binding set handed to a member's class modules: the node's entity bindings (host/user/env
   # entries + enrichments) plus its own resolved channel emissions.
-  bindingsAt = id: (result.get id "enriched-context") // channelBindingsAt id;
+  bindingsAt =
+    id:
+    let
+      ctx = result.get id "enriched-context";
+      ctxWithHasAspect = builtins.mapAttrs (k: v:
+        if builtins.isAttrs v then
+          v // { hasAspect = activeHasAspect id; }
+        else
+          v
+      ) ctx;
+    in
+    ctxWithHasAspect // channelBindingsAt id;
 
   memberClassName =
     id:

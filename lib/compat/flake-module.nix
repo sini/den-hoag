@@ -46,6 +46,14 @@ let
       inherit description;
     };
 
+  lazyAttrsOpt =
+    description:
+    schema.mkOption {
+      type = schema.types.lazyAttrsOf schema.types.anything;
+      default = { };
+      inherit description;
+    };
+
   # The v1 option surface as ONE freeform `den` submodule: each v1 concern is a `mergeOpt` sub-option (the
   # grammar rides untouched), and the `freeformType` absorbs any v1 config outside them (custom-kind
   # instances, `den.default`, …) so an arbitrary den-scoped corpus module evaluates without a schema
@@ -57,25 +65,23 @@ let
   # error) is enforced downstream at `compile`, over the read-back config, not at this permissive eval.
   # KEEP IN SYNC with compile.nix `knownSurfaceKeys` (the totality gate reads that list).
   v1OptionsModule = {
-    options.den = schema.mkOption {
-      default = { };
-      description = "The den v1 declaration surface (read by the compat two-eval, desugared by compile).";
-      type = schema.types.submodule {
-        freeformType = schema.types.lazyAttrsOf schema.types.anything;
-        options = {
-          hosts = mergeOpt "v1 `den.hosts.<system>.<name>` (two-level host definitions).";
-          homes = mergeOpt "v1 `den.homes.<system>.<name>` (standalone home-manager configurations).";
-          schema = mergeOpt "v1 `den.schema.<kind>` (containment kinds + kind-attached includes).";
-          aspects = mergeOpt "v1 `den.aspects.<name>` (aspect definitions).";
-          policies = mergeOpt "v1 `den.policies.<name>` (policy functions / for·when records).";
-          classes = mergeOpt "v1 `den.classes.<name>` (output class registrations).";
-          include = rawListOpt "v1 static entity-scoped aspect inclusions.";
-          quirks = mergeOpt "v1 `den.quirks.<name>` (quirk channels).";
-          contentClass = mergeOpt "v1 kind -> content-class overrides.";
-          nixpkgs = mergeOpt "v1 `den.nixpkgs` (transparent pass-through to den-hoag).";
-          batteries = mergeOpt "v1 `den.batteries` (legacy battery aspects).";
-        };
+    freeformType = schema.types.lazyAttrsOf schema.types.anything;
+    options.den = {
+      hosts = lazyAttrsOpt "v1 `den.hosts.<system>.<name>` (two-level host definitions).";
+      homes = lazyAttrsOpt "v1 `den.homes.<system>.<name>` (standalone home-manager configurations).";
+      schema = schema.mkOption {
+        type = schema.types.lazyAttrsOf (schema.types.lazyAttrsOf schema.types.anything);
+        default = { };
+        description = "v1 `den.schema.<kind>` (containment kinds + kind-attached includes).";
       };
+      aspects = lazyAttrsOpt "v1 `den.aspects.<name>` (aspect definitions).";
+      policies = lazyAttrsOpt "v1 `den.policies.<name>` (policy functions / for·when records).";
+      classes = lazyAttrsOpt "v1 `den.classes.<name>` (output class registrations).";
+      include = rawListOpt "v1 static entity-scoped aspect inclusions.";
+      quirks = lazyAttrsOpt "v1 `den.quirks.<name>` (quirk channels).";
+      contentClass = lazyAttrsOpt "v1 kind -> content-class overrides.";
+      nixpkgs = lazyAttrsOpt "v1 `den.nixpkgs` (transparent pass-through to den-hoag).";
+      batteries = lazyAttrsOpt "v1 `den.batteries` (legacy battery aspects).";
     };
   };
 
@@ -104,32 +110,150 @@ let
 
   flakeModuleCore = [ v1OptionsModule ] ++ legacyBatteries;
 
+  injectAspectPaths =
+    classes: quirks: path: value:
+    if builtins.isAttrs value then
+      let
+        structuralKeysSet = {
+          settings = true;
+          includes = true;
+          neededBy = true;
+          meta = true;
+          tags = true;
+          projects = true;
+          name = true;
+          description = true;
+          id_hash = true;
+        };
+        v1ClassKeyMap = {
+          homeManager = "home-manager";
+        };
+        isNestedKey = k:
+          !(structuralKeysSet ? ${k})
+          && !(classes ? ${v1ClassKeyMap.${k} or k} || classes ? ${k})
+          && !(quirks ? ${k})
+          && (builtins.isAttrs value.${k} || builtins.isFunction value.${k});
+
+        nestedKeys = builtins.filter isNestedKey (builtins.attrNames value);
+
+        # Recurse into nested aspects
+        recursedNested = builtins.listToAttrs (map (k: {
+          name = k;
+          value = injectAspectPaths classes quirks (if path == "" then k else "${path}.${k}") value.${k};
+        }) nestedKeys);
+
+        # Check if the current node itself is an aspect
+        hasAspectContent = builtins.any (k: !isNestedKey k) (builtins.attrNames value);
+        
+        thisAspect = value // recursedNested;
+        injected = if hasAspectContent && path != "" then
+          thisAspect // { _aspectPath = path; name = path; }
+        else
+          thisAspect;
+      in
+        injected
+    else
+      value;
+
   # Eval the v1 modules in the v1-shaped tree and read back `config.den` (the v1 declaration surface,
   # verbatim) for `compile` to desugar. Only `flakeModuleCore` (not the legacy tag modules) declares
   # options here; the legacy surfaces join in their own tasks.
   evalV1 =
     userModules:
     let
-      # gen-merge (which schema.evalModuleTree wraps) does not natively lift `_module.args` into
-      # the module argument scope like nixpkgs `lib.evalModules` does. We must extract `lib` from
-      # the user modules (where flakeOutputModule passes it) and supply it explicitly via specialArgs.
-      extractedLib =
-        let
-          libs = builtins.filter (l: l != null) (
-            map (m: if builtins.isAttrs m then (m._module.args.lib or null) else null) userModules
-          );
-        in
-        if libs != [ ] then builtins.head libs else null;
+      # Extract ALL _module.args from userModules first so they are available to filterModule
+      extractedModuleArgs = prelude.foldl' (
+        acc: m:
+        if builtins.isAttrs m && m ? _module then
+          acc // (m._module.args or { })
+        else
+          acc
+      ) { } userModules;
+
+      availableArgs = extractedModuleArgs // {
+        isCompatEval = true;
+        flake-parts-lib = null;
+        den = null;
+        withSystem = null;
+      };
+
+      filterModuleAttrs =
+        attrs:
+        if builtins.isAttrs attrs then
+          let
+            newOptions =
+              if attrs ? options && builtins.isAttrs attrs.options && attrs.options ? den then
+                { inherit (attrs.options) den; }
+              else
+                { };
+            newConfig =
+              if attrs ? config && builtins.isAttrs attrs.config && attrs.config ? den then
+                { inherit (attrs.config) den; }
+              else
+                { };
+            newImports =
+              if attrs ? imports && builtins.isList attrs.imports then
+                map filterModule attrs.imports
+              else
+                [ ];
+            newModule =
+              if attrs ? _module then
+                { inherit (attrs) _module; }
+              else
+                { };
+          in
+          newModule
+          // (prelude.optionalAttrs (newOptions ? den) { options = newOptions; })
+          // (prelude.optionalAttrs (newConfig ? den) { config = newConfig; })
+          // (prelude.optionalAttrs (attrs ? den) { den = attrs.den; })
+          // (prelude.optionalAttrs (attrs ? imports) { imports = newImports; })
+        else
+          attrs;
+
+      filterModule =
+        m:
+        if builtins.typeOf m == "path" then
+          filterModule (import m)
+        else if builtins.isFunction m then
+          let
+            fArgs = builtins.functionArgs m;
+            hasUnsatisfiableArg = prelude.any (
+              name:
+              !fArgs.${name}
+              && !(builtins.elem name [ "config" "options" "lib" "pkgs" "modulesPath" "_module" ])
+              && !(availableArgs ? ${name})
+            ) (builtins.attrNames fArgs);
+          in
+          if hasUnsatisfiableArg then
+            _: { }
+          else
+            args: filterModuleAttrs (m args)
+        else
+          filterModuleAttrs m;
+
+      filteredUserModules = map filterModule userModules;
 
       # Fixpoint evaluation: user modules require `den` as a module argument, but `den` itself
       # includes `config.den` (the result of evaluating those modules). This mirrors how nixpkgs
       # `lib.evalModules` passes `config` to modules.
       eval = schema.evalModuleTree {
-        modules = flakeModuleCore ++ userModules;
-        specialArgs = {
+        modules = flakeModuleCore ++ filteredUserModules;
+        # Layer: extractedModuleArgs (inputs, lib, self, rootPath, ...)
+        # are the BASE, then evalV1's own overrides (den, withSystem) win.
+        specialArgs = extractedModuleArgs // {
+          isCompatEval = true;
+          flake-parts-lib = extractedModuleArgs.flake-parts-lib or (
+            if extractedModuleArgs ? inputs && extractedModuleArgs.inputs ? flake-parts then
+              extractedModuleArgs.inputs.flake-parts.lib
+            else
+              null
+          );
           den = eval.config.den // {
             lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
             batteries = eval.config.den.batteries or { };
+            classes = denHoag.classes // (eval.config.den.classes or { });
+            policies = { host-to-users = { __isPolicy = true; fn = _: [ ]; }; } // (eval.config.den.policies or { });
+            aspects = injectAspectPaths (denHoag.classes // (eval.config.den.classes or { })) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
             schema =
               (schema.evalModuleTree {
                 modules = [
@@ -140,12 +264,14 @@ let
                 ];
               }).config.den.schema;
           };
-          inputs = { };
-          withSystem = _sys: fn: fn { self' = { }; inputs' = { }; };
-        } // prelude.optionalAttrs (extractedLib != null) { lib = extractedLib; };
+          withSystem = extractedModuleArgs.withSystem or (_sys: fn: fn { self' = { }; inputs' = { }; });
+        };
       };
     in
-    eval.config.den;
+    eval.config.den // {
+      policies = { host-to-users = { __isPolicy = true; fn = _: [ ]; }; } // (eval.config.den.policies or { });
+      aspects = injectAspectPaths (denHoag.classes // (eval.config.den.classes or { })) (eval.config.den.quirks or { }) "" (eval.config.den.aspects or { });
+    };
 
   # The compat nixos instantiate wrapper (§2.5 carry-in): v1's per-host `system` never reaches
   # den-hoag's pipeline (den-hoag entities are field-less), so it is injected HERE, at the terminal —
@@ -163,6 +289,7 @@ let
       channels ? { },
       denContext,
       terminal,
+      injectRelationships ? (ctx: ctx),
     }:
     args@{
       name,
@@ -171,7 +298,12 @@ let
       classCfg,
     }:
     let
+      v1Quirks = denContext.quirks or { };
+      defaultQuirkBindings = builtins.mapAttrs (_: _: [ ]) v1Quirks;
+      _traceBindingsKeys = builtins.trace "BINDINGS_KEYS: host=${name}, keys=${builtins.toJSON (builtins.attrNames bindings)}, defaultQuirks=${builtins.toJSON (builtins.attrNames defaultQuirkBindings)}" null;
       hostEntry = bindings.host or null;
+      _traceHostEntry = builtins.trace "HOST_ENTRY: host=${name}, keys=${builtins.toJSON (if hostEntry == null then null else builtins.attrNames hostEntry)}" null;
+      _traceBindingsVal = builtins.trace "BINDINGS_VAL: host=${name}, val=${builtins.toJSON (builtins.mapAttrs (k: v: if v == null then "null" else if builtins.isAttrs v then (if v ? name then "attrs:${v.name}" else "attrs") else if builtins.isList v then "list" else if builtins.isFunction v then "fun" else "scalar") bindings)}" null;
       sys = if hostEntry == null then null else systemFor hostEntry;
       sysModule = if sys == null then [ ] else [ { nixpkgs.hostPlatform.system = sys; } ];
 
@@ -180,8 +312,7 @@ let
 
       # 2. Schema default instantiate reconstructed from the channel (since v1 eval strips the schema)
       channelName = if hostEntry == null then null else channelFor hostEntry;
-      _traceChannels = builtins.trace "TRACE_CHANNELS: host=${name}, channelName=${toString channelName}, channelKeys=${builtins.toJSON (builtins.attrNames channels)}" null;
-      resolvedChannel = builtins.seq _traceChannels (channels.${channelName} or null);
+      resolvedChannel = channels.${channelName} or null;
       schemaInstantiate =
         if resolvedChannel == null then
           null
@@ -191,19 +322,96 @@ let
           resolvedChannel.nixosSystem or null;
 
       hostInstantiate = if directInstantiate != null then directInstantiate else schemaInstantiate;
-      # INJECT `den` into `bindings` so gen-bind provides it as a module argument during `__configThunk` resolution!
-      collected = terminal (
+
+      hmModule =
+        if resolvedChannel == null then
+          [ ]
+        else if classCfg.name == "darwin" then
+          if resolvedChannel ? home-manager-module.darwin && resolvedChannel.home-manager-module.darwin != null then
+            [ resolvedChannel.home-manager-module.darwin ]
+          else
+            [ ]
+        else
+          if resolvedChannel ? home-manager-module.nixos && resolvedChannel.home-manager-module.nixos != null then
+            [ resolvedChannel.home-manager-module.nixos ]
+          else
+            [ ];
+
+      allBindings = injectRelationships (defaultQuirkBindings // bindings // {
+        den = denContext;
+      });
+
+      hostCfg =
+        if hostEntry == null then
+          { }
+        else
+          let
+            sys = systemFor hostEntry;
+          in
+          if sys != null then
+            denContext.hosts.${sys}.${hostEntry.name} or { }
+          else
+            { };
+
+      strippedHostCfg =
+        if hostCfg ? networking then
+          { inherit (hostCfg) networking; }
+        else
+          { };
+
+      _traceHostModules =
+        let
+          showModule = m:
+            if builtins.isPath m then
+              builtins.toString m
+            else if builtins.isFunction m then
+              "lambda"
+            else if builtins.isAttrs m then
+              (if m ? _file then m._file
+               else if m ? key then m.key
+               else if m ? config && builtins.isAttrs m.config then
+                 "attrs-config:keys=${builtins.concatStringsSep "," (builtins.attrNames m.config)}"
+               else
+                 "attrs:keys=${builtins.concatStringsSep "," (builtins.attrNames m)}")
+            else
+              builtins.typeOf m;
+          names = map showModule hostModules;
+        in
+        builtins.trace "HOST_MODULES for ${name}: [${builtins.concatStringsSep "; " names}]" null;
+      compatAliasModule = { lib, config, ... }: {
+        options.den = {
+          host = lib.mkOption { type = lib.types.anything; default = { }; };
+          user = lib.mkOption { type = lib.types.anything; default = { }; };
+          environment = lib.mkOption { type = lib.types.anything; default = { }; };
+          cluster = lib.mkOption { type = lib.types.anything; default = { }; };
+          group = lib.mkOption { type = lib.types.anything; default = { }; };
+        };
+        config.den = {
+          host = config.den.hosts or { };
+          user = config.den.users or { };
+          environment = config.den.environments or { };
+          cluster = config.den.clusters or { };
+          group = config.den.groups or { };
+        };
+      };
+
+      collected = builtins.seq _traceHostModules (terminal (
         args
         // {
-          hostModules = sysModule ++ hostModules;
-          bindings = bindings // {
-            den = denContext;
-          };
+          hostModules = [ { _module.args = allBindings; } compatAliasModule ] ++ sysModule ++ hostModules ++ [ strippedHostCfg ];
+          bindings = allBindings;
         }
-      );
+      ));
       extractedModules = collected.modules or collected.hostModules or [ ];
+      _traceExtracted = builtins.trace "EXTRACTED_MODULES for ${name}: ${builtins.concatStringsSep ", " (map (m: if builtins.isPath m then builtins.toString m else if builtins.isAttrs m && m ? _file then m._file else if builtins.isAttrs m && m ? key then m.key else builtins.typeOf m) extractedModules)}" null;
     in
-    if hostInstantiate != null then hostInstantiate { modules = extractedModules; } else collected;
+    if builtins.seq _traceBindingsKeys (builtins.seq _traceHostEntry (builtins.seq _traceBindingsVal (builtins.seq _traceExtracted (hostInstantiate != null)))) then
+      hostInstantiate {
+        modules = hmModule ++ extractedModules;
+        specialArgs = allBindings;
+      }
+    else
+      collected;
 
   # The pure bridge: `compile`'s output → a den-hoag `config.den.*` module. Instances become
   # `config.den.<kind>.<name>` FIELD-LESS — den-hoag entities carry no content (it comes from aspects),
@@ -213,11 +421,9 @@ let
   # nixos class carries the compat systemFor-injecting instantiate (§2.5 carry-in), so `den.hosts`'
   # per-host platform reaches the built system.
   mkFleetModule =
-    v1Decls: compiled:
+    v1Decls: compiled: inputs:
     let
-      instanceConfig = builtins.mapAttrs (
-        _kind: insts: builtins.mapAttrs (_: _: { }) insts
-      ) compiled.entities.instances;
+      instanceConfig = compiled.entities.instances;
       denContext = v1Decls // {
         lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
         batteries = v1Decls.batteries or { };
@@ -235,8 +441,38 @@ let
       nixosInstantiate = mkNixosInstantiate {
         inherit (compiled.entities) systemFor channelFor instantiateFor;
         terminal = denHoag.internal.terminal.collect;
-        channels = v1Decls.quirks or { };
+        channels =
+          let
+            ins = inputs;
+          in
+          {
+            nixos-unstable = {
+              nixosSystem = ins.nixpkgs-unstable.lib.nixosSystem or null;
+              darwinSystem = ins.nix-darwin-unstable.lib.darwinSystem or null;
+              home-manager-module.nixos = ins.home-manager-unstable.nixosModules.home-manager or null;
+              home-manager-module.darwin = ins.home-manager-unstable.darwinModules.home-manager or null;
+            };
+            nixpkgs-master = {
+              nixosSystem = ins.nixpkgs-master.lib.nixosSystem or null;
+              darwinSystem = ins.nix-darwin-unstable.lib.darwinSystem or null;
+              home-manager-module.nixos = ins.home-manager-master.nixosModules.home-manager or null;
+              home-manager-module.darwin = ins.home-manager-master.darwinModules.home-manager or null;
+            };
+            nixos-stable = {
+              nixosSystem = ins.nixpkgs.lib.nixosSystem or null;
+              darwinSystem = ins.nix-darwin.lib.darwinSystem or null;
+              home-manager-module.nixos = ins.home-manager.nixosModules.home-manager or null;
+              home-manager-module.darwin = ins.home-manager.darwinModules.home-manager or null;
+            };
+            nixpkgs-stable-darwin = {
+              nixosSystem = ins.nixpkgs-stable-darwin.lib.nixosSystem or null;
+              darwinSystem = ins.nix-darwin.lib.darwinSystem or null;
+              home-manager-module.nixos = ins.home-manager-stable-darwin.nixosModules.home-manager or null;
+              home-manager-module.darwin = ins.home-manager-stable-darwin.darwinModules.home-manager or null;
+            };
+          };
         inherit denContext;
+        injectRelationships = compiled.injectRelationships or (ctx: ctx);
       };
     in
     {
@@ -258,20 +494,35 @@ let
   flakeOutputModule =
     {
       config,
-      lib ? null,
       ...
     }@args:
     let
-      _traceLib = builtins.trace "TRACE_FLAKE_MODULE: lib is ${if lib == null then "NULL" else "PROVIDED"}" null;
-      v1Base = builtins.seq _traceLib (evalV1 [ (prelude.optionalAttrs (lib != null) { _module.args = { inherit lib; }; }) ]);
+      lib = args.lib or null;
+      rootPath = args.rootPath or null;
+      isCompatEval = args.isCompatEval or false;
+      v1Base = evalV1 [
+        {
+          _module.args =
+            prelude.optionalAttrs (lib != null) { inherit lib; }
+            // prelude.optionalAttrs (args ? inputs) { inherit (args) inputs; }
+            // prelude.optionalAttrs (args ? self) { inherit (args) self; }
+            // prelude.optionalAttrs (rootPath != null) { inherit rootPath; };
+        }
+      ];
     in
-    {
+    if isCompatEval then
+      { }
+    else
+      {
       # When evaluated by flake-parts (which passes `lib`), provide a permissive definition collector.
       # This leverages gen-schema's strength: flake-parts only loosely merges the `den` attrset,
       # while the strict `schema.evalModuleTree` in `mkDen` does the actual heavy lifting.
-      options.den =
+       options.den =
         let
-          v1Anything = import ./v1-type.nix { inherit lib; };
+          v1Anything = import ./v1-type.nix {
+            inherit lib;
+            aspectNames = builtins.attrNames (v1Base.aspects or { });
+          };
         in
         if lib != null then
           lib.mkOption {
@@ -307,8 +558,8 @@ let
         lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
         batteries = v1Base.batteries or { };
         policies = (v1Base.policies or { }) // (config.den.policies or { });
-        classes = (v1Base.classes or { }) // (config.den.classes or { });
-        aspects = (v1Base.aspects or { }) // (config.den.aspects or { });
+        classes = denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { });
+        aspects = injectAspectPaths (denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { })) (config.den.quirks or { }) "" ((v1Base.aspects or { }) // (config.den.aspects or { }));
         schema =
           (schema.evalModuleTree {
             modules = [
@@ -326,14 +577,16 @@ let
             {
               den = config.den // {
                 policies = (v1Base.policies or { }) // (config.den.policies or { });
-                classes = (v1Base.classes or { }) // (config.den.classes or { });
-                aspects = (v1Base.aspects or { }) // (config.den.aspects or { });
+                classes = denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { });
+                aspects = injectAspectPaths (denHoag.classes // (v1Base.classes or { }) // (config.den.classes or { })) (config.den.quirks or { }) "" ((v1Base.aspects or { }) // (config.den.aspects or { }));
               };
             }
             {
               _module.args =
                 prelude.optionalAttrs (lib != null) { inherit lib; }
-                // prelude.optionalAttrs (args ? inputs) { inherit (args) inputs; };
+                // prelude.optionalAttrs (args ? inputs) { inherit (args) inputs; }
+                // prelude.optionalAttrs (args ? self) { inherit (args) self; }
+                // prelude.optionalAttrs (rootPath != null) { inherit rootPath; };
             }
           ];
         in
@@ -358,16 +611,68 @@ let
   legacyForwardsDesugar = legacy.forwards.desugar or (v1: v1);
   legacyDefaultsDesugar = legacy.defaults.desugar or (v1: v1);
 
+  flattenAspects =
+    classes: quirks: path: value:
+    if builtins.isFunction value then
+      { ${path} = value; }
+    else if builtins.isAttrs value then
+      let
+        structuralKeysSet = {
+          settings = true;
+          includes = true;
+          neededBy = true;
+          meta = true;
+          tags = true;
+          projects = true;
+          name = true;
+          description = true;
+          id_hash = true;
+        };
+        v1ClassKeyMap = {
+          homeManager = "home-manager";
+        };
+        isNestedKey = k:
+          !(structuralKeysSet ? ${k})
+          && !(classes ? ${v1ClassKeyMap.${k} or k} || classes ? ${k})
+          && !(quirks ? ${k})
+          && (builtins.isAttrs value.${k} || builtins.isFunction value.${k});
+        
+        nestedKeys = builtins.filter isNestedKey (builtins.attrNames value);
+        aspectKeys = builtins.filter (k: !isNestedKey k) (builtins.attrNames value);
+        
+        thisAspect = { ${path} = value; };
+            
+        nestedAspects = prelude.foldl' (acc: k:
+          acc // flattenAspects classes quirks (if path == "" then k else "${path}.${k}") value.${k}
+        ) { } nestedKeys;
+      in
+      thisAspect // nestedAspects
+    else
+      { };
+
   # Thread the desugars: forwards reshapes `classes`, then provides reshapes `aspects`.
   desugarLegacy =
     v1:
     let
-      v1d = legacyDefaultsDesugar v1;
+      # Flatten aspects before desugaring, so provides.desugar and compile see a flat set
+      classes = denHoag.classes // (v1.classes or { });
+      quirks = v1.quirks or { };
+      flatAspects = flattenAspects classes quirks "" (v1.aspects or { });
+      v1WithFlat = v1 // { aspects = flatAspects; };
+
+      v1d = legacyDefaultsDesugar v1WithFlat;
       v1f = legacyForwardsDesugar v1d;
+      desugaredAspects = builtins.mapAttrs (name: aspect:
+        if builtins.isAttrs aspect then
+          aspect // { _aspectPath = name; name = name; }
+        else
+          aspect
+      ) (legacyProvidesDesugar v1f);
     in
     v1f
     // {
-      aspects = legacyProvidesDesugar v1f;
+      aspects = desugaredAspects;
+      _originalFlatAspects = desugaredAspects;
     };
 
   # `compileFull` — the "through flakeModule" compile: apply this wiring's legacy desugars, then compile.
@@ -390,11 +695,27 @@ let
     userModules:
     let
       v1Decls = evalV1 userModules;
+      extractedModuleArgs = prelude.foldl' (
+        acc: m:
+        if builtins.isAttrs m && m ? _module then
+          acc // (m._module.args or { })
+        else
+          acc
+      ) { } userModules;
+      inputs = extractedModuleArgs.inputs or { };
+      
+      v1DeclsWithRegistry = v1Decls // {
+        _lazyDatabase = built.den;
+      };
+
+      compiled = compile (desugarLegacy v1DeclsWithRegistry);
+
+      built = denHoag.mkDen [
+        (mkFleetModule v1Decls compiled inputs)
+        interpretModule
+      ];
     in
-    denHoag.mkDen [
-      (mkFleetModule v1Decls (compile (desugarLegacy v1Decls)))
-      interpretModule
-    ];
+    built;
 in
 {
   inherit

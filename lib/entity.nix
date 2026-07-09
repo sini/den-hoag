@@ -9,6 +9,64 @@
   merge,
 }:
 let
+  filterModuleAttrs =
+    availableArgs:
+    attrs:
+    if builtins.isAttrs attrs then
+      let
+        newOptions =
+          if attrs ? options && builtins.isAttrs attrs.options && attrs.options ? den then
+            { inherit (attrs.options) den; }
+          else
+            { };
+        newConfig =
+          if attrs ? config && builtins.isAttrs attrs.config && attrs.config ? den then
+            { inherit (attrs.config) den; }
+          else
+            { };
+        newImports =
+          if attrs ? imports && builtins.isList attrs.imports then
+            map (filterModule availableArgs) attrs.imports
+          else
+            [ ];
+        newModule =
+          if attrs ? _module then
+            { inherit (attrs) _module; }
+          else
+            { };
+      in
+      newModule
+      // (prelude.optionalAttrs (newOptions ? den) { options = newOptions; })
+      // (prelude.optionalAttrs (newConfig ? den) { config = newConfig; })
+      // (prelude.optionalAttrs (attrs ? den) { den = attrs.den; })
+      // (prelude.optionalAttrs (attrs ? imports) { imports = newImports; })
+    else
+      attrs;
+
+  filterModule =
+    availableArgs:
+    m:
+    if builtins.typeOf m == "path" then
+      filterModule availableArgs (import m)
+    else if builtins.isFunction m then
+      let
+        fArgs = builtins.functionArgs m;
+        hasUnsatisfiableArg = prelude.any (
+          name:
+          !fArgs.${name}
+          && !(builtins.elem name [ "config" "options" "lib" "pkgs" "modulesPath" "_module" ])
+          && !(availableArgs ? ${name})
+        ) (builtins.attrNames fArgs);
+      in
+      if hasUnsatisfiableArg then
+        _: { }
+      else
+        args: filterModuleAttrs availableArgs (m args)
+    else
+      filterModuleAttrs availableArgs m;
+
+  filterModules = availableArgs: map (filterModule availableArgs);
+
   # Discover the registered kinds from the schema declarations WITHOUT evaluating any
   # instance registry: a schema-only probe tree, freeform-absorbing every non-`schema`
   # `den.*` config the user modules set (instances, membership), exposes `_kindNames` +
@@ -22,26 +80,59 @@ let
   discoverKinds =
     userModules:
     let
+      extractedModuleArgs = prelude.foldl' (
+        acc: m:
+        if builtins.isAttrs m && m ? _module then
+          acc // (m._module.args or { })
+        else
+          acc
+      ) { } userModules;
+      availableArgs = extractedModuleArgs // {
+        isCompatEval = true;
+        flake-parts-lib = null;
+        den = null;
+        withSystem = null;
+      };
+      filteredUserModules = filterModules availableArgs userModules;
       probe = merge.evalModuleTree {
+        specialArgs = extractedModuleArgs // {
+          isCompatEval = true;
+          flake-parts-lib = extractedModuleArgs.flake-parts-lib or (
+            if extractedModuleArgs ? inputs && extractedModuleArgs.inputs ? flake-parts then
+              extractedModuleArgs.inputs.flake-parts.lib
+            else
+              null
+          );
+        };
         modules = [
           {
-            options.den = merge.mkOption {
-              default = { };
-              type = merge.types.submodule {
-                freeformType = merge.types.lazyAttrsOf merge.types.anything;
-                options.schema = schema.mkSchemaOption { };
-              };
+            freeformType = merge.types.lazyAttrsOf merge.types.anything;
+            options.den = {
+              schema = schema.mkSchemaOption { };
             };
           }
         ]
-        ++ userModules;
+        ++ filteredUserModules;
       };
       sch = probe.config.den.schema;
+      freeformProbe = merge.evalModuleTree {
+        specialArgs = probe.specialArgs;
+        modules = [
+          {
+            options.den = merge.mkOption {
+              type = merge.types.anything;
+              default = { };
+            };
+          }
+        ]
+        ++ filteredUserModules;
+      };
     in
     prelude.genAttrs sch._kindNames (kindName: {
       parent = sch._topology.${kindName}.parent;
       contentClass = null;
       dim = kindName;
+      strict = freeformProbe.config.den.schema.${kindName}.strict or true;
     });
 
   # Discover the declared quirk channel NAMES the same freeform-probe way `discoverKinds` reads
@@ -54,18 +145,37 @@ let
   discoverChannels =
     userModules:
     let
+      extractedModuleArgs = prelude.foldl' (
+        acc: m:
+        if builtins.isAttrs m && m ? _module then
+          acc // (m._module.args or { })
+        else
+          acc
+      ) { } userModules;
+      availableArgs = extractedModuleArgs // {
+        isCompatEval = true;
+        flake-parts-lib = null;
+        den = null;
+        withSystem = null;
+      };
+      filteredUserModules = filterModules availableArgs userModules;
       probe = merge.evalModuleTree {
+        specialArgs = extractedModuleArgs // {
+          isCompatEval = true;
+          flake-parts-lib = extractedModuleArgs.flake-parts-lib or (
+            if extractedModuleArgs ? inputs && extractedModuleArgs.inputs ? flake-parts then
+              extractedModuleArgs.inputs.flake-parts.lib
+            else
+              null
+          );
+        };
         modules = [
           {
-            options.den = merge.mkOption {
-              default = { };
-              type = merge.types.submodule {
-                freeformType = merge.types.lazyAttrsOf merge.types.anything;
-              };
-            };
+            freeformType = merge.types.lazyAttrsOf merge.types.anything;
+            options.den = { };
           }
         ]
-        ++ userModules;
+        ++ filteredUserModules;
       };
     in
     builtins.attrNames (probe.config.den.quirks or { });
@@ -80,15 +190,40 @@ let
   build =
     { userModules, denMeta }:
     let
+      extractedModuleArgs = prelude.foldl' (
+        acc: m:
+        if builtins.isAttrs m && m ? _module then
+          acc // (m._module.args or { })
+        else
+          acc
+      ) { } userModules;
+      availableArgs = extractedModuleArgs // {
+        isCompatEval = true;
+        flake-parts-lib = null;
+        den = null;
+        withSystem = null;
+      };
+      filteredUserModules = filterModules availableArgs userModules;
       tree = merge.evalModuleTree {
+        specialArgs = extractedModuleArgs // {
+          isCompatEval = true;
+          flake-parts-lib = extractedModuleArgs.flake-parts-lib or (
+            if extractedModuleArgs ? inputs && extractedModuleArgs.inputs ? flake-parts then
+              extractedModuleArgs.inputs.flake-parts.lib
+            else
+              null
+          );
+        };
         modules = [
           { options.den.schema = schema.mkSchemaOption { }; }
         ]
         # one instance registry per declared kind, referencing the evaluated kind value:
-        ++ prelude.mapAttrsToList (kindName: _: {
-          options.den.${kindName} = schema.mkInstanceRegistry tree.config.den.schema.${kindName} { };
+        ++ prelude.mapAttrsToList (kindName: meta: {
+          options.den.${kindName} = schema.mkInstanceRegistry tree.config.den.schema.${kindName} {
+            strict = meta.strict;
+          };
         }) denMeta
-        ++ userModules;
+        ++ filteredUserModules;
       };
     in
     {

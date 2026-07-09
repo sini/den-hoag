@@ -1,914 +1,344 @@
-evaluating flake...
-checking flake output 'apps'...
-checking flake output 'checks'...
-checking derivation checks.x86_64-linux.default...
-trace: TRACE-IMPORTS-TYPES: ["set","set","set","set"]
-trace: TRACE-IMPORTS-TYPES: ["set","set","set","set"]
+warning: input 'nixos-anywhere' has an override for a non-existent input 'flake-parts'
+warning: input 'scope-engine' has an override for a non-existent input 'nixpkgs'
 error:
-       … while checking flake output 'checks'
-
-       … while checking the derivation 'checks.x86_64-linux.default'
-
-       … while calling the 'derivationStrict' builtin
-         at «nix-internal»/derivation-internal.nix:37:12:
-           36|
-           37|   strict = derivationStrict drvAttrs;
-             |            ^
-           38|
-
-       … while evaluating derivation 'den-hoag-tests'
-         whose name attribute is located at «https://releases.nixos.org/nixos/unstable/nixos-26.11pre1027867.d407951447dc/nixexprs.tar.xz?narHash=sha256-FGQ8TfSm9WviNE/fQAWsKs%2By4GkX8fU4EScewpw54Y8%3D»/pkgs/stdenv/generic/make-derivation.nix:651:11
-
-       … while evaluating attribute 'buildCommand' of derivation 'den-hoag-tests'
-         at «https://releases.nixos.org/nixos/unstable/nixos-26.11pre1027867.d407951447dc/nixexprs.tar.xz?narHash=sha256-FGQ8TfSm9WviNE/fQAWsKs%2By4GkX8fU4EScewpw54Y8%3D»/pkgs/build-support/trivial-builders/default.nix:81:17:
-           80|         enableParallelBuilding = true;
-           81|         inherit buildCommand name;
-             |                 ^
-           82|         passAsFile = [ "buildCommand" ] ++ (derivationArgs.passAsFile or [ ]);
-
-       … while calling the 'toString' builtin
-         at «github:sini/gen/9157fe879ca6bf6103f095c1f1f23c86271860bd?narHash=sha256-D5XT2Fj55O9SCB3%2BsnwnXbZ/lllpI4QeTUnHmy8JL14%3D»/ci/flakeModule.nix:104:19:
-          103|         checks.default = pkgs.runCommand "${name}-tests" { } ''
-          104|           echo "${toString (builtins.length (lib.flatten assertTests))} tests passed"
-             |                   ^
-          105|           touch $out
-
-       … while calling the 'length' builtin
-         at «github:sini/gen/9157fe879ca6bf6103f095c1f1f23c86271860bd?narHash=sha256-D5XT2Fj55O9SCB3%2BsnwnXbZ/lllpI4QeTUnHmy8JL14%3D»/ci/flakeModule.nix:104:29:
-          103|         checks.default = pkgs.runCommand "${name}-tests" { } ''
-          104|           echo "${toString (builtins.length (lib.flatten assertTests))} tests passed"
-             |                             ^
-          105|           touch $out
-
-       … from call site
-         at «github:sini/gen/9157fe879ca6bf6103f095c1f1f23c86271860bd?narHash=sha256-D5XT2Fj55O9SCB3%2BsnwnXbZ/lllpI4QeTUnHmy8JL14%3D»/ci/flakeModule.nix:104:46:
-          103|         checks.default = pkgs.runCommand "${name}-tests" { } ''
-          104|           echo "${toString (builtins.length (lib.flatten assertTests))} tests passed"
-             |                                              ^
-          105|           touch $out
-
-       … while calling 'flatten'
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:13:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |             ^
-          446|
-
-       … while calling the 'concatMap' builtin
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:33:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                                 ^
-          446|
-
-       … while calling anonymous lambda
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:44:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                                            ^
-          446|
-
-       … from call site
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:47:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                                               ^
-          446|
-
-       … while calling 'flatten'
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:13:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |             ^
-          446|
-
-       … while calling the 'concatMap' builtin
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:33:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                                 ^
-          446|
-
-       … while calling anonymous lambda
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:44:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                                            ^
-          446|
-
-       … from call site
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:47:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                                               ^
-          446|
-
-       … while calling 'flatten'
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:13:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |             ^
-          446|
-
-       … while evaluating a branch condition
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:16:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                ^
-          446|
-
-       … while calling the 'isList' builtin
-         at «github:nix-community/nixpkgs.lib/f5901329dade4a6ea039af1433fb087bd9c1fe14?narHash=sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ%3D»/lib/lists.nix:445:19:
-          444|   */
-          445|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
-             |                   ^
-          446|
-
-       … while calling anonymous lambda
-         at «github:sini/gen/9157fe879ca6bf6103f095c1f1f23c86271860bd?narHash=sha256-D5XT2Fj55O9SCB3%2BsnwnXbZ/lllpI4QeTUnHmy8JL14%3D»/ci/flakeModule.nix:23:17:
-           22|     lib.mapAttrsToList (
-           23|       testName: t:
-             |                 ^
-           24|       if t.expr == t.expected then
-
-       … while evaluating a branch condition
-         at «github:sini/gen/9157fe879ca6bf6103f095c1f1f23c86271860bd?narHash=sha256-D5XT2Fj55O9SCB3%2BsnwnXbZ/lllpI4QeTUnHmy8JL14%3D»/ci/flakeModule.nix:24:7:
-           23|       testName: t:
-           24|       if t.expr == t.expected then
-             |       ^
-           25|         true
-
-       … while evaluating the attribute 'expr'
-         at /home/sini/Documents/repos/den-hoag/ci/tests/compat-deliver-matrix.nix:496:7:
-          495|     test-compat-channel-gains-aspect = {
-          496|       expr = map (c: c.value) e2eSrcContribs;
-             |       ^
-          497|       expected = [ [ "hello" ] ];
+       … while evaluating the file '/home/sini/Documents/repos/den-hoag/scratch/test-compiled-aspects.nix':
 
        … while calling the 'map' builtin
-         at /home/sini/Documents/repos/den-hoag/ci/tests/compat-deliver-matrix.nix:496:14:
-          495|     test-compat-channel-gains-aspect = {
-          496|       expr = map (c: c.value) e2eSrcContribs;
-             |              ^
-          497|       expected = [ [ "hello" ] ];
+         at /home/sini/Documents/repos/den-hoag/scratch/test-compiled-aspects.nix:15:3:
+           14| in
+           15|   map (a: a.key) spoke.includes
+             |   ^
+           16|
 
-       … while evaluating the attribute 'contributions'
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:405:13:
-          404|           builtins.mapAttrs (name: ch: {
-          405|             contributions = seqAt name p;
-             |             ^
-          406|             values = channelValue ch (seqAt name p);
-
-       … from call site
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:405:29:
-          404|           builtins.mapAttrs (name: ch: {
-          405|             contributions = seqAt name p;
-             |                             ^
-          406|             values = channelValue ch (seqAt name p);
-
-       … while calling 'seqAt'
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:368:15:
-          367|       seqAt =
-          368|         name: p:
-             |               ^
-          369|         let
-
-       … while evaluating the attribute 'seq'
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:270:13:
-          269|           {
-          270|             seq = full;
-             |             ^
-          271|             drops = [ ];
-
-       … from call site
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:371:18:
-          370|           ch = chanOf name;
-          371|           full = baseSeq ch p ++ concatMap (edge: deliverSeq edge p) (inbound name);
-             |                  ^
-          372|         in
-
-       … while calling 'baseSeq'
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:361:13:
-          360|       baseSeq =
-          361|         ch: p:
-             |             ^
-          362|         if ch.__derived or false then
-
-       … while calling the 'concatMap' builtin
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:365:11:
-          364|         else
-          365|           concatMap (vp: traversal.contributionsAt vp ch.name) (traversal.order p);
-             |           ^
-          366|
-
-       … from call site
-         at «github:sini/gen-pipe/15e69818188dc4dfe18831db1c28e16042518824?narHash=sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo%3D»/lib/evaluate.nix:365:65:
-          364|         else
-          365|           concatMap (vp: traversal.contributionsAt vp ch.name) (traversal.order p);
-             |                                                                 ^
-          366|
-
-       … while calling 'order'
-         at /home/sini/Documents/repos/den-hoag/lib/scope-adapter.nix:44:15:
-           43|     {
-           44|       order = pos: result.get pos "neron-order";
-             |               ^
-           45|       contributionsAt = pos: chName: localDataOf pos chName;
-
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/scope-adapter.nix:44:20:
-           43|     {
-           44|       order = pos: result.get pos "neron-order";
-             |                    ^
-           45|       contributionsAt = pos: chName: localDataOf pos chName;
-
-       … while calling 'get'
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:104:15:
-          103|         get =
-          104|           id: attrName:
-             |               ^
-          105|           builtins.addErrorContext "evaluating '${attrName}' on '${id}'" (
-
-       … evaluating 'neron-order' on 'host:axon'
-
-       … from call site
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:109:15:
-          108|             else if rootEval ? ${id} then
-          109|               rootEval.${id}.${attrName}
-             |               ^
-          110|             else
-
-       … while calling anonymous lambda
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:48:47:
-           47|         rootEval = prelude.mapAttrs (
-           48|           id: _: builtins.mapAttrs (attrName: fn: evalAttr id attrName fn) attributes
-             |                                               ^
-           49|         ) roots;
-
-       … from call site
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:48:51:
-           47|         rootEval = prelude.mapAttrs (
-           48|           id: _: builtins.mapAttrs (attrName: fn: evalAttr id attrName fn) attributes
-             |                                                   ^
-           49|         ) roots;
-
-       … while calling 'evalAttr'
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:31:29:
-           30|         evalAttr =
-           31|           nodeId: attrName: fn:
-             |                             ^
-           32|           if attrName == "children" || attrName == "derived-children" then
-
-       … from call site
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:40:13:
-           39|           else
-           40|             fn self nodeId;
-             |             ^
-           41|         wrapChild =
-
-       … while calling 'collectionAttr'
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:300:11:
-          299|     }:
-          300|     self: id:
-             |           ^
-          301|     let
-
-       … while calling the 'foldl'' builtin
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:373:5:
-          372|     in
-          373|     builtins.foldl' combine [ ] perTarget;
-             |     ^
-          374|
-
-       … while calling the 'map' builtin
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:360:19:
-          359|       filtered = builtins.filter (tid: filter (self.node tid)) targets;
-          360|       perTarget = map (
-             |                   ^
-          361|         tid:
-
-       … while calling the 'filter' builtin
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:359:18:
-          358|           throw "gen-scope: collectionAttr: unknown traverse '${traverse}'";
-          359|       filtered = builtins.filter (tid: filter (self.node tid)) targets;
-             |                  ^
-          360|       perTarget = map (
-
-       … from call site
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:354:11:
-          353|           in
-          354|           neronCollect { } id
-             |           ^
-          355|         else if prelude.hasPrefix "label:" traverse then
-
-       … while calling 'neronCollect'
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:330:21:
-          329|             neronCollect =
-          330|               seen: nid:
-             |                     ^
-          331|               let
-
-       … while calling the 'filter' builtin
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:337:33:
-          336|                 importIds = self.get nid "imports";
-          337|                 unseenImports = builtins.filter (iid: !(selfSeen ? ${iid})) importIds;
-             |                                 ^
-          338|                 newSeen =
-
-       … from call site
-         at «github:sini/gen-scope/8599e5f51417e4e6a57ec0d3e36522b967b5e89b?narHash=sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw%3D»/lib/resolve.nix:336:29:
-          335|                 };
-          336|                 importIds = self.get nid "imports";
-             |                             ^
-          337|                 unseenImports = builtins.filter (iid: !(selfSeen ? ${iid})) importIds;
-
-       … while calling 'get'
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:104:15:
-          103|         get =
-          104|           id: attrName:
-             |               ^
-          105|           builtins.addErrorContext "evaluating '${attrName}' on '${id}'" (
-
-       … evaluating 'imports' on 'host:axon'
-
-       … from call site
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:109:15:
-          108|             else if rootEval ? ${id} then
-          109|               rootEval.${id}.${attrName}
-             |               ^
-          110|             else
-
-       … while calling anonymous lambda
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:48:47:
-           47|         rootEval = prelude.mapAttrs (
-           48|           id: _: builtins.mapAttrs (attrName: fn: evalAttr id attrName fn) attributes
-             |                                               ^
-           49|         ) roots;
-
-       … from call site
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:48:51:
-           47|         rootEval = prelude.mapAttrs (
-           48|           id: _: builtins.mapAttrs (attrName: fn: evalAttr id attrName fn) attributes
-             |                                                   ^
-           49|         ) roots;
-
-       … while calling 'evalAttr'
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:31:29:
-           30|         evalAttr =
-           31|           nodeId: attrName: fn:
-             |                             ^
-           32|           if attrName == "children" || attrName == "derived-children" then
-
-       … from call site
-         at «github:sini/gen-scope/f8ecbefb33c7d9deb340647c46cd284530cc1a71?narHash=sha256-5Hgksuxdz8qEL0IQCvjhkDWuPJP080YFSdSrAvX/zD4%3D»/lib/eval.nix:40:13:
-           39|           else
-           40|             fn self nodeId;
-             |             ^
-           41|         wrapChild =
-
-       … while calling 'compute'
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:207:13:
-          206|     compute =
-          207|       self: id:
-             |             ^
-          208|       builtins.filter (i: i != null) (
-
-       … while calling the 'filter' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:208:7:
-          207|       self: id:
-          208|       builtins.filter (i: i != null) (
-             |       ^
-          209|         map (
-
-       … while calling the 'map' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:209:9:
-          208|       builtins.filter (i: i != null) (
-          209|         map (
+       … while evaluating the attribute 'den.aspects'
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/default.nix:685:9:
+          684|         inherit (ent) registries meta roots;
+          685|         aspects = ent.config.den.aspects;
              |         ^
-          210|           t:
+          686|         fleet = theFleet;
 
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:215:12:
-          214|           if r == null then null else r.nodeId
-          215|         ) (declarations.importEdgesOf (self.get id "declarations"))
-             |            ^
-          216|       );
-
-       … while calling 'importEdgesOf'
-         at /home/sini/Documents/repos/den-hoag/lib/declarations.nix:159:5:
-          158|   importEdgesOf =
-          159|     r:
-             |     ^
-          160|     let
-
-       … while calling the 'concatMap' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/declarations.nix:163:5:
-          162|     in
-          163|     prelude.concatMap (
-             |     ^
-          164|       a:
-
-       … while evaluating the attribute 'actions.structural'
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:180:11:
-          179|           })
-          180|           actions
-             |           ^
-          181|           ;
-
-       … while evaluating the attribute 'actions'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:129:7:
-          128|     {
-          129|       actions = final.grouped;
+       … while evaluating the attribute 'config.den.aspects'
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:242:7:
+          241|       roots = tree.config.den.schema._roots;
+          242|       config = tree.config;
              |       ^
-          130|       orderedGroups = final.present;
+          243|     };
 
-       … while evaluating the attribute 'grouped'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:116:11:
-          115|           });
-          116|           grouped = acc.grouped // (if groupActions != [ ] then { ${groupName} = groupActions; } else { });
-             |           ^
-          117|           present = acc.present ++ (if groupActions != [ ] then [ groupName ] else [ ]);
+       … while evaluating the attribute 'config'
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:1119:9:
+         1118|       inherit (result)
+         1119|         config
+             |         ^
+         1120|         options
 
-       … in the right operand of the update (//) operator
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:116:37:
-          115|           });
-          116|           grouped = acc.grouped // (if groupActions != [ ] then { ${groupName} = groupActions; } else { });
-             |                                     ^
-          117|           present = acc.present ++ (if groupActions != [ ] then [ groupName ] else [ ]);
+       … while evaluating the attribute 'config'
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:1106:13:
+         1105|           inherit
+         1106|             config
+             |             ^
+         1107|             moduleArgs
+
+       … while calling the 'seq' builtin
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:1021:20:
+         1020|           # for the common disjoint-key case this is just `//`.
+         1021|           config = builtins.seq _orphanCheck (recursiveUpdate freeformConfig declaredConfig);
+             |                    ^
+         1022|
 
        … while evaluating a branch condition
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:116:37:
-          115|           });
-          116|           grouped = acc.grouped // (if groupActions != [ ] then { ${groupName} = groupActions; } else { });
-             |                                     ^
-          117|           present = acc.present ++ (if groupActions != [ ] then [ groupName ] else [ ]);
-
-       … while calling the 'concatLists' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:110:26:
-          109|
-          110|           groupActions = builtins.concatLists (map (r: r.actions) validated);
-             |                          ^
-          111|         in
-
-       … while calling the 'map' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:110:48:
-          109|
-          110|           groupActions = builtins.concatLists (map (r: r.actions) validated);
-             |                                                ^
-          111|         in
-
-       … while calling the 'map' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:97:23:
-           96|
-           97|           validated = map (
-             |                       ^
-           98|             res:
-
-       … while calling the 'map' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:92:21:
-           91|
-           92|           results = map (r: {
-             |                     ^
-           93|             inherit (r) identity;
-
-       … while calling the 'map' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:77:20:
-           76|           # analysis (equal-priority + `exclusive` ties were order-sensitive).
-           77|           sorted = map (x: x.r) (
-             |                    ^
-           78|             sort (a: b: if a.r.priority != b.r.priority then a.r.priority > b.r.priority else a.i < b.i) (
-
-       … while calling the 'sort' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:78:13:
-           77|           sorted = map (x: x.r) (
-           78|             sort (a: b: if a.r.priority != b.r.priority then a.r.priority > b.r.priority else a.i < b.i) (
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:1001:13:
+         1000|           _orphanCheck =
+         1001|             if check && freeform == null && realized.unmatched != [ ] then
              |             ^
-           79|               imap0 (i: r: { inherit i r; }) matched
+         1002|               throw "gen-merge: option `${
 
-       … from call site
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:79:15:
-           78|             sort (a: b: if a.r.priority != b.r.priority then a.r.priority > b.r.priority else a.i < b.i) (
-           79|               imap0 (i: r: { inherit i r; }) matched
-             |               ^
-           80|             )
-
-       … while calling 'imap0'
-         at «github:sini/gen-prelude/9e3f4c947c76a11ffec04e020ac7e2a3fe306c47?narHash=sha256-RuSmZU9Sny31YFYfPkagesMDKqGgkQQoNrm4O5Imw2c%3D»/lib/default.nix:180:14:
-          179|   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
-          180|   imap0 = f: xs: genList (i: f i (elemAt xs i)) (length xs);
-             |              ^
-          181|   fix =
-
-       … while calling the 'genList' builtin
-         at «github:sini/gen-prelude/9e3f4c947c76a11ffec04e020ac7e2a3fe306c47?narHash=sha256-RuSmZU9Sny31YFYfPkagesMDKqGgkQQoNrm4O5Imw2c%3D»/lib/default.nix:180:18:
-          179|   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
-          180|   imap0 = f: xs: genList (i: f i (elemAt xs i)) (length xs);
-             |                  ^
-          181|   fix =
-
-       … while evaluating the second argument passed to builtins.genList
-
-       … while calling the 'length' builtin
-         at «github:sini/gen-prelude/9e3f4c947c76a11ffec04e020ac7e2a3fe306c47?narHash=sha256-RuSmZU9Sny31YFYfPkagesMDKqGgkQQoNrm4O5Imw2c%3D»/lib/default.nix:180:50:
-          179|   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
-          180|   imap0 = f: xs: genList (i: f i (elemAt xs i)) (length xs);
-             |                                                  ^
-          181|   fix =
-
-       … while calling the 'filter' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:71:21:
-           70|
-           71|           matched = filter (r: r.identity == null || !(overridden' ? ${r.identity})) matched0;
-             |                     ^
-           72|
-
-       … while calling the 'filter' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:58:22:
-           57|
-           58|           matched0 = filter (
-             |                      ^
-           59|             r:
-
-       … while calling the 'filter' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:42:18:
-           41|         let
-           42|           cand = filter (
-             |                  ^
-           43|             r:
-
-       … while calling anonymous lambda
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:43:13:
-           42|           cand = filter (
-           43|             r:
-             |             ^
-           44|             (
+       … in the left operand of the AND (&&) operator
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:1001:42:
+         1000|           _orphanCheck =
+         1001|             if check && freeform == null && realized.unmatched != [ ] then
+             |                                          ^
+         1002|               throw "gen-merge: option `${
 
        … in the right operand of the AND (&&) operator
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:55:13:
-           54|             )
-           55|             && (r.identity == null || !(acc.overridden ? ${r.identity}))
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:1001:22:
+         1000|           _orphanCheck =
+         1001|             if check && freeform == null && realized.unmatched != [ ] then
+             |                      ^
+         1002|               throw "gen-merge: option `${
+
+       … while evaluating a branch condition
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:973:13:
+          972|             in
+          973|             if winners == [ ] then null else (prelude.last winners).value;
              |             ^
-           56|           ) rules;
+          974|
 
-       … in the right operand of the OR (||) operator
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:55:36:
-           54|             )
-           55|             && (r.identity == null || !(acc.overridden ? ${r.identity}))
-             |                                    ^
-           56|           ) rules;
-
-       … in the argument of the not operator
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:55:41:
-           54|             )
-           55|             && (r.identity == null || !(acc.overridden ? ${r.identity}))
-             |                                         ^
-           56|           ) rules;
-
-       … while evaluating the attribute 'overridden'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:118:11:
-          117|           present = acc.present ++ (if groupActions != [ ] then [ groupName ] else [ ]);
-          118|           overridden = overridden';
-             |           ^
-          119|         };
-
-       … while calling the 'foldl'' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:67:25:
-           66|
-           67|           overridden' = foldl' (
+       … from call site
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:971:25:
+          970|                 ++ optional (moduleTree ? freeformType) moduleTree.freeformType;
+          971|               winners = filterOverrides (concatMap dischargeProperties candidates);
              |                         ^
-           68|             o: r: foldl' (o': oid: o' // { ${oid} = true; }) o r.overrides
+          972|             in
+
+       … while calling 'filterOverrides'
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/priority.nix:87:5:
+           86|   filterOverrides =
+           87|     defs:
+             |     ^
+           88|     if defs == [ ] then
+
+       … while evaluating a branch condition
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/priority.nix:88:5:
+           87|     defs:
+           88|     if defs == [ ] then
+             |     ^
+           89|       [ ]
+
+       … while calling the 'concatMap' builtin
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:971:42:
+          970|                 ++ optional (moduleTree ? freeformType) moduleTree.freeformType;
+          971|               winners = filterOverrides (concatMap dischargeProperties candidates);
+             |                                          ^
+          972|             in
 
        … while calling the 'filter' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:69:29:
-           68|             o: r: foldl' (o': oid: o' // { ${oid} = true; }) o r.overrides
-           69|           ) acc.overridden (filter (r: r.overrides != [ ]) matched0);
-             |                             ^
-           70|
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:969:17:
+          968|               candidates =
+          969|                 filter (f: f != null) (map (e: topFreeformOf e.content) flat)
+             |                 ^
+          970|                 ++ optional (moduleTree ? freeformType) moduleTree.freeformType;
+
+       … while calling the 'map' builtin
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:969:40:
+          968|               candidates =
+          969|                 filter (f: f != null) (map (e: topFreeformOf e.content) flat)
+             |                                        ^
+          970|                 ++ optional (moduleTree ? freeformType) moduleTree.freeformType;
+
+       … from call site
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:916:18:
+          915|
+          916|           flat = collectModules callM modList;
+             |                  ^
+          917|
+
+       … while calling 'collectModules'
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:304:12:
+          303|   collectModules =
+          304|     callM: mods:
+             |            ^
+          305|     concatMap (
+
+       … while calling the 'concatMap' builtin
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:305:5:
+          304|     callM: mods:
+          305|     concatMap (
+             |     ^
+          306|       m0:
+
+       … while evaluating a branch condition
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:772:17:
+          771|     let
+          772|       modList = if isList modules then modules else [ modules ];
+             |                 ^
+          773|       # Rich option merge (`{ value; prov }`) — the realizer reads BOTH the value tree and the
+
+       … while calling the 'isList' builtin
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:772:20:
+          771|     let
+          772|       modList = if isList modules then modules else [ modules ];
+             |                    ^
+          773|       # Rich option merge (`{ value; prov }`) — the realizer reads BOTH the value tree and the
+
+       … from call site
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:221:12:
+          220|         # one instance registry per declared kind, referencing the evaluated kind value:
+          221|         ++ prelude.mapAttrsToList (kindName: meta: {
+             |            ^
+          222|           options.den.${kindName} = schema.mkInstanceRegistry tree.config.den.schema.${kindName} {
+
+       … while calling 'mapAttrsToList'
+         at /nix/store/6k0aybqi6zjbkwkykrzxwmvav9j7d8fv-source/lib/default.nix:172:23:
+          171|     );
+          172|   mapAttrsToList = f: a: map (n: f n a.${n}) (attrNames a);
+             |                       ^
+          173|   groupBy =
+
+       … while calling the 'map' builtin
+         at /nix/store/6k0aybqi6zjbkwkykrzxwmvav9j7d8fv-source/lib/default.nix:172:26:
+          171|     );
+          172|   mapAttrsToList = f: a: map (n: f n a.${n}) (attrNames a);
+             |                          ^
+          173|   groupBy =
+
+       … while calling the 'attrNames' builtin
+         at /nix/store/6k0aybqi6zjbkwkykrzxwmvav9j7d8fv-source/lib/default.nix:172:47:
+          171|     );
+          172|   mapAttrsToList = f: a: map (n: f n a.${n}) (attrNames a);
+             |                                               ^
+          173|   groupBy =
+
+       … from call site
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/default.nix:316:17:
+          315|
+          316|       denMeta = entity.discoverKinds userModules;
+             |                 ^
+          317|       ent = entity.build {
+
+       … while calling 'discoverKinds'
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:81:5:
+           80|   discoverKinds =
+           81|     userModules:
+             |     ^
+           82|     let
+
+       … from call site
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:131:5:
+          130|     in
+          131|     prelude.genAttrs sch._kindNames (kindName: {
+             |     ^
+          132|       parent = sch._topology.${kindName}.parent;
+
+       … while calling 'genAttrs'
+         at /nix/store/6k0aybqi6zjbkwkykrzxwmvav9j7d8fv-source/lib/default.nix:141:12:
+          140|   genAttrs =
+          141|     names: f:
+             |            ^
+          142|     listToAttrs (
+
+       … while calling the 'listToAttrs' builtin
+         at /nix/store/6k0aybqi6zjbkwkykrzxwmvav9j7d8fv-source/lib/default.nix:142:5:
+          141|     names: f:
+          142|     listToAttrs (
+             |     ^
+          143|       map (n: {
+
+       … while calling the 'map' builtin
+         at /nix/store/6k0aybqi6zjbkwkykrzxwmvav9j7d8fv-source/lib/default.nix:143:7:
+          142|     listToAttrs (
+          143|       map (n: {
+             |       ^
+          144|         name = n;
+
+       … while evaluating the attribute 'config.den.schema'
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:1119:9:
+         1118|       inherit (result)
+         1119|         config
+             |         ^
+         1120|         options
+
+       (15 duplicate frames omitted)
+
+       … while calling anonymous lambda
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:306:7:
+          305|     concatMap (
+          306|       m0:
+             |       ^
+          307|       let
+
+       … from call site
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:317:20:
+          316|         };
+          317|         imported = collectModules callM (importsOf m);
+             |                    ^
+          318|       in
 
        (10 duplicate frames omitted)
 
-       … while calling anonymous lambda
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:59:13:
-           58|           matched0 = filter (
-           59|             r:
-             |             ^
-           60|             let
-
-       … in the right operand of the AND (&&) operator
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:64:23:
-           63|             in
-           64|             nacPasses && condPasses
-             |                       ^
-           65|           ) cand;
-
        … from call site
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:62:28:
-           61|               nacPasses = r.nac == null || !(match r.nac id acc.ctx);
-           62|               condPasses = match r.condition id acc.ctx;
-             |                            ^
-           63|             in
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:317:42:
+          316|         };
+          317|         imported = collectModules callM (importsOf m);
+             |                                          ^
+          318|       in
 
-       … while calling 'fromFunctionMatch'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/rule.nix:39:20:
-           38|   fromFunctionMatch =
-           39|     condition: id: ctx:
-             |                    ^
-           40|     if condition ? __restricted then
-
-       … while calling the 'all' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/rule.nix:46:7:
-           45|       in
-           46|       prelude.all (k: ctx ? ${k}) required;
-             |       ^
-           47| in
-
-       … while calling anonymous lambda
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/rule.nix:46:20:
-           45|       in
-           46|       prelude.all (k: ctx ? ${k}) required;
-             |                    ^
-           47| in
-
-       … while evaluating the attribute 'ctx'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:113:11:
-          112|         {
-          113|           ctx = combine acc.ctx (extract {
-             |           ^
-          114|             ${groupName} = groupActions;
-
-       … from call site
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:113:17:
-          112|         {
-          113|           ctx = combine acc.ctx (extract {
-             |                 ^
-          114|             ${groupName} = groupActions;
-
-       … while calling 'combine'
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:178:28:
-          177|             extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
-          178|             combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
-             |                            ^
-          179|           })
-
-       … in the left operand of the update (//) operator
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:178:35:
-          177|             extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
-          178|             combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
-             |                                   ^
-          179|           })
-
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:178:35:
-          177|             extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
-          178|             combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
-             |                                   ^
-          179|           })
-
-       … while calling 'linkedFrom'
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:159:11:
-          158|         linkedFrom =
-          159|           links:
-             |           ^
-          160|           prelude.foldl' (
-
-       … while calling the 'foldl'' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:160:11:
-          159|           links:
-          160|           prelude.foldl' (
-             |           ^
-          161|             acc: l:
-
-       … while calling the 'filter' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/attributes/structural.nix:166:18:
-          165|             if t == null then acc else acc // { ${t.kind} = self.get t.nodeId "enriched-context"; }
-          166|           ) { } (builtins.filter (a: declarations.kindOf a == "link") links);
-             |                  ^
-          167|       in
-
-       … while evaluating the attribute 'structural'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:114:13:
-          113|           ctx = combine acc.ctx (extract {
-          114|             ${groupName} = groupActions;
-             |             ^
-          115|           });
-
-       … while calling the 'concatLists' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:110:26:
-          109|
-          110|           groupActions = builtins.concatLists (map (r: r.actions) validated);
-             |                          ^
-          111|         in
-
-       … while calling anonymous lambda
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:110:53:
-          109|
-          110|           groupActions = builtins.concatLists (map (r: r.actions) validated);
-             |                                                     ^
-          111|         in
-
-       … from call site
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:110:56:
-          109|
-          110|           groupActions = builtins.concatLists (map (r: r.actions) validated);
-             |                                                        ^
-          111|         in
-
-       … while calling anonymous lambda
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:98:13:
-           97|           validated = map (
-           98|             res:
-             |             ^
-           99|             let
+       … while calling 'importsOf'
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:243:5:
+          242|   importsOf =
+          243|     m:
+             |     ^
+          244|     let
 
        … while evaluating a branch condition
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:102:13:
-          101|             in
-          102|             if builtins.length actionGroups > 1 then
-             |             ^
-          103|               throw "gen-dispatch: rule \"${ruleName res}\" produced actions in multiple groups: ${builtins.concatStringsSep ", " actionGroups}"
-
-       … while calling the 'lessThan' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:102:45:
-          101|             in
-          102|             if builtins.length actionGroups > 1 then
-             |                                             ^
-          103|               throw "gen-dispatch: rule \"${ruleName res}\" produced actions in multiple groups: ${builtins.concatStringsSep ", " actionGroups}"
-
-       … while calling the 'length' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:102:16:
-          101|             in
-          102|             if builtins.length actionGroups > 1 then
-             |                ^
-          103|               throw "gen-dispatch: rule \"${ruleName res}\" produced actions in multiple groups: ${builtins.concatStringsSep ", " actionGroups}"
-
-       … while calling the 'foldl'' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:100:30:
-           99|             let
-          100|               actionGroups = unique (map classify res.actions);
-             |                              ^
-          101|             in
-
-       … while calling the 'map' builtin
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:100:38:
-           99|             let
-          100|               actionGroups = unique (map classify res.actions);
-             |                                      ^
-          101|             in
-
-       … while evaluating the attribute 'actions'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:94:13:
-           93|             inherit (r) identity;
-           94|             actions = r.produce id acc.ctx;
-             |             ^
-           95|           }) filtered;
-
-       … from call site
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/dispatch.nix:94:23:
-           93|             inherit (r) identity;
-           94|             actions = r.produce id acc.ctx;
-             |                       ^
-           95|           }) filtered;
-
-       … while calling 'produce'
-         at /home/sini/Documents/repos/den-hoag/lib/concern-policies.nix:58:27:
-           57|             inherit group;
-           58|             produce = id: ctx: builtins.filter filterFn (produceRaw id ctx);
-             |                           ^
-           59|           };
-
-       … while calling the 'filter' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/concern-policies.nix:58:32:
-           57|             inherit group;
-           58|             produce = id: ctx: builtins.filter filterFn (produceRaw id ctx);
-             |                                ^
-           59|           };
-
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/concern-policies.nix:58:58:
-           57|             inherit group;
-           58|             produce = id: ctx: builtins.filter filterFn (produceRaw id ctx);
-             |                                                          ^
-           59|           };
-
-       … while calling 'produceRaw'
-         at /home/sini/Documents/repos/den-hoag/lib/concern-policies.nix:38:17:
-           37|           produceRaw =
-           38|             id: ctx:
-             |                 ^
-           39|             map (a: a // { __policy = name; }) (base.produce id ctx);
-
-       … while calling the 'map' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/concern-policies.nix:39:13:
-           38|             id: ctx:
-           39|             map (a: a // { __policy = name; }) (base.produce id ctx);
-             |             ^
-           40|
-
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/concern-policies.nix:39:49:
-           38|             id: ctx:
-           39|             map (a: a // { __policy = name; }) (base.produce id ctx);
-             |                                                 ^
-           40|
-
-       … while calling 'produce'
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/rule.nix:34:22:
-           33|       condition = args;
-           34|       produce = _id: ctx: fn ctx;
-             |                      ^
-           35|       identity = if isIntensional fn then fn.name else null;
-
-       … from call site
-         at «github:sini/gen-dispatch/bf541dd0c222efbeb22940058c115eafa0473c7b?narHash=sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA%3D»/lib/core/rule.nix:34:27:
-           33|       condition = args;
-           34|       produce = _id: ctx: fn ctx;
-             |                           ^
-           35|       identity = if isIntensional fn then fn.name else null;
-
-       … while calling 'value'
-         at /home/sini/Documents/repos/den-hoag/lib/compat/compile.nix:501:66:
-          500|         let ref = builtins.elemAt defaultPolicyIncludes idx; in [
-          501|         { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
-             |                                                                  ^
-          502|         { name = "__defaultPolicy_user_${toString idx}"; value = { user, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
-
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/compat/compile.nix:501:85:
-          500|         let ref = builtins.elemAt defaultPolicyIncludes idx; in [
-          501|         { name = "__defaultPolicy_host_${toString idx}"; value = { host, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
-             |                                                                                     ^
-          502|         { name = "__defaultPolicy_user_${toString idx}"; value = { user, ... }@ctx: compilePolicy ing aspectRec v1Classes ref ctx; }
-
-       … while calling 'compilePolicy'
-         at /home/sini/Documents/repos/den-hoag/lib/compat/compile.nix:361:39:
-          360|   compilePolicy =
-          361|     ing: aspectRec: v1Classes: value: ctx:
-             |                                       ^
-          362|     let
-
-       … while evaluating a branch condition
-         at /home/sini/Documents/repos/den-hoag/lib/compat/compile.nix:405:7:
-          404|       in
-          405|       if builtins.isList res then
-             |       ^
-          406|         prelude.concatMap (translateEffect ing aspectRec v1Classes augmentedCtx) res
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:247:5:
+          246|     in
+          247|     if isList i then i else [ i ];
+             |     ^
+          248|   topFreeformOf = m: m.freeformType or null;
 
        … while calling the 'isList' builtin
-         at /home/sini/Documents/repos/den-hoag/lib/compat/compile.nix:405:10:
-          404|       in
-          405|       if builtins.isList res then
-             |          ^
-          406|         prelude.concatMap (translateEffect ing aspectRec v1Classes augmentedCtx) res
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:247:8:
+          246|     in
+          247|     if isList i then i else [ i ];
+             |        ^
+          248|   topFreeformOf = m: m.freeformType or null;
 
        … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/compat/compile.nix:403:15:
-          402|       let
-          403|         res = fn augmentedCtx;
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:308:13:
+          307|       let
+          308|         m = callM m0;
+             |             ^
+          309|         self = {
+
+       … while calling 'callM'
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:898:13:
+          897|           callM =
+          898|             m:
+             |             ^
+          899|             if builtins.isPath m then
+
+       … from call site
+         at /nix/store/mf1zppazn39bnsg47a1s8ikm8phabvag-source/lib/modules.nix:910:15:
+          909|               in
+          910|               m (baseArgs // extra)
              |               ^
-          404|       in
-
-       … while calling 'os-to-host'
-         at /home/sini/Documents/repos/den-hoag/lib/compat/legacy/batteries/os-class.nix:27:5:
-           26|   den.policies.os-to-host =
-           27|     { host, ... }:
-             |     ^
-           28|     # A synthetic host identity (a `user@host` home with no declared host) has
-
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/concern-policies.nix:42:35:
-           41|           probeCtx = prelude.genAttrs (builtins.attrNames base.condition) (_: probeEntry);
-           42|           res = builtins.tryEval (produceRaw "«probe»" probeCtx);
-             |                                   ^
-           43|           probeSuccess = res.success;
-
-       (12 duplicate frames omitted)
-
-       … from call site
-         at /home/sini/Documents/repos/den-hoag/lib/compat/legacy/batteries/os-class.nix:30:5:
-           29|     # no OS class to route into; `host ? class` gates OS routing to real hosts.
-           30|     lib.optional
-             |     ^
-           31|       (
+          911|             else if isAttrs m && m ? __functor then
 
        … while calling anonymous lambda
-         at «github:sini/gen-merge/fa5d5cc2f56d54b6cc117b7a4ffd26f5038db7da?narHash=sha256-qaZ6WJo9JIPT1enxzAQh76IvlJ3dDl/ScdfdOrGNbxA%3D»/lib/modules.nix:360:25:
-          359|                 extra = mapAttrs (
-          360|                   name: _:
-             |                         ^
-          361|                   baseArgs.${name} or result.moduleArgs.${name}
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:64:9:
+           63|       else
+           64|         args: filterModuleAttrs availableArgs (m args)
+             |         ^
+           65|     else
 
-       … while evaluating the attribute 'moduleArgs.lib'
-         at «github:sini/gen-merge/fa5d5cc2f56d54b6cc117b7a4ffd26f5038db7da?narHash=sha256-qaZ6WJo9JIPT1enxzAQh76IvlJ3dDl/ScdfdOrGNbxA%3D»/lib/modules.nix:449:26:
-          448|         {
-          449|           inherit config moduleArgs;
-             |                          ^
-          450|           options = allOptions;
+       … from call site
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:64:15:
+           63|       else
+           64|         args: filterModuleAttrs availableArgs (m args)
+             |               ^
+           65|     else
 
-       … while calling the 'throw' builtin
-         at «github:sini/gen-merge/fa5d5cc2f56d54b6cc117b7a4ffd26f5038db7da?narHash=sha256-qaZ6WJo9JIPT1enxzAQh76IvlJ3dDl/ScdfdOrGNbxA%3D»/lib/modules.nix:362:25:
-          361|                   baseArgs.${name} or result.moduleArgs.${name}
-          362|                     or (throw "gen-merge: module argument `${name}' is not defined")
-             |                         ^
-          363|                 ) formals;
+       … while calling 'filterModuleAttrs'
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:14:5:
+           13|     availableArgs:
+           14|     attrs:
+             |     ^
+           15|     if builtins.isAttrs attrs then
 
-       error: gen-merge: module argument `lib' is not defined
+       … while evaluating a branch condition
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:15:5:
+           14|     attrs:
+           15|     if builtins.isAttrs attrs then
+             |     ^
+           16|       let
+
+       … while calling the 'isAttrs' builtin
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:15:8:
+           14|     attrs:
+           15|     if builtins.isAttrs attrs then
+             |        ^
+           16|       let
+
+       … from call site
+         at /nix/store/64z6wimr02minkq6dbppvawl3fiqrz57-source/lib/entity.nix:64:48:
+           63|       else
+           64|         args: filterModuleAttrs availableArgs (m args)
+             |                                                ^
+           65|     else
+
+       error: function 'anonymous lambda' called without required argument 'den'
+       at /home/sini/Documents/repos/sini/nix-config/modules/den/aspects/apps/dev/ai/claude/package.nix:6:1:
+            5| # adds the replicated dir set onto `claude` directly (a quirk, so it merges).
+            6| { den, ... }:
+             | ^
+            7| {

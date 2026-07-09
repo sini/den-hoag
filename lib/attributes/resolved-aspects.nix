@@ -35,7 +35,21 @@ let
   # { seen; nodes } with seen ⊇ the input seen (monotone). Threads acc.nodes through the fold so
   # sibling roots are all retained.
   forwardExpand =
-    ctx: seen0: aspectList:
+    self: id: ctx: seen0: aspectList:
+    let
+      activeHasAspect = ref:
+        let
+          targetKey = keyOf ref;
+          resolvedList = self.get id "resolved-aspects";
+        in
+        builtins.any (n: n.key == targetKey) resolvedList;
+      ctxWithHasAspect = builtins.mapAttrs (k: v:
+        if builtins.isAttrs v then
+          v // { hasAspect = activeHasAspect; }
+        else
+          v
+      ) ctx;
+    in
     prelude.foldl'
       (
         acc: aspect:
@@ -46,11 +60,11 @@ let
           acc
         else
           let
-            concrete = if aspect.__isWrappedFn or false then aspect ctx else aspect;
+            concrete = if aspect.__isWrappedFn or false then aspect ctxWithHasAspect else aspect;
             newSeen = acc.seen // {
               ${key} = true;
             };
-            childResult = forwardExpand ctx newSeen (concrete.includes or [ ]);
+            childResult = forwardExpand self id ctx newSeen (concrete.includes or [ ]);
           in
           {
             seen = childResult.seen;
@@ -229,7 +243,7 @@ in
         ownEntry = (self.node id).decls.__entry or null;
 
         roots = directAspectsFor ownEntry ++ policyEdgeAspects resolutionActs;
-        seed = forwardExpand ctx (constraintSeen resolutionActs) roots;
+        seed = forwardExpand self id ctx (constraintSeen resolutionActs) roots;
 
         ancestorSeen = ancestorResolvedKeys self id;
         nbIndex = indexByNeededBy;
@@ -256,7 +270,7 @@ in
                     hasAspect = k: prev.seen ? ${keyOf k};
                   }
                 ) allConditionalAspects;
-                expanded = forwardExpand ctx prev.seen (nbExtras ++ guardExtras);
+                expanded = forwardExpand self id ctx prev.seen (nbExtras ++ guardExtras);
               in
               {
                 seen = expanded.seen;
