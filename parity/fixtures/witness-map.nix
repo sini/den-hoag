@@ -467,6 +467,88 @@ rec {
   # The canonical §2.2 row list (the spec's v1-construct column). compat-surface asserts `rows` covers it.
   specRows = builtins.attrNames rows;
 
+  # ── the LEGACY-SURFACE RULES (R-set, spec §10) — one witness row per rule ────────────────────────────
+  # Task 7.5's completeness ledger for the formal gap catalog: each R1–R9 maps to `{ rule; v1Source;
+  # decls; note; }` — the rule number, its den v1 citation at the frozen pin (11866c16), a minimal v1
+  # declaration set exercising it, and a one-line intent. `ci/tests/compat-legacy-rules.nix` reads this
+  # (asserts every rule R1–R9 is present + witnessed) alongside its per-rule semantic tests. Kept SEPARATE
+  # from `fixtures` (the §2.2 surface witnesses) so the C1 dead-fixture/coverage checks are unaffected.
+  ruleWitnesses = {
+    R1 = {
+      rule = "R1 — legacy binding environment";
+      v1Source = "nix/nixModule/default.nix:3 (`_module.args.den = config.den`) + modules/aspects/batteries/flake-scope.nix";
+      # A v1 module body that references the `den` flake-scope arg (the always-bound R1 binding). Compiles
+      # only when the shim binds `den` in its v1-surface eval (flake-module.nix `evalV1` specialArgs).
+      decls = _: { }; # marker — the R1 witness is a MODULE (uses `{ den, ... }:`), built in the rule test.
+      note = "the shim binds `den` (= config.den) in evalV1's specialArgs; flake-scope args ride the mkDen specialArgs seam";
+    };
+    R2 = {
+      rule = "R2 — legacy class registry";
+      v1Source = "v1 den.classes at pin: os/user (convenience-forward), darwin/wsl (os-class/wsl batteries)";
+      # The battery desugar registers `den.classes.os`/`user` (no aspect key here — an os-KEYED resolved
+      # aspect additionally needs the extraClassNames general param, deferred; see legacy/batteries).
+      decls = { };
+      note = "the corpus-exercised class vocabulary (os, user) registers through the public class registry as declared `den.classes.<name>` (legacy/batteries) — enters resolveBucket, no core classNames edit, no phantom terminal/fold (never a producing class)";
+    };
+    R3 = {
+      rule = "R3 — os → host.class routing";
+      v1Source = "modules/aspects/batteries/os-class.nix:26-43 (`os-to-host` route, gated host.class ∈ {nixos,darwin})";
+      decls = { };
+      note = "the os-to-host route compiles to a policy (bare-ctx to survive compilePolicy's formal-erasure) gated on `ctx.host.class ∈ {nixos,darwin}` → route os→host.class; fires only for a real host OS class, inert for a synthetic user@host home";
+    };
+    R4 = {
+      rule = "R4 — den.default radiation + built-in membership";
+      v1Source = "modules/aspects/defaults.nix (`lib.genAttrs [host user home]`) + batteries self-append to den.default.includes";
+      decls = {
+        default = {
+          nixos.system.stateVersion = "25.11";
+        };
+      };
+      note = "den.default radiates to {host,user,home} (den-hoag folds home→user); built-in membership (os-to-host, R3) self-appends via legacy/defaults";
+    };
+    R5 = {
+      rule = "R5 — self-named-aspect auto-include";
+      v1Source = "nix/lib/resolve-entity.nix:48-63 (n==default → den.default; else aspect named n → <self:n> include)";
+      decls = {
+        hosts.x86_64-linux.igloo.users.tux = { };
+        aspects.igloo.nixos.networking.hostName = "igloo";
+      };
+      note = "the aspect NAMED after an entity auto-includes at that entity's scope; drives the L3/L5 convergence (legacy/self-provide.nix)";
+    };
+    R6 = {
+      rule = "R6 — built-in battery aspects";
+      v1Source = "modules/aspects/batteries/ (os-class, os-user, home-manager, … — only corpus-exercised ported)";
+      decls = { };
+      note = "corpus-exercised batteries port 1:1 into legacy/batteries/ (os-class → R2/R3, os-user → user class + user-to-host adapter route); non-exercised (hjem/maid/tty-autologin/wsl/…) get explicit ledger rows in legacy/defaults nonPortedBatteries, not hallucinated content";
+    };
+    R7 = {
+      rule = "R7 — v1 lambda arg adaptation (loud)";
+      v1Source = "gen-bind A-phase `allMatched` (wrap.nix) — unmatched non-ellipsis args fail loudly";
+      # A policy lambda with a REQUIRED arg absent from ctx must fail loudly (never silently drop / _:{}).
+      decls = _: { }; # marker — built in the rule test (an unsatisfiable required arg).
+      note = "a v1 lambda's unmatched required arg aborts named (den-hoag dispatch canTake / gen-bind allMatched); rewriting lambdas / _:{} substitution / corpus edits are BANNED";
+    };
+    R8 = {
+      rule = "R8 — host→user resolve semantics";
+      v1Source = "den PR #589 (resolve-at-emitting-node) + PR #624 (emit-classes scope-ctx): each (user,host) is one cell";
+      decls = {
+        hosts.x86_64-linux.axon.users.alice = { };
+        hosts.x86_64-linux.axon.users.bob = { };
+      };
+      note = "the host scope enumerates member users; ingest.nix buildMembership emits one membership cell per (user,host) from registry entries — the C1 bindings model, not an injected includes list";
+    };
+    R9 = {
+      rule = "R9 — no strictness escape";
+      v1Source = "den-hoag §2.2 three-branch key dispatch (facet | registered class | quirk channel)";
+      decls = {
+        aspects.h = {
+          totallyUnknownKey = { }; # neither facet, class, nor channel → must abort named
+        };
+      };
+      note = "an unknown aspect-content key aborts named (concern-aspects classifyKey); no per-kind strict toggle, no silent key drop — every escape resolves via R2 registration or a new numbered rule";
+    };
+  };
+
   # The task's MANDATORY dedicated witnesses (C1) → the fixture id(s) that must exist for each.
   mandatory = {
     "den.schema custom kinds (topology + kind-attached includes)" = [ "schemaCustomKind" ];

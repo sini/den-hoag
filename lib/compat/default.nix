@@ -48,6 +48,16 @@ let
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
+    # R5 (spec §10) — self-named-aspect auto-include (den v1 resolve-entity.nix:48-63). A post-compile
+    # augmentation (not a pre-compile v1→v1 desugar): it reads the compiled registries + aspect records,
+    # so flake-module.nix applies it as `addSelfIncludes`, gated on this module being in the wiring's
+    # legacy set (severed ⇒ no self-includes, Law C5). Reproduces the per-host `den.aspects.<host>` idiom.
+    self-provide = import ./legacy/self-provide.nix (deps // { inherit errors; });
+    # R4 + R2/R3/R6 (spec §10) — den.default built-in MEMBERSHIP: the corpus-exercised battery ports
+    # (os-class, os-user) composed into one v1→v1 desugar adding each battery's fold-bucket class (R2) +
+    # built-in route policy (R3/R6). Severable — flake-module.nix `desugarLegacy` applies it only when
+    # this module is in the wiring's legacy set (den v1 defaults.nix + batteries/).
+    defaults = import ./legacy/defaults.nix (deps // { inherit errors; });
   };
   # flakeModuleCore — the module(s) declaring the v1 option surface as `raw`, read by a v1-shaped eval
   # whose config `compile` desugars (the two-eval shape; den-hoag's own `mkDen` owns `den.*` typed, so
@@ -67,6 +77,7 @@ let
         prelude
         schema
         compile
+        ingest
         ;
       legacy = legacyArg;
     };

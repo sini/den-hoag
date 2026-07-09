@@ -17,6 +17,7 @@
   prelude,
   schema,
   compile,
+  ingest,
   legacy,
 }:
 let
@@ -70,11 +71,31 @@ let
 
   flakeModuleCore = [ v1OptionsModule ];
 
+  # R1 (spec §10) — the LEGACY BINDING ENVIRONMENT. den v1 modules/aspect bodies reference the `den`
+  # flake-scope module arg (den v1 `nix/nixModule/default.nix:3`: `_module.args.den = config.den`). The
+  # shim reproduces the ALWAYS-bound `den` binding in its OWN v1-surface eval, at the boundary only —
+  # `config.den` is the v1 declaration surface, so a v1 module reads its own fleet's `den.aspects`/
+  # `den.policies`/… exactly as under den v1. The opt-in flake-scope battery args (`lib`/`inputs`/`self`/
+  # `withSystem`/`flake-parts-lib`, den v1 batteries/flake-scope.nix) ride the SAME `_module.args` seam
+  # when a consumer supplies them; only `den` is bound unconditionally (the corpus's dominant reference).
+  # den-hoag core probes and `concern-aspects` moduleArgs carry ZERO legacy names — this binding lives in
+  # the shim's v1 eval, never crosses into den-hoag.
+  bindLegacyEnv =
+    {
+      config,
+      ...
+    }:
+    {
+      config._module.args.den = config.den;
+    };
+
   # Eval the v1 modules in the v1-shaped tree and read back `config.den` (the v1 declaration surface,
-  # verbatim) for `compile` to desugar. Only `flakeModuleCore` (not the legacy tag modules) declares
-  # options here; the legacy surfaces join in their own tasks.
+  # verbatim) for `compile` to desugar. `bindLegacyEnv` (R1) binds `den` so a v1 module body may reference
+  # it. Only `flakeModuleCore` (not the legacy tag modules) declares options here.
   evalV1 =
-    userModules: (schema.evalModuleTree { modules = flakeModuleCore ++ userModules; }).config.den;
+    userModules:
+    (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
+    .config.den;
 
   # The compat nixos instantiate wrapper (§2.5 carry-in): v1's per-host `system` never reaches
   # den-hoag's pipeline (den-hoag entities are field-less), so it is injected HERE, at the terminal —
@@ -126,6 +147,10 @@ let
         aspects = compiled.aspects;
         policies = compiled.policies;
         quirks = compiled.channels;
+        # Static entity-scoped includes (den-hoag `den.include`, §370 directAspects) — the R5
+        # self-named-aspect seeds (spec §10) `addSelfIncludes` appended, node-local at each self-named
+        # entity. Empty when the legacy self-provide module is severed (byte-identical no-op, Law C5).
+        include = compiled.include or [ ];
         classes = compiled.classes // {
           nixos = (compiled.classes.nixos or { }) // {
             instantiate = nixosInstantiate;
@@ -152,6 +177,16 @@ let
   legacyForwardsDesugar = legacy.forwards.desugar or (v1: v1);
   # Forwards desugars the FULL v1 (it reshapes `classes`); provides desugars the resulting `aspects`.
   # Compose forwards-first so provides sees the post-forward aspect set.
+  #
+  # R4 + R2/R3/R6 (spec §10) — the built-in battery membership (legacy/defaults.nix) is NOT folded in
+  # here. v1's default batteries (os-class, os-user) register classes + built-in routes on EVERY fleet;
+  # auto-applying them uniformly would (a) perturb every non-legacy C5 severability fixture (the batteries
+  # ARE a legacy surface, so their unconditional application breaks the "sever ⇒ byte-identical" law) and
+  # (b) add os/user class registrations no synthetic convergence fixture exercises. So the ports are
+  # WITNESSED by direct desugar application (ci/tests/compat-legacy-rules.nix), and auto-application to the
+  # fleet — with the full battery set + its deliver-surface interaction — is the C8/C9 corpus-arm work.
+  # The routes never fire on the current corpus regardless (compat host entries carry no `.class`), so
+  # deferring auto-application does not change the L3/L5 residual (parity/ledger.md).
   desugarLegacy =
     v1:
     let
@@ -162,13 +197,33 @@ let
       aspects = legacyProvidesDesugar (v1f.aspects or { });
     };
 
-  # `compileFull` — the "through flakeModule" compile: apply this wiring's legacy desugars, then compile.
-  # This is what a v1 surface sees when driven by the assembled `flakeModule` (both legacy present) or by
-  # a SEVERED wiring (`mkWiring` with a subset). For a non-legacy v1 set the desugars are or-identity, so
-  # `compileFull ≡ compile`; that identity is exactly the severability the C5 suite pins (a non-legacy
-  # fixture compiles byte-identically with any legacy subset). A legacy fixture through a wiring WITHOUT
-  # its module keeps the residual key, which trips compile's sentinel (Law C5).
-  compileFull = v1: compile (desugarLegacy v1);
+  # R5 (spec §10) self-named-aspect auto-include (legacy/self-provide.nix): a POST-compile augmentation
+  # (it reads the compiled registries + aspect records), gated on the self-provide module being in THIS
+  # wiring's legacy set — severed ⇒ `_: [ ]`, no self-includes (byte-identical no-op, Law C5). Emits
+  # den-hoag `den.include` records appended to `compiled.include`. `ingest.aspectEntry` supplies the
+  # id_hash convention so the seeded aspect record matches a `neededBy`/`include` inclusion's (A2).
+  selfIncludeFn =
+    if legacy ? self-provide then
+      (
+        compiled:
+        legacy.self-provide.selfIncludesOf {
+          inherit compiled;
+          inherit (ingest) aspectEntry;
+        }
+      )
+    else
+      (_compiled: [ ]);
+  addSelfIncludes =
+    compiled: compiled // { include = (compiled.include or [ ]) ++ selfIncludeFn compiled; };
+
+  # `compileFull` — the "through flakeModule" compile: apply this wiring's legacy desugars, compile, then
+  # append the R5 self-named includes. This is what a v1 surface sees when driven by the assembled
+  # `flakeModule` (both legacy present) or by a SEVERED wiring (`mkWiring` with a subset). For a
+  # non-legacy v1 set the pre-compile desugars are or-identity AND `selfIncludeFn` fires only where an
+  # entity name overlaps an aspect name — so `compileFull ≡ compile` on any fixture with no such overlap,
+  # exactly the severability the C5 suite pins. A legacy fixture through a wiring WITHOUT its module keeps
+  # the residual key, which trips compile's sentinel (Law C5).
+  compileFull = v1: addSelfIncludes (compile (desugarLegacy v1));
   # `den.interpret` — the gen-edge source-interpreter seam (item 7): the legacy forwards module's
   # `synthesize`/`rewalk` composers, threaded into den-hoag's single `materialize` via the shipped raw
   # option (lib/default.nix `interpretDecl`, output-modules.nix `interpret ? { }`) WITHOUT editing
@@ -181,7 +236,7 @@ let
   mkDen =
     userModules:
     denHoag.mkDen [
-      (mkFleetModule (compile (desugarLegacy (evalV1 userModules))))
+      (mkFleetModule (compileFull (evalV1 userModules)))
       interpretModule
     ];
 in

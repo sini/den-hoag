@@ -424,6 +424,11 @@ builtins.seq surfaceTotalityOk {
       ;
   };
   inherit aspects policies;
+  # Static entity-scoped aspect inclusions (den-hoag `den.include`, the §370 `directAspects` seed).
+  # The compile core emits NONE — this is the seam the LEGACY `self-provide` desugar (R5, spec §10)
+  # appends its self-named-aspect includes onto (flake-module.nix `addSelfIncludes`), severable: with
+  # the legacy module out of the wiring the list stays empty, byte-identical to a no-R5 compile.
+  include = [ ];
   # v1 `den.quirks.<name>` → a den-hoag channel registration `{ channel; ops; adapters; }` (pipe.nix
   # `channelOf`), so an aspect's quirk key resolves to a channel contribution rather than being
   # class-classified or aborting as an unknown key. The pipe STAGE vocabulary (`pipe.from`/filter/fold →

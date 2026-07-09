@@ -9,15 +9,18 @@
       expr = builtins.isAttrs denCompat;
       expected = true;
     };
-    # `compile` is a pure v1Decls → den-hoag concern-declaration function (Law C2). The stub returns
-    # the five declaration keys the four-concern API consumes; attrNames is sorted.
-    test-compile-five-keys = {
+    # `compile` is a pure v1Decls → den-hoag concern-declaration function (Law C2). It returns the five
+    # concern-declaration keys the four-concern API consumes, plus `include` — the §370 directAspects seam
+    # the R5 self-named-aspect desugar (spec §10) appends onto (flake-module.nix `addSelfIncludes`); the
+    # compile core emits it EMPTY, so bare `compile` is unchanged in content. attrNames is sorted.
+    test-compile-concern-keys = {
       expr = builtins.attrNames (denCompat.compile { });
       expected = [
         "aspects"
         "channels"
         "classes"
         "entities"
+        "include"
         "policies"
       ];
     };

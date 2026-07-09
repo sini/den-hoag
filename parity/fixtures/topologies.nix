@@ -20,8 +20,11 @@
 # diffs today.
 { }:
 {
-  # Plain host + single user. v1 renders the 6 class-fold/route/forward edges; hoag renders none (no quirk
-  # channel present). The whole v1 trace is `missingFromActual` — the class-fold-domain boundary (F-domain).
+  # Plain host + single user with a SELF-NAMED host aspect (`den.aspects.igloo` for host `igloo` — the
+  # dominant v1 idiom). v1 renders 6 class-fold/route/forward edges. Post-R5 (legacy/self-provide auto-
+  # includes the self-named aspect, spec §10), hoag renders the ONE producing-class nixos fold, which
+  # byte-matches v1 — the L3 convergence (matched 0→1, extra 0). The 5 residual v1 edges (homeManager
+  # fold, os routes, hm synthesize, user nest) are the class-model boundary R5 alone does not close.
   plainHostUser = {
     name = "plain-host-user";
     crossArm = true;
@@ -65,8 +68,9 @@
   };
 
   # Two hosts across two systems (the multi-system `@system` shape) — exercises root enumeration + per-root
-  # trace concatenation on both arms. Each host's class folds are independent; the diff is the union of two
-  # single-host boundaries.
+  # trace concatenation on both arms. Each host has a self-named aspect, so post-R5 BOTH producing-class
+  # nixos folds byte-match v1 (matched 0→2, extra 0) — the L5 convergence, the two-host union of L3's
+  # boundary (the residual is the per-host L3 residual ×2).
   multiHost = {
     name = "multi-host";
     crossArm = true;
