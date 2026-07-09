@@ -57,10 +57,14 @@ in
         # UNCONDITIONAL route emission classifies as RESOLUTION (a value-CONDITIONAL emission would produce
         # nothing at the value-less probe and misclassify as enrich, then crash on firing).
         #
-        # `intoClass = host.class` routes to the host's OS class (v1 semantics). The v1 value-gate
-        # (`host.class ∈ {nixos,darwin}`) is RELAXED to canTake host-presence + `or "nixos"` at the probe:
-        # the corpus has only nixos/darwin hosts (PIN.md), so this matches v1 on the corpus; a non-OS host
-        # class would mis-route (documented — a C8 faithfulness item, not a corpus divergence).
+        # `intoClass = host.class or null` routes to the host's OS class (v1 semantics). The v1 value-gate
+        # `host ? class` (INERT for a synthetic `user@host` home, which has no OS class) is preserved as a
+        # NULL TARGET: an absent/null host class → `intoClass = null` → a DEFINED NO-OP delivery (dropped at
+        # materialization, compile.nix `__dropped`), so a classless host stays INERT (never misroutes to a
+        # default) exactly as v1. The other half of v1's gate — `host.class ∈ {nixos,darwin}` — is relaxed
+        # to canTake host-presence: the corpus has only nixos/darwin hosts (PIN.md), so a corpus host always
+        # routes to its real OS class; a non-{nixos,darwin} registered class would route there too (an
+        # accepted relaxation), and an UNREGISTERED target class aborts LOUDLY (never a silent misroute).
         os-to-host = {
           __denCanTake = "host";
           fn =
@@ -68,7 +72,7 @@ in
             [
               (deliverLib.route {
                 fromClass = "os";
-                intoClass = host.class or "nixos";
+                intoClass = host.class or null;
                 path = [ ];
               })
             ];

@@ -46,7 +46,8 @@ in
         # (compile.nix preserves the `{ user, host, ... }` formals): den-hoag fires it only at a user cell
         # (both coordinates present), and the stratum probe's sentinel user+host make the UNCONDITIONAL
         # route classify as RESOLUTION. `user.name` = v1's `user.userName` (den-hoag ctx canonicalizes to
-        # `.name`); `intoClass = host.class` (the corpus's nixos/darwin, `or "nixos"` at the probe).
+        # `.name`); `intoClass = host.class or null` — a synthetic `user@host` home has no host OS class, so
+        # the null target renders a DEFINED NO-OP (dropped), INERT exactly as v1's `host ? class` gate.
         user-to-host = {
           __denCanTake = "user-host";
           fn =
@@ -54,7 +55,7 @@ in
             [
               (deliverLib.route {
                 fromClass = "user";
-                intoClass = host.class or "nixos";
+                intoClass = host.class or null;
                 path = [
                   "users"
                   "users"

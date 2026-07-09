@@ -38,7 +38,7 @@ let
 
   # ── R3 — os → host.class routing (os-class.nix:26-43), a FORMAL-PRESERVING canTake route ──────────────
   # The compiled policy is `{ host, ... }@ctx:` — its formals ARE the canTake gate (den-hoag fires it only
-  # where a host coordinate is in scope). It routes os → the host's OS class (`host.class`, `or "nixos"`).
+  # where a host coordinate is in scope). It routes os → the host's OS class (`host.class or null`).
   r3Route = r2Compiled.policies.os-to-host;
   r3CanTake = builtins.functionArgs r3Route; # { host = false; } — the canTake condition
   r3ToNixos = r3Route {
@@ -47,6 +47,19 @@ let
       class = "nixos";
     };
   };
+  # v1's `host ? class` gate: a synthetic `user@host` home (no class FIELD) or an explicit null class must
+  # stay INERT — the route renders a `__dropped` no-op delivery, NEVER a misroute to a default (ruling B2).
+  r3SyntheticInert = builtins.head (r3Route {
+    host = {
+      name = "laptop";
+    };
+  });
+  r3NullClassInert = builtins.head (r3Route {
+    host = {
+      name = "h";
+      class = null;
+    };
+  });
 
   # ── R4 — den.default radiation (defaults.nix genAttrs [host user home]) + built-in membership ─────────
   r4Compiled = denCompat.compileFull ruleWitnesses.R4.decls;
@@ -214,6 +227,21 @@ in
         delivery = true;
         from = "os";
         to = "nixos";
+      };
+    };
+    # CLASSLESS-HOST INERT (ruling B2, v1 `host ? class` parity): a synthetic home (no class field) OR an
+    # explicit null class → a `__dropped` no-op delivery (dropped at materialization, renders no edge),
+    # never a misroute to a default. A real nixos host is NOT dropped (routes).
+    test-r3-classless-host-inert = {
+      expr = {
+        synthetic = r3SyntheticInert.__dropped;
+        nullClass = r3NullClassInert.__dropped;
+        realHostRoutes = (builtins.head r3ToNixos).__dropped;
+      };
+      expected = {
+        synthetic = true;
+        nullClass = true;
+        realHostRoutes = false;
       };
     };
 

@@ -124,7 +124,11 @@ let
   deliveryEdgesAt =
     id:
     let
-      deliveries = builtins.filter (a: (a.__action or null) == "delivery") (
+      # A delivery flagged `__dropped` is a DEFINED NO-OP — its target resolved to an absent/null class, so
+      # it renders no edge (a route emitted probe-safe by an emitter that gates value-conditionally, yet
+      # INERT at a firing scope whose target is absent). A native fleet emits none; every ordinary delivery
+      # has `__dropped` unset, so this filter is byte-identical for one.
+      deliveries = builtins.filter (a: (a.__action or null) == "delivery" && !(a.__dropped or false)) (
         (result.get id "declarations").actions.resolution or [ ]
       );
       renderDelivery =

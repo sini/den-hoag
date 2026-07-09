@@ -32,13 +32,25 @@ let
   # "default-fold"`). NEVER `synthesize` (that is only v1's __complexForward adapter arm, Task 5) and
   # NEVER `value` (v1's frozen sourceKey has no value arm — a value edge could never byte-match, P1).
   # Class-name strings resolve to registrations HERE (C6, unknown → named abort); names never survive on.
+  # A NULL-TARGET delivery is a DEFINED NO-OP (materializes to no edge). v1's built-in os/user routes gate
+  # on `host ? class` — a synthetic `user@host` home (no OS class) leaves the route INERT — so a route
+  # whose `intoClass` resolves to null (an absent/null host class) must stay inert, NOT misroute to a
+  # default. The null case is emitted (probe-safe: still a resolution-stratum declaration, so a
+  # value-conditional route classifies as resolution, not enrich) but flagged `__dropped`; output-modules
+  # `deliveryEdgesAt` skips it. A dummy sentinel entry satisfies `declare.delivery`'s A2 requireEntry
+  # without a registry lookup (the edge is never rendered, so its class name is irrelevant).
+  droppedTargetSentinel = {
+    id_hash = "«dropped-delivery-target»";
+    name = "«dropped»";
+  };
   translateDelivery =
     ing: d:
     let
       isModule = d.sourceClass == null;
+      dropped = d.target == null;
       # `resolveBucket`: from/to name a den-hoag fold bucket (a quirk channel) or a class (§9). A channel
       # delivery flows through the fold now; a class delivery's bucket is empty until class content joins.
-      toEntry = ing.resolveBucket "deliver" d.target;
+      toEntry = if dropped then droppedTargetSentinel else ing.resolveBucket "deliver" d.target;
       annotations =
         prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
         // prelude.optionalAttrs (d.guard != null) { guard = true; }
@@ -48,8 +60,14 @@ let
       # A module source collects the TARGET class (v1 provide, provides.nix:121) — so for a module
       # source, sourceClass deliberately CARRIES THE TARGET REGISTRATION (sourceClass == targetClass;
       # deliveryEdgesAt disambiguates on `module != null`, not on the class pair). A class source
-      # collects `from`.
-      sourceClass = if isModule then toEntry else ing.resolveBucket "deliver" d.sourceClass;
+      # collects `from`. A dropped delivery renders nothing, so its source is the sentinel too.
+      sourceClass =
+        if dropped then
+          droppedTargetSentinel
+        else if isModule then
+          toEntry
+        else
+          ing.resolveBucket "deliver" d.sourceClass;
       targetClass = toEntry;
       module = d.moduleSource;
       inherit (d)
@@ -59,6 +77,7 @@ let
         adaptArgs
         ;
       inherit annotations;
+      __dropped = dropped;
     };
 
   # v1 class-key names that differ from den-hoag's (§ grounded terminology): a v1 aspect's class key is
