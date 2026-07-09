@@ -162,7 +162,26 @@
             let
               t = linkTarget l.target;
             in
-            if t == null then acc else acc // { ${t.kind} = self.get t.nodeId "enriched-context"; }
+            if t == null then
+              acc
+            else
+              let
+                existing = acc.${t.kind} or null;
+                newCtx = self.get t.nodeId "enriched-context";
+              in
+              acc
+              // {
+                ${t.kind} =
+                  if existing == null then
+                    newCtx
+                  else if builtins.isList existing then
+                    existing ++ [ newCtx ]
+                  else
+                    [
+                      existing
+                      newCtx
+                    ];
+              }
           ) { } (builtins.filter (a: declarations.kindOf a == "link") links);
       in
       {

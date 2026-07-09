@@ -146,13 +146,13 @@ let
              present = self.get id "resolved-aspects";
              dedupPresent =
                let
-                 grouped = prelude.groupBy (a: a.content.name) present;
+                 grouped = prelude.groupBy (a: a.content.name or a.key) present;
                  selectBest = name: list:
                    if builtins.length list == 1 then
                      builtins.head list
                    else
                      let
-                       wrappers = builtins.filter (a: a.key != a.content.name) list;
+                       wrappers = builtins.filter (a: a.key != (a.content.name or a.key)) list;
                      in
                      if wrappers != [ ] then builtins.head wrappers else builtins.head list;
                in
@@ -171,7 +171,7 @@ let
                  layers =
                    prelude.concatMap (sliceFixed: layersAtSlice aspectEntry sliceFixed) chain
                    ++ policyLayersAt resolutionActs coords aspectEntry;
-                 key = a.content.name;
+                 key = a.content.name or a.key;
                }
              ) dedupPresent;
              resolved = settings.resolveAll { inherit batch; };
@@ -180,9 +180,9 @@ let
              acc: a:
              acc
              // {
-               ${a.content.name} = {
-                 value = resolved.value.${a.content.name};
-                 provenance = resolved.provenance.${a.content.name};
+               ${a.content.name or a.key} = {
+                 value = resolved.value.${a.content.name or a.key};
+                 provenance = resolved.provenance.${a.content.name or a.key};
                };
              }
            ) { } dedupPresent;
@@ -199,7 +199,7 @@ let
     allAspects: self: id:
     let
       present = self.get id "resolved-aspects";
-      presentNames = map (n: n.content.name) present;
+      presentNames = map (n: n.content.name or n.key) present;
       rs = self.get id "resolved-settings";
     in
     builtins.mapAttrs (name: _def: {

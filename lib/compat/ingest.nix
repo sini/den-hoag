@@ -81,15 +81,64 @@ let
 
   # All (user, host) bindings from `host.users.<u>` across every flat host — one binding per user-under-
   # host, so a user present on several hosts yields one cell per host (same NORMAL multi-host case).
+  # We ALSO parse fleet.user-access and den.users.registry to discover dynamic access grants.
   hostUserBindings =
-    flatHosts:
-    prelude.concatMap (
-      hostName:
-      map (u: {
-        user = u;
-        host = hostName;
-      }) (builtins.attrNames (flatHosts.${hostName}.users or { }))
-    ) (builtins.attrNames flatHosts);
+    flatHosts: v1Decls:
+    let
+      # Static users from host.users
+      staticBindings = prelude.concatMap (
+        hostName:
+        map (u: {
+          user = u;
+          host = hostName;
+        }) (builtins.attrNames (flatHosts.${hostName}.users or { }))
+      ) (builtins.attrNames flatHosts);
+
+      # Dynamic users from ACL (if present)
+      fleetAccess = (v1Decls.fleet or { }).user-access or { };
+      registry = (v1Decls.den.users.registry or { }) // (v1Decls.users.registry or { });
+      registryNames = builtins.attrNames registry;
+
+      getHostAccessGroups = hostName: hostCfg:
+        let
+          envName = hostCfg.environment or "prod";
+          envGate = (v1Decls.environments.${envName} or { }).system-access-groups or [ ];
+          hostGate = hostCfg.system-access-groups or [ ];
+          effectiveGate = prelude.unique (envGate ++ hostGate);
+
+          envGrant = (fleetAccess.by-environment.${envName} or { groups = [ ]; }).groups;
+          hostGrant = (fleetAccess.by-host.${hostName} or { groups = [ ]; }).groups;
+          allGrants = prelude.unique (envGrant ++ hostGrant ++ hostGate);
+        in
+          if effectiveGate == [ ] then
+            allGrants
+          else
+            builtins.filter (g: builtins.elem g effectiveGate) allGrants;
+
+      aclBindings = prelude.concatMap (
+        hostName:
+        let
+          hostCfg = flatHosts.${hostName};
+          accessGroups = getHostAccessGroups hostName hostCfg;
+
+          matchedUsers = builtins.filter (
+            userName:
+            let
+              userGroups = registry.${userName}.groups or [ ];
+            in
+            builtins.any (g: builtins.elem g accessGroups) userGroups
+          ) registryNames;
+        in
+        map (u: {
+          user = u;
+          host = hostName;
+        }) matchedUsers
+      ) (builtins.attrNames flatHosts);
+    in
+    {
+      bindings = prelude.unique (staticBindings ++ aclBindings);
+      inherit getHostAccessGroups;
+    };
 
   # Build the den-hoag containment schema from v1's declared kinds atop the built-ins. den v1 makes
   # `host` a root and `user` a cell under it implicitly; `den.schema.<kind> = { parent; }` declares
@@ -235,7 +284,8 @@ let
 
       flatHosts = flattenHosts (v1Decls.hosts or { });
       # Every (user, host) binding from standalone homes AND host-embedded users — the cell granularity.
-      bindings = homeBindings (v1Decls.homes or { }) ++ hostUserBindings flatHosts;
+      hubResult = hostUserBindings flatHosts v1Decls;
+      bindings = homeBindings (v1Decls.homes or { }) ++ hubResult.bindings;
       # ONE field-less user entry per DISTINCT user name. den-hoag entities carry no content (it comes
       # from aspects), so merging a user's N per-host homes is trivial: ingestion reads only the user
       # NAME (here) and the host BINDING (kept per-cell in `membership`), never a per-host user field —
@@ -250,7 +300,10 @@ let
       customInstances = prelude.genAttrs customKinds (k: v1Decls.${k} or (v1Decls.${k + "s"} or { }));
 
       instances = {
-        host = builtins.mapAttrs (_: h: h // { class = h.class or "nixos"; }) flatHosts;
+        host = builtins.mapAttrs (name: h: h // {
+          class = h.class or "nixos";
+          accessGroups = hubResult.getHostAccessGroups name h;
+        }) flatHosts;
         user = prelude.genAttrs userNames (_: { });
       }
       // customInstances;

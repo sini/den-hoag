@@ -29,6 +29,26 @@ let
   injectRelationships =
     ing: ctx:
     let
+      # Hoist fields out of listified link contexts (from structural.nix fix)
+      # e.g., if context.user = [ { resolved-users = <val>; }, ... ], then context.resolved-users = [ <val>, ... ]
+      schemaNames = builtins.attrNames (ing.schema or {});
+      reservedKeys = [ "system" "identity" "uid" "gid" "linger" "name" "hasAspect" ] ++ schemaNames;
+      hoistedFields = prelude.foldl' (acc: k:
+        if builtins.isList (ctx.${k} or null) && builtins.elem k schemaNames then
+          prelude.foldl' (acc2: ctxItem:
+            if builtins.isAttrs ctxItem then
+              prelude.foldl' (acc3: fieldK:
+                if !(builtins.elem fieldK reservedKeys) then
+                  acc3 // { ${fieldK} = (acc3.${fieldK} or []) ++ [ ctxItem.${fieldK} ]; }
+                else acc3
+              ) acc2 (builtins.attrNames ctxItem)
+            else acc2
+          ) acc ctx.${k}
+        else acc
+      ) {} (builtins.attrNames ctx);
+
+      ctxWithHoisted = hoistedFields // ctx;
+
       step =
         currCtx:
         let
@@ -67,7 +87,7 @@ let
         in
         if allRelations == { } then currCtx else step (currCtx // allRelations);
     in
-    step ctx;
+    step ctxWithHoisted;
 
   setFunctionArgs = f: args: {
     __functor = self: f;
@@ -170,7 +190,7 @@ let
   # functors (`__isWrappedFn = true`). This walks the `includes` tree and wraps lambdas.
   sanitizeAspect =
     ing: aspectRec: v1Classes: v1Quirks: name: aspect:
-    if builtins.isFunction aspect then
+    if builtins.isFunction aspect || (builtins.isAttrs aspect && aspect ? __functor && !(aspect.__isWrappedFn or false)) then
       {
         __isWrappedFn = true;
         id_hash = (ing.aspectEntry name).id_hash or null;
@@ -181,6 +201,8 @@ let
             builtins.functionArgs aspect
           else if builtins.isAttrs aspect && aspect ? __functionArgs then
             aspect.__functionArgs
+          else if builtins.isAttrs aspect && aspect ? __functor then
+            builtins.functionArgs (aspect.__functor aspect)
           else
             { };
         __functor =
@@ -207,11 +229,14 @@ let
                       e.name
                     else
                       null;
-                  orig =
-                    if entityName != null && ing.instances ? ${k} && ing.instances.${k} ? ${entityName} then
-                      ing.instances.${k}.${entityName}
+                  rawOrig =
+                    if k == "user" && entityName != null && ing.v1UsersRegistry ? ${entityName} then
+                      ing.v1UsersRegistry.${entityName}
+                    else if entityName != null && ing.hydratedInstances ? ${k} && ing.hydratedInstances.${k} ? ${entityName} then
+                      ing.hydratedInstances.${k}.${entityName}
                     else
                       { };
+                  orig = rawOrig;
                   base =
                     e
                     // orig
@@ -295,8 +320,9 @@ let
                           expandedIncludes = map (
                             uName:
                             let
+                              fullUser = ing.users.registry.${uName} or { name = uName; };
                               userCtx = ctx // {
-                                user = {
+                                user = fullUser // {
                                   name = uName;
                                 };
                               };
@@ -541,17 +567,27 @@ let
     else if kind == "exclude" then
       [ (declare.drop (resolveAspectRef ing aspectRec v1Classes v1Quirks effect.value)) ]
     else if kind == "resolve" then
-      # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
-      # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
-      # are context data the spawned node carries (the edge-wiring pass reads them off the declaration).
+      # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch).
+      # den-hoag (v2) treats `resolve.shared { user }` as a structural link to the user cell,
+      # as the user cell is already instantiated via gen-product.
       let
         shared = effect.__shared or false;
-        spawnDecl = (if shared then declare.spawnShared else declare.spawn) {
-          classes = effect.includes or [ ];
-          bindings = effect.value or { };
-        };
+        kindClasses = if effect ? __resolveKind && ing._rawSchema ? ${effect.__resolveKind} then ing._rawSchema.${effect.__resolveKind}.classes or [ ] else [ ];
+        bindings = effect.value;
+        # If there is exactly one binding and it's an entity, emit a link edge.
+        bindingKeys = builtins.attrNames bindings;
+        singleBindingKey = if builtins.length bindingKeys == 1 then builtins.elemAt bindingKeys 0 else null;
+        targetEntry = if singleBindingKey != null && builtins.isAttrs bindings.${singleBindingKey} && bindings.${singleBindingKey} ? id_hash then bindings.${singleBindingKey} else null;
+        
+        decl = if shared && targetEntry != null then
+          declare.link { target = targetEntry; }
+        else
+          (if shared then declare.spawnShared else declare.spawn) {
+            classes = (effect.includes or [ ]) ++ kindClasses;
+            inherit bindings;
+          };
       in
-      [ spawnDecl ]
+      [ decl ]
     else if kind == "spawn" then
       # A v1 `policy.spawn { classes }` (policy-effects.nix `spawn`) — a deferred home-projection spawn
       # (the projected content sees fleet-wide pipe values, PR #623). A den-hoag `spawn` of the named
@@ -696,7 +732,7 @@ let
             settings = { };
           })
         else
-          builtins.mapAttrs augmentEntity ctxWithExtras;
+          builtins.mapAttrs (k: v: if builtins.isAttrs v then augmentEntity k v else v) ctxWithExtras;
     in
     if isProbe || missingArgs == [ ] then
       let
@@ -757,15 +793,34 @@ let
 in
 { ... }@v1Decls:
 let
-  ing =
+  _rawIng =
     ingest.ingest v1Decls
     // {
       inherit findAspectName;
       _originalFlatAspects = v1Decls._originalFlatAspects or (v1Decls.aspects or { });
       secretsConfig = v1Decls.secretsConfig or { };
       _lazyDatabase = v1Decls._lazyDatabase or null;
-    }
-    // (prelude.optionalAttrs (v1Decls ? lib) { inherit (v1Decls) lib; });
+      _evalModules = v1Decls._evalModules or null;
+      _rawSchema = v1Decls._rawSchema or null;
+      v1UsersRegistry = (v1Decls.den.users.registry or { }) // (v1Decls.users.registry or { });
+    };
+
+  ing = _rawIng // {
+    hydratedInstances =
+      if _rawIng ? _evalModules && _rawIng ? _rawSchema then
+        builtins.mapAttrs (k: instancesOfKind:
+          if (_rawIng._rawSchema or { }) ? ${k} && _rawIng._rawSchema.${k} ? imports then
+            builtins.mapAttrs (entityName: rawOrig:
+              (_rawIng._evalModules {
+                modules = _rawIng._rawSchema.${k}.imports ++ [ (rawOrig // { name = entityName; }) ( { lib, ... }: { freeformType = lib.types.lazyAttrsOf (lib.types.raw or lib.types.unspecified); } ) ];
+              }).config
+            ) instancesOfKind
+          else
+            instancesOfKind
+        ) _rawIng.instances
+      else
+        _rawIng.instances;
+  } // (prelude.optionalAttrs (v1Decls ? lib) { inherit (v1Decls) lib; });
   v1Aspects = v1Decls.aspects or { };
   v1Policies = v1Decls.policies or { };
   v1Classes = v1Decls.classes or { };
@@ -908,21 +963,26 @@ let
           aspectRefs = ing.kindIncludes.${kind};
           processRef =
             ref: ctx:
-            if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __policyEffect) then
-              # It's a policy function or an effect record. Compile it as a policy.
-              compilePolicy ing aspectRec v1Classes v1Quirks ref ctx
-            else if builtins.isAttrs ref && !(ref ? name) && !(ref ? id_hash) then
-              # Unnamed inline module/aspect
-              let
-                dummyName =
-                  "inline-aspect-"
-                  + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
-                translated = translateAspect ing aspectRec v1Classes v1Quirks dummyName ref;
-              in
-              [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
-            else
-              # It's a standard aspect reference.
-              [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks ref)) ];
+            let
+              _traceProcessRef = builtins.trace "processRef kind=${kind}, ctx keys=${builtins.toJSON (builtins.attrNames ctx)}" null;
+            in
+            builtins.seq _traceProcessRef (
+              if builtins.isFunction ref || (builtins.isAttrs ref && ref ? __policyEffect) then
+                # It's a policy function or an effect record. Compile it as a policy.
+                compilePolicy ing aspectRec v1Classes v1Quirks ref ctx
+              else if builtins.isAttrs ref && !(ref ? name) && !(ref ? id_hash) then
+                # Unnamed inline module/aspect
+                let
+                  dummyName =
+                    "inline-aspect-"
+                    + builtins.hashString "sha256" (builtins.concatStringsSep "-" (builtins.attrNames ref));
+                  translated = translateAspect ing aspectRec v1Classes v1Quirks dummyName ref;
+                in
+                [ (declare.edge (translated // ing.aspectEntry dummyName)) ]
+              else
+                # It's a standard aspect reference.
+                [ (declare.edge (resolveAspectRef ing aspectRec v1Classes v1Quirks ref)) ]
+            );
 
           mkPolicyForRef =
             ref:
@@ -937,7 +997,7 @@ let
                 host ? null,
                 ...
               }@ctx:
-              if ctx ? host then processRef ref ctx else [ ]
+              if ctx ? host then processRef ref (ctx // { accessGroups = ctx.host.accessGroups or [ ]; }) else [ ]
             else if kind == "user" then
               {
                 user ? null,
@@ -996,12 +1056,45 @@ let
     // defaultAspects
     // compiledPolicies.conditionalAspects;
 
-  # The synthetic `__kindInclude__<kind>` / `__denDefault` / `__selfProvideInclude` policy names cannot
-  # collide with a compiled `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a
-  # v1 policy name is a user-authored identifier that never uses it — so this namespace is disjoint from
-  # `compiledPolicies`.
+  # Generate a den-hoag policy for every aspect that returns non-structural keys.
+  # This ensures custom data (e.g., `resolved-users`) evaluates at the `enrichments` stratum
+  # and populates `enriched-context` (making it visible across `link` edges).
+  compatEnrichPolicies =
+    let
+      structuralKeysSet = {
+        settings = true; includes = true; neededBy = true; meta = true;
+        tags = true; projects = true; name = true; description = true; id_hash = true;
+      };
+      
+      aspectEnrichPolicy = name: aspectFields:
+        let
+          # Only include keys that are defined, not structural, and not from the legacy class surface
+          v1ClassKeyMap = { homeManager = "home-manager"; };
+          customKeys = builtins.filter (k: 
+            !(structuralKeysSet ? ${k}) && 
+            !(v1Classes ? ${v1ClassKeyMap.${k} or k} || v1Classes ? ${k}) &&
+            !(v1Quirks ? ${k}) &&
+            (builtins.isAttrs aspectFields.${k} || builtins.isFunction aspectFields.${k})
+          ) (builtins.attrNames aspectFields);
+        in
+        if customKeys == [ ] then null
+        else {
+          "__compatEnrich__${name}" = { ... }@ctx:
+            builtins.map (k: declare.enrich { key = k; value = aspectFields.${k}; }) customKeys;
+        };
+        
+      policiesList = builtins.filter (x: x != null) (
+        prelude.mapAttrsToList aspectEnrichPolicy v1Aspects
+      );
+    in
+    prelude.foldl' (acc: p: acc // p) { } policiesList;
+
+  # The synthetic `__kindInclude__<kind>` / `__denDefault` / `__selfProvideInclude` / `__compatEnrich__*`
+  # policy names cannot collide with a compiled `den.policies.<name>`: den reserves the `__` prefix for 
+  # internal keys, and a v1 policy name is a user-authored identifier that never uses it — so this 
+  # namespace is disjoint from `compiledPolicies`.
   policies =
-    compiledPolicies.policies // defaultPolicies // selfProvideInclude // kindIncludePolicies;
+    compiledPolicies.policies // defaultPolicies // selfProvideInclude // kindIncludePolicies // compatEnrichPolicies;
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
   # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys
@@ -1051,13 +1144,13 @@ builtins.seq surfaceTotalityOk {
     inherit (ing)
       schema
       registries
-      instances
       membership
       contentClass
       systemFor
       channelFor
       instantiateFor
       ;
+    instances = ing.hydratedInstances;
   };
   inherit aspects policies;
   # v1 `den.quirks.<name>` → a den-hoag channel registration `{ channel; ops; adapters; }` (pipe.nix

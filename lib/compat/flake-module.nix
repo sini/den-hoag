@@ -457,21 +457,19 @@ let
         };
         config = lib.mkMerge [
           {
-            den = builtins.removeAttrs (allBindings.den or { }) [
-              "host" "hosts" "user" "users" "environment" "environments" "cluster" "clusters" "group" "groups"
-            ];
+            den = allBindings.den or { };
           }
           {
-            den.host = lib.mkForce (instances.host or { });
-            den.hosts = lib.mkForce (instances.host or { });
-            den.user = lib.mkForce (instances.user or { });
-            den.users = lib.mkForce (instances.user or { });
-            den.environment = lib.mkForce (instances.environment or { });
-            den.environments = lib.mkForce (instances.environment or { });
-            den.cluster = lib.mkForce (instances.cluster or { });
-            den.clusters = lib.mkForce (instances.cluster or { });
-            den.group = lib.mkForce (instances.group or { });
-            den.groups = lib.mkForce (instances.group or { });
+            den.host = instances.host or { };
+            den.hosts = instances.host or { };
+            den.user = instances.user or { };
+            den.users = instances.user or { };
+            den.environment = instances.environment or { };
+            den.environments = instances.environment or { };
+            den.cluster = instances.cluster or { };
+            den.clusters = instances.cluster or { };
+            den.group = instances.group or { };
+            den.groups = instances.group or { };
           }
         ];
       };
@@ -500,11 +498,13 @@ let
   # nixos class carries the compat systemFor-injecting instantiate (§2.5 carry-in), so `den.hosts`'
   # per-host platform reaches the built system.
   mkFleetModule =
-    v1Decls: compiled: inputs:
+    v1Decls: compiled: inputs: lib:
     let
       instanceConfig = compiled.entities.instances;
       denContext = v1Decls // {
         lib = import ./v1-lib.nix { inherit denHoag deliverLib; };
+        evalModules = lib.evalModules;
+        rawSchema = v1Decls.schema or { };
         batteries = v1Decls.batteries or { };
         schema =
           (schema.evalModuleTree {
@@ -829,15 +829,20 @@ PROD ENV KEYS: ${builtins.toJSON (builtins.attrNames (res.environment.prod or {}
           acc
       ) { } userModules;
       inputs = extractedModuleArgs.inputs or { };
+      lib = extractedModuleArgs.lib or (inputs.nixpkgs.lib or null);
       
       v1DeclsWithRegistry = v1Decls // {
         _lazyDatabase = built.den;
+        _evalModules = lib.evalModules;
+        _rawSchema = v1Decls.schema or { };
       };
 
-      compiled = compile (desugarLegacy v1DeclsWithRegistry);
 
+      compiled = compile (desugarLegacy v1DeclsWithRegistry);
+      denModule = mkFleetModule v1Decls compiled inputs lib;
+      
       built = denHoag.mkDen [
-        (mkFleetModule v1Decls compiled inputs)
+        denModule
         interpretModule
       ];
     in

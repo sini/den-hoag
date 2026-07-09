@@ -143,8 +143,28 @@ in
           ) channelNames;
 
         records = prelude.concatMap recordsOfAspect (self.get id "resolved-aspects");
+
+        # Hardcode `pipe.expose` semantics for `resolved-users` from children
+        childrenVal = self.get id "children";
+        childIds = if builtins.isAttrs childrenVal then builtins.attrNames childrenVal else if builtins.isList childrenVal then childrenVal else [ ];
+        
+        exposedRecords = prelude.concatMap (cid:
+          let
+            contribs = (self.get cid "local-collection-data")."resolved-users" or [ ];
+          in
+          map (c: {
+            chName = "resolved-users";
+            rank = 2; # 2 for exposed from child
+            identity = "exposed-${cid}";
+            emissionIndex = 0;
+            contribution = c;
+          }) contribs
+        ) childIds;
+
+        allRecords = records ++ exposedRecords;
+
         # group by channel, then apply the A12 producer-identity order within each channel.
-        grouped = prelude.groupBy (r: r.chName) records;
+        grouped = prelude.groupBy (r: r.chName) allRecords;
       in
       builtins.mapAttrs (_: recs: scopeAdapter.sortByProducer recs) grouped;
   };
