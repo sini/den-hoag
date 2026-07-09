@@ -80,8 +80,9 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   (`compile.nix` `compileCanTake`): a value-conditional emission (`host.class ∈ {nixos,darwin}`) is
   INVISIBLE to concern-policies' value-less stratum probe (it emits nothing → misclassifies as enrich →
   crashes on firing), so the route emits UNCONDITIONALLY given its `{ host, ... }` formals (canTake
-  presence gate) with `intoClass = host.class or "nixos"`; the v1 value-gate is relaxed to canTake +
-  the corpus's nixos/darwin invariant (PIN.md). The REMAINING residual is now purely v1's USER-scoped
+  presence gate) and the v1 value-gate moves INTO the `intoClass` field — `intoClass = if elem (host.class or null) [nixos darwin] then host.class else null`, a null target being the `__dropped`
+  inert arm. The elem gate is PRESERVED verbatim (a probe-safety transformation of the emission form,
+  NOT a relaxation): route iff `host.class ∈ {nixos,darwin}`, inert otherwise, byte-for-byte v1. The REMAINING residual is now purely v1's USER-scoped
   edges (`root:user:<u>/…`) — v1 resolves a user as its OWN instantiation root (v1 `resolve.to`), den-hoag
   as a CELL under the host root, so the user-cell os/user routes DO fire but target the host root, not a
   user root — a scope-MODEL boundary (the C8/C9 spawn/user-root reconciliation) — plus v1's homeManager
