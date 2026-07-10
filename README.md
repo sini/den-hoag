@@ -100,3 +100,15 @@ The suite's HOAG evaluations are deep enough to overflow the default 8 MB C stac
 
 The library core (`lib/**`) is nixpkgs-lib-free — it uses `gen-prelude` for list/attr/string
 helpers. Only `ci/tests/**` may use nixpkgs `lib`.
+
+**Pin-bump discipline.** `ci/` and `parity/` pin this tree via `path:..`, and their locks carry
+FLATTENED transitive copies of the root's inputs — a root pin bump does NOT propagate to them.
+After changing any root `flake.lock` pin, re-resolve both in the same commit:
+
+```sh
+nix flake lock ./ci     --update-input den-hoag
+nix flake lock ./parity --update-input den-v2
+```
+
+A stale subflake lock evals the OLD dependency (e.g. a missing new lib function) even though the
+root lock is current.

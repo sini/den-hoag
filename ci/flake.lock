@@ -625,11 +625,11 @@
         "gen-prelude": "gen-prelude_10"
       },
       "locked": {
-        "lastModified": 1783307794,
-        "narHash": "sha256-PoVoUJTsegwH84oehG9y65Vh2l5OG0vEoKdkLe3oT0M=",
+        "lastModified": 1783657412,
+        "narHash": "sha256-Y6tknDZyViBdJoVBC6sRrFK+gP4KCv2CT3mKhacKnzU=",
         "owner": "sini",
         "repo": "gen-demand",
-        "rev": "fe9f12ed1c0c0a0aaf6c9e8c37a7195481f54f53",
+        "rev": "121dac3900299ad6b34c315c30c978a7d14aa116",
         "type": "github"
       },
       "original": {
