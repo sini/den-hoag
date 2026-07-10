@@ -76,6 +76,22 @@
         edgeCore = import "${inputs.gen-edge}/lib/core.nix" { prelude = inputs.gen-prelude.lib; };
       };
 
+      # `mkCrossNixos nixpkgs` — build the `nixos` class's real-system terminal from a consumer-supplied
+      # nixpkgs flake, the SAME way the parity harness + compat-terminal-seam test do (den-hoag's ONE
+      # sanctioned crossing, lib/output/terminal.nix, with `lib.internal.{bind,flake}`). Threaded into the
+      # output bridge so its fold can cross a fleet's nixos members when `den.nixpkgs` is set (ship-gate M1).
+      mkCrossNixos =
+        nixpkgs:
+        (import ./lib/output/terminal.nix { inherit (lib.internal) bind flake; } {
+          inherit nixpkgs;
+        }).crossNixos;
+
+      # ── The output bridge (ship-gate M1) — the flake-parts-side splice (D7/D8) ─────────────────────
+      # Replaces the bare option-declaring export: declares `options.den` (nixpkgs-native raw absorption),
+      # runs the compat assembly, and sets `config.flake.{nixosConfigurations,darwinConfigurations}`. See
+      # lib/compat/bridge.nix for the two-eval type-crossing resolution + the D7 instantiation grain notes.
+      bridge = import ./lib/compat/bridge.nix { inherit compat mkCrossNixos; };
+
       # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
       # den's consumers (nix-config) import `inputs.den.flakeModule` and author policies with
       # `inputs.den.lib.policy.*` etc. — den v1's TOP-LEVEL attrpaths. den-hoag exposes the same
@@ -113,19 +129,14 @@
       lib = migrationLib;
       inherit compat;
 
-      # den-v1-compatible TOP-LEVEL flake outputs (the drop-in migration surface — G1/T1). `flakeModule`
-      # is what nix-config's `modules/den/flake-parts.nix` imports; `flakeModules.default` is the
-      # flake-parts convention alias. `flakeModules.dendritic` (a den-diagram optional v1 carried) is
-      # intentionally absent — nix-config guards it `or {}` (ship-gate G1e, low priority).
-      # `compat.flakeModule` is a LIST of flake-parts modules; den's consumers import it as a SINGLE
-      # module (`imports = [ inputs.den.flakeModule ]`), so wrap the list into one module — matching den
-      # v1's single-module flakeModule shape and avoiding "Module imports can't be nested lists".
-      flakeModule = {
-        imports = compat.flakeModule;
-      };
-      flakeModules.default = {
-        imports = compat.flakeModule;
-      };
+      # den-v1-compatible TOP-LEVEL flake outputs (the drop-in migration surface). `flakeModule` is what
+      # nix-config's `modules/den/flake-parts.nix` imports; `flakeModules.default` is the flake-parts
+      # convention alias. Both are the OUTPUT BRIDGE (ship-gate M1): it declares `options.den` with the
+      # consumer's nixpkgs `lib` (raw absorption — never a gen-schema type in the strict eval), runs the
+      # compat assembly, and sets `config.flake.{nixosConfigurations,darwinConfigurations}`. `flakeModules.
+      # dendritic` (a den-diagram optional v1 carried) is intentionally absent — nix-config guards it `or {}`.
+      flakeModule = bridge;
+      flakeModules.default = bridge;
 
       # The committed formatter config — `nix fmt` at the repo root runs `nixfmt-tree` (treefmt
       # preconfigured with nixfmt-rfc-style, the ecosystem's Nix formatting convention agents
