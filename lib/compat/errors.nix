@@ -47,6 +47,25 @@ in
   # the droid arm greets a self-announcing rung, never a misleading identity-law abort.
   excludeOfPolicy = fail "exclude-of-policy (class-B, board #50)" "`policy.exclude` targets a POLICY record (`__denCanTake`/`__isPolicy`/function), not an aspect; suppressing a policy's firing is the droid arm's user-route exclude, not yet available (class-B / board #50)";
 
+  # INLINE-ASPECT kind-include guards (ship-gate, home-env battery). An inline aspect in a
+  # `den.schema.<kind>.includes` list (v1's `{ policies; includes }` battery shape, nix/lib/home-env.nix
+  # makeHomeEnv) is EXPANDED by `kindIncludePolicies`: its `.includes` are HOISTED into the kind's ref list
+  # (each classified normally) and its `.policies` is DROPPED as a verified duplicate. Two loud guards keep
+  # the drop honest (the silent-partition ban applies to the drop, not just to per-declaration strata):
+  #
+  #   (A) VERIFIED-DUPLICATE — every `.policies.<name>` must be NAME-MATCHED by a `.includes` `__isPolicy`
+  #       record (fn-equality is unassertable; name-match is the check). The corpus battery mirrors the same
+  #       name both sides (v1's name-keyed registration is why its effective firing is ONE); an inline aspect
+  #       whose `.policies` carries a NON-mirrored policy aborts here rather than losing it silently.
+  inlineAspectPolicyUnmatched =
+    name:
+    fail "inline-aspect kind-include" "inline-aspect `.policies.${name}` has no matching `.includes` `__isPolicy` record — refusing to DROP a policy silently (the hoist keeps `.includes` and drops `.policies` ONLY as a verified duplicate; a non-mirrored `.policies` entry would be lost). Mirror it into `.includes` as `{ __isPolicy = true; name = \"${name}\"; fn; }`, or register it as a `den.policies.<name>`";
+  #   (B) UNKNOWN-KEY — the shim expands ONLY the `{ policies; includes }` battery shape; any other key on an
+  #       inline aspect (class content) is not hoisted. Named abort listing the keys rather than a silent drop.
+  inlineAspectUnknownKeys =
+    keys:
+    fail "inline-aspect kind-include (C1)" "an inline aspect in a `den.schema.<kind>.includes` list carries key(s) beyond {includes, policies}: [${builtins.concatStringsSep ", " keys}] — the shim expands only the v1 `{ policies; includes }` battery shape (nix/lib/home-env.nix); class-content on an inline include is not hoisted. Register it as a named `den.aspects.<name>` and include it by reference (`{ name = \"<name>\"; }`)";
+
   # A v1 `den.schema.<kind>` names a `parent` kind that no other kind declares — the containment DAG is
   # broken at ingestion. Named at definition time so a schema typo fails legibly, not deep in the fleet
   # product. (den-hoag's built-in `host`/`user` are always present.)

@@ -119,6 +119,21 @@
       # v1 `__policyEffect`/`__pipeStage` record constructors, reproduced in compat (`policy-verbs.nix`,
       # ship-gate T3b) and aliased here; the fleet-resolution / instantiation verbs remain stubs (#49/#50).
       stub = ref: task: throw "den-hoag compat: `${ref}` — ${task}";
+      # den.lib.home-env (ship-gate lib-surface) — v1's OS-user home battery builder (nix/lib/home-env.nix),
+      # reproduced compat-side (lib/compat/home-env.nix). Its droid-path references
+      # (`den.batteries.forward`, `den.lib.resolveEntity`, `den.lib.policy.*`) resolve against the migration
+      # surface + named stubs; ALL are lazy, reached only when a droid-class host opens the battery gate — a
+      # class-A (nixos) host leaves them inert. The `den`-shaped context it closes over: `.lib` = the
+      # migration surface (recursive, cycle-free via laziness), `.batteries.forward` = the #49 forward-battery
+      # stub, `.aspects` = `{ }` (the optional `os-user-class-fwd` include is absent, so `? …` is false).
+      homeEnv = import ./lib/compat/home-env.nix {
+        prelude = inputs.gen-prelude.lib;
+        den = {
+          lib = migrationLib;
+          aspects = { };
+          batteries.forward = stub "batteries.forward" "the forward-battery NTA surface (board #49) — not yet available";
+        };
+      };
       migrationLib = lib // {
         # den.lib.policy.* — the policy-authoring vocabulary nix-config writes policies with.
         policy = {
@@ -141,6 +156,9 @@
         resolveEntity = stub "lib.resolveEntity" "the entity-resolution surface (R8; board #49/#50) — not yet available";
         home = stub "lib.home" "the home-entity surface (board #49) — not yet available";
         capture.captureFleet = stub "lib.capture.captureFleet" "the fleet-capture surface (board #49) — not yet available";
+        # den.lib.home-env — the OS-user home battery builder {makeHomeEnv, mkDetectHost, mkIntoClassUsers}
+        # (v1 nix/lib/home-env.nix), reproduced faithfully compat-side; wired above.
+        "home-env" = homeEnv;
       };
     in
     {

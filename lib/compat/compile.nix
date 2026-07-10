@@ -446,11 +446,55 @@ let
     ref:
     (builtins.isFunction ref && !builtins.isAttrs ref)
     || (builtins.isAttrs ref && (ref.__isPolicy or false));
+
+  # An INLINE ASPECT ref in a `den.schema.<kind>.includes` list: an attrs carrying content inline (v1's
+  # `{ policies; includes }` battery, nix/lib/home-env.nix `makeHomeEnv`) rather than a resolvable
+  # REFERENCE (entry / `{ name }` / string) or a policy record. v1 normalize.nix `wrapChild` passes this
+  # shape through UNCHANGED (it is not a function, has no `__contentValues`/`__provider`), then the aspect
+  # pipeline processes its `.includes` children and NAME-KEYS its `.policies` — the same name in both is
+  # why v1's effective firing is ONE. The shim reproduces that: EXPAND the inline aspect — HOIST its
+  # `.includes` into the ref list (recursively, so a hoisted `{ __isPolicy; fn }` reaches the policy-ref
+  # branch and rides `compilePolicy` → concern-policies' per-declaration expansion — the 8e2f8c8
+  # machinery, no new dispatch mechanism) and DROP its `.policies` as a VERIFIED DUPLICATE. Two loud
+  # guards keep the drop honest (silent-partition ban): (A) every `.policies.<name>` must be name-matched
+  # by a `.includes` `__isPolicy` record; (B) any key beyond {includes, policies} (class content) aborts.
+  isInlineAspect =
+    ref:
+    builtins.isAttrs ref
+    && !(ref ? id_hash)
+    && !(ref ? name)
+    && !(ref ? __functor)
+    && !(isPolicyRef ref)
+    && (ref ? includes || ref ? policies);
+  expandInlineAspect =
+    ref:
+    let
+      unknownKeys = builtins.filter (k: k != "includes" && k != "policies") (builtins.attrNames ref);
+      checkedKeys = if unknownKeys == [ ] then true else errors.inlineAspectUnknownKeys unknownKeys;
+      # GUARD A: the `.includes` `__isPolicy` record names — the set the `.policies` drop must be covered by.
+      includeNames = builtins.filter (n: n != null) (
+        map (i: if builtins.isAttrs i && (i.__isPolicy or false) then i.name or null else null) (
+          ref.includes or [ ]
+        )
+      );
+      unmatched = builtins.filter (n: !(builtins.elem n includeNames)) (
+        builtins.attrNames (ref.policies or { })
+      );
+      checkedDup =
+        if unmatched == [ ] then true else errors.inlineAspectPolicyUnmatched (builtins.head unmatched);
+    in
+    builtins.seq checkedKeys (builtins.seq checkedDup (ref.includes or [ ]));
+  # Recursively hoist inline aspects out of a kind-include ref list (the corpus battery is one level;
+  # a nested inline aspect folds). A non-inline ref passes through untouched for the partition below.
+  expandRefs =
+    rs: prelude.concatMap (r: if isInlineAspect r then expandRefs (expandInlineAspect r) else [ r ]) rs;
+
   kindIncludePolicies =
     let
       perKind =
-        kind: refs:
+        kind: rawRefs:
         let
+          refs = expandRefs rawRefs;
           kindCoord = {
             ${kind} = false;
           };
