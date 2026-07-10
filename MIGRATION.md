@@ -45,6 +45,22 @@ tagged and removable without touching the rest. Migrate them last: restate each 
 `deliver`/`route` relationship. The legacy modules' own desugar (`legacy/provides.nix`, `legacy/forwards.nix`)
 shows the exact target shape.
 
+## Home-manager: the scope-model change (what you'll see in the edge trace)
+
+den v1 resolves each user as its own instantiation root and AGGREGATES home-manager at the HOST — so a v1
+edge trace shows a host-scoped `collected:host:<h>/homeManager` fold. den v2 models a user as a first-class
+CELL under its host (Law A15: every non-root scope node is its own edge-root), and folds home-manager PER
+(user, host) CELL — `collected:user:<u>/home-manager`. So when you migrate and inspect edge traces, you WILL
+see the host-scoped home-manager fold DISAPPEAR and a per-cell fold APPEAR. **This is intentional** — the
+user-as-cell model is a deliberate v2 design (first-class user registry, per-(user,host) scoped config), not
+a regression.
+
+The CONTENT guarantee is unchanged: each user's home-manager configuration still lands byte-identically in
+the final host system. den v2 delivers it via the compat forward (`home-manager/users/<u>`), exactly where v1
+merged the user-root instantiation. The P2 drv-hash gate asserts this — a home-manager content divergence at
+the host terminal is a real bug, never waived by the scope-model reclassification. So: the graph SHAPE
+changes (host fold → cell fold), the delivered SYSTEM does not.
+
 ## Deprecation policy — on evidence, per module
 
 A legacy surface or compat behavior is deprecated only on evidence, per module:

@@ -30,12 +30,24 @@ let
   # so the user-scope family claims the user-rooted homeManager-synthesize edge (it is a scope-model
   # divergence, not an hm-battery one). A key matching NONE is an unledgered divergence → the gate fails.
   families = [
+    # residual-n (Law A15 scope-model, ledger row n) — ENUMERATED by exact edge shape, NOT a broad
+    # `root:user:` wildcard: the three user-cell edge shapes v1 renders at a user root + v1's host-aggregated
+    # hm fold (den v2 folds home-manager per (user,host) cell — the former row o). A user-rooted key of any
+    # OTHER shape does NOT classify (a real bug would surface), proven by the user negative control below.
     {
-      id = "residual-n: v1 user-as-root vs den-hoag user-as-cell (L3/L5 scope-model boundary)";
-      match = hasPrefix "root:user:";
+      id = "residual-n A15: user-cell os route";
+      match = k: hasPrefix "root:user:" k && hasInfix "/os | merge" k;
     }
     {
-      id = "residual-o: unported v1 home-manager battery default fold (L3/L5)";
+      id = "residual-n A15: user-cell hm synthesize forward (home-manager/users/<u>)";
+      match = k: hasPrefix "root:user:" k && hasInfix "synthesize:homeManager/" k;
+    }
+    {
+      id = "residual-n A15: user-cell user route";
+      match = k: hasPrefix "root:user:" k && hasInfix "/user | nest" k;
+    }
+    {
+      id = "residual-n A15: v1 host-aggregated hm fold (den v2 folds per-cell — absorbs former residual-o)";
       match = k: hasInfix "collected:host:" k && hasInfix "/homeManager | merge" k;
     }
     {
@@ -50,8 +62,11 @@ let
   classifies = k: builtins.any (f: f.match k) families;
   unledgered = builtins.filter (k: !(classifies k)) allDivergences;
 
-  # NEGATIVE CONTROL — a fabricated divergence key that matches no ledgered family (the gate's teeth).
-  unledgeredProbe = "root:host:igloo/UNLEDGERED |  | collected:host:igloo/UNLEDGERED | merge";
+  # NEGATIVE CONTROLS — fabricated divergence keys that match NO ledgered family (the gate's teeth). Both a
+  # HOST-rooted unknown key AND a USER-rooted unknown SHAPE (proving the enumerated residual-n family does
+  # not blanket-classify every `root:user:` edge — a real user-cell bug of a new shape would surface).
+  unledgeredHost = "root:host:igloo/UNLEDGERED |  | collected:host:igloo/UNLEDGERED | merge";
+  unledgeredUser = "root:user:tux/nixos |  | collected:user:tux/UNLEDGERED | merge";
 in
 {
   flake.tests.parity-ledger-gate = {
@@ -65,10 +80,18 @@ in
       expr = builtins.length allDivergences >= 8;
       expected = true;
     };
-    # TEETH: a fabricated unledgered key classifies into NO family — so a real new divergence would fail the gate.
+    # TEETH: a fabricated unledgered key classifies into NO family — so a real new divergence would fail the
+    # gate. Both a host-rooted AND a user-rooted unknown shape (the latter proves the enumerated residual-n
+    # family is NOT a `root:user:` blanket — a new user-cell divergence shape surfaces, never auto-classified).
     test-gate-has-teeth = {
-      expr = classifies unledgeredProbe;
-      expected = false;
+      expr = {
+        host = classifies unledgeredHost;
+        user = classifies unledgeredUser;
+      };
+      expected = {
+        host = false;
+        user = false;
+      };
     };
     # every ledgered family is actually EXERCISED by the current corpus (no dead classification rows).
     test-families-all-live = {
