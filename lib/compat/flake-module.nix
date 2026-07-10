@@ -130,8 +130,15 @@ let
   # (contentClass, systemFor, membership); everything else maps to its den-hoag concern option. The
   # nixos class carries the compat systemFor-injecting instantiate (§2.5 carry-in), so `den.hosts`'
   # per-host platform reaches the built system.
-  mkFleetModule =
-    compiled:
+  # `mkFleetModuleWith compiled nixosTerminal` — the bridge, PARAMETERISED by the nixos class's terminal.
+  # `nixosTerminal` is the raw terminal the systemFor-injecting `mkNixosInstantiate` wraps: the default
+  # `collect` (nixpkgs-free) is the pure fleet path; the parity harness / a real ship supplies the
+  # nixpkgs-bound `crossNixos` so `nixosConfigurations` are REAL NixOS systems (a `shimDrvPath` exists —
+  # the P2 contentGate ship-gate arm + the migration product both require it). Shim-side seam, zero core
+  # edits; `mkFleetModule` = this with `collect` (byte-identical to the pre-seam bridge, every fixture
+  # untouched).
+  mkFleetModuleWith =
+    compiled: nixosTerminal:
     let
       # Instances cross FIELD-LESS (den-hoag entities carry no content), EXCEPT the host's `class` field:
       # v1's `host.class` is structural entity data the built-in os/user routes gate on (R3/R6), so the host
@@ -147,7 +154,7 @@ let
       ) compiled.entities.instances;
       nixosInstantiate = mkNixosInstantiate {
         inherit (compiled.entities) systemFor;
-        terminal = denHoag.internal.terminal.collect;
+        terminal = nixosTerminal;
       };
     in
     {
@@ -168,6 +175,7 @@ let
       }
       // instanceConfig;
     };
+  mkFleetModule = compiled: mkFleetModuleWith compiled denHoag.internal.terminal.collect;
 
   # The full driver: v1 modules → the den-hoag assembly. `flakeModule` (core + legacy) supplies the v1
   # option declarations for `evalV1`; `compile` desugars; `mkFleetModule` bridges; `denHoag.mkDen` builds.
@@ -245,12 +253,24 @@ let
   interpretModule = {
     config.den.interpret = legacy.forwards.interpret or { };
   };
-  mkDen =
+  # `mkDenWith userModules { nixosTerminal ? collect; hoagModules ? [] }` — build the shim fleet with the
+  # nixos terminal SEAM (the parity harness / a real ship supplies `crossNixos` for real NixOS systems) and
+  # optional extra native den-hoag modules. `mkDen` = this at the default (collect, no extra modules) — the
+  # pure nixpkgs-free path, byte-identical to before.
+  mkDenWith =
     userModules:
-    denHoag.mkDen [
-      (mkFleetModule (compileFull (evalV1 userModules)))
-      interpretModule
-    ];
+    {
+      nixosTerminal ? denHoag.internal.terminal.collect,
+      hoagModules ? [ ],
+    }:
+    denHoag.mkDen (
+      [
+        (mkFleetModuleWith (compileFull (evalV1 userModules)) nixosTerminal)
+        interpretModule
+      ]
+      ++ hoagModules
+    );
+  mkDen = userModules: mkDenWith userModules { };
 in
 {
   inherit
@@ -260,7 +280,9 @@ in
     v1OptionsModule
     evalV1
     mkFleetModule
+    mkFleetModuleWith
     mkDen
+    mkDenWith
     desugarLegacy
     compileFull
     ;

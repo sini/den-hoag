@@ -219,6 +219,26 @@ let
         in
         evaluated.config.__parityOut;
 
+      # crossV1 { fixtureModule } → the v1 flake's `nixosConfigurations` (a real NixOS system per host). The
+      # FULL nixpkgs crossing on the v1 arm — the ONLY way to compare v1 CONTENT, because a v1 class's
+      # materialized `.imports` are REAL nixpkgs nixos modules, meaningful only inside the module-system
+      # fixpoint (a freeform fold cannot close them — it infinite-recurses on `nixos/common.nix`). Eval-only
+      # reads (`config.networking.hostName`, `config.system.build.toplevel.drvPath`) force this fixpoint but
+      # no store build. This IS the P2 ship-gate mechanism at n=1 (the full fleet is the runbook arm).
+      crossV1 =
+        { fixtureModule }:
+        let
+          evaluated = lib.evalModules {
+            specialArgs = { inherit inputs withSystem; };
+            modules = [
+              denV1Flake.flakeModule
+              defaults
+              fixtureModule
+            ];
+          };
+        in
+        evaluated.config.flake.nixosConfigurations or { };
+
       # hash → "<kind>:<name>" from a resolve result's scopeContexts (F1 source for this arm) — the
       # `normalizeTrace` construction (edge-trace.nix): every entity record in every scope's ctx, prefixed
       # ("<kind>:<idHash>" → "<kind>:<name>") for S/T scopes and bare ("<idHash>" → "<kind>:<name>") for
@@ -338,6 +358,8 @@ let
       # Exposed so the content oracle's v1 arm can fold a root's per-class materialized module list
       # (`resolveWithPaths class root → .imports`) — the v1 twin of den-hoag's `output.outputFor`.
       inherit runV1 rootsOf;
+      # The full nixpkgs crossing (P2 content at n=1) — a real v1 NixOS system, eval-only reads.
+      inherit crossV1;
     };
 
   # ══ the content oracle (P2) + the class-share sub-gate (P8) ═════════════════════════════════════════

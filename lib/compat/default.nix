@@ -97,7 +97,13 @@ in
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
   inherit (flakeModuleWiring) mkNixosInstantiate;
-  inherit (flakeModuleWiring) mkFleetModule mkDen evalV1;
+  inherit (flakeModuleWiring)
+    mkFleetModule
+    mkFleetModuleWith
+    mkDen
+    mkDenWith
+    evalV1
+    ;
   # `compileFull` — the "through flakeModule" compile (apply the full legacy desugars, then compile), the
   # entry a v1 surface takes under `flakeModule`. For a non-legacy surface it equals `compile` (or-identity
   # desugars); the C1 witness suite drives every witness through it uniformly. `mkWiring` is the severed-
