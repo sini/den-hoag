@@ -163,6 +163,7 @@ let
       denV1Edge,
       nixpkgsLib,
       nixpkgs,
+      homeManager ? null,
     }:
     let
       lib = nixpkgsLib;
@@ -190,7 +191,8 @@ let
         den = denV1Flake;
         self = denV1Flake;
         inherit nixpkgs;
-      };
+      }
+      // lib.optionalAttrs (homeManager != null) { home-manager = homeManager; };
       defaults = {
         den.schema.user.classes = lib.mkDefault [ "homeManager" ];
         den.default.nixos.system.stateVersion = lib.mkDefault "25.11";

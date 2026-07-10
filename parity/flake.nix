@@ -11,6 +11,14 @@
     # the real harness migrates to a SYNTHETIC self-contained corpus (no live-fleet coupling).
     corpus.url = "github:sini/nix-config/b0b207693ce66fb57acf2bb09cf9549e1dbddec7";
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
+    # home-manager — the v1 hm battery's `getModule` reaches `inputs.home-manager."${host.class}Modules"`;
+    # the CONTENT arm (P2 cross-pipeline live + the fleet drv-hash ship-gate) forces it. Pinned + follows
+    # nixpkgs so both den arms pin identical inputs except the den input (spec §4.4). The EDGE arm (traceV1)
+    # never forces it (edge identity ≠ module content), so it was absent until the content arm landed.
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -48,6 +56,7 @@
             denV1Edge = denV1.edge;
             inherit nixpkgsLib;
             nixpkgs = inputs.nixpkgs;
+            homeManager = inputs.home-manager;
           };
         in
         {
