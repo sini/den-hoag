@@ -68,6 +68,11 @@
         denHoag = lib;
         prelude = inputs.gen-prelude.lib;
         schema = inputs.gen-schema.lib;
+        # gen-aspects — the aspect TAG owner. The shim calls `aspects.wrapFn` to wrap a v1 bare-fn aspect
+        # include (which bypasses the option-type merge under R10 raw-absorption) into den-hoag's
+        # `__isWrappedFn` functor — the same wrap the type applies to native guard fns. Injected directly
+        # (like `schema`/`edge`), not reached through `denHoag`.
+        aspects = inputs.gen-aspects.lib;
         edge = inputs.gen-edge.lib;
         # gen-edge's core primitives (`edgeSortKey`/`renderName`/`traceEntryOf`) — the frozen trace
         # renderer the parity harness renders BOTH arms into. gen-edge's public lib deliberately keeps
@@ -141,6 +146,14 @@
           provide = compat.provide; # alias — the deliver-surface provide descriptor
           include = compat.include; # alias — v1 `{ __policyEffect = "include"; value = aspect; }`
           exclude = compat.exclude; # alias — v1 `{ __policyEffect = "exclude"; value = aspect; }`
+          # spawn — v1 `den.lib.policy.spawn { classes }` (policy-effects.nix): the deferred
+          # home-projection spawn effect the host-aspects battery emits. Compile's `translateEffect`
+          # already handles `kind == "spawn"` (reads `effect.value.classes`), so this is the matching
+          # constructor: `{ __policyEffect = "spawn"; value = { classes = [...]; }; }`.
+          spawn = value: {
+            __policyEffect = "spawn";
+            inherit value;
+          };
           mkPolicy = compat.mkPolicy; # alias — v1 `{ __isPolicy = true; name; fn; }`
           pipe = compat.pipe; # alias — v1 pipe.{from,filter,…} constructor bag
           resolve = stub "lib.policy.resolve" "the fleet-resolution / fan-out surface (R8; board #49/#50) — not yet available";
@@ -175,12 +188,14 @@
         imports = [
           bridge
           builtinsModule
+          ./lib/compat/batteries.nix
         ];
       };
       flakeModules.default = {
         imports = [
           bridge
           builtinsModule
+          ./lib/compat/batteries.nix
         ];
       };
 

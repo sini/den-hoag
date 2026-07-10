@@ -14,6 +14,8 @@
   declare,
   errors,
   sentinels,
+  aspects,
+  builtinClasses,
 }:
 let
   # The §2.4 pipe stage vocabulary: `den.quirks.<name>` → a channel registration (`channelOf`) and the
@@ -92,6 +94,116 @@ let
     homeManager = "home-manager";
   };
 
+  # Ground a v1 aspect attrset's CLASS keys (the same v1ClassKeyMap translateAspect applies statically) —
+  # applied to a wrapped include's RUNTIME result AND to a static include attrset, because a v1 battery fn
+  # returns un-grounded v1 class names (e.g. `homeManager`) only at resolution, and inputs'/self's nested
+  # static `{ homeManager._module.args… }` carries the un-grounded key too. Single v1ClassKeyMap source.
+  groundKeys =
+    attrs:
+    prelude.foldl' (
+      acc: k: builtins.removeAttrs acc [ k ] // { ${v1ClassKeyMap.${k} or k} = attrs.${k}; }
+    ) attrs (builtins.attrNames attrs);
+
+  # ── v1 aspect-include WRAP-GROUND builder (§339; cf. v1 `nix/lib/aspects/fx/aspect/normalize.nix`
+  #    `wrapChild`/`wrapBareFn`). den-hoag requires a parametric aspect include to be a gen-aspects
+  #    `__isWrappedFn` functor; a v1 bare-fn include (`includes = [ ({host,...}: <content>) ]`) is NOT
+  #    that shape, so without the wrap it is treated as a static "<anon>" aspect and never invoked. ──
+  #
+  # `mkNormalize classNames` → `normalizeList prefix refs` — the wrap cnf is PARAMETERISED by the class set
+  # so a DECLARED non-built-in class (e.g. `den.classes.wsl`) routes as CLASS content, not a nested aspect.
+  # CEILING: a class visible ONLY at fleet-discovery time (beyond R2 compile-time class registration)
+  # renders as an inert nested aspect SILENTLY — out-of-corpus (every corpus class arrives via R2,
+  # compile-registered); widening it would mean threading the mkDen fleet cnf (the chicken-egg path),
+  # deferred until a consumer needs it.
+  #
+  # DISTINCT WRAP NAMES (silent-drop fix): gen-aspects `wrapFn` sets `meta.loc = [ name ]`, and
+  # `identity.key` for a wrapped fn = `pathKey meta.loc` (gen-aspects identity.nix), while resolved-aspects
+  # `forwardExpand` SKIPS already-seen keys. So every wrap sharing ONE name (the old `"<include>"`) would
+  # collapse to one key and only the FIRST fires — silently dropping sibling includes (define-user's
+  # hmContext, and via den.default radiation hostname/inputs'/… ). We thread a per-position NAME PATH
+  # (owning-aspect prefix + list index, recursively) so every wrap has a DISTINCT, traceable key.
+  mkNormalize =
+    classNames:
+    let
+      # den-hoag's built-in class set PLUS the fleet's declared classes (`den.classes`), enough to route a
+      # battery fn's class content (nixos/darwin/home-manager/wsl/…) at class-A.
+      wrapCnf = {
+        classes = prelude.genAttrs classNames (_: { });
+      };
+      # Normalize a `.includes` list, naming each element by its POSITION under `prefix` (distinct keys).
+      # The name is built by CONCATENATION (`prefix + ":" + toString i`), NOT by interpolating two values
+      # around a colon — that interpolation idiom is the shim's `kind:name` scope-string form, which the
+      # compat-identity-boundary lint bans in the core by a blunt byte-match (this is an aspect-include
+      # NAME, never a scope-string, but concatenation keeps the core lint-clean regardless).
+      normalizeList =
+        prefix: refs: prelude.imap0 (i: ref: normalize (prefix + ":" + toString i) ref) refs;
+      # COORD GATE + ARG-SHAPING (v1 canTake parity): v1 fires a child fn ONLY where its every REQUIRED coord
+      # is in scope, and calls it with a PRECISELY-shaped coord set. den-hoag's forwardExpand invokes a
+      # wrapped fn UNCONDITIONALLY with the full enriched-context (which carries `__entry` + the scope
+      # coords), so we replicate v1 INSIDE the wrapper:
+      #   • GATE — a formal with no default is REQUIRED (`gen-aspects functionArgs` marks it `false`); if any
+      #     required coord is absent (e.g. define-user's `{ host, user }` userContext radiated via
+      #     `den.default` to a HOST scope, whose ctx has `host` but NO `user`) emit `{ }` (inert HERE)
+      #     instead of THROWING `called without required argument 'user'`. This is v1's `canTake` verbatim
+      #     (v1 `nix/lib/can-take.nix`: `required = filter (n: !args.${n}) …`, `satisfied = all (n: params ?
+      #     ${n}) required`) — the SAME required-coord gate.
+      #   • SHAPE — pass only the fn's declared formals (`intersectAttrs`), so a STRICT fn (no `...`, e.g.
+      #     `{ host, user }` / inputs' `{ host }`) does not choke on the ctx's extra `__entry` coord
+      #     (`called with unexpected argument '__entry'`). Also v1 `can-take.nix` (`intersect =
+      #     intersectAttrs args params`). No corpus battery uses an `@args` capture, so dropping non-formal
+      #     coords is safe (a `{ host, ... }` fn only reads named formals anyway).
+      # COORD-SET LIMIT (the `class`-coord gap, ledger row `u1`): the ctx we gate on is den-hoag's
+      # enriched-context (scope coords + `__entry`) — it carries NO per-class `class` coord. v1, by contrast,
+      # BINDS `class = <resolving entity's class>` into the include ctx during its PER-CLASS resolution (v1
+      # `bind.nix:41` / `push-scope.nix:26` `// optionalAttrs (entityClass != null) { class = entityClass; }`,
+      # `fx/resolve.nix:181/183` `base // { class = entityCls; }` / `{ class = hostClass; }`). So a
+      # class-GENERIC include that destructures `{ class, … }` (den.batteries.unfree's `__fn`) has `class`
+      # REQUIRED-but-absent here and gates to `{ }` — a latent-v1-divergence pinned by
+      # `ci/tests/compat-batteries.nix` `test-unfree-class-coord-inert` + ledger row `u1`.
+      callGated =
+        name: fn: ctx:
+        let
+          fa = builtins.functionArgs fn;
+          required = builtins.filter (a: !fa.${a}) (builtins.attrNames fa);
+        in
+        if builtins.all (a: ctx ? ${a}) required then
+          groundRec name (fn (builtins.intersectAttrs fa ctx))
+        else
+          { };
+      # A v1 aspect INCLUDE, normalized to the den-hoag shape under a distinct `name`. TRANSITIVE (matching
+      # v1's resolve-children re-dispatch → wrapChild re-normalizes a fn RESULT's `.includes`; den-hoag's
+      # forwardExpand likewise re-walks `concrete.includes`): a wrapped fn's RESULT and a static aspect's
+      # `.includes` both go back through `normalize` (ground class keys, recurse nested bare fns). No
+      # infinite loop — the fn recursion is inside the lazy `callGated` closure, forced only per resolution
+      # ctx. A `{ __fn; name }` wrapper (unfree) keeps its OWN v1 name (`ref.name`).
+      normalize =
+        name: ref:
+        if builtins.isFunction ref then
+          aspects.wrapFn wrapCnf name (callGated name ref)
+        else if builtins.isAttrs ref && (ref.__isWrappedFn or false) then
+          ref
+        else if builtins.isAttrs ref && (ref.__fn or null) != null then
+          aspects.wrapFn wrapCnf (ref.name or name) (callGated name ref.__fn)
+        else if builtins.isAttrs ref && !(ref ? id_hash) then
+          # A STATIC aspect attrset (inline content / a `{ name }` reference / a `{ __isPolicy; fn }` policy
+          # record — grounding is identity on the latter, which rides the existing kind-include/policy path
+          # unchanged): GROUND its class keys and recurse its includes. An id_hash-bearing entry is already
+          # a resolved record — pass it (and strings) through the `else`.
+          groundRec name ref
+        else
+          ref;
+      # Ground an aspect attrset's class keys AND recurse its `.includes` under a per-position name path —
+      # this grounds inputs'/self's nested static `{ homeManager._module.args… }` → `home-manager` and
+      # wraps a nested bare fn (transitive), each child keyed distinctly under `${name}:include`.
+      groundRec =
+        name: attrs:
+        (groundKeys attrs)
+        // prelude.optionalAttrs (attrs ? includes) {
+          includes = normalizeList "${name}:include" attrs.includes;
+        };
+    in
+    normalizeList;
+
   # v1 aspect STRUCTURAL keys that do NOT pass through as den-hoag aspect content: `provides` rides the
   # legacy module (Task 4), `policies`/`excludes` are re-expressed here, `__*` are v1 pipeline internals.
   droppedAspectKeys = [
@@ -140,7 +252,7 @@ let
   # to `{ includes = [ fn ]; }` (v1's own coercion), `excludes` folds into `meta.drop`, class keys are
   # grounded, and the v1-only structural keys are dropped.
   translateAspect =
-    name: aspect:
+    normalizeList: name: aspect:
     # LEGACY SURFACE SENTINEL (C5): `provides` must have been desugared by legacy/provides.nix (applied
     # by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is severed —
     # fail LOUDLY naming the surface rather than dropping the declaration (sentinels.nix / errors.nix).
@@ -149,7 +261,7 @@ let
     builtins.seq (sentinels.provides name aspect) (
       builtins.seq (noBatteriesForward name aspect) (
         if builtins.isFunction aspect then
-          { includes = [ aspect ]; }
+          { includes = normalizeList "${name}:include" [ aspect ]; }
         else
           let
             excludes = aspect.excludes or [ ];
@@ -169,7 +281,11 @@ let
               else
                 meta // { drop = (meta.drop or [ ]) ++ excludes; };
           in
-          grounded // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
+          grounded
+          // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
+          // prelude.optionalAttrs (grounded ? includes) {
+            includes = normalizeList "${name}:include" grounded.includes;
+          }
       )
     );
 
@@ -379,6 +495,12 @@ let
   v1Policies = v1Decls.policies or { };
   v1Classes = v1Decls.classes or { };
 
+  # The include-normalizer for THIS fleet: the wrap cnf carries den-hoag's built-in classes PLUS the
+  # fleet's DECLARED classes (`den.classes` — e.g. `wsl`), so a bare-fn include emitting a declared-class
+  # key routes as CLASS content, not a nested aspect (Fork A). `v1Classes` is fleet-scoped, so this must
+  # live in the function body (where the decls are), not at top level.
+  normalizeList = mkNormalize (builtinClasses ++ builtins.attrNames v1Classes);
+
   # `den.default` (v1 modules/aspects/defaults.nix:15-19): the default aspect, injected THERE via
   # `lib.genAttrs [ "host" "user" "home" ]` as a schema `includes = [ den.default ]` for EXACTLY the three
   # built-in entity kinds — host, user, home — NOT every kind (custom kinds do NOT receive it). Compiled
@@ -401,7 +523,10 @@ let
   # Absent (`den.default` unset) ⇒ no aspect, no policy — byte-identical to a fixture without it.
   hasDefault = (v1Decls.default or { }) != { };
   defaultAspects =
-    if hasDefault then { __default = translateAspect "__default" v1Decls.default; } else { };
+    if hasDefault then
+      { __default = translateAspect normalizeList "__default" v1Decls.default; }
+    else
+      { };
   defaultPolicy =
     if hasDefault then
       {
@@ -524,7 +649,7 @@ let
     );
 
   aspects =
-    builtins.mapAttrs translateAspect v1Aspects
+    builtins.mapAttrs (translateAspect normalizeList) v1Aspects
     // defaultAspects
     // compiledPolicies.conditionalAspects;
 
@@ -562,6 +687,13 @@ let
     # (#49-slice) reproduces STATICALLY (baked `[ "settings" ]`, the corpus's value). No concern reads it, so
     # it is a known surface (never a typo) but has no ingest/compile handler.
     "reservedKeys"
+    # `batteries` (den v1 `den.batteries.<name>`, modules/aspects/batteries/) — the shim provisions the
+    # corpus-consumed batteries at `config.den.batteries.<name>` (lib/compat/batteries.nix). Their VALUES
+    # are inert data consumed BY REFERENCE via `den.default.includes` / a user aspect's includes (the v1
+    # posture — an UNREFERENCED battery is inert in v1 too), so the KEY is accepted and ignored: no concern
+    # reads `den.batteries` itself (a referenced battery rides the include list, not this key), exactly like
+    # `reservedKeys`.
+    "batteries"
   ]
   ++ declaredKinds
   # M1.5: the marker-discovered custom-kind instance namespaces (a v1 config CHOOSES the registry key, e.g.

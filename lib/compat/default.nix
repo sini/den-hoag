@@ -11,6 +11,7 @@
   denHoag,
   prelude,
   schema,
+  aspects,
   edge,
   edgeCore,
   ...
@@ -39,8 +40,12 @@ let
       ingest
       errors
       sentinels
+      aspects
       ;
     inherit (denHoag) declare;
+    # den-hoag's built-in class set (`denHoag.classes` = nixos/darwin/home-manager/k8s-manifests) — the
+    # `cnf.classes` `wrapFn` needs to route a v1 bare-fn include's class content (§339 wrap-ground).
+    builtinClasses = builtins.attrNames denHoag.classes;
   };
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
