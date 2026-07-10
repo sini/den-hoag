@@ -134,6 +134,20 @@ at the toplevel drv-hash level (`contentGate`) — is the SHIP-GATE, run dev-tim
 flake input and crosses nixpkgs/nix-darwin, so it cannot run in den-hoag's own CI. At ship-gate: pin all
 corpus inputs identical except the den input, evaluate each configuration's toplevel `.drvPath` under both
 arms (`config.system.build.toplevel.drvPath` for nixos, `.system.drvPath` for darwin), and require the diff
-∖ ledger empty — the same P6 discipline over the real corpus. Also flip the `parity-content` cross-pipeline
-synthetics to the LIVE v1-vs-hoag comparison there (the v1 arm needs the full corpus inputs — home-manager
-et al. — which the harness deliberately omits in CI).
+∖ ledger empty — the same P6 discipline over the real corpus.
+
+**How the fleet arm gets a `shimDrvPath` — the terminal seam.** A collect-pinned shim can never produce a
+`shimDrvPath` (a collect artifact has no `config`/`system.build.toplevel`). The C9 item-4 seam is the fix:
+`denCompat.mkDenWith userModules { nixosTerminal = crossNixos; }` supplies the nixpkgs-bound `crossNixos`
+terminal so the shim's `nixosConfigurations` are REAL NixOS systems — the same mechanism a v1 user gets when
+they bump the den input for a real build. The harness builds the terminal from the den-hoag source
+(`import "${den-hoag}/lib/output/terminal.nix" { inherit (denHoag.internal) bind flake; } { inherit nixpkgs; }`),
+and `parity-content-live.nix` proves it at n=1 (both arms cross, `networking.hostName` byte-matches). The
+ship-gate script runs `contentGate` over the corpus on this crossed path.
+
+**The drvPath smoke + bootability.** `parity-content-live.nix` compares `networking.hostName` in CI (a config
+value, no bootability needed). The stronger `system.build.toplevel.drvPath` comparison (the actual P2 hash at
+n=1) rides the ship-gate script: a synthetic smoke fixture must set `boot.isContainer = true` to skip the
+`fileSystems`/`boot.loader` assertions a real toplevel asserts. This constraint only affects SYNTHETIC smoke
+fixtures — real corpus hosts are bootable, so the full-fleet drvPath diff needs no such trick. Measured
+feasibility (cold, eval-only): hostName 0.5s, toplevel drvPath 1.2s per config — a few seconds per host.

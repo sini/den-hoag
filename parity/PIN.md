@@ -129,3 +129,20 @@ structurally absent on the v2 arm — the open question is only whether the SHIM
 reproduces post-#624 delivery shapes. VERIFY at nix-config integration (the C8 corpus arm);
 the pin-bump decision (stay at #623 vs advance past #627) is a ship-gate item with ledger
 evidence in hand.
+
+## C9 item-4 — the content-arm asymmetry + n=1 ship-gate feasibility (2026-07-10)
+
+The v1 content arm is a SHIP-GATE arm, and the deeper reason is NOT merely the missing home-manager
+input (wiring it, C9 item 2, was necessary but NOT sufficient). The two arms' materialized `.imports`
+are different KINDS: the hoag arm's are plain den-hoag class DECLARATION data (freeform-foldable — the
+M2 hoag hashes); the v1 arm's are REAL nixpkgs nixos modules, meaningful only inside the full
+module-system fixpoint (a freeform fold infinite-recurses on `nixos/common.nix`). So a live v1-vs-hoag
+CONTENT comparison must CROSS (build a real nixosSystem), not fold.
+
+FEASIBILITY (measured, cold, eval-only — no store build): `config.networking.hostName` 0.5s;
+`config.system.build.toplevel.drvPath` 1.2s per config. Well within CI budget → `parity-content-live.nix`
+runs the hostName comparison in CI (both arms cross; the item-4 terminal seam supplies the shim's
+`crossNixos`). The stronger drvPath comparison is the dev-time `parity/ship-gate.nix` smoke (a
+`boot.isContainer` fixture to satisfy bootability). RESULT at n=1: v1DrvPath == shimDrvPath BYTE-IDENTICAL
+(the shim's crossed nixosSystem is the same derivation as v1's) — the P2 drv-hash parity, proven at n=1.
+The full-fleet drvPath diff over the real corpus is the ship-gate (runbook.md).

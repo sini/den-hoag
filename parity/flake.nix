@@ -48,6 +48,14 @@
       # so it applies the v1 builder (`mkV1`) to the frozen den v1 flake + nixpkgs and hands the tests a
       # ready `{ schema; traceHoag; traceV1; traceV1Legacy; fixtures; golden; }`. Every P-suite reads this
       # one surface — the tests never re-wire an arm.
+      # The nixpkgs-bound crossNixos terminal, built harness-side from the den-hoag source (`bind`/`flake`
+      # from the public `internal` surface) — the C9 item-4 seam supplies it to the shim's nixos class so
+      # the HOAG arm crosses to a real NixOS system (`mkDenWith … { nixosTerminal = crossNixos; }`). No core
+      # edit, no shim edit — the harness is the only place with both nixpkgs and the den-hoag source.
+      crossNixos =
+        (import "${den-v2}/lib/output/terminal.nix" {
+          inherit (den-v2.lib.internal) bind flake;
+        } { nixpkgs = inputs.nixpkgs; }).crossNixos;
       harness =
         let
           P = denCompat.parity;
@@ -77,6 +85,14 @@
           # The §P3 permutation regression (Task 9): declaration-order-independence of the shim + fold.
           permutationGate = P.oracle.permutationGate { inherit denCompat nixpkgsLib; };
           inherit (P.oracle) contentGate canonHash;
+          # C9 item-4 live content arms (the ship-gate mechanism at n=1): BOTH arms cross to a real NixOS
+          # system. `crossV1 { fixtureModule }` → the v1 flake's nixosConfigurations (full nixpkgs crossing);
+          # `crossHoag { fixtureModule }` → the shim's nixosConfigurations via the terminal seam (crossNixos).
+          # A live v1-vs-hoag CONTENT comparison reads a config value off each (eval-only, no store build).
+          inherit (v1arm) crossV1;
+          crossHoag =
+            { fixtureModule }:
+            (denCompat.mkDenWith [ fixtureModule ] { nixosTerminal = crossNixos; }).nixosConfigurations;
           fixtures = import ./fixtures/topologies.nix { };
           golden = import ./golden/traces.nix;
         };

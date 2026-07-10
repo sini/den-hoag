@@ -80,13 +80,15 @@ let
   spawnRecords = harness.crossPipelineRecords hostAspectsSpawn;
   allRecords = pipeRecords ++ spawnRecords;
 
-  # CI reads ONLY the hoag-side hash (never forces the v1 thunk). The v1-materialized arm forces the full
-  # v1 pipeline — the home-manager battery `getModule` reaches `inputs.home-manager."${host.class}Modules"`,
-  # a CORPUS input the parity harness deliberately does not carry (§4.4: "both evaluations pin identical
-  # inputs (nixpkgs, home-manager, all corpus inputs)"). So `record.v1Hash` / `record.equal` are the SHIP-GATE
-  # arm (dev-time, full inputs); Nix laziness keeps them unforced here. CI pins the hoag materialization hash
-  # as a regression baseline: a hoag pipe/spawn content regression breaks it; a v1-vs-hoag divergence is a
-  # ship-gate P2 finding classified in the ledger (P6), like the structural suite's matched/extra/missing.
+  # CI reads ONLY the hoag-side hash here (never forces the v1 THUNK). THE DEEPER REASON the v1-materialized
+  # FOLD is not CI-runnable (not merely the missing home-manager input — that was necessary, NOT sufficient):
+  # the two arms' materialized `.imports` are different KINDS. The hoag arm's are plain den-hoag class
+  # declaration data → the freeform fold closes them. The v1 arm's are REAL nixpkgs nixos modules, meaningful
+  # only INSIDE the full module-system fixpoint → a freeform fold INFINITE-RECURSES (`nixos/common.nix`
+  # references `config`). So the v1 content arm must CROSS (a real nixosSystem), not fold. That live
+  # v1-vs-hoag comparison IS done — CHEAPLY, both arms crossing — in `parity-content-live.nix` (the ship-gate
+  # mechanism at n=1: 0.5s hostName / 1.2s drvPath eval-only). This suite keeps the hoag-fold hash as the CI
+  # regression baseline; the fold-value's validity (== the crossed value) is witnessed there.
   hoagHashOf = r: r.hoagHash;
 
   # GOLDEN — the hoag-materialized content hashes (re-derive by reading `.hoagHash`; a change is a hoag
