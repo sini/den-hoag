@@ -7,8 +7,10 @@
 # The compose's cycle-safe worklist dedups the pipe's base-channel stub against the real `den.quirks`
 # registration by id (channelDecls seeded first), so `pipe.from feat …` resolves onto the registered
 # `feat` with no E4b clash and adds ONE derived channel (`feat.<op>.<idx>`). A pipe-free fleet composes
-# byte-identically to before (no phantom channel). The `to`/`as` delivery routes + the `for` whole-list
-# run semantics are the documented follow-ons (default.nix — route records + a gen-pipe whole-list op).
+# byte-identically to before (no phantom channel). The `for` whole-list run is HONORED now (board #45):
+# `honorWholeList` (default.nix) reroutes a `for`'s `__derive.wholeList` node to gen-pipe's `over` op, so
+# it composes as `feat.over.<idx>` (whole-list), where `transform` stays `feat.map.<idx>` (per-element).
+# The `to`/`as` delivery routes remain the documented follow-on (default.nix — route channelRef records).
 { denCompat, ... }:
 let
   # A v1 `pipe.from` policy effect built exactly as the corpus does (policy-effects.nix shape).
@@ -56,6 +58,31 @@ let
 
   # The derived channel(s) the pipe added = the compose delta.
   derivedAdded = builtins.filter (c: !(builtins.elem c noPipeChannels)) withPipeChannels;
+
+  # ── board #45: `for` (whole-list) is HONORED to gen-pipe's `over`; `transform` stays per-element `map` ──
+  forS = fn: {
+    __pipeStage = "for";
+    inherit fn;
+  };
+  # A one-deriving-stage fleet on `feat`, so the delta is exactly one derived channel to name-check.
+  mkShaped =
+    stage:
+    denCompat.mkDen [
+      {
+        config.den.hosts.x86_64-linux.axon.class = "nixos";
+        config.den.quirks.feat = { };
+        config.den.aspects.seed.feat = [ "hello" ];
+        config.den.schema.host.includes = [ "seed" ];
+        config.den.policies.shapeFeat = _ctx: [ (pipeEffect "feat" [ stage ]) ];
+      }
+    ];
+  derivedOf =
+    fleet:
+    builtins.filter (c: !(builtins.elem c noPipeChannels)) (
+      builtins.attrNames fleet.den.quirkDag.channels
+    );
+  forDerivedNames = derivedOf (mkShaped (forS (xs: xs)));
+  transformDerivedNames = derivedOf (mkShaped (transform (x: x)));
 in
 {
   flake.tests.pipe-consume = {
@@ -87,6 +114,23 @@ in
         "__den-demands"
         "feat"
       ];
+    };
+
+    # board #45: each single-stage pipe adds exactly one derived channel.
+    test-for-single-derived = {
+      expr = builtins.length forDerivedNames;
+      expected = 1;
+    };
+    # a `for` (whole-list) pipe is HONORED to gen-pipe's `over` op — the composed channel is
+    # `feat.over.<idx>` (whole-list run), NOT the per-element `feat.map.<idx>`.
+    test-for-honored-as-over = {
+      expr = builtins.match "feat\\.over\\.[0-9]+" (builtins.head forDerivedNames) != null;
+      expected = true;
+    };
+    # `transform` (no whole-list marker) stays the per-element `map` — the discriminator against `for`.
+    test-transform-stays-map = {
+      expr = builtins.match "feat\\.map\\.[0-9]+" (builtins.head transformDerivedNames) != null;
+      expected = true;
     };
   };
 }

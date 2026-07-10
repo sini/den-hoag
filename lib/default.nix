@@ -483,9 +483,9 @@ let
       # / pipe names), but gen-pipe's compose consumes route `from`/`to` as channel RECORDS, so routing
       # them needs the C3 route to carry `channelRef` records (and `to`'s aspect-carrier semantics
       # resolved — an aspect is not a gen-pipe channel). Site `marks` (append/expose/collect/broadcast)
-      # are per-scope EMISSION wiring, not compose ops. The `for` whole-list run (`__derive.wholeList`)
-      # rides inert — gen-pipe's `map` deriveSeq is per-element, so whole-list application needs a gen-pipe
-      # whole-list op (a cross-lib change), tracked with the run-semantics follow-up.
+      # are per-scope EMISSION wiring, not compose ops. The `for` whole-list run IS threaded now
+      # (board #45): `honorWholeList` (below) reroutes each `__derive.wholeList` node to gen-pipe's
+      # whole-list `over` op, so a v1 `for` applies its fn to the WHOLE channel list, not per-element.
       quirks = ent.config.den.quirks;
       channelNames = concernQuirks.channelNames quirks;
       # Every derived channel in the DAG must be a DIRECT declaration (gen-pipe E4a checks a declared
@@ -495,7 +495,27 @@ let
       # (`__derived = false`) — the registered quirk, declared via channelDecls, so it is NOT re-added.
       pipeChainOf =
         d: if (d.__derived or false) then [ d ] ++ pipeChainOf (builtins.head d.__derive.inputs) else [ ];
-      pipeChannelOps = prelude.concatMap (p: pipeChainOf p.derived) (policiesRules.pipeOps or [ ]);
+      # Honor the `__derive.wholeList` routing marker: a `map` node carrying `__derive.wholeList = true`
+      # (a v1 `for` — whole-list, vs `transform`'s per-element `map`) reroutes to gen-pipe's whole-list
+      # `over` op. deriveSeq dispatches on `__derive.op` and compose names by `.op`, so both become "over"
+      # (the provisional id and the inert marker key stay: compose resolves inputs by the unchanged id and
+      # reassigns final names from `.op`). No value is forced — the derived channel's merge keeps `f` a
+      # thunk, so the deferred-value discipline is untouched.
+      honorWholeList =
+        d:
+        if (d.__derived or false) && (d.__derive.wholeList or false) then
+          d
+          // {
+            op = "over";
+            __derive = d.__derive // {
+              op = "over";
+            };
+          }
+        else
+          d;
+      pipeChannelOps = builtins.map honorWholeList (
+        prelude.concatMap (p: pipeChainOf p.derived) (policiesRules.pipeOps or [ ])
+      );
       quirkDag = concernQuirks.compose {
         inherit quirks;
         policyOps = [ demandLib.demandChannel ] ++ pipeChannelOps;
