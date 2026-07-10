@@ -488,6 +488,7 @@ builtins.seq surfaceTotalityOk {
       membership
       contentClass
       systemFor
+      instantiateFor
       hostClassName
       ;
   };

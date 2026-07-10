@@ -137,8 +137,11 @@
             };
         }
       ];
-      # Global-fallback grain (M1): one evaluator for every nixos member when `den.nixpkgs` is set; else the
-      # nixpkgs-free `collect` terminal (member keys present, no build). Per-host `host.instantiate` is M2.
+      # Instantiation grains: the per-host `host.instantiate` (per-entity grain, ship-gate M2) is honored
+      # inside the compat nixos wrapper (flake-module.nix) — a host that declares its own evaluator builds
+      # through THAT channel regardless of the two lines below. These control the FALLBACK grain for hosts
+      # with no per-host instantiate (M1): one `crossNixos` for every such nixos member when `den.nixpkgs`
+      # is set, else the nixpkgs-free `collect` terminal (member keys present, no build).
       built =
         if npkgs == null then
           compat.mkDen fleet
@@ -148,8 +151,11 @@
     {
       # The drop-in `den` output faces (D8 flake-parts option targets).
       nixosConfigurations = built.nixosConfigurations;
-      # darwin members cross through `collect` until the per-host darwin evaluator lands (M2); the member
-      # keys are present so `darwinConfigurations` is non-empty and inspectable.
+      # darwin members cross through `collect`: the compat per-host instantiate wrapper is stamped only on
+      # the nixos class (M2), so a darwin host's `host.instantiate` is not yet honored — that is the darwin
+      # live corpus run (ship-gate item 2 / class B, `patch`), a trivial stamp of the now class-neutral
+      # wrapper onto the darwin class. The member keys are present so `darwinConfigurations` is non-empty
+      # and inspectable.
       darwinConfigurations = built.darwinConfigurations;
       # ABSENT (honest, M1): `homeConfigurations` — den-hoag has no standalone-home output yet (den.homes /
       # parity OQ5, board #49); the `perSystem` faces (devShells/packages/apps/checks) — the compat layer

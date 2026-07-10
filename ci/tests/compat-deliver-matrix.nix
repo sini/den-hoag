@@ -136,8 +136,12 @@ let
   sysCompiled = compile { hosts.x86_64-linux.axon.class = "nixos"; };
   sysAxon = sysCompiled.entities.registries.host.axon;
   stubTerminal = args: args;
+  # `instantiateFor`/`crossVia` are the M2 per-host grain; this fixture's host declares no `instantiate`, so
+  # `instantiateFor axon → null` and the stub `terminal` is used unchanged (crossVia stays unexercised here —
+  # the per-host grain has its own witness, compat-per-host-instantiate). Passed to satisfy the wrapper args.
   sysInstantiate = denCompat.mkNixosInstantiate {
-    inherit (sysCompiled.entities) systemFor;
+    inherit (sysCompiled.entities) systemFor instantiateFor;
+    inherit (denHoag.internal.terminal) crossVia;
     terminal = stubTerminal;
   };
   sysInjected = sysInstantiate {

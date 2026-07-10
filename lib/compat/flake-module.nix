@@ -97,17 +97,21 @@ let
     (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
     .config.den;
 
-  # The compat nixos instantiate wrapper (§2.5 carry-in): v1's per-host `system` never reaches
-  # den-hoag's pipeline (den-hoag entities are field-less), so it is injected HERE, at the terminal —
-  # the one place the per-host binding (`bindings.host`) is available. The wrapper prepends a
-  # `{ nixpkgs.hostPlatform.system = systemFor host; }` module to the host's class-modules, then
-  # delegates to the underlying `terminal`. `terminal` is a SEAM: the pure fleet wiring defaults it to
-  # den-hoag's nixpkgs-free `collect` (the platform is inspectable in its output modules); the parity
-  # harness supplies `crossNixos` for a real NixOS build. A system-less host (systemFor → null) injects
-  # nothing — byte-identical to the bare terminal.
+  # The compat nixos instantiate wrapper (§2.5 carry-in + ship-gate M2): v1's per-host `system` and
+  # per-host `instantiate` never reach den-hoag's pipeline (den-hoag entities are field-less), so they are
+  # consumed HERE, at the terminal — the one place the per-host binding (`bindings.host`) is available. The
+  # wrapper prepends a `{ nixpkgs.hostPlatform.system = systemFor host; }` module to the host's
+  # class-modules, then delegates to the EFFECTIVE terminal: the per-host `instantiateFor host` evaluator
+  # (D7 M2, the per-entity grain) if the host declares one, else the passed `terminal`. `terminal` is a
+  # SEAM: the pure fleet wiring defaults it to den-hoag's nixpkgs-free `collect` (the platform is
+  # inspectable in its output modules); the parity harness / the bridge supplies `crossNixos` for a real
+  # NixOS build. A system-less host (systemFor → null) injects nothing — byte-identical to the bare
+  # terminal — and an instantiate-less host uses the class terminal unchanged (both grains are opt-in).
   mkNixosInstantiate =
     {
       systemFor,
+      instantiateFor,
+      crossVia,
       terminal,
     }:
     args@{
@@ -120,8 +124,17 @@ let
       hostEntry = bindings.host or null;
       sys = if hostEntry == null then null else systemFor hostEntry;
       sysModule = if sys == null then [ ] else [ { nixpkgs.hostPlatform.system = sys; } ];
+      # THREE-GRAIN INSTANTIATION (D7, ship-gate M2). The per-host `host.instantiate` (the per-ENTITY grain)
+      # WINS over the class-level `terminal` — which the bridge already resolved from the lower grains (the
+      # class N1 declaration / the global `den.nixpkgs` fallback / the pure `collect`). Present ⇒ cross via
+      # the host's OWN evaluator (its channel nixpkgs), so a fleet whose hosts each pin a channel builds each
+      # host through its declared channel exactly as v1's `resolvedChannel.nixosSystem` did — with NO global
+      # `den.nixpkgs` required. Absent ⇒ the class terminal (the lower grains). `crossVia` is nixpkgs-free
+      # machinery (only the evaluator carries nixpkgs, as inert threaded data), so lib/** import-purity holds.
+      perHostEval = if hostEntry == null then null else instantiateFor hostEntry;
+      effectiveTerminal = if perHostEval == null then terminal else crossVia perHostEval;
     in
-    terminal (args // { hostModules = sysModule ++ hostModules; });
+    effectiveTerminal (args // { hostModules = sysModule ++ hostModules; });
 
   # The pure bridge: `compile`'s output → a den-hoag `config.den.*` module. Instances become
   # `config.den.<kind>.<name>` FIELD-LESS — den-hoag entities carry no content (it comes from aspects),
@@ -153,7 +166,8 @@ let
           builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;
       nixosInstantiate = mkNixosInstantiate {
-        inherit (compiled.entities) systemFor;
+        inherit (compiled.entities) systemFor instantiateFor;
+        inherit (denHoag.internal.terminal) crossVia;
         terminal = nixosTerminal;
       };
     in

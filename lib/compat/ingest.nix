@@ -367,6 +367,23 @@ let
       );
       systemFor = host: systemByHostId.${host.id_hash} or null;
 
+      # instantiateFor (ship-gate M2, the per-entity instantiation grain, D7): v1's per-host
+      # `host.instantiate` (nix-config schema/host.nix — `resolvedChannel.nixosSystem`, a
+      # `{ modules; specialArgs; } -> system` EVALUATOR embedding that host's channel nixpkgs) keyed by
+      # host id_hash. The `hosts` sub-option is `raw` (flake-module.nix), so this function rides through
+      # `flatHosts` untouched. Like systemFor, it is a nixpkgs-BOUND function, so it stays a compile-time
+      # `id_hash -> evaluator` map — NEVER a field on the strict, field-less den-hoag entity (the C1
+      # type-crossing dodge) — and is forced only at the terminal (the compat nixos wrapper crosses via it
+      # per host). Absent (the fleet declares no per-host instantiate) -> null, and the wrapper falls to the
+      # class-level terminal (the global `den.nixpkgs` grain, or the pure nixpkgs-free `collect`).
+      instantiateByHostId = builtins.listToAttrs (
+        map (name: {
+          name = registries.host.${name}.id_hash;
+          value = flatHosts.${name}.instantiate or null;
+        }) (builtins.attrNames flatHosts)
+      );
+      instantiateFor = host: instantiateByHostId.${host.id_hash} or null;
+
       # Per-host OS class NAME keyed by host name — the value mkFleetModule stamps onto the den-hoag host
       # entity's declared `class` field (§ os-class R3 gate). Derived from `host.class` else the system
       # (`classOfHost`, matching v1's `host.nix` default) so the os-to-host route gates exactly as v1's
@@ -399,6 +416,7 @@ let
         membership
         contentClass
         systemFor
+        instantiateFor
         hostClassName
         classRegistry
         ;
