@@ -102,20 +102,51 @@
               }).config.den.schema;
             # Real kinds only (strip gen-schema's schema-level `_kindNames`/`_topology`/… book-keeping).
             perKind = lib.filterAttrs (n: _: builtins.substring 0 1 n != "_") processed;
-            # __rawSchema for the SHIM (fix-A wrinkle, resolution (i) — single source of truth, no second
-            # merge): EXTRACT exactly what the shim reads from the raw schema — the kind NAMES (attrNames),
-            # `parent` (ingest buildSchema) and concatenated `includes` (ingest kindIncludesOf) — from the
-            # PROCESSED kind-values (gen-schema already merged them; we only read the results, never re-merge).
-            # `options`/`refs`/… ride the processed value the corpus reads, not here; feeding the shim the
-            # processed value would double-declare gen-schema's read-only `_kindNames`, so the shim still gets
-            # a raw-shaped `{ <kind> = { parent; includes; }; }` — its buildSchema strips to `{ parent }` and
-            # re-processes minimally, unchanged from before.
+
+            # OPAQUE PASS-THROUGH of the type-bearing option module (owner ruling). mkSchemaOption CONSTRUCTS a
+            # kind's options into gen-schema (gen-types) types — nixpkgs-FREE, so mounting them into the CORPUS's
+            # OWN nixpkgs evalModules (its `den.clusters = mkInstanceRegistry den.schema.cluster`) throws
+            # (`deprecationMessage missing`) and cross-pin strict errors. So we KEEP the structure gen-schema
+            # computes (kind/strict/refs/validators/refinements/methods/parent/includes) but REPLACE the
+            # kind-value's option-declaring MODULE (`__functor`, which gen-schema's mkInstanceType imports) with
+            # the corpus's OWN raw option decls — its nixpkgs `imports`/`options`, untouched and unforced by us.
+            # The corpus then constructs every instance type at ITS pin (v1-equivalent flow; no gen-schema type
+            # object ever crosses into its nixpkgs eval). `isEntity` (dropped by mkSchemaOption, not read by
+            # e789c334 instance.nix but part of the schema contract) rides through raw. Structure stays the
+            # contract half we OWN (missing/mis-shaped → named errors); the type half is the corpus's, at its pin.
+            rawFieldOf =
+              kindName: field: default:
+              lib.foldl' (
+                acc: d: if (d.${kindName} or { }) ? ${field} then d.${kindName}.${field} else acc
+              ) default schemaDefs;
+            rawImportsOf =
+              kindName: builtins.concatLists (map (d: (d.${kindName} or { }).imports or [ ]) schemaDefs);
+            rawOptionsOf =
+              kindName:
+              lib.foldl' (acc: d: lib.recursiveUpdate acc ((d.${kindName} or { }).options or { })) { } schemaDefs;
+            opaque = builtins.mapAttrs (
+              kindName: structure:
+              structure
+              // {
+                isEntity = rawFieldOf kindName "isEntity" false;
+                __functor = _self: _args: {
+                  imports = rawImportsOf kindName;
+                  options = rawOptionsOf kindName;
+                };
+              }
+            ) perKind;
+
+            # __rawSchema for the SHIM (fix-A wrinkle (i), single source of truth): the kind NAMES (attrNames),
+            # `parent` (ingest buildSchema) and concatenated `includes` (ingest kindIncludesOf), read off the
+            # structure gen-schema already merged. `options`/`refs`/… are the corpus's, never the shim's (the
+            # shim is field-less), so they are absent here; the shim's buildSchema strips to `{ parent }` and
+            # re-processes minimally, unchanged.
             rawForShim = builtins.mapAttrs (_: kv: {
               parent = kv.parent or null;
               includes = kv.includes or [ ];
             }) perKind;
           in
-          processed // { __rawSchema = rawForShim; };
+          opaque // { __rawSchema = rawForShim; };
       };
     };
     default = { };

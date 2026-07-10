@@ -38,13 +38,14 @@ let
       default = { };
     };
   };
-  # A custom `rack` kind declared corpus-style, PLUS a second module contributing another field to the same
-  # kind — proving the sub-option deep-merges declarations across modules before the apply processes them.
   # A custom `rack` kind declared corpus-style ACROSS FOUR MODULES: `options.slots` in one, `parent` in
   # another, and `includes` in TWO more. The includes case is the fix-A regression: two modules each append
   # a kind-attached include to `den.schema.rack.includes`. Under the old `lazyAttrsOf anything` pre-merge
   # those two lists CONFLICTED (types.anything never concatenates lists); fix A collects the raw defs and
   # lets the nested mkSchemaOption's OWN merge (a list-default collection) concatenate them, as v1 does.
+  # A `widget` kind exercises OPAQUE PASS-THROUGH: its option (`marker`) is declared corpus-style through a
+  # nixpkgs `imports` module, and `isEntity` is set — the kind-value must ride the RAW nixpkgs option module
+  # through (so the corpus's own gen-schema builds the instance type at its pin), not a gen-schema transform.
   incl = name: { inherit name; };
   ev = lib.evalModules {
     modules = [
@@ -61,10 +62,27 @@ let
       { den.schema.rack.parent = null; }
       { den.schema.rack.includes = [ (incl "i1") ]; }
       { den.schema.rack.includes = [ (incl "i2") ]; }
+      {
+        den.schema.widget = {
+          isEntity = true;
+          imports = [
+            (_: {
+              options.marker = lib.mkOption {
+                type = lib.types.str;
+                default = "M";
+              };
+            })
+          ];
+        };
+      }
     ];
   };
   kv = ev.config.den.schema.rack;
   rawRack = ev.config.den.schema.__rawSchema.rack or { };
+  widgetKv = ev.config.den.schema.widget;
+  # Mount the kind-value as a module exactly as the corpus's gen-schema mkInstanceType does (imports = [ kv ]),
+  # in a NIXPKGS evalModules — the option-crossing that threw `deprecationMessage missing` before.
+  widgetMounted = lib.evalModules { modules = [ widgetKv ]; };
 in
 {
   flake.tests.compat-schema-processing = {
@@ -117,6 +135,23 @@ in
         stashed = true;
         hasParent = true;
         hasIncludes = true;
+      };
+    };
+    # OPAQUE PASS-THROUGH (owner ruling): the kind-value's option MODULE is the corpus's RAW nixpkgs decl,
+    # not a gen-schema transform. Mounting it into a nixpkgs evalModules (as the corpus's mkInstanceType does)
+    # yields `marker` at its raw default AND with a NIXPKGS type — `type ? deprecationMessage` is TRUE for a
+    # nixpkgs type and FALSE for a gen-schema (gen-types) type, so it witnesses the option crossed opaque (the
+    # exact crossing that threw `deprecationMessage missing`). `isEntity` survives on the kind-value.
+    test-opaque-option-passthrough = {
+      expr = {
+        isEntitySurvives = widgetKv.isEntity or false;
+        markerDefault = widgetMounted.config.marker or "<none>";
+        markerIsNixpkgsType = (widgetMounted.options.marker.type or { }) ? deprecationMessage;
+      };
+      expected = {
+        isEntitySurvives = true;
+        markerDefault = "M";
+        markerIsNixpkgsType = true;
       };
     };
   };
