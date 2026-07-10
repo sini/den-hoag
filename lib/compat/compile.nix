@@ -456,7 +456,15 @@ let
     "contentClass"
     "default"
   ]
-  ++ declaredKinds;
+  ++ declaredKinds
+  # M1.5: the marker-discovered custom-kind instance namespaces (a v1 config CHOOSES the registry key, e.g.
+  # `den.clusters` for kind `cluster` — ingest discovers it by id_hash, never by name), PLUS the
+  # bridge-passed DECLARED non-kind config namespaces (`den._declaredKeys`, e.g. `secretsConfig`, extracted
+  # from the flake-parts option surface). Both are LEGITIMATE declared surfaces; a typo is neither (it is
+  # freeform-absorbed, undeclared, and holds no instance registry), so it still aborts named — strict R9
+  # totality preserved, not widened. mkDen-direct fixtures set neither; the discovered set alone classifies.
+  ++ ing.discoveredRegistryKeys
+  ++ (v1Decls._declaredKeys or [ ]);
   unknownSurfaceKeys = builtins.filter (
     k: (builtins.substring 0 1 k != "_") && !(builtins.elem k knownSurfaceKeys)
   ) (builtins.attrNames v1Decls);

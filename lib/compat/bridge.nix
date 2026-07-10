@@ -34,6 +34,7 @@
 {
   lib,
   config,
+  options,
   ...
 }:
 {
@@ -51,6 +52,12 @@
     description = "The den v1 declaration surface (absorbed raw here; desugared by the compat two-eval).";
   };
 
+  # R1 legacy binding: den v1's flakeModule binds `_module.args.den = config.den` at flake scope so every
+  # consumer module may reference the `den` arg (`{ den, ... }:` — nix-config's schema/cluster.nix reads
+  # `den.schema.cluster`). The bridge reproduces that always-bound binding in the consumer's flake-parts eval
+  # (the shim reproduces it separately inside its OWN v1 eval; this is the consumer-eval half).
+  config._module.args.den = config.den;
+
   config.flake =
     let
       # `den.nixpkgs`/`den.darwin` are BRIDGE controls (the global-fallback instantiation grain), not v1
@@ -58,12 +65,27 @@
       # `den.*` key outside the v1 grammar. What remains is the single pre-merged fleet def handed to the
       # shim's internal gen-schema eval (no multi-module conflict — the flake-parts side already merged).
       npkgs = config.den.nixpkgs or null;
+      # DECLARED-surface extraction (M1.5): the corpus declares `options.den.<x>` sub-options for its custom
+      # kinds' instance registries AND its non-kind config namespaces (secretsConfig). The shim (which reads
+      # config VALUES, not the option tree) can't tell a declared namespace from a typo; so the bridge — the
+      # ONE place with the flake-parts option surface — reads the DECLARED sub-option names off `options.den`
+      # (the freeform submodule's `getSubOptions`, minus the `_freeformOptions` marker) and passes them to
+      # compile as the reserved `_declaredKeys`. compile's strict surface-totality classifies these as
+      # legitimate (a typo is undeclared, so still aborts). `_`-prefixed ⇒ exempt from totality + ignored by
+      # ingest; harmless on the shim's other passes.
+      declaredDenKeys = builtins.filter (k: builtins.substring 0 1 k != "_") (
+        builtins.attrNames ((options.den.type.getSubOptions or (_: { })) [ ])
+      );
       fleet = [
         {
-          den = builtins.removeAttrs config.den [
-            "nixpkgs"
-            "darwin"
-          ];
+          den =
+            builtins.removeAttrs config.den [
+              "nixpkgs"
+              "darwin"
+            ]
+            // {
+              _declaredKeys = declaredDenKeys;
+            };
         }
       ];
       # Global-fallback grain (M1): one evaluator for every nixos member when `den.nixpkgs` is set; else the

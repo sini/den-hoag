@@ -237,9 +237,74 @@ let
       # grew to read a per-host user field, differing values would need a named abort added right here.)
       userNames = prelude.unique (map (b: b.user) bindings);
 
-      # Custom (non-host/user) kinds carry their own v1 instances verbatim.
+      # ── custom-kind instance-key DISCOVERY (M1.5) ─────────────────────────────────────────────────
+      # A v1 config CHOOSES a custom kind's instance-registry KEY: `options.den.<KEY> =
+      # gen-schema.mkInstanceRegistry den.schema.<kind>` (nix-config schema/cluster.nix). The key is
+      # arbitrary — nix-config writes `clusters` for kind `cluster` — NEVER a pluralization heuristic.
+      # A gen-schema instance exposes no `.kind`, but its `id_hash` IS a content-addressed kind marker:
+      # gen-schema's DOCUMENTED identity contract (identity.nix `mkIdentityModule`) hashes
+      # `"<kind>|<sorted primitive field=value>"`. So for each declared kind we RECOMPUTE that hash from a
+      # candidate instance's own primitive fields and match the observed `id_hash` — discovery by MARKER,
+      # never by name (a kind `rack` at `den.rackFarm` resolves). `id_hashOf` replicates the documented
+      # formula; the compat CI TRIPWIRE (`compat-custom-kind` `test-idhash-contract`) fails LOUDLY if a
+      # gen-schema refactor ever changes it, so a formula drift can never silently mis-discover.
+      isPrimVal = v: builtins.isString v || builtins.isInt v || builtins.isBool v;
+      id_hashOf =
+        kind: inst:
+        let
+          fields = builtins.filter (
+            k: (builtins.substring 0 1 k != "_") && k != "id_hash" && isPrimVal (inst.${k} or null)
+          ) (builtins.sort (a: b: a < b) (builtins.attrNames inst));
+        in
+        builtins.hashString "sha256" "${kind}|${
+          builtins.concatStringsSep "|" (map (k: "${k}=${builtins.toString inst.${k}}") fields)
+        }";
+      instanceMatchesKind =
+        kind: inst: (inst.id_hash or null) != null && id_hashOf kind inst == inst.id_hash;
+      # A namespace is an instance registry iff it is a non-empty attrset of id_hash-bearing entries.
+      isInstanceRegistry =
+        v:
+        builtins.isAttrs v
+        && v != { }
+        && builtins.all (e: builtins.isAttrs e && e ? id_hash) (builtins.attrValues v);
+      # Candidate registry namespaces: `den.*` keys outside the fixed concern surface holding an instance
+      # registry (`_`-prefixed keys are den-internal, never a user surface).
+      concernKeys = [
+        "hosts"
+        "homes"
+        "schema"
+        "aspects"
+        "policies"
+        "classes"
+        "include"
+        "quirks"
+        "contentClass"
+        "default"
+      ];
+      candidateRegistryKeys = builtins.filter (
+        k:
+        (builtins.substring 0 1 k != "_")
+        && !(builtins.elem k concernKeys)
+        && isInstanceRegistry (v1Decls.${k} or null)
+      ) (builtins.attrNames v1Decls);
+
       customKinds = builtins.filter (k: k != "host" && k != "user") (builtins.attrNames schemaDecls);
-      customInstances = prelude.genAttrs customKinds (k: v1Decls.${k} or { });
+      # kind → the registry namespace whose instances match it by the id_hash marker. A kind with no
+      # matching namespace falls back to its own name (`den.<kind>`, the pre-M1.5 singular convention) so an
+      # inline fixture keyed by the kind name still resolves.
+      discoverKeyFor =
+        kind:
+        let
+          hits = builtins.filter (
+            n: instanceMatchesKind kind (builtins.head (builtins.attrValues v1Decls.${n}))
+          ) candidateRegistryKeys;
+        in
+        if hits == [ ] then kind else builtins.head hits;
+      instanceKeyMap = prelude.genAttrs customKinds discoverKeyFor;
+      customInstances = prelude.genAttrs customKinds (k: v1Decls.${instanceKeyMap.${k}} or { });
+      # The discovered registry keys — LEGITIMATE custom-kind instance namespaces (not typos), read by
+      # compile's surface-totality so a marker-discovered key classifies without widening the strict gate.
+      discoveredRegistryKeys = prelude.unique (builtins.attrValues instanceKeyMap);
 
       instances = {
         host = flatHosts;
@@ -348,6 +413,9 @@ let
       resolveClass = resolveClass classRegistry;
       resolveBucket = resolveClass bucketRegistry;
       inherit aspectEntry classEntry;
+      # M1.5 custom-kind discovery: kind → its marker-discovered registry key, and the discovered key set
+      # (compile's surface-totality classifies these as legitimate custom-kind namespaces).
+      inherit instanceKeyMap discoveredRegistryKeys;
     };
 in
 {
