@@ -24,6 +24,43 @@
 }:
 let
   deliverLib = import ../../deliver.nix { inherit prelude errors; };
+
+  # R6 — os-user.nix `user-to-host`: route user content to the host's OS `users.users.<name>`,
+  # injecting `osConfig = config` (the adapter-bearing route). v1's `{ user, host, ... }:` is a
+  # canTake presence gate on BOTH user AND host, compiled here as `__denCanTake = "user-host"`
+  # (compile.nix preserves the `{ user, host, ... }` formals): den-hoag fires it only at a user cell
+  # (both coordinates present), and the stratum probe's sentinel user+host make the UNCONDITIONAL
+  # route classify as RESOLUTION. `user.name` = v1's `user.userName` (den-hoag ctx canonicalizes to
+  # `.name`).
+  #
+  # NB: UNLIKE os-class's os-to-host, v1's user-to-host is UNCONDITIONAL — `intoClass = host.class`
+  # with NO `elem host.class [nixos darwin]` gate (verified against the frozen pin) — so a user
+  # routes to its host's REAL OS class whatever it is (a `wsl` host's user routes to wsl). The shim
+  # therefore does NOT add the elem-gate here; `intoClass = host.class or null` only guards the ONE
+  # case v1 leaves undefined: a synthetic `user@host` home has NO host OS class, so the null target
+  # renders a DEFINED NO-OP (dropped) — INERT (there is no OS to route into), never a crash.
+  #
+  # Bound in the let (a cleaner desugar body). The eval-time provisioning of `den.policies.user-to-host`
+  # (builtins.nix) reconstructs this SAME route value-identically off the shared `deliver.nix` surface —
+  # NOT by importing this legacy battery (the single-legacy-import-site invariant, compat-legacy-severed).
+  # The desugar's `//` overwrite of the provisioned value is idempotent, so ONE firing either way.
+  userToHost = {
+    __denCanTake = "user-host";
+    fn =
+      { user, host, ... }:
+      [
+        (deliverLib.route {
+          fromClass = "user";
+          intoClass = host.class or null;
+          path = [
+            "users"
+            "users"
+            user.name
+          ];
+          adaptArgs = args: args // { osConfig = args.config; };
+        })
+      ];
+  };
 in
 {
   _denCompat.legacy = "battery:os-user";
@@ -40,37 +77,7 @@ in
         };
       };
       policies = (v1.policies or { }) // {
-        # R6 — os-user.nix `user-to-host`: route user content to the host's OS `users.users.<name>`,
-        # injecting `osConfig = config` (the adapter-bearing route). v1's `{ user, host, ... }:` is a
-        # canTake presence gate on BOTH user AND host, compiled here as `__denCanTake = "user-host"`
-        # (compile.nix preserves the `{ user, host, ... }` formals): den-hoag fires it only at a user cell
-        # (both coordinates present), and the stratum probe's sentinel user+host make the UNCONDITIONAL
-        # route classify as RESOLUTION. `user.name` = v1's `user.userName` (den-hoag ctx canonicalizes to
-        # `.name`).
-        #
-        # NB: UNLIKE os-class's os-to-host, v1's user-to-host is UNCONDITIONAL — `intoClass = host.class`
-        # with NO `elem host.class [nixos darwin]` gate (verified against the frozen pin) — so a user
-        # routes to its host's REAL OS class whatever it is (a `wsl` host's user routes to wsl). The shim
-        # therefore does NOT add the elem-gate here; `intoClass = host.class or null` only guards the ONE
-        # case v1 leaves undefined: a synthetic `user@host` home has NO host OS class, so the null target
-        # renders a DEFINED NO-OP (dropped) — INERT (there is no OS to route into), never a crash.
-        user-to-host = {
-          __denCanTake = "user-host";
-          fn =
-            { user, host, ... }:
-            [
-              (deliverLib.route {
-                fromClass = "user";
-                intoClass = host.class or null;
-                path = [
-                  "users"
-                  "users"
-                  user.name
-                ];
-                adaptArgs = args: args // { osConfig = args.config; };
-              })
-            ];
-        };
+        user-to-host = userToHost;
       };
     };
 }

@@ -98,6 +98,16 @@
         denLib = migrationLib;
       };
 
+      # ── Compat built-in provisioning (ship-gate) — presents v1's built-in policies + routing kinds at the
+      # v1 attrpaths a consumer references (`den.policies.system-to-flake-parts`, `den.schema.flake-system`,
+      # …), merged into the freeform `config.den` via the flakeModule import (mirroring v1's flakeModule
+      # importing `modules/policies/*`). PROVIDE (host-to-users inert, user-to-host identity-linked) + STUB
+      # (flake-output policies, class-F/G). See lib/compat/builtins.nix.
+      builtinsModule = import ./lib/compat/builtins.nix {
+        prelude = inputs.gen-prelude.lib;
+        errors = import ./lib/compat/errors.nix { prelude = inputs.gen-prelude.lib; };
+      };
+
       # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
       # den's consumers (nix-config) import `inputs.den.flakeModule` and author policies with
       # `inputs.den.lib.policy.*` etc. — den v1's TOP-LEVEL attrpaths. den-hoag exposes the same
@@ -143,8 +153,18 @@
       # consumer's nixpkgs `lib` (raw absorption — never a gen-schema type in the strict eval), runs the
       # compat assembly, and sets `config.flake.{nixosConfigurations,darwinConfigurations}`. `flakeModules.
       # dendritic` (a den-diagram optional v1 carried) is intentionally absent — nix-config guards it `or {}`.
-      flakeModule = bridge;
-      flakeModules.default = bridge;
+      flakeModule = {
+        imports = [
+          bridge
+          builtinsModule
+        ];
+      };
+      flakeModules.default = {
+        imports = [
+          bridge
+          builtinsModule
+        ];
+      };
 
       # The committed formatter config — `nix fmt` at the repo root runs `nixfmt-tree` (treefmt
       # preconfigured with nixfmt-rfc-style, the ecosystem's Nix formatting convention agents

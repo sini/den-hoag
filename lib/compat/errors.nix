@@ -39,6 +39,14 @@ in
       if builtins.isString got then " \"${got}\" — pass the entry, not a \"kind:name\" string" else ""
     }); v1 name-strings become registry entries at ingestion, exactly once";
 
+  # A v1 `policy.exclude` whose target is a POLICY (a `__denCanTake`/`__isPolicy`/function record) rather
+  # than an aspect. Suppressing a POLICY's firing at a scope (the corpus's droid `drop-user-to-host-on-droid`
+  # excludes the os-user `user-to-host` route) is a distinct mechanism from pruning an aspect edge — it is
+  # the droid arm's user-route exclude, DEFERRED to class-B / board #50 (the nixOnDroid class). The class-A
+  # `nixosConfigurations` arm never reaches it (the exclude is `host.class == "droid"`-gated). Named here so
+  # the droid arm greets a self-announcing rung, never a misleading identity-law abort.
+  excludeOfPolicy = fail "exclude-of-policy (class-B, board #50)" "`policy.exclude` targets a POLICY record (`__denCanTake`/`__isPolicy`/function), not an aspect; suppressing a policy's firing is the droid arm's user-route exclude, not yet available (class-B / board #50)";
+
   # A v1 `den.schema.<kind>` names a `parent` kind that no other kind declares — the containment DAG is
   # broken at ingestion. Named at definition time so a schema typo fails legibly, not deep in the fleet
   # product. (den-hoag's built-in `host`/`user` are always present.)

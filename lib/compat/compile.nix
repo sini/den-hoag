@@ -190,7 +190,17 @@ let
     else if kind == "include" then
       [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "exclude" then
-      [ (declare.drop (resolveAspectRef aspectRec effect.value)) ]
+      # An aspect exclude prunes an aspect edge (`drop`). A POLICY exclude (`__denCanTake`/`__isPolicy`/
+      # function target) suppresses a policy's FIRING — a distinct mechanism (v1 `drop-user-to-host-on-droid`,
+      # nix-on-droid.nix, excludes the os-user `user-to-host` route), deferred to class-B/#50 with a named
+      # abort (never a misleading identity-law abort at `resolveAspectRef`).
+      let
+        v = effect.value;
+        isPolicyTarget =
+          builtins.isFunction v
+          || (builtins.isAttrs v && ((v.__denCanTake or null) != null || (v.__isPolicy or false)));
+      in
+      if isPolicyTarget then errors.excludeOfPolicy else [ (declare.drop (resolveAspectRef aspectRec v)) ]
     else if kind == "resolve" then
       # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
       # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
