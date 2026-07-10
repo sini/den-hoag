@@ -328,7 +328,171 @@ let
     {
       traceV1 = v1TraceField "edgeTrace";
       traceV1Legacy = v1TraceField "legacyEdgeTrace";
+      # Exposed so the content oracle's v1 arm can fold a root's per-class materialized module list
+      # (`resolveWithPaths class root → .imports`) — the v1 twin of den-hoag's `output.outputFor`.
+      inherit runV1 rootsOf;
     };
+
+  # ══ the content oracle (P2) + the class-share sub-gate (P8) ═════════════════════════════════════════
+  # sha256 of the CANONICAL rendering of a content projection (§4.4): `builtins.toJSON` name-sorts attr
+  # keys (canonical without extra normalization) and preserves list order (B5 order divergences stay
+  # observable, by design). The same renderer both content arms hash into.
+  canonHash = projection: builtins.hashString "sha256" (builtins.toJSON projection);
+
+  # A path (a list of attr keys) into a folded config value; a missing path renders `null` (observable, not
+  # an error). A derivation at the path renders as its `drvPath` — content identity without a store build
+  # (§4.4: "derivations are observed as their drvPath"). A function-valued path is a fixture-definition
+  # error (§4.4), surfaced loudly here rather than silently hashed.
+  atPath =
+    path: cfg:
+    let
+      v = prelude.foldl' (acc: k: if builtins.isAttrs acc && acc ? ${k} then acc.${k} else null) cfg path;
+    in
+    if builtins.isFunction v then
+      throw "den-compat parity: observed path ${builtins.concatStringsSep "." path} is a FUNCTION (fixture error)"
+    else if builtins.isAttrs v && v ? drvPath && v ? type && v.type == "derivation" then
+      v.drvPath
+    else
+      v;
+
+  # Project a folded config onto a fixture-declared observation set (a list of `[ seg … ]` attrpaths) →
+  # `{ "<seg.seg>" = <value>; }`, ready for `canonHash`. Widening the set re-baselines nothing (per-record
+  # hashes); narrowing it requires a ledger entry (§4.4, P6 discipline).
+  projectObservation =
+    observedPaths: cfg:
+    builtins.listToAttrs (
+      map (p: {
+        name = builtins.concatStringsSep "." p;
+        value = atPath p cfg;
+      }) observedPaths
+    );
+
+  # ── §4.4 cross-pipeline record — the P2 content parity for SYNTHETIC fixtures (no buildable toplevel) ──
+  # "Materialized module content" = the per-root, per-class materialization fold output (the config value
+  # the class assembly receives), projected onto the fixture's observation set. The hoag arm reads it from
+  # `den.output.outputFor <rootNode>` (the nixpkgs-free folded config). The v1 arm folds the root's per-class
+  # module list (`resolveWithPaths class root → .imports`) through `nixpkgsLib.evalModules` — the same fold
+  # v1's own class assembly runs, restricted to the observed pure-data paths (never a nixpkgs crossing).
+  #
+  # WHY per-root-materialized, not intra-pipeline: an intra-pipeline hash (the pipe's own output) would pass
+  # while hoag's DELIVERY of that value onto the edge diverges. Hashing the materialized fold output on each
+  # arm catches a delivery-side miscompute — the pipes blind spot P2 exists to close.
+  crossPipelineRecords =
+    {
+      denCompat,
+      v1arm,
+      nixpkgsLib,
+    }:
+    fixture:
+    let
+      observationSet = fixture.observationSet or [ ];
+
+      # hoag arm: the folded config at a root node, from the v2-arm build (class-share enabled by default).
+      hoagBuilt = denCompat.mkDen [ fixture.module ];
+      hoagDen = hoagBuilt.den;
+      hoagConfigAt = rootNode: (hoagDen.output.outputFor rootNode).${rootNode} or { };
+
+      # v1 arm: fold a root's per-class `.imports` into a config (the v1 class-assembly fold, observed-path
+      # restricted). `runV1`'s `compute` runs inside the live v1 eval, where the entity registry is bound —
+      # so the root host is resolved there by `{ system; host }` NAME (a static observationSet can't carry a
+      # live v1 entity). `_module.check = false` lets the fold accept the pure-data class modules without
+      # nixos option declarations (the observation targets plain module data, never a nixpkgs-crossed value).
+      v1ConfigAt =
+        obs:
+        v1arm.runV1 {
+          fixtureModule = fixture.module;
+          compute =
+            den:
+            let
+              resolved = den.lib.aspects.resolveWithPaths obs.class (
+                den.lib.resolveEntity "host" { host = den.hosts.${obs.system}.${obs.host}; }
+              );
+              imports = resolved.imports or [ ];
+              folded = nixpkgsLib.evalModules {
+                modules = imports ++ [ { config._module.check = false; } ];
+              };
+            in
+            folded.config;
+        };
+
+      recordOf = obs: {
+        fixture = fixture.name;
+        inherit (obs) root observedPaths;
+        v1Hash = canonHash (projectObservation obs.observedPaths (v1ConfigAt obs));
+        hoagHash = canonHash (projectObservation obs.observedPaths (hoagConfigAt obs.rootNode));
+        equal = null; # filled below (avoid double-eval of the two hashes)
+      };
+      withEqual = r: r // { equal = r.v1Hash == r.hoagHash; };
+    in
+    map (obs: withEqual (recordOf obs)) observationSet;
+
+  # ── §4.6 class-share sub-gate (`coreGate`, P8) — class-share invisibility, FLEET-AUTHORITATIVE ─────────
+  # For each producing class in a corpus fixture, build the v2 arm with `share.core` ON vs OFF and pin:
+  #   • perMember `gated` — forcing the share-ON member artifact runs den-hoag's own `authorize` (A18): a
+  #     red core ABORTS named, so `gated = (tryEval …).success` is the fleet-path byte gate (the same
+  #     authority gen-class's apply-fixed suite uses, exercised through the shipping build path — not a
+  #     re-derived gateCore; class-share-parity.nix covers the gateCore digest mechanism directly).
+  #   • `traceEqual` — E_hoag(T) byte-identical with share on/off (share.core shapes only the terminal
+  #     artifact, never the edge set: A18 structural invisibility).
+  #   • `configInvariant` — `config(root)` byte-identical with share on/off (content invisibility).
+  # `allGated && traceEqual` is P8-clean; a false in either localizes the defect to this class (never an
+  # `intentional-v2-semantic` ledger entry — class-share is a strategy, so any diff is a bug-in-hoag).
+  coreGate =
+    { denCompat }:
+    {
+      fixture,
+      shareClasses ? [ "nixos" ],
+    }:
+    let
+      shareOnMod = cls: { config.den.classes.${cls}.share.core = true; };
+      builtOn = denCompat.mkDen ([ fixture.module ] ++ map shareOnMod shareClasses);
+      builtOff = denCompat.mkDen [ fixture.module ];
+      denOn = builtOn.den;
+      denOff = builtOff.den;
+      rootsOn = builtins.attrNames denOn.scopeRoots;
+      rootsOff = builtins.attrNames denOff.scopeRoots;
+      traceHashOf = den: roots: canonHash (prelude.concatMap (r: den.graph.trace r) roots);
+      configHashOf = den: roots: canonHash (map (r: den.output.outputFor r) roots);
+    in
+    map (
+      cls:
+      let
+        membersOn = builtins.attrNames (denOn.output.systems.${cls} or { });
+        gatedOf = id: (builtins.tryEval (builtins.deepSeq denOn.output.systems.${cls}.${id} true)).success;
+        perMember = map (id: {
+          member = id;
+          gated = gatedOf id;
+        }) membersOn;
+        shareOnTraceHash = traceHashOf denOn rootsOn;
+        shareOffTraceHash = traceHashOf denOff rootsOff;
+      in
+      {
+        class = denOn.classes.${cls} or { name = cls; };
+        members = membersOn;
+        inherit perMember;
+        allGated = builtins.all (m: m.gated) perMember;
+        inherit shareOnTraceHash shareOffTraceHash;
+        traceEqual = shareOnTraceHash == shareOffTraceHash;
+        configInvariant = configHashOf denOn rootsOn == configHashOf denOff rootsOff;
+      }
+    ) shareClasses;
+
+  # ── §4.4 content-gate record (`contentGate`, P2 FLEET drv-hash) — the SHIP-GATE mechanism ──────────────
+  # `contentGate { corpus }` → per-configuration `{ configuration; v1DrvPath; shimDrvPath; equal; diffHint; }`:
+  # the toplevel `.drvPath` under the frozen v1 pin vs under den v2 + shim, eval-time (sandbox-safe, no store
+  # build — the v1 Task-14 gate mechanism), both arms pinning identical inputs except the den input. A `corpus`
+  # entry supplies the two toplevel THUNKS (`v1Toplevel` / `shimToplevel`); the full nix-config fleet run is
+  # DEV-TIME (the honest note — the one arm that cannot run purely in den-hoag's own CI: it evaluates the real
+  # corpus flake and crosses nixpkgs/nix-darwin). CI runs the cross-pipeline synthetics + a representative subset.
+  contentGate =
+    { corpus }:
+    map (c: {
+      inherit (c) configuration;
+      v1DrvPath = c.v1Toplevel.drvPath;
+      shimDrvPath = c.shimToplevel.drvPath;
+      equal = c.v1Toplevel.drvPath == c.shimToplevel.drvPath;
+      diffHint = "nix-diff ${c.v1Toplevel.drvPath} ${c.shimToplevel.drvPath}";
+    }) corpus;
 in
 {
   inherit
@@ -336,6 +500,10 @@ in
     mkV1
     nonEntityNameMap
     tagAndSort
+    crossPipelineRecords
+    coreGate
+    contentGate
+    canonHash
     # Exposed for the schema-guard suite: the entity-scope name normalizer (`hashToName -> rendered ->
     # name`) + its 64-hex id_hash predicate, so the mis-map guard is exercised directly (a colon-bearing
     # non-entity name passes through unmapped).

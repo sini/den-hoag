@@ -57,6 +57,15 @@
           # The entity-scope normalizer + its id_hash predicate, for the schema-guard suite's direct
           # mis-map test (a colon-bearing non-entity name must pass through unmapped).
           inherit (P.oracle) hoagNormName isIdHash nonEntityNameMap;
+          # The content oracle (Task 8): the §4.4 cross-pipeline content record (P2 synthetics), the §4.6
+          # class-share sub-gate (P8), and the §4.4 fleet drv-hash mechanism (P2 ship-gate). Each is the
+          # BUILDER partially applied with the dev-time arms in scope, exactly like traceHoag/traceV1.
+          crossPipelineRecords = P.oracle.crossPipelineRecords {
+            inherit denCompat nixpkgsLib;
+            inherit v1arm;
+          };
+          coreGate = P.oracle.coreGate { inherit denCompat; };
+          inherit (P.oracle) contentGate canonHash;
           fixtures = import ./fixtures/topologies.nix { };
           golden = import ./golden/traces.nix;
         };
@@ -72,6 +81,9 @@
           nixpkgsLib
           harness
           ;
+        # den-hoag's own lib (the four-concern API) — the P8 suite reaches `denHoag.internal.class`/
+        # `.classShare` for the deliberately-corrupted-core teeth (the A18 gate mechanism, direct).
+        denHoag = den-v2.lib;
         corpus = inputs.corpus;
       };
     };

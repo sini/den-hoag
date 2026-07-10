@@ -104,3 +104,49 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   channel, class-fold, multi-host, spawn negative-control). The fuller synthetic set (isolated-guest,
   microvm, darwin, fleet-pipe-through-edge, host-aspects-spawn) and the real nix-config corpus arm are
   C8/C9, when the deliver surface can be witnessed on both arms.
+
+## Task 8 M2 — content oracle (P2/P8) + darwin native output class
+
+- **darwin native output class (M2 mandatory-first, resolves the "darwin aborts until M2" note above).**
+  `darwin` is now a BUILT-IN den-hoag output class (peer to `nixos`: `lib/default.nix` `classNames` +
+  the `crossDarwin` terminal + the `darwinConfigurations` face + the `den.darwin` input). The legacy
+  os-class elem-gate `[nixos darwin]` now ROUTES a darwin host (`osEdgeCount "darwin" = 1`,
+  `ci/tests/compat-legacy-rules.nix`) instead of aborting at resolveBucket, and a native darwin fleet gets
+  `darwinConfigurations` with zero compat surface (`ci/tests/darwin-class.nix`). gen-flake ships no
+  `darwinSystem`, so `crossDarwin` calls nix-darwin's `lib.darwinSystem` DIRECTLY — the real crossing is
+  exercised at the SHIP-GATE (a corpus with a `den.darwin` input), not in den-hoag's own CI (which uses the
+  nixpkgs-free `collect` terminal). This is NOT a divergence — it is a native-class addition; recorded here
+  for provenance.
+
+- **P8 `coreGate` (class-share invisibility) — FULLY CI, no divergence.** `parity/tests/parity-class-share.nix`
+  runs the §4.6 sub-gate over a shared-core corpus fixture: `allGated` (every member's share-ON artifact
+  forces without abort — den-hoag's own `authorize`/A18 byte gate, the shipping authority), `traceEqual`
+  (E_hoag byte-identical share on/off), `configInvariant` (config(root) byte-identical), plus the
+  deliberately-corrupted-core loud-abort teeth. The fleet-path gate is the authority; the gateCore-digest
+  mechanism is covered directly by `ci/tests/class-share-parity.nix` (Arm A). No `intentional-v2-semantic`
+  row — class-share is a strategy, any observable diff is a bug-in-hoag.
+
+- **P2 content oracle — CI / SHIP-GATE split (honest scope, not a divergence).** Two arms, per §4.4:
+  (1) the CROSS-PIPELINE hoag-materialized content hash (`parity/tests/parity-content.nix`, the two
+  mandatory synthetics fleet-pipe-through-edge + host-aspects-spawn) is pinned as a CI regression baseline;
+  (2) the v1-materialized side and the FLEET drv-hash gate (`contentGate`) are the SHIP-GATE arm.
+  **Finding (why the v1 content arm is ship-gate, not CI):** forcing the v1 arm's materialized content
+  (`resolveWithPaths class root → .imports`, folded) triggers the v1 home-manager battery `getModule`, which
+  reaches `inputs.home-manager."${host.class}Modules"` — a CORPUS input the parity harness deliberately does
+  NOT carry (spec §4.4: "both evaluations pin identical inputs (nixpkgs, home-manager, all corpus inputs)").
+  So the v1-vs-hoag content differential + the toplevel drv-hash require the full corpus input set and cross
+  nixpkgs/nix-darwin — the one arm that "cannot run purely in den-hoag's own CI" (spec §7.3 / plan Task 8).
+  `crossPipelineRecords` computes both arms but Nix laziness keeps `.v1Hash`/`.equal` unforced in CI; the
+  `contentGate` mechanism is exercised structurally on a synthetic drvPath corpus. The full v1-vs-hoag run
+  is the dev-time ship-gate against the real nix-config corpus. A synthetic v1-vs-hoag content divergence is
+  a P2 ledger finding there, classified like the structural suite's matched/extra/missing.
+
+- **Pinned item (p) — classless-host default divergence (out-of-corpus).** `lib/compat/ingest.nix`
+  `hostClassName = h.class or "nixos"` defaults a v1 host with NO `class` field to `nixos`, whereas v1's
+  os-to-host gate (`host ? class && elem …`) would be INERT for a classless host (no route). This is an
+  OUT-OF-CORPUS divergence: every host in the `b0b2076` nix-config corpus declares an explicit `class`, so
+  the default never fires on the corpus (the ingest default only affects the host's own contentClass, not
+  the elem-gated os route — which reads `host.class or null` and drops on absence, matching v1's inert arm).
+  Recorded as `intentional-v2-semantic` (a defined default where v1 is undefined); re-verify at the corpus
+  ship-gate — if a classless corpus host ever appears, align the ingest default to `null` (inert) or flip
+  this to a live divergence.
