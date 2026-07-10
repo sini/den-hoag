@@ -146,3 +146,30 @@ runs the hostName comparison in CI (both arms cross; the item-4 terminal seam su
 `boot.isContainer` fixture to satisfy bootability). RESULT at n=1: v1DrvPath == shimDrvPath BYTE-IDENTICAL
 (the shim's crossed nixosSystem is the same derivation as v1's) — the P2 drv-hash parity, proven at n=1.
 The full-fleet drvPath diff over the real corpus is the ship-gate (runbook.md).
+
+## C9 item-6 — corpus host survey, #624/#625, pin-bump material (2026-07-10)
+
+**Darwin confirmed corpus-relevant.** The corpus HAS a darwin host (`patch`, `system = "aarch64-darwin"`),
+so M2's darwin native output-class registration is required for corpus parity, not speculative.
+
+**Host-class survey (drives ledger p + q).** Corpus hosts mostly declare NO `class` field; class is carried
+by `system` (e.g. `patch` = aarch64-darwin) or defaulted. v1's os-to-host gates on `host ? class`, so a
+classless host is inert there; the shim's `hostClassName = h.class or "nixos"` instead gives it nixos —
+harmless for genuine nixos hosts but a MISCLASSIFICATION for `patch` (darwin-by-system). Ship-gate fix:
+derive the shim host class from `system` (darwin → darwin) or default to null (inert). See ledger row p
+(corrected: NOT out-of-corpus). Separately, `slab` declares `class = "droid"` (nix-on-droid) — a non-built-in
+output class to register at the ship-gate (ledger row q).
+
+**#624/#625 compatibility.** #624 (emit-classes scopeContexts / per-named-entity class keying; the "N
+user-scoped nixos configs collapse to 1" fix) is STRUCTURALLY ABSENT on the v2 arm: den-hoag natively keys
+class content per (user,host) cell (`systems.<class>.<member>`), so the collapse bug cannot occur. The C9
+item-4 n=1 crossing gives direct evidence in the right direction — the shim's crossed nixosSystem is
+BYTE-IDENTICAL (drvPath) to v1's for a single-host fixture. Full #624/#625 verification is the corpus arm at
+the ship-gate (multi-user hosts), where the per-cell keying is actually exercised.
+
+**Pin-bump material.** The frozen pin is 11866c16 (== #623). Decision at ship-gate: stay at #623 vs advance
+past #627/#624. Evidence in hand: (a) the P1 edge-trace ledger (residual-n scope-model boundary is the v2
+model, not a shim defect); (b) the P2 n=1 drv-hash parity (byte-identical); (c) den-hoag's per-cell keying
+makes the #624 bug class structurally absent. Recommendation leans STAY at #623 for the frozen parity oracle
+(it predates #624/#627 by design — the oracle must not move under the shim); advance the CORPUS pin
+separately if the corpus needs post-#624 fixes, re-running P2 to confirm the drv-hash still holds.
