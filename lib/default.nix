@@ -560,31 +560,40 @@ let
         nixpkgs = npkgs;
         darwin = ndarwin;
       };
-      # The built-in nixpkgs-crossing classes — the two OS-system output classes — each mapped to its
-      # crossing terminal, gated on ITS OWN input being supplied (`den.nixpkgs` for nixos, `den.darwin`
-      # for darwin). One general map, not a per-class `if name == …` cascade. Adding a future system class
-      # takes THREE local edits: its name in `classNames`, a `den.<class>` input option block (like
-      # `darwinDecl`) threaded into the schema module list, and one row in this map wiring that input to a
-      # crossing terminal. Any class NOT in this map — or whose input is null — keeps the nixpkgs-free
-      # `collect` default; a class declaring its own `instantiate` overrides the crossing.
-      crossings = {
+      # DECLARED INSTANTIATION (D7): a system class declares HOW it crosses — `den.classes.<name>.
+      # instantiation = { evaluator ? null; output ? null; }`. `evaluator` is the `{ modules, specialArgs }
+      # -> system` builder (gen-flake's `mkSystemTerminal` contract, #48); `output` names the flake-parts
+      # option target the built systems mount at (D8; consumed by `systemOutputs` below + the flake-parts
+      # bridge). The instantiation is NOT a core constant — a new system class (droid, or anything a user
+      # invents) is a pure declaration needing zero edits here or in gen-flake.
+      #
+      # The nixos/darwin rows are DEFAULT declarations (D4, overridable — existing fleets unchanged): each derives its
+      # evaluator from the supplied `den.nixpkgs`/`den.darwin` input (null input ⇒ null evaluator ⇒ the
+      # nixpkgs-free `collect` terminal, den-hoag's pure path). A `den.classes.<name>.instantiation`
+      # override wins over the default; a class setting its own `instantiate` overrides everything.
+      defaultInstantiations = {
         nixos = {
-          input = npkgs;
-          terminal = crossTerminalLib.crossNixos;
+          evaluator = if npkgs == null then null else npkgs.lib.nixosSystem;
+          output = "nixosConfigurations";
         };
         darwin = {
-          input = ndarwin;
-          terminal = crossTerminalLib.crossDarwin;
+          evaluator = if ndarwin == null then null else ndarwin.lib.darwinSystem;
+          output = "darwinConfigurations";
         };
       };
+      instantiationOf =
+        name:
+        (defaultInstantiations.${name} or { }) // (ent.config.den.classes.${name}.instantiation or { });
       classDecls = prelude.genAttrs effectiveClassNames (
         name:
         let
           decl = ent.config.den.classes.${name} or { };
-          crossing = crossings.${name} or null;
+          evaluator = (instantiationOf name).evaluator or null;
         in
-        if crossing != null && crossing.input != null && !(decl ? instantiate) then
-          decl // { instantiate = crossing.terminal; }
+        if decl ? instantiate then
+          decl
+        else if evaluator != null then
+          decl // { instantiate = crossTerminalLib.crossVia evaluator; }
         else
           decl
       );
@@ -731,43 +740,51 @@ let
         demands = demandResolution;
       };
 
-      # nixosConfigurations — the mkDen flake-output face (§2.10). The `nixos` class's per-member systems,
-      # re-keyed from the member scope-node id ("host:igloo") to the host entity NAME ("igloo"), so a
-      # consumer addresses `nixosConfigurations.<host>` exactly as a flake does. With `den.nixpkgs` set
-      # these are REAL NixOS systems (the `crossNixos` crossing → `config.networking.hostName` evaluates);
-      # absent, they are the nixpkgs-free `collect` artifacts (same class-major spine — one entry per host
-      # carrying nixos content). Forcing the attrset SPINE counts hosts without building any system (per-
-      # member lazy, Law A17); a real build is forced only when a member's `.config` is read.
-      nixosConfigurations = builtins.listToAttrs (
-        map (
-          memberId:
-          let
-            entry = (structural.eval.node memberId).decls.__entry or null;
-          in
-          {
-            name = if entry != null then entry.name else memberId;
-            value = output.systems.nixos.${memberId};
-          }
-        ) (builtins.attrNames output.systems.nixos)
-      );
+      # faceOf — the shared flake-output face builder (§2.10): a class's per-member systems re-keyed from
+      # the member scope-node id ("host:igloo") to the host entity NAME ("igloo"), so a consumer addresses
+      # `<output>.<host>` exactly as a flake does. With an evaluator declared these are REAL systems (the
+      # `crossVia` crossing → `config.networking.hostName` evaluates); absent, the nixpkgs-free `collect`
+      # artifacts (same class-major spine — one entry per host). Forcing the attrset SPINE counts hosts
+      # without building any system (per-member lazy, Law A17); a real build is forced only at `.config`.
+      faceOf =
+        className:
+        builtins.listToAttrs (
+          map (
+            memberId:
+            let
+              entry = (structural.eval.node memberId).decls.__entry or null;
+            in
+            {
+              name = if entry != null then entry.name else memberId;
+              value = output.systems.${className}.${memberId};
+            }
+          ) (builtins.attrNames (output.systems.${className} or { }))
+        );
 
-      # darwinConfigurations — the darwin sibling of `nixosConfigurations` (§2.10). Same class-major spine
-      # (one entry per host carrying `darwin` content), same member-name re-keying. With `den.darwin` set
-      # these cross `crossDarwin` (nix-darwin's `darwinSystem`) into REAL darwin systems; absent, they are
-      # the nixpkgs-free `collect` artifacts — den-hoag's own CI path. `output.systems.darwin` always
-      # exists (`darwin` is a registered class), empty-spined when no host produces darwin content.
-      darwinConfigurations = builtins.listToAttrs (
-        map (
-          memberId:
-          let
-            entry = (structural.eval.node memberId).decls.__entry or null;
-          in
-          {
-            name = if entry != null then entry.name else memberId;
-            value = output.systems.darwin.${memberId};
-          }
-        ) (builtins.attrNames output.systems.darwin)
+      # systemOutputs — the DECLARED flake-parts output faces (D8): each system class's declared `output`
+      # target key → its host-name-keyed face. The face MOUNTS at that target (the flake-parts bridge / a
+      # `mkDen` consumer reads `<output>`); a class with no `output` declaration contributes none.
+      # `nixosConfigurations` / `darwinConfigurations` are the built-in aliases — and a new system class
+      # (droid → `nixOnDroidConfigurations`) surfaces here from its declaration ALONE, with zero face code.
+      systemOutputs = builtins.listToAttrs (
+        builtins.filter (x: x != null) (
+          map (
+            name:
+            let
+              out = (instantiationOf name).output or null;
+            in
+            if out == null then
+              null
+            else
+              {
+                name = out;
+                value = faceOf name;
+              }
+          ) effectiveClassNames
+        )
       );
+      nixosConfigurations = systemOutputs.nixosConfigurations or { };
+      darwinConfigurations = systemOutputs.darwinConfigurations or { };
     in
     {
       den = {
@@ -804,8 +821,12 @@ let
       # The top-level assembly face (§2.10 acceptance): `graph` (the read-only escape hatch, also under
       # `den.graph`) and the flake-output system faces (`nixosConfigurations` / `darwinConfigurations`,
       # host-name-keyed) lifted beside `den` so a consumer reads
-      # `mkDen fleetModules → { den; graph; nixosConfigurations; darwinConfigurations; }`.
+      # `mkDen fleetModules → { den; graph; nixosConfigurations; darwinConfigurations; outputs; }`.
+      # `outputs` is the GENERIC declared-target map (D8): `outputs.<target> = <host-keyed face>` for every
+      # system class's declared `output` (nixosConfigurations/darwinConfigurations are its built-in aliases;
+      # a user/droid class surfaces at its own declared target here). The flake-parts bridge mounts each.
       inherit graph nixosConfigurations darwinConfigurations;
+      outputs = systemOutputs;
     };
 in
 {

@@ -212,6 +212,9 @@ in
         "den"
         "graph"
         "nixosConfigurations"
+        # the generic declared-target output map (D8): `outputs.<target>` for every system class's declared
+        # `output`, with nixosConfigurations/darwinConfigurations as its built-in aliases (ship-gate #50 N1).
+        "outputs"
       ];
     };
     # `den.graph.trace` is stable (invariant under the unrelated-policy permutation) and hashable (the
