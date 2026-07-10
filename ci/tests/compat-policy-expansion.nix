@@ -37,6 +37,54 @@ let
   ruleBy = feed: id: builtins.head (builtins.filter (r: r.identity == id) feed);
   ids = feed: builtins.sort (a: b: a < b) (map (r: r.identity) feed);
   producedKinds = rule: ctx: map (a: a.__action) (rule.produce "n" ctx);
+
+  # ── cluster-to-nixidy latent-v1-divergence (ledger row u2) — the DOWNSTREAM shim consequence of the
+  #    bridge's `den.policies` v1-parity COERCION (lib/compat/bridge.nix, policy-type.nix). The corpus's
+  #    `den.policies.cluster-to-nixidy = { cluster, environment, ... }: map (…instantiate…) …` (nix-config
+  #    clusters.nix:96) is coerced to `{ __isPolicy; name; fn }` — its formals ride INTACT on the NESTED `fn`
+  #    — and its `den.schema.cluster.includes` REFERENCE arrives as that RECORD (the coerced corpus shape).
+  #    Here `ctnFn` is the raw body and `ctnRec` mirrors the bridge coercion (direct `compile` gets no bridge,
+  #    so the record is applied by hand). Body calls the board-#50 `instantiate` STUB (a throw). ────────────
+  instantiateStub = _spec: throw "den-hoag compat: `den.lib.policy.instantiate` — board #50 stub";
+  ctnFn =
+    { cluster, environment, ... }:
+    [ (instantiateStub { inherit (cluster) name; }) ];
+  ctnRec = {
+    __isPolicy = true;
+    name = "cluster-to-nixidy";
+    fn = ctnFn;
+  };
+  ctnCompiled = denCompat.compile {
+    policies.cluster-to-nixidy = ctnRec;
+    schema.environment = {
+      parent = "host";
+    };
+    schema.cluster = {
+      parent = "environment";
+      includes = [ ctnRec ];
+    };
+  };
+  ctnKindRec = ctnCompiled.policies."__kindInclude__cluster__policy__0";
+  ctnExpanded = compile { cluster-to-nixidy = ctnKindRec; };
+  # Behavioural inert: a plain host is cluster-less + env-less, so the {cluster,environment}-gated policy
+  # never fires there — the host resolves CLEAN (no throw, no instantiate).
+  ctnFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          policies.cluster-to-nixidy = ctnRec;
+          schema.environment = {
+            parent = "host";
+          };
+          schema.cluster = {
+            parent = "environment";
+            includes = [ ctnRec ];
+          };
+          hosts.x86_64-linux.h1.class = "nixos";
+        };
+      }
+    ]).den;
+  ctnHostRa = ctnFleet.structural.eval.get "host:h1" "resolved-aspects";
 in
 {
   flake.tests.compat-policy-expansion = {
@@ -219,24 +267,30 @@ in
     };
 
     # R3 — a policy declared in BOTH `den.policies` AND a `den.schema.<kind>.includes` reference keeps BOTH
-    # firings: its fleet-wide compiled entry AND its kind-scoped `__kindInclude` entry.
+    # firings: its fleet-wide compiled entry AND its kind-scoped `__kindInclude` entry. Both use the COERCED
+    # `{ __isPolicy }` record shape (the bridge coercion; direct `compile` applies it by hand) — that is what
+    # makes the include reference classify as a POLICY (a bare fn would be a parametric aspect, R14).
     test-both-case-keeps-both-firings = {
       expr =
         let
-          p = _ctx: [
-            {
-              __policyEffect = "include";
-              value = {
-                name = "a";
-              };
-            }
-          ];
+          pRec = {
+            __isPolicy = true;
+            name = "p";
+            fn = _ctx: [
+              {
+                __policyEffect = "include";
+                value = {
+                  name = "a";
+                };
+              }
+            ];
+          };
           c = denCompat.compile {
             aspects.a = { };
-            policies.p = p;
+            policies.p = pRec;
             schema.k = {
               parent = "host";
-              includes = [ p ];
+              includes = [ pRec ];
             };
             k.k1 = { };
           };
@@ -283,6 +337,53 @@ in
         spawnInStructural = [ "spawn" ];
         spawnNotResolution = [ ];
       };
+    };
+
+    # ── cluster-to-nixidy latent-v1-divergence PIN (ledger row u2 / boards #49/#50, u1 precedent) ────────
+    # (a) COMPILE-SIDE: the kind-include rule's `__condition` carries BOTH coords. Pre-fix, the fn crossed
+    #     the bridge's freeform `anything` and was formal-erased (`functionArgs = {}`), so `kindCoord //
+    #     {}` kept only `{ cluster }` and DROPPED `environment` — then concern-policies' probe applied the
+    #     fn without it (the uncatchable `called without required argument 'environment'`). The bridge's
+    #     `den.policies` coercion nests the fn (`{ __isPolicy; fn }`), preserving formals; this pins the gate.
+    test-cluster-to-nixidy-condition-carries-environment = {
+      expr = ctnKindRec.__condition;
+      expected = {
+        cluster = false;
+        environment = false;
+      };
+    };
+    # (b) COMPILES (no uncatchable throw): the `instantiate` STUB throw is tryEval-caught at the value-less
+    #     probe → per-declaration EXPANSION into two sub-rules, each gated on {cluster, environment}.
+    test-cluster-to-nixidy-expands-gated = {
+      expr = {
+        ids = ids ctnExpanded.policy;
+        conds = map (r: r.condition) ctnExpanded.policy;
+      };
+      expected = {
+        ids = [
+          "cluster-to-nixidy#resolution"
+          "cluster-to-nixidy#structural"
+        ];
+        conds = [
+          {
+            cluster = false;
+            environment = false;
+          }
+          {
+            cluster = false;
+            environment = false;
+          }
+        ];
+      };
+    };
+    # (c) INERT at a cluster-less/env-less node: a plain host resolves CLEAN — the {cluster,environment}-
+    #     gated policy never fires (den-hoag binds no `environment` onto cluster nodes; no env→cluster
+    #     containment, board #49), so no instantiate + no throw → `nixidyEnvs` silently EMPTY. LOUD PIN: if
+    #     den-hoag gains env→cluster containment (#49) or the instantiate surface lands (#50), this flips —
+    #     update together with ledger row u2.
+    test-cluster-to-nixidy-inert-at-plain-host = {
+      expr = (builtins.tryEval (builtins.deepSeq ctnHostRa true)).success;
+      expected = true;
     };
   };
 }

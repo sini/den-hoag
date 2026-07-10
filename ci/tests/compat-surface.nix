@@ -124,16 +124,24 @@ let
     schema.gadget = {
       parent = "host";
       includes = [
-        { name = "gadgetAspect"; } # aspect ref → edge via resolveAspectRef
-        # v1 wrapBareFn parametric include: a bare fn returning an include effect → compilePolicy
-        (_ctx: [
-          {
-            __policyEffect = "include";
-            value = {
-              name = "gadgetParam";
-            };
-          }
-        ])
+        { name = "gadgetAspect"; } # static aspect ref → edge via resolveAspectRef
+        # R14: a bare fn is a PARAMETRIC ASPECT (v1 wrapBareFn), returning aspect CONTENT → a synthetic
+        # aspect (__kindInclude__gadget__aspect__0) the SAME edge policy edges (so the edge fires TWO edges).
+        ({ host, ... }: { nixos.gadgetMarker = true; })
+        # A coerced `{ __isPolicy }` policy record (a den.policies reference shape) → its own kind-scoped
+        # policy record (__kindInclude__gadget__policy__0), UNCHANGED.
+        {
+          __isPolicy = true;
+          name = "gadgetPolicy";
+          fn = _ctx: [
+            {
+              __policyEffect = "include";
+              value = {
+                name = "gadgetParam";
+              };
+            }
+          ];
+        }
       ];
     };
     aspects.gadgetAspect = { };
@@ -325,18 +333,20 @@ in
         expr = schemaC.policies ? __kindInclude__cluster;
         expected = true;
       };
-      # C6 fix (identity half): a mixed kind-include (aspect ref + a bare parametric-include fn) compiles
-      # both — the aspect ref to a `__kindInclude__<kind>` edge policy, the fn to its own
-      # `__kindInclude__<kind>__policy__<i>` record (v1 `wrapChild` parity) — with NO identity abort. Each
-      # produces one edge declaration.
+      # C6 fix + R14: a mixed kind-include (static aspect ref + a bare-fn parametric aspect + a policy record)
+      # compiles all three arms — the static ref AND the synthetic aspect ride the ONE `__kindInclude__gadget`
+      # edge policy (so it fires TWO edges), the bare fn registers as `__kindInclude__gadget__aspect__0`, and
+      # the policy record keeps its own `__kindInclude__gadget__policy__0` record — with NO identity abort.
       test-kind-include-parametric-fn = {
         expr = {
-          aspect = builtins.length (kindIncludeMixedC.policies.__kindInclude__gadget.fn { });
-          fn = builtins.length (kindIncludeMixedC.policies."__kindInclude__gadget__policy__0".fn { });
+          edges = builtins.length (kindIncludeMixedC.policies.__kindInclude__gadget.fn { });
+          synthAspect = kindIncludeMixedC.aspects ? "__kindInclude__gadget__aspect__0";
+          policy = builtins.length (kindIncludeMixedC.policies."__kindInclude__gadget__policy__0".fn { });
         };
         expected = {
-          aspect = 1;
-          fn = 1;
+          edges = 2;
+          synthAspect = true;
+          policy = 1;
         };
       };
       # C6 R9 posture: a genuinely-unresolvable kind-include ref (an int — neither fn/policy-record NOR

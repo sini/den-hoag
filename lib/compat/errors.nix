@@ -94,6 +94,17 @@ in
     effect:
     fail "policy effect" "unsupported v1 policy effect `${effect}` — the shim compiles include/exclude/resolve and for/when; deliver/route/provide and pipe land with their own passes";
 
+  # PARAMETRIC-ASPECT RESULT (R14, the bare-fn kind-include arm) — a bare-fn include (`den.schema.<kind>.
+  # includes = [ ({ … }: <body>) ]`, or a nested bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose
+  # `__fn` RESULT is type-dispatched exactly as v1 `mkParametricNext` (aspect.nix:53-93): an ATTRSET is aspect
+  # CONTENT (the corpus branch), a LIST is v1's include-effect-ONLY branch (aspect.nix:72-84, which itself
+  # THROWS on any non-include effect). den-compat's corpus has ZERO consumers of the list branch, so a list
+  # result names itself here rather than a speculatively-built include-effect processor (self-announcing: the
+  # rung that first needs it greets this, not a silent drop or a `groundKeys`-on-a-list crash).
+  parametricListUnsupported =
+    name:
+    fail "parametric-aspect include (R14)" "the bare-fn parametric include `${name}` returned a LIST — v1 `mkParametricNext` (aspect.nix:72-84) processes ONLY include effects there (and throws on any other), and the corpus has no such include, so the list branch is unbuilt. Return aspect CONTENT (an attrset), or express the effects as a `den.policies.<name>` policy referenced in the includes list";
+
   # SURFACE TOTALITY (C1) — a top-level `den.<key>` the shim does not recognise. The permissive v1 eval
   # (flake-module.nix `v1OptionsModule` freeformType) ABSORBS unknown `den.*` keys silently so an arbitrary
   # corpus module evaluates; that absorption's promised downstream enforcement is HERE, over the read-back

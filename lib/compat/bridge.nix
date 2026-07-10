@@ -171,6 +171,61 @@
           in
           emittedKinds // { __rawSchema = rawForShim; };
       };
+      # v1-parity COERCION for `den.policies` — den v1's `policyRegistryType` (den nix/lib/aspects/
+      # policy-type.nix:15-24, pin 11866c16), reproduced at the bridge boundary. It does TWO jobs at once:
+      #
+      #  (1) FORMAL-PRESERVATION (why it lives here, not in the freeform `anything`). A v1 policy
+      #      `den.policies.<name> = { host, environment, ... }: [ effects ]` is a TOP-LEVEL FUNCTION value.
+      #      nixpkgs `lib.types.anything.merge` WRAPS a top-level fn value in a bare `arg:` lambda (its
+      #      fn-merge branch), ERASING its `functionArgs` — so through the freeform `anything` a policy fn's
+      #      declared coords (`{ cluster, environment }`) become `{ }`, compile reads `__condition = { }`, and
+      #      concern-policies' value-less probe applies the fn WITHOUT a required coord (an UNCATCHABLE throw).
+      #      This type bypasses `anything` and — by NESTING the fn inside a `{ __isPolicy; fn }` record — keeps
+      #      its formals intact (a NESTED fn is NOT erased; the top-level-vs-nested blast-radius survey). It
+      #      therefore SUBSUMES the old `denPoliciesDefs` raw-def collector: nesting preserves what the raw
+      #      read did, and the coercion additionally restores the discriminator below.
+      #
+      #  (2) THE v1 DISCRIMINATOR (what unblocks the agenix rung). v1 tells a POLICY from a PARAMETRIC ASPECT
+      #      by SHAPE: a `{ __isPolicy }` record is a policy (children.nix `isPolicy → register-aspect-policy`);
+      #      a bare FUNCTION is a parametric aspect (normalize.nix `wrapBareFn`). `den.policies.<name>` VALUES
+      #      are coerced to `{ __isPolicy; name; fn }` records HERE (policy-type.nix) — so a `den.policies.X`
+      #      REFERENCE in a `den.schema.<kind>.includes` list arrives as a RECORD (→ compile classifies it a
+      #      policy), while a LOCAL bare-fn aspect (agenix's `agenixHostAspect`, never laundered through
+      #      `den.policies`) stays a bare fn (→ compile classifies it a parametric aspect). Without the
+      #      coercion both arrive as bare fns and the shim cannot tell them apart (it mis-labelled the local
+      #      aspect a policy → `compilePolicy`'s `concatMap` on aspect CONTENT). R14 correction.
+      #
+      # MERGE CEILING (out-of-corpus, Fork-A precedent): the shallow per-module `//` union is definition-order
+      # (later wins per name); the corpus's policy names are distinct across modules, so it reproduces the
+      # same effective set. A `{ __denCanTake }` built-in route (`user-to-host`) and any non-fn value ride
+      # through UNCHANGED (compile reads the `__denCanTake` SHAPE, not fn formals) — only a bare fn is wrapped
+      # and a `{ __isPolicy }` record is name-stamped, both harmless to the standalone compile (its `innerFn`
+      # already unwraps `{ __isPolicy }` identically to a bare fn).
+      options.policies = lib.mkOption {
+        description = "den.policies coerced to `{ __isPolicy; name; fn }` records at the bridge boundary (v1 policyRegistryType parity, policy-type.nix:15-24): NESTS the fn (preserving formals the freeform `anything` would erase) AND restores v1's policy-vs-parametric-aspect discriminator (a den.policies reference is a record; a local bare-fn aspect is a bare fn).";
+        default = { };
+        type = lib.mkOptionType {
+          name = "denPolicies";
+          merge =
+            _loc: defs:
+            let
+              merged = lib.foldl' (acc: d: acc // d.value) { } defs;
+            in
+            builtins.mapAttrs (
+              name: raw:
+              if builtins.isFunction raw then
+                {
+                  __isPolicy = true;
+                  inherit name;
+                  fn = raw;
+                }
+              else if builtins.isAttrs raw && (raw.__isPolicy or false) then
+                raw // { inherit name; }
+              else
+                raw
+            ) merged;
+        };
+      };
     };
     default = { };
     description = "The den v1 declaration surface (absorbed raw here; desugared by the compat two-eval).";

@@ -167,7 +167,15 @@ let
           required = builtins.filter (a: !fa.${a}) (builtins.attrNames fa);
         in
         if builtins.all (a: ctx ? ${a}) required then
-          groundRec name (fn (builtins.intersectAttrs fa ctx))
+          # RESULT-TYPE DISPATCH (v1 `mkParametricNext`, aspect.nix:53-93): a parametric aspect's `__fn`
+          # RESULT is an ATTRSET → aspect CONTENT (grounded + include-recursed, the corpus branch: agenix's
+          # per-class `${host.class}` content), or a LIST → v1's include-effect-ONLY branch (aspect.nix:72-84,
+          # which THROWS on any non-include effect). den-compat has NO corpus consumer of the list branch, so a
+          # list result is a NAMED abort (self-announcing) rather than speculative include-effect processing.
+          let
+            result = fn (builtins.intersectAttrs fa ctx);
+          in
+          if builtins.isList result then errors.parametricListUnsupported name else groundRec name result
         else
           { };
       # A v1 aspect INCLUDE, normalized to the den-hoag shape under a distinct `name`. TRANSITIVE (matching
@@ -552,25 +560,33 @@ let
 
   compiledPolicies = compilePolicies ing aspectRec v1Policies;
 
-  # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag policies,
-  # classified PER REF exactly as v1's `wrapChild` (`aspects/fx/aspect/normalize.nix`, @ pin 11866c16):
-  #   • aspect refs (an entry / `{ name }` / string, or a `__functor`'d aspect record — v1
-  #     `wrapFunctorChild`) → ONE `__kindInclude__<kind>` policy that `edge`s to each, gated on the KIND
-  #     coord so it fires at every instance of the kind (v1's fires-at-kind). A genuinely-unresolvable ref
-  #     (not entry/{name}/string NOR function/policy — e.g. an int) keeps `resolveAspectRef`'s named
-  #     identity abort (R9), never a silent drop.
-  #   • a BARE FUNCTION (`isFunction && !isAttrs` — v1 `wrapBareFn`) or a `mkPolicy`/`for`/`when` record
-  #     (`{ __isPolicy; fn }`, policy-effects.nix `mkPolicy`) is v1's PARAMETRIC-INCLUDE idiom — v1 invokes
-  #     it at the resolving node and folds the returned effects (`mkParametricNext`'s list branch). Each
-  #     becomes its own `__kindInclude__<kind>__policy__<i>` RECORD via `compilePolicy`, with the KIND
-  #     coord UNIONED into its declared gate so it fires at the kind's nodes (v1's includes-scope) even if
-  #     the function does not itself destructure the kind entity. A value-conditional parametric include
-  #     (e.g. env-to-clusters' cluster-match) emits nothing at the value-less probe → its stratum is
-  #     derived per-declaration by concern-policies (no formal-erasure throw, no misclassification).
+  # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag declarations,
+  # classified PER REF exactly as v1's `wrapChild` (`aspects/fx/aspect/normalize.nix`, @ pin 11866c16). v1's
+  # DISCRIMINATOR is the record coercion (a `den.policies.<name>` reference is a `{ __isPolicy }` RECORD,
+  # policy-type.nix; a local lambda is a bare fn), so this partitions into THREE arms:
+  #   • STATIC aspect refs (an entry / `{ name }` / string, or a `__functor`'d aspect record — v1
+  #     `wrapFunctorChild`) → the ONE `__kindInclude__<kind>` edge policy, gated on the KIND coord so it fires
+  #     at every instance of the kind (v1's fires-at-kind). An unresolvable ref (not entry/{name}/string NOR a
+  #     bare fn NOR a policy record — e.g. an int) keeps `resolveAspectRef`'s named identity abort (R9).
+  #   • a POLICY RECORD (`{ __isPolicy; fn }` — `mkPolicy`/`for`/`when`, or a coerced `den.policies` reference;
+  #     `{ __denCanTake }` built-in route) → its own `__kindInclude__<kind>__policy__<i>` RECORD via
+  #     `compilePolicy`, with the KIND coord UNIONED into its declared gate so it fires at the kind's nodes
+  #     even if the fn does not destructure the kind entity. A value-conditional record (env-to-clusters'
+  #     cluster-match) emits nothing at the value-less probe → concern-policies derives its stratum per
+  #     declaration (no misclassification).
+  #   • a BARE FUNCTION → a PARAMETRIC ASPECT (R14 correction; v1 `wrapBareFn` normalize.nix:62-82, NOT a
+  #     policy). It wraps through the EXISTING `normalizeList`/`wrapFn`/`callGated` machinery and registers as
+  #     a SYNTHETIC ASPECT (`__kindInclude__<kind>__aspect__<i>`, a positional identity — the collision-fix
+  #     naming) which the SAME `__kindInclude__<kind>` edge policy then edges. `forwardExpand` invokes the
+  #     wrapped fn with the real node ctx (`callGated` gates on coord presence + arg-shapes); its RESULT is
+  #     type-dispatched (`callGated`, per v1 `mkParametricNext`): an ATTRSET is aspect CONTENT (agenix's
+  #     per-class `${host.class}`), a LIST is a NAMED abort (out-of-corpus). This routes a content-returning
+  #     bare-fn kind-include (agenix's `agenixHostAspect`) as CONTENT, never through `compilePolicy` (whose
+  #     `concatMap` on effects would choke on it) — the agenix rung.
   isPolicyRef =
-    ref:
-    (builtins.isFunction ref && !builtins.isAttrs ref)
-    || (builtins.isAttrs ref && (ref.__isPolicy or false));
+    ref: builtins.isAttrs ref && ((ref.__isPolicy or false) || (ref.__denCanTake or null) != null);
+  # A bare-fn kind-include (the R14 parametric-aspect arm): a function that is not a policy record.
+  isBareFnRef = ref: builtins.isFunction ref && !(isPolicyRef ref);
 
   # An INLINE ASPECT ref in a `den.schema.<kind>.includes` list: an attrs carrying content inline (v1's
   # `{ policies; includes }` battery, nix/lib/home-env.nix `makeHomeEnv`) rather than a resolvable
@@ -614,7 +630,7 @@ let
   expandRefs =
     rs: prelude.concatMap (r: if isInlineAspect r then expandRefs (expandInlineAspect r) else [ r ]) rs;
 
-  kindIncludePolicies =
+  kindInclude =
     let
       perKind =
         kind: rawRefs:
@@ -623,12 +639,30 @@ let
           kindCoord = {
             ${kind} = false;
           };
-          aspectRefs = builtins.filter (r: !(isPolicyRef r)) refs;
           policyRefs = builtins.filter isPolicyRef refs;
-          aspectPolicy = prelude.optionalAttrs (aspectRefs != [ ]) {
+          bareFnRefs = builtins.filter isBareFnRef refs;
+          staticRefs = builtins.filter (r: !(isPolicyRef r) && !(isBareFnRef r)) refs;
+          # BARE-FN ARM (R14 parametric aspect): each bare fn wraps through the SAME normalizeList machinery
+          # translateAspect uses for a bare-fn aspect (`{ includes = normalizeList … [ fn ] }`) and registers
+          # as a SYNTHETIC ASPECT under a positional identity (the collision-fix naming — distinct id_hash per
+          # index via `ing.aspectEntry`). No new dispatch mechanism: it is a plain static aspect the edge
+          # policy edges at every kind instance, whose sole include is the wrapped fn (invoked with the node
+          # ctx at forwardExpand → callGated → grounded ATTRSET content).
+          synthAspects = builtins.listToAttrs (
+            prelude.imap0 (i: fn: {
+              name = "__kindInclude__${kind}__aspect__${toString i}";
+              value = {
+                includes = normalizeList "__kindInclude__${kind}__aspect__${toString i}:include" [ fn ];
+              };
+            }) bareFnRefs
+          );
+          # The kind's ONE edge policy edges the STATIC refs AND the synthetic aspects (by name → full record
+          # via aspectRec), gated on the KIND coord so it fires at every instance (unchanged for static-only).
+          edgeRefs = staticRefs ++ map (n: { name = n; }) (builtins.attrNames synthAspects);
+          aspectPolicy = prelude.optionalAttrs (edgeRefs != [ ]) {
             "__kindInclude__${kind}" = {
               __condition = kindCoord;
-              fn = _ctx: map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs;
+              fn = _ctx: map (ref: declare.edge (resolveAspectRef aspectRec ref)) edgeRefs;
             };
           };
           policyPolicies = builtins.listToAttrs (
@@ -642,20 +676,32 @@ let
             }) policyRefs
           );
         in
-        aspectPolicy // policyPolicies;
+        {
+          policies = aspectPolicy // policyPolicies;
+          aspects = synthAspects;
+        };
+      perKinds = map (kind: perKind kind ing.kindIncludes.${kind}) (builtins.attrNames ing.kindIncludes);
     in
-    prelude.foldl' (acc: kind: acc // perKind kind ing.kindIncludes.${kind}) { } (
-      builtins.attrNames ing.kindIncludes
-    );
+    {
+      policies = prelude.foldl' (acc: pk: acc // pk.policies) { } perKinds;
+      aspects = prelude.foldl' (acc: pk: acc // pk.aspects) { } perKinds;
+    };
+  kindIncludePolicies = kindInclude.policies;
+  # Synthetic aspects for the bare-fn kind-include arm (R14) — registered alongside the v1/default/conditional
+  # aspects so aspectRec resolves the edge policy's `{ name }` refs to full records (content + identity). They
+  # depend only on normalizeList (⊥ aspectRec), so the `policies → aspectRec → aspects` DAG is preserved.
+  kindIncludeAspects = kindInclude.aspects;
 
   aspects =
     builtins.mapAttrs (translateAspect normalizeList) v1Aspects
     // defaultAspects
-    // compiledPolicies.conditionalAspects;
+    // compiledPolicies.conditionalAspects
+    // kindIncludeAspects;
 
-  # The synthetic `__kindInclude__<kind>[__policy__<i>]` / `__denDefault` policy names cannot collide with
-  # a compiled `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a v1 policy name
-  # is a user-authored identifier that never uses it — so this namespace is disjoint from `compiledPolicies`.
+  # The synthetic `__kindInclude__<kind>[__policy__<i> | __aspect__<i>]` / `__denDefault` names cannot collide
+  # with a compiled `den.policies.<name>` (nor a v1 aspect): den reserves the `__` prefix for internal keys,
+  # and a v1 policy/aspect name is a user-authored identifier that never uses it — so this namespace is
+  # disjoint from `compiledPolicies` (and the aspect arm is disjoint within itself by positional index).
   # A v1 policy declared in BOTH `den.policies` AND a `den.schema.<kind>.includes` reference keeps BOTH
   # firings (its fleet-wide `compiledPolicies` entry AND its kind-scoped `__kindInclude` entry); only a
   # reference-only include (an inline function never registered as a `den.policies.<name>`) fires solely

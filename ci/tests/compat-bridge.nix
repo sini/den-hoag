@@ -72,6 +72,60 @@ let
 
   crossed = evalBridge { den.nixpkgs = nixpkgs; };
   collected = evalBridge { };
+
+  # ── den.policies v1-parity COERCION through the bridge: FORMAL-PRESERVATION + the DISCRIMINATOR ───────
+  # THE MISSING FIXTURE CLASS. A v1 top-level policy fn `den.policies.<name> = { cluster, environment, ... }:
+  # [ … ]` mounted through the REAL bridge submodule must KEEP its formals. Prior repros drove
+  # `denCompat.compile` directly and MISSED this: the erasure happens in the flake-parts `anything` merge
+  # (which wraps a TOP-LEVEL fn value in a bare `arg:` lambda, ERASING `functionArgs`), NOT in compile. The
+  # bridge now COERCES `den.policies` to `{ __isPolicy; name; fn }` records (policy-type.nix parity), NESTING
+  # the fn — a nested fn is NOT erased, so its declared coords survive to compile's `compilePolicy` gate — AND
+  # restoring v1's policy-vs-parametric-aspect discriminator (the coerced value is a RECORD). This is the
+  # analogue of the through-the-bridge crossed/collect witnesses above, for the policy surface.
+  evalBridgeConfig =
+    extra:
+    (lib.evalModules {
+      modules = [
+        flakeStub
+        bridge
+        fleetBase
+        extra
+      ];
+    }).config;
+  # TWO SEPARATE policy modules mirror the built-in-provisioning + corpus split, so the cross-module union
+  # is witnessed alongside formal-preservation.
+  policyCfg = evalBridgeConfig {
+    imports = [
+      { den.policies.cluster-to-nixidy = { cluster, environment, ... }: [ ]; }
+      {
+        den.policies.user-to-host = {
+          __denCanTake = "user-host";
+          fn = { user, host, ... }: [ ];
+        };
+      }
+    ];
+  };
+  # The load-bearing CONTRAST at the SAME nixpkgs lib: `anything.merge` ERASES a top-level fn's formals
+  # (the root cause), while the coercion NESTS the fn in a `{ __isPolicy; fn }` record so `.fn` PRESERVES them.
+  policyFn = { cluster, environment, ... }: [ ];
+  anythingErased = builtins.functionArgs (
+    lib.types.anything.merge
+      [ "den" "policies" ]
+      [
+        {
+          file = "m";
+          value = policyFn;
+        }
+      ]
+  );
+  coercionPreserved = builtins.functionArgs (
+    {
+      __isPolicy = true;
+      name = "p";
+      fn = policyFn;
+    }
+    .fn
+  );
 in
 {
   flake.tests.compat-bridge = {
@@ -100,6 +154,60 @@ in
     test-collect-is-collect-terminal = {
       expr = collected.nixosConfigurations.igloo.__terminal or "<not-collect>";
       expected = "collect";
+    };
+
+    # THROUGH-THE-BRIDGE (the missing fixture class): a top-level policy fn is COERCED to a `{ __isPolicy }`
+    # record (the discriminator) and keeps its DECLARED coords on the NESTED `.fn` when mounted through the
+    # strict flake-parts bridge. Pre-fix, `anything` wrapped it in a bare `arg:` lambda → `functionArgs = {}`
+    # → the kind-include rule dropped `environment` → concern-policies' value-less probe applied the fn
+    # without it → the uncatchable `called without required argument 'environment'`.
+    test-policy-formals-preserved-through-bridge = {
+      expr = {
+        isRecord = policyCfg.den.policies.cluster-to-nixidy.__isPolicy or false;
+        fnArgs = builtins.functionArgs policyCfg.den.policies.cluster-to-nixidy.fn;
+      };
+      expected = {
+        isRecord = true;
+        fnArgs = {
+          cluster = false;
+          environment = false;
+        };
+      };
+    };
+    # The collector unions ACROSS modules (the built-in-provisioning + corpus split), and a record-valued
+    # policy's nested fn rides through with formals intact (compileCanTake reads the `__denCanTake` shape,
+    # not these formals — so it is unaffected either way, but the raw union preserves them cleanly).
+    test-policy-cross-module-union = {
+      expr = {
+        names = builtins.sort (a: b: a < b) (builtins.attrNames policyCfg.den.policies);
+        recordFnArgs = builtins.functionArgs policyCfg.den.policies.user-to-host.fn;
+      };
+      expected = {
+        names = [
+          "cluster-to-nixidy"
+          "user-to-host"
+        ];
+        recordFnArgs = {
+          host = false;
+          user = false;
+        };
+      };
+    };
+    # THE PROOF the coercion is load-bearing: at the SAME nixpkgs lib, `anything.merge` ERASES a top-level
+    # fn's formals (the root cause) while nesting the fn in the coerced `{ __isPolicy; fn }` record PRESERVES
+    # them on `.fn`.
+    test-coercion-preserves-anything-erases = {
+      expr = {
+        anything = anythingErased;
+        coercion = coercionPreserved;
+      };
+      expected = {
+        anything = { };
+        coercion = {
+          cluster = false;
+          environment = false;
+        };
+      };
     };
   };
 }
