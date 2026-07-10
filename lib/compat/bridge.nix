@@ -32,6 +32,11 @@
   mkCrossNixos,
   schema,
   denLib,
+  # `passThrough` (default true) — the belt/suspenders toggle for the opaque option pass-through SEAM
+  # (see `passThroughSeam` in the schema apply). true = the BELT is active (raw option decls ride through
+  # to the corpus's own gen-schema); false = SEVERED (the processed kind-values flow, same-contract once
+  # the consumer's gen-schema is protocol-complete). The severability witness drives both.
+  passThrough ? true,
 }:
 {
   lib,
@@ -103,17 +108,25 @@
             # Real kinds only (strip gen-schema's schema-level `_kindNames`/`_topology`/… book-keeping).
             perKind = lib.filterAttrs (n: _: builtins.substring 0 1 n != "_") processed;
 
-            # OPAQUE PASS-THROUGH of the type-bearing option module (owner ruling). mkSchemaOption CONSTRUCTS a
-            # kind's options into gen-schema (gen-types) types — nixpkgs-FREE, so mounting them into the CORPUS's
-            # OWN nixpkgs evalModules (its `den.clusters = mkInstanceRegistry den.schema.cluster`) throws
-            # (`deprecationMessage missing`) and cross-pin strict errors. So we KEEP the structure gen-schema
-            # computes (kind/strict/refs/validators/refinements/methods/parent/includes) but REPLACE the
-            # kind-value's option-declaring MODULE (`__functor`, which gen-schema's mkInstanceType imports) with
-            # the corpus's OWN raw option decls — its nixpkgs `imports`/`options`, untouched and unforced by us.
-            # The corpus then constructs every instance type at ITS pin (v1-equivalent flow; no gen-schema type
-            # object ever crosses into its nixpkgs eval). `isEntity` (dropped by mkSchemaOption, not read by
-            # e789c334 instance.nix but part of the schema contract) rides through raw. Structure stays the
-            # contract half we OWN (missing/mis-shaped → named errors); the type half is the corpus's, at its pin.
+            # ── OPAQUE PASS-THROUGH — a SEVERABLE SCAFFOLDING SEAM (owner: belt-and-suspenders) ──────────
+            # The BELT, confined ENTIRELY to this `apply` (nothing about it escapes past `config.den.schema`;
+            # the boundary suite pins that no corpus/gen-schema-rev specific leaks elsewhere in lib/**).
+            #
+            # WHY: mkSchemaOption CONSTRUCTS a kind's options into gen-schema (gen-merge) types — pure, so
+            # mounting them into the CORPUS's OWN nixpkgs evalModules (`den.clusters = mkInstanceRegistry
+            # den.schema.cluster`) threw `deprecationMessage missing` + cross-pin strict errors. This seam KEEPS
+            # the structure gen-schema computes (kind/strict/refs/validators/refinements/methods/parent/includes)
+            # but REPLACES the kind-value's option-declaring MODULE (`__functor`, which gen-schema's
+            # mkInstanceType imports) with the corpus's OWN raw nixpkgs `imports`/`options`, untouched. `isEntity`
+            # (dropped by mkSchemaOption) rides raw. Structure is the contract half WE own (mis-shaped → named
+            # error); the type half is the corpus's, at its pin — v1-equivalent, no type object crosses.
+            #
+            # RETIREMENT CONDITION (documented severance): delete this seam once the consumer's gen-schema is
+            # PROTOCOL-COMPLETE — pins a gen-merge at/past the `mkOptionType` nixpkgs-protocol completion — at
+            # which point the PROCESSED kind-values (`passThrough = false`) flow same-contract into the corpus's
+            # eval and this pass-through is pure redundancy. `passThrough` makes the severance one flag; the
+            # severability witness pins the two paths produce DISTINCT kind-value shapes today, and (second half,
+            # activated with the types work) their corpus-result EQUIVALENCE under protocol-complete pins.
             rawFieldOf =
               kindName: field: default:
               lib.foldl' (
@@ -124,17 +137,27 @@
             rawOptionsOf =
               kindName:
               lib.foldl' (acc: d: lib.recursiveUpdate acc ((d.${kindName} or { }).options or { })) { } schemaDefs;
-            opaque = builtins.mapAttrs (
+            # BASE (both paths): re-add `isEntity`, which mkSchemaOption drops — it is part of den's schema
+            # shape, NOT belt scaffolding, so it rides the SEVERED processed path too (same-contract). The
+            # corpus's mkInstanceRegistry does not read it (e789c334 instance.nix), so retiring the seam keeps it.
+            withStructure = builtins.mapAttrs (
+              kindName: structure: structure // { isEntity = rawFieldOf kindName "isEntity" false; }
+            ) perKind;
+            # THE SEAM (belt only): swap the kind-value's option-declaring MODULE (`__functor`) for the
+            # corpus's OWN raw nixpkgs `imports`/`options`. This — and only this — is the pass-through.
+            passThroughSeam = builtins.mapAttrs (
               kindName: structure:
               structure
               // {
-                isEntity = rawFieldOf kindName "isEntity" false;
                 __functor = _self: _args: {
                   imports = rawImportsOf kindName;
                   options = rawOptionsOf kindName;
                 };
               }
-            ) perKind;
+            ) withStructure;
+            # The kind-values the CORPUS reads: the BELT (opaque pass-through) by default; the SEVERED
+            # processed path (`withStructure`) when `passThrough = false` (same-contract under complete pins).
+            emittedKinds = if passThrough then passThroughSeam else withStructure;
 
             # __rawSchema for the SHIM (fix-A wrinkle (i), single source of truth): the kind NAMES (attrNames),
             # `parent` (ingest buildSchema) and concatenated `includes` (ingest kindIncludesOf), read off the
@@ -146,7 +169,7 @@
               includes = kv.includes or [ ];
             }) perKind;
           in
-          opaque // { __rawSchema = rawForShim; };
+          emittedKinds // { __rawSchema = rawForShim; };
       };
     };
     default = { };

@@ -32,6 +32,15 @@ let
     schema = denHoag.internal.schema;
     denLib = denHoag;
   };
+  # The SAME bridge with the opaque pass-through SEAM severed (`passThrough = false`) — the processed
+  # kind-value path. Its severability is the belt-and-suspenders isolation guarantee: the seam is one flag.
+  bridgeSevered = import "${denHoagSrc}/lib/compat/bridge.nix" {
+    compat = denCompat;
+    inherit mkCrossNixos;
+    schema = denHoag.internal.schema;
+    denLib = denHoag;
+    passThrough = false;
+  };
   flakeStub = {
     options.flake = lib.mkOption {
       type = lib.types.lazyAttrsOf lib.types.raw;
@@ -47,39 +56,51 @@ let
   # nixpkgs `imports` module, and `isEntity` is set — the kind-value must ride the RAW nixpkgs option module
   # through (so the corpus's own gen-schema builds the instance type at its pin), not a gen-schema transform.
   incl = name: { inherit name; };
+  fixtureModules = [
+    {
+      den.schema.rack = {
+        options.slots = lib.mkOption {
+          type = lib.types.int;
+          default = 0;
+        };
+      };
+    }
+    { den.schema.rack.parent = null; }
+    { den.schema.rack.includes = [ (incl "i1") ]; }
+    { den.schema.rack.includes = [ (incl "i2") ]; }
+    {
+      den.schema.widget = {
+        isEntity = true;
+        imports = [
+          (_: {
+            options.marker = lib.mkOption {
+              type = lib.types.str;
+              default = "M";
+            };
+          })
+        ];
+      };
+    }
+  ];
   ev = lib.evalModules {
     modules = [
       flakeStub
       bridge
-      {
-        den.schema.rack = {
-          options.slots = lib.mkOption {
-            type = lib.types.int;
-            default = 0;
-          };
-        };
-      }
-      { den.schema.rack.parent = null; }
-      { den.schema.rack.includes = [ (incl "i1") ]; }
-      { den.schema.rack.includes = [ (incl "i2") ]; }
-      {
-        den.schema.widget = {
-          isEntity = true;
-          imports = [
-            (_: {
-              options.marker = lib.mkOption {
-                type = lib.types.str;
-                default = "M";
-              };
-            })
-          ];
-        };
-      }
-    ];
+    ]
+    ++ fixtureModules;
+  };
+  # The severed (passThrough = false) eval — same fixture, the processed kind-value path.
+  evSevered = lib.evalModules {
+    modules = [
+      flakeStub
+      bridgeSevered
+    ]
+    ++ fixtureModules;
   };
   kv = ev.config.den.schema.rack;
   rawRack = ev.config.den.schema.__rawSchema.rack or { };
   widgetKv = ev.config.den.schema.widget;
+  widgetKvSevered = evSevered.config.den.schema.widget;
   # Mount the kind-value as a module exactly as the corpus's gen-schema mkInstanceType does (imports = [ kv ]),
   # in a NIXPKGS evalModules — the option-crossing that threw `deprecationMessage missing` before.
   widgetMounted = lib.evalModules { modules = [ widgetKv ]; };
@@ -152,6 +173,30 @@ in
         isEntitySurvives = true;
         markerDefault = "M";
         markerIsNixpkgsType = true;
+      };
+    };
+    # SEVERABILITY (belt-and-suspenders isolation): the opaque pass-through is ONE flag. `passThrough = false`
+    # toggles it off cleanly, yielding the PROCESSED kind-value path (same kind + structure). The two paths
+    # are DISTINCT today: the belt carries the corpus's RAW nixpkgs option (mounts with a nixpkgs type — the
+    # cross-pin gap the belt covers), which the processed path does not reproduce for us. SECOND HALF —
+    # corpus-result EQUIVALENCE (severed + protocol-complete pins → same result) — activates with the types
+    # work, once the processed options also carry the nixpkgs protocol. Retirement then deletes the seam.
+    test-passthrough-seam-severable = {
+      expr = {
+        # the seam toggles cleanly — the severed (processed) path yields a valid kind-value that keeps the
+        # BASE structure (kind + isEntity, which rides both paths).
+        severedYieldsKind = (widgetKvSevered.kind or "<none>") == "widget";
+        severedKeepsStructure = widgetKvSevered.isEntity or false;
+        beltKeepsStructure = widgetKv.isEntity or false;
+        # the seam's ONLY effect: the belt carries the corpus's RAW nixpkgs option (mounts with a nixpkgs
+        # type — the cross-pin gap the belt covers, which the processed path does not reproduce for us today).
+        beltCarriesRawNixpkgsOption = (widgetMounted.options.marker.type or { }) ? deprecationMessage;
+      };
+      expected = {
+        severedYieldsKind = true;
+        severedKeepsStructure = true;
+        beltKeepsStructure = true;
+        beltCarriesRawNixpkgsOption = true;
       };
     };
   };
