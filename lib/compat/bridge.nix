@@ -30,6 +30,8 @@
 {
   compat,
   mkCrossNixos,
+  schema,
+  denLib,
 }:
 {
   lib,
@@ -46,17 +48,62 @@
   # policies/… spread across many modules) exactly as v1's typed options did, respecting mkDefault/mkForce.
   # No gen-schema type enters the consumer's strict eval; the shim re-validates internally (compile's
   # surface-totality gate), so this boundary submodule stays deliberately freeform.
+  #
+  # SCHEMA PROCESSING (ship-gate M1.75). `den.schema` is the ONE exception to raw absorption: v1's
+  # `options.den.schema` is a gen-schema `mkSchemaOption` that PROCESSES raw kind declarations
+  # (`den.schema.<K> = { parent; options; isEntity; … }`) into gen-schema KIND-VALUES carrying
+  # `{ kind; strict; refs; options; validators; refinements }`. A corpus module reads that processed value
+  # at declaration time (`options.den.clusters = mkInstanceRegistry den.schema.cluster`) — so the bridge
+  # MUST reproduce the processing, else the corpus's own mkInstanceRegistry throws `attribute 'refs' missing`.
+  # We do it as an `apply` (definitions→value transform): the raw declarations arrive as the sub-option's
+  # DEFINITIONS; the apply runs the shim's OWN gen-schema (`schema.evalModuleTree` + `mkSchemaOption`) in a
+  # NESTED eval — gen-schema types stay INSIDE that eval, never mounted into the consumer's nixpkgs
+  # evalModules (the type-crossing dodge, same as the top-level freeform) — and returns the processed
+  # kind-values as `config.den.schema`. apply reads the merged DEFINITIONS, never the applied value, so no
+  # fixpoint. CROSS-PIN: the corpus's registries READ the kind-value with the corpus's gen-schema; we
+  # PRODUCE it with ours — both must agree on the contract field set (a shape mismatch throws NAMED, never
+  # silent). This mirrors v1's own read-behavior (v1 den.schema is equally a processing option).
   options.den = lib.mkOption {
-    type = lib.types.submodule { freeformType = lib.types.anything; };
+    type = lib.types.submodule {
+      freeformType = lib.types.anything;
+      options.schema = lib.mkOption {
+        # `anything` (not `raw`): a kind declaration is spread across modules — nix-config sets
+        # `den.schema.cluster.{isEntity,imports}` in schema/cluster.nix and `den.schema.cluster.parent` in
+        # schema/topology.nix — so the sub-option must DEEP-MERGE them (raw is single-def, would conflict),
+        # exactly as v1's typed schema option merged, before the apply processes the merged raw declaration.
+        type = lib.types.lazyAttrsOf lib.types.anything;
+        default = { };
+        # apply = the definitions→value transform. The processed kind-values are what the CORPUS reads
+        # (config.den.schema.<K>); the RAW definitions are stashed under `__rawSchema` for the SHIM, which
+        # re-processes schema itself (ingest buildRegistries) — feeding it the processed value would
+        # double-declare the read-only `_kindNames` (definitions-vs-value split: corpus ← processed, shim ←
+        # raw, one apply carries both).
+        apply =
+          rawSchema:
+          (schema.evalModuleTree {
+            modules = [
+              { options.den.schema = schema.mkSchemaOption { }; }
+              { config.den.schema = rawSchema; }
+            ];
+          }).config.den.schema
+          // {
+            __rawSchema = rawSchema;
+          };
+      };
+    };
     default = { };
     description = "The den v1 declaration surface (absorbed raw here; desugared by the compat two-eval).";
   };
 
   # R1 legacy binding: den v1's flakeModule binds `_module.args.den = config.den` at flake scope so every
   # consumer module may reference the `den` arg (`{ den, ... }:` — nix-config's schema/cluster.nix reads
-  # `den.schema.cluster`). The bridge reproduces that always-bound binding in the consumer's flake-parts eval
-  # (the shim reproduces it separately inside its OWN v1 eval; this is the consumer-eval half).
-  config._module.args.den = config.den;
+  # `den.schema.cluster`, _settings-type.nix reads `den.lib.aspects.fx.keyClassification`). den v1's `den`
+  # arg carries BOTH the config surface (config.den) AND the lib surface at `den.lib` (v1's
+  # `options.den.lib`), so the bridge splices the migration lib onto `.lib` — the same drop-in surface
+  # `inputs.den.lib` exposes. The shim reproduces the config half separately inside its OWN v1 eval.
+  config._module.args.den = config.den // {
+    lib = denLib;
+  };
 
   config.flake =
     let
@@ -84,6 +131,8 @@
               "darwin"
             ]
             // {
+              # the shim gets the RAW schema (it re-processes; the processed value is the corpus's, not ours).
+              schema = config.den.schema.__rawSchema or { };
               _declaredKeys = declaredDenKeys;
             };
         }

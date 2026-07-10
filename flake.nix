@@ -90,7 +90,13 @@
       # Replaces the bare option-declaring export: declares `options.den` (nixpkgs-native raw absorption),
       # runs the compat assembly, and sets `config.flake.{nixosConfigurations,darwinConfigurations}`. See
       # lib/compat/bridge.nix for the two-eval type-crossing resolution + the D7 instantiation grain notes.
-      bridge = import ./lib/compat/bridge.nix { inherit compat mkCrossNixos; };
+      bridge = import ./lib/compat/bridge.nix {
+        inherit compat mkCrossNixos;
+        schema = inputs.gen-schema.lib;
+        # the migration lib surface, spliced onto the consumer's `den` arg at `den.lib` (R1). Lazy let: it
+        # is defined below and carries no reference back to the bridge, so the forward use is cycle-free.
+        denLib = migrationLib;
+      };
 
       # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
       # den's consumers (nix-config) import `inputs.den.flakeModule` and author policies with

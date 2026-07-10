@@ -895,6 +895,7 @@ in
       class
       merge
       flake
+      schema
       ;
     # The A10 class-share build path (gen-class tier-2/tier-3), for the suite's parity/laziness scenarios.
     classShare = import ./output/class-share.nix { inherit prelude class errors; };

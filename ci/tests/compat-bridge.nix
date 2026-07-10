@@ -30,6 +30,9 @@ let
   bridge = import "${denHoagSrc}/lib/compat/bridge.nix" {
     compat = denCompat;
     inherit mkCrossNixos;
+    schema = denHoag.internal.schema;
+    # den-hoag's exported `lib` IS the migration lib surface (flake.nix); the harness receives it as denHoag.
+    denLib = denHoag;
   };
 
   # A minimal BOOTABLE one-host nixos fleet — the single-evaluator (M1) fixture. Bootable so the crossed
