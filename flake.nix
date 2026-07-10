@@ -60,9 +60,6 @@
         pipe = inputs.gen-pipe.lib;
         flake = inputs.gen-flake.lib;
       };
-    in
-    {
-      inherit lib;
       # den-compat (L4) — the den v1 compatibility shim + the two-sided parity harness, on top of the
       # assembled `lib`. `denHoag` = the four-concern API (this flake's `lib`); the shim reaches every
       # gen substrate lib through den-hoag vocabulary and needs only `schema` (id_hash at ingestion)
@@ -77,6 +74,56 @@
         # these internal (it exposes `trace`, which uses them), so the harness imports the frozen core
         # by source path — the SAME dev-time pattern the parity flake uses for den v1's `edge.nix`.
         edgeCore = import "${inputs.gen-edge}/lib/core.nix" { prelude = inputs.gen-prelude.lib; };
+      };
+
+      # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
+      # den's consumers (nix-config) import `inputs.den.flakeModule` and author policies with
+      # `inputs.den.lib.policy.*` etc. — den v1's TOP-LEVEL attrpaths. den-hoag exposes the same
+      # capabilities under `.compat`/`.lib`; this layer re-exports them at den's expected paths so the
+      # shim is a drop-in `den` input. THIN by design: a capability that exists in compat is ALIASED; a
+      # semantic verb den-hoag does not yet implement is a NAMED THROWING STUB (never a fake — precedent
+      # gen-select's `entityKind`) routing to its board task, so a re-probe reads named blockers, not
+      # `attribute 'x' missing`. Faithful reproduction of the trivial policy constructors (include/
+      # exclude/mkPolicy/pipe as v1 `__policyEffect` records) is a bounded fast-follow.
+      stub = ref: task: throw "den-hoag compat: `${ref}` — ${task}";
+      migrationLib = lib // {
+        # den.lib.policy.* — the policy-authoring vocabulary nix-config writes policies with.
+        policy = {
+          route = compat.route; # alias — the deliver-surface route descriptor
+          provide = compat.provide; # alias — the deliver-surface provide descriptor
+          include = stub "lib.policy.include" "trivial v1 include effect — reproduce as a fast-follow (ship-gate T1)";
+          exclude = stub "lib.policy.exclude" "trivial v1 exclude effect — reproduce as a fast-follow (ship-gate T1)";
+          mkPolicy = stub "lib.policy.mkPolicy" "trivial v1 named-policy wrapper — reproduce as a fast-follow (ship-gate T1)";
+          pipe = stub "lib.policy.pipe" "the pipe policy vocabulary (compat/pipe.nix compiles it) — expose the constructor as a fast-follow (ship-gate T1)";
+          resolve = stub "lib.policy.resolve" "the fleet-resolution / fan-out surface (R8; board #49/#50) — not yet available";
+          instantiate = stub "lib.policy.instantiate" "the declarable-instantiation surface (board #50) — not yet available";
+        };
+        # den.lib.aspects.* / resolveEntity / home / capture — v1 lib surfaces (semantic; escalated).
+        aspects = {
+          resolve = stub "lib.aspects.resolve" "the aspect-resolution surface (board #49) — not yet available";
+          fx.keyClassification = stub "lib.aspects.fx.keyClassification" "the fx key-classification surface (board #49) — not yet available";
+        };
+        resolveEntity = stub "lib.resolveEntity" "the entity-resolution surface (R8; board #49/#50) — not yet available";
+        home = stub "lib.home" "the home-entity surface (board #49) — not yet available";
+        capture.captureFleet = stub "lib.capture.captureFleet" "the fleet-capture surface (board #49) — not yet available";
+      };
+    in
+    {
+      lib = migrationLib;
+      inherit compat;
+
+      # den-v1-compatible TOP-LEVEL flake outputs (the drop-in migration surface — G1/T1). `flakeModule`
+      # is what nix-config's `modules/den/flake-parts.nix` imports; `flakeModules.default` is the
+      # flake-parts convention alias. `flakeModules.dendritic` (a den-diagram optional v1 carried) is
+      # intentionally absent — nix-config guards it `or {}` (ship-gate G1e, low priority).
+      # `compat.flakeModule` is a LIST of flake-parts modules; den's consumers import it as a SINGLE
+      # module (`imports = [ inputs.den.flakeModule ]`), so wrap the list into one module — matching den
+      # v1's single-module flakeModule shape and avoiding "Module imports can't be nested lists".
+      flakeModule = {
+        imports = compat.flakeModule;
+      };
+      flakeModules.default = {
+        imports = compat.flakeModule;
       };
 
       # The committed formatter config — `nix fmt` at the repo root runs `nixfmt-tree` (treefmt
