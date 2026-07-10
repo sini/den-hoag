@@ -29,6 +29,7 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
 | B13 | 2026-07-09 | (battery: user-shell) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
 | B14 | 2026-07-09 | (battery: vm-autologin) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
 | B15 | 2026-07-09 | (battery: wsl) | — (non-ported, corpus-unexercised — no live diff) | intentional-v2-semantic | non-ported per §10 R6 corpus-relative scope; re-open if the corpus exercises this battery | C8/C9 |
+| p | 2026-07-09 | (classless-host ingest) | — (out-of-corpus, no live diff) | intentional-v2-semantic | ingest `h.class or "nixos"` defaults a host with NO class field to nixos where v1's os gate is inert; every corpus host declares an explicit class, so it never fires on the corpus; re-verify at ship-gate — align the ingest default to null (inert) or flip to a live divergence | C8/C9 |
 
 ## Notes
 

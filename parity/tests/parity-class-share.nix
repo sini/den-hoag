@@ -18,8 +18,12 @@
 # input whether the core was spine-skipped or re-merged — **A18 holds TRIVIALLY through the nixpkgs/nix-darwin
 # crossing** (the P2 fleet drv-hash gate is share-invisible there). Two build paths, both share-invariant:
 # `coreGate` runs on the PURE gen-merge build path (this suite); the fleet drv-hash P2 gate runs THROUGH the
-# nixpkgs crossing (parity-content, ship-gate). The share path's output occupies the `denClassShareCore` loc,
-# read via `denHoag.internal.classShareCoreAttr`, never a re-hardcoded string.
+# nixpkgs crossing (parity-content, ship-gate). MECHANISM (no re-hardcoded loc string here): `coreGate`
+# gates each member by FORCING the share-ON fleet artifact (`deepSeq den.output.systems.<class>.<member>`,
+# whose share arm reads the `denClassShareCore` loc internally via `internal.classShareCoreAttr` — the
+# suite never names it) and asserts share-on/off trace + config invariance; the corruption arm drives
+# `denHoag.internal.classShare.build` directly for the A18 gate teeth. The `denClassShareCore` string is
+# never written in this suite, re-hardcoded or otherwise.
 {
   harness,
   denHoag,

@@ -387,16 +387,34 @@ let
     let
       observationSet = fixture.observationSet or [ ];
 
-      # hoag arm: the folded config at a root node, from the v2-arm build (class-share enabled by default).
+      # Fold a per-class MODULE LIST into a config value — the SAME fold on both arms (fairness). A class's
+      # materialized content is a module list (`{ networking.hostName = …; }`, gen-bind-wrapped), NOT a
+      # folded config; the option paths are undeclared here (no nixos module set), so a bare `evalModules`
+      # would SWALLOW them (`_module.check = false` disables the unknown-option error but surfaces nothing).
+      # A root freeform absorber (`attrsOf anything`) makes every undeclared option land in `config` as data
+      # — so the observation reads the real delivered value without a nixpkgs crossing (the observation
+      # targets pure module data; a nixpkgs-typed value would be a fixture error, caught by `atPath`).
+      foldModules =
+        modules:
+        (nixpkgsLib.evalModules {
+          modules = modules ++ [
+            {
+              freeformType = nixpkgsLib.types.attrsOf nixpkgsLib.types.anything;
+              config._module.check = false;
+            }
+          ];
+        }).config;
+
+      # hoag arm: the class's materialized module list at the root node = `outputFor.<root>.<class>` (the
+      # per-root channel/class fold — the CONFIG value the terminal receives). Folded like the v1 arm.
       hoagBuilt = denCompat.mkDen [ fixture.module ];
       hoagDen = hoagBuilt.den;
-      hoagConfigAt = rootNode: (hoagDen.output.outputFor rootNode).${rootNode} or { };
+      hoagConfigAt =
+        obs: foldModules ((hoagDen.output.outputFor obs.rootNode).${obs.rootNode}.${obs.class} or [ ]);
 
-      # v1 arm: fold a root's per-class `.imports` into a config (the v1 class-assembly fold, observed-path
-      # restricted). `runV1`'s `compute` runs inside the live v1 eval, where the entity registry is bound —
-      # so the root host is resolved there by `{ system; host }` NAME (a static observationSet can't carry a
-      # live v1 entity). `_module.check = false` lets the fold accept the pure-data class modules without
-      # nixos option declarations (the observation targets plain module data, never a nixpkgs-crossed value).
+      # v1 arm: fold a root's per-class `.imports` into a config (the v1 class-assembly fold). `runV1`'s
+      # `compute` runs inside the live v1 eval, where the entity registry is bound — so the root host is
+      # resolved there by `{ system; host }` NAME (a static observationSet can't carry a live v1 entity).
       v1ConfigAt =
         obs:
         v1arm.runV1 {
@@ -407,19 +425,15 @@ let
               resolved = den.lib.aspects.resolveWithPaths obs.class (
                 den.lib.resolveEntity "host" { host = den.hosts.${obs.system}.${obs.host}; }
               );
-              imports = resolved.imports or [ ];
-              folded = nixpkgsLib.evalModules {
-                modules = imports ++ [ { config._module.check = false; } ];
-              };
             in
-            folded.config;
+            foldModules (resolved.imports or [ ]);
         };
 
       recordOf = obs: {
         fixture = fixture.name;
         inherit (obs) root observedPaths;
         v1Hash = canonHash (projectObservation obs.observedPaths (v1ConfigAt obs));
-        hoagHash = canonHash (projectObservation obs.observedPaths (hoagConfigAt obs.rootNode));
+        hoagHash = canonHash (projectObservation obs.observedPaths (hoagConfigAt obs));
         equal = null; # filled below (avoid double-eval of the two hashes)
       };
       withEqual = r: r // { equal = r.v1Hash == r.hoagHash; };

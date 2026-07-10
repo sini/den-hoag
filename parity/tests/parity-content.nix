@@ -90,9 +90,11 @@ let
   hoagHashOf = r: r.hoagHash;
 
   # GOLDEN — the hoag-materialized content hashes (re-derive by reading `.hoagHash`; a change is a hoag
-  # materialization regression to explain, not silently re-baseline).
-  goldenPipe = "a83db94975feb5bdcc3e677a666d372dc813a0726a06ae22c304916925ef1127";
-  goldenSpawn = "f1c36128fcd12dcfbcae7d57cce3719eff5a4794aadd7ac7d76bc4182b1a00d0";
+  # materialization regression to explain, not silently re-baseline). These hash REAL delivered config
+  # values (the FOLDED class content, not the raw module list) — verified non-null: fleet-pipe-through-edge
+  # → networking.hostName = "igloo"; host-aspects-spawn → boot.isContainer = true.
+  goldenPipe = "fa53e906ae006d11042e3363856bcc2e46841c25bf5a3ec1a6a23ebe20acae49";
+  goldenSpawn = "6038256d17db4067e03a01650e5eeb7a1ca1c67d120ffc67f36c55422677f58a";
 
   # contentGate MECHANISM shape (§4.4, P2 fleet drv-hash) — exercised on a SYNTHETIC corpus of drvPath-bearing
   # toplevel stubs (no store build): equal iff the two toplevel drvPaths match, with a nix-diff `diffHint` on

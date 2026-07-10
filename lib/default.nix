@@ -541,8 +541,10 @@ let
       };
       # The built-in nixpkgs-crossing classes — the two OS-system output classes — each mapped to its
       # crossing terminal, gated on ITS OWN input being supplied (`den.nixpkgs` for nixos, `den.darwin`
-      # for darwin). One general map, not a per-class `if name == …` cascade: adding a future system class
-      # is one row here. Any class NOT in this map — or whose input is null — keeps the nixpkgs-free
+      # for darwin). One general map, not a per-class `if name == …` cascade. Adding a future system class
+      # takes THREE local edits: its name in `classNames`, a `den.<class>` input option block (like
+      # `darwinDecl`) threaded into the schema module list, and one row in this map wiring that input to a
+      # crossing terminal. Any class NOT in this map — or whose input is null — keeps the nixpkgs-free
       # `collect` default; a class declaring its own `instantiate` overrides the crossing.
       crossings = {
         nixos = {

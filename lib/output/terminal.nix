@@ -58,9 +58,9 @@ in
     };
 
   # crossDarwin — the darwin sibling of crossNixos, the `darwin` native output class's nixpkgs crossing.
-  # THE HONEST GAP: gen-flake ships ONLY `terminals.nixosSystem` (no `darwinSystem`), so this crossing
-  # calls nix-darwin's `lib.darwinSystem` DIRECTLY rather than through a gen-flake wrapper. den-hoag still
-  # does its OWN `wrapAll` first (the merge strategy + validator toggle — exactly as crossNixos), then
+  # gen-flake ships only `terminals.nixosSystem`; until it gains a `darwinSystem` terminal (board task #48),
+  # this crossing calls nix-darwin's `lib.darwinSystem` directly rather than through a gen-flake wrapper.
+  # den-hoag still does its OWN `wrapAll` first (the merge strategy + validator toggle — exactly as crossNixos), then
   # hands the already-wrapped modules to `darwinSystem` (which does plain module eval, no gen-bind wrap,
   # so no second wrap to suppress). Exercised at the SHIP-GATE against a real corpus carrying a nix-darwin
   # input (`den.darwin`); den-hoag's own CI uses `collect` (no nix-darwin input), so this path is not
