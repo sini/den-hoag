@@ -90,6 +90,20 @@ let
     in
     builtins.length (builtins.filter (e: (e.source.collected.class or null) == "os") edges);
 
+  # WITNESS (ledger p, item-1 fix): a host with NO `class` field derives its class from its SYSTEM
+  # (ingest `classOfHost`, matching v1 host.nix:65-66 — `hasSuffix "darwin" system` ? darwin : nixos), so
+  # the os-to-host route fires exactly as v1's `host ? class` gate does. Verified on the v1 arm: v1 is NOT
+  # inert on classless hosts (it derives), so the shim derives too — a null default would misroute the
+  # corpus's darwin-by-system host `patch`.
+  osEdgeCountClasslessSystem =
+    system:
+    let
+      b = denCompat.mkDen [ { config.den.hosts.${system}.h.users.u = { }; } ];
+      den = b.den;
+      edges = builtins.concatMap (r: den.graph.edges r) (builtins.attrNames den.scopeRoots);
+    in
+    builtins.length (builtins.filter (e: (e.source.collected.class or null) == "os") edges);
+
   # ── R4 — den.default radiation (defaults.nix genAttrs [host user home]) + built-in membership ─────────
   r4Compiled = denCompat.compileFull ruleWitnesses.R4.decls;
 
@@ -304,6 +318,19 @@ in
         nixos = 1;
         darwin = 1;
         wsl = 0;
+      };
+    };
+    # WITNESS (ledger p): a CLASSLESS host derives its class from its SYSTEM (matching v1 host.nix), so the
+    # os route FIRES — a linux system → nixos, a darwin system → darwin. v1 is NOT inert on classless hosts;
+    # the shim reproduces the derivation (a null default would misroute the corpus's darwin host `patch`).
+    test-p-classless-class-from-system = {
+      expr = {
+        linux = osEdgeCountClasslessSystem "x86_64-linux";
+        darwin = osEdgeCountClasslessSystem "aarch64-darwin";
+      };
+      expected = {
+        linux = 1;
+        darwin = 1;
       };
     };
 

@@ -111,7 +111,7 @@ Regenerate the golden after any deliberate change: re-run the capture (the `resu
 `parity-ledger-gate` (P6) is the mechanical ship condition: every golden divergence key (the `missing` +
 `extra` sets across all cross-arm fixtures) must classify into a LEDGERED family — the ordered matchers in
 `parity/tests/parity-ledger-gate.nix`, mirroring the `ledger.md` rows (L4 quirk-fold / class-fold
-domain-boundary, residual-n user-as-cell, residual-o hm-battery). An unledgered key classifies into NO
+domain-boundary, residual-n A15 user-as-cell — absorbs the former residual-o hm-fold). An unledgered key classifies into NO
 family and FAILS the gate. So a NEW divergence — a regression that shifts an edge, or a re-baselined golden
 without a matching ledger row — cannot ship silently: you MUST add the `ledger.md` row AND (if it is a new
 family) a matcher in `parity-ledger-gate.nix`. The gate carries a negative-control (a fabricated unledgered

@@ -12,9 +12,13 @@
     corpus.url = "github:sini/nix-config/b0b207693ce66fb57acf2bb09cf9549e1dbddec7";
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
     # home-manager — the v1 hm battery's `getModule` reaches `inputs.home-manager."${host.class}Modules"`;
-    # the CONTENT arm (P2 cross-pipeline live + the fleet drv-hash ship-gate) forces it. Pinned + follows
-    # nixpkgs so both den arms pin identical inputs except the den input (spec §4.4). The EDGE arm (traceV1)
-    # never forces it (edge identity ≠ module content), so it was absent until the content arm landed.
+    # the CONTENT arm (P2 cross-pipeline live + the fleet drv-hash ship-gate) forces it. THE INVARIANT (§4.4):
+    # hm's nixpkgs MUST equal the nixpkgs the crossings actually use — the TOP-LEVEL `nixpkgs` here — so a
+    # host WITH hm users hashes to the same drv on both arms (a divergent hm nixpkgs would move the drv-hash
+    # independently of the shim). `follows = "nixpkgs"` declares it; flake.lock pins hm's nixpkgs to the
+    # top-level node (NOT `corpus`'s nixpkgs — they are DIFFERENT revs; a `nix flake update` dedup left it
+    # on corpus's, so the lock is pinned to `["nixpkgs"]` explicitly). The EDGE arm (traceV1) never forces hm
+    # (edge identity ≠ module content), so it was absent until the content arm landed.
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";

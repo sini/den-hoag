@@ -4762,7 +4762,6 @@
     "home-manager": {
       "inputs": {
         "nixpkgs": [
-          "corpus",
           "nixpkgs"
         ]
       },

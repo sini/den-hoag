@@ -3,7 +3,8 @@
 # (parity/ledger.md). An unledgered divergence key — a NEW parity shift a regression introduced, or a
 # re-baselined golden without a matching ledger row — classifies into NO family and FAILS this gate. This is
 # the mechanical form of the plan's P6 ship condition; the human-readable classifications + dispositions
-# live in parity/ledger.md (the L3/L4/L5 rows + the residual-n / residual-o notes), which this gate mirrors.
+# live in parity/ledger.md (the L3/L4/L5 rows + the residual-n note, which absorbs the former residual-o
+# hm-fold), which this gate mirrors.
 #
 # SHIP-GATE SCOPE (honest, per plan Task 8/9): this runs over the SYNTHETIC corpus (the golden). The
 # full-fleet arm — the real nix-config corpus diff ∖ ledger — is the dev-time ship-gate (runbook.md), the

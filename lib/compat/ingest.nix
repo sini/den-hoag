@@ -261,10 +261,24 @@ let
       # per-host class rides a compile-time `id_hash → class` map rather than a field on the strict
       # entry — den-hoag's `entity.classOf` calls the function with the host entry, and it reads only
       # `host.id_hash` (always present). Custom kinds are class-neutral unless declared.
+      # v1 DERIVES a classless host's class FROM its system (nix/lib/entities/host.nix:65-66):
+      #   `class = host.class or (if lib.hasSuffix "darwin" system then "darwin" else "nixos")`.
+      # The shim reproduces it EXACTLY so a system-declared classless host classifies as v1 does — the
+      # corpus `patch` (aarch64-darwin, no `class` field) → "darwin", every linux host → "nixos", and an
+      # explicit `host.class` (corpus `slab` = "droid") overrides. [Ledger p: this SUPERSEDES the review's
+      # null-default adjudication — v1 is NOT inert on classless hosts, it DERIVES; verified on the v1 arm
+      # (`igloo` → nixos, `patch` → darwin). A null default would misroute darwin hosts.]
+      hasDarwinSuffix =
+        s:
+        let
+          n = builtins.stringLength s;
+        in
+        n >= 6 && builtins.substring (n - 6) 6 s == "darwin";
+      classOfHost = h: h.class or (if hasDarwinSuffix (h.system or "") then "darwin" else "nixos");
       classByHostId = builtins.listToAttrs (
         map (name: {
           name = registries.host.${name}.id_hash;
-          value = flatHosts.${name}.class or "nixos";
+          value = classOfHost flatHosts.${name};
         }) (builtins.attrNames flatHosts)
       );
       # The host mapping is the per-host FUNCTION form: den-hoag's `entity.classOf` calls it with the
@@ -295,10 +309,11 @@ let
       );
       systemFor = host: systemByHostId.${host.id_hash} or null;
 
-      # Per-host OS class NAME (v1 `host.class`, defaulting `nixos`) keyed by host name — the value
-      # mkFleetModule stamps onto the den-hoag host entity's declared `class` field (§ os-class R3 gate).
-      # A host with no v1 `class` defaults to `nixos` (den v1's implicit default host class).
-      hostClassName = builtins.mapAttrs (_: h: h.class or "nixos") flatHosts;
+      # Per-host OS class NAME keyed by host name — the value mkFleetModule stamps onto the den-hoag host
+      # entity's declared `class` field (§ os-class R3 gate). Derived from `host.class` else the system
+      # (`classOfHost`, matching v1's `host.nix` default) so the os-to-host route gates exactly as v1's
+      # `host ? class` does — a classless host is NOT inert (v1 derives), so the shim derives too.
+      hostClassName = builtins.mapAttrs (_: classOfHost) flatHosts;
 
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
