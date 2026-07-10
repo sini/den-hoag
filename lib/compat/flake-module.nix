@@ -177,12 +177,18 @@ let
     };
   mkFleetModule = compiled: mkFleetModuleWith compiled denHoag.internal.terminal.collect;
 
-  # The full driver: v1 modules → the den-hoag assembly. `flakeModule` (core + legacy) supplies the v1
-  # option declarations for `evalV1`; `compile` desugars; `mkFleetModule` bridges; `denHoag.mkDen` builds.
-  flakeModule = flakeModuleCore ++ [
-    legacy.provides
-    legacy.forwards
-  ];
+  # `flakeModule` — the flake-parts IMPORT surface (what a consumer's `imports = [ inputs.den.flakeModule ]`
+  # merges into its STRICT flake-parts eval). It is ONLY `flakeModuleCore` (the v1-options module): the sole
+  # thing a consumer's eval needs is the `den` option DECLARATION, so its `config.den` grammar rides
+  # untouched to `mkDen`, which applies the legacy desugars + compiles OUTSIDE that eval. The `legacy.*`
+  # entries are NOT flake-parts modules — they are plain data holders (`{ _denCompat.legacy; desugar; … }`)
+  # consumed INTERNALLY as attributes (`desugarLegacy` reads `legacy.provides.desugar`; the severance tests
+  # read `legacy.provides._denCompat.legacy`), never through a module eval. Importing them into a consumer's
+  # strict flake-parts eval leaks their top-level keys (`_denCompat`, `desugar`, the forward primitives) as
+  # UNDECLARED options — the G1′ leak the ship-gate strict-eval witness pins. `evalV1` already used
+  # `flakeModuleCore` alone and the desugars ride the internal attribute seam, so dropping the legacy modules
+  # from this list is a no-op for every mkDen/harness path and removes the entire leak class at once.
+  flakeModule = flakeModuleCore;
 
   # The LEGACY desugars: the ONLY references to `legacy.*` outside `legacy/` (the flakeModule assembly,
   # §2.1 severance) — applied to the v1 surface BEFORE compile so den-hoag sees only grounded vocabulary.
