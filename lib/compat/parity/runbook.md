@@ -151,3 +151,54 @@ n=1) rides the ship-gate script: a synthetic smoke fixture must set `boot.isCont
 `fileSystems`/`boot.loader` assertions a real toplevel asserts. This constraint only affects SYNTHETIC smoke
 fixtures — real corpus hosts are bootable, so the full-fleet drvPath diff needs no such trick. Measured
 feasibility (cold, eval-only): hostName 0.5s, toplevel drvPath 1.2s per config — a few seconds per host.
+
+## The cross-pin type-mount seam — belt AND suspenders (owner, 2026-07-10)
+
+The corpus mounts gen-schema kind-values into its OWN nixpkgs `lib.evalModules`
+(`den.clusters`/`den.environments = mkInstanceRegistry`), so a kind-value's option module carries
+gen-merge types across the pin boundary. Two resolutions ship together (composition, not coupling);
+the ship-gate verifies BOTH, and their equivalence is a RUNBOOK property, not a unit test.
+
+- **Belt — opaque pass-through** (`bridge.nix`, `passThrough = true` default). The bridge swaps each
+  processed kind-value's option `__functor` for the corpus's OWN raw nixpkgs `imports`/`options`, so no
+  gen-merge type crosses; the corpus builds instance types at its own pin. Makes UNALIGNED pins work —
+  the production-realistic mid-migration state, and the DEFAULT ship-gate path (the fleet arm above run
+  with only `--override-input den`). A SEVERABLE seam (one flag, `passThrough`); retire it once the
+  consumer is protocol-complete.
+- **Suspenders — the nixpkgs optionType protocol completion** (gen-merge `mkOptionType`, the general
+  interface gen-types owed nixpkgs consumers). Its pure types then mount unchanged; gen-schema inherits
+  it free. The correct long-run fix that lets the belt retire.
+
+**Why the equivalence witness is a runbook property, not a pin-bumped unit test.** The belt is DESIGNED
+for unaligned pins; bumping den-hoag's own `gen-merge` lock to unit-test the equivalence would couple
+this repo to the suspenders — the exact coupling the belt exists to avoid. So the equivalence is a
+property of two PROBE CONFIGURATIONS over the real corpus, spelled out here and re-proven empirically
+each time the ship-gate runs both arms:
+
+1. **belt-unaligned** — the fleet arm with only `--override-input den`. The corpus's own (older)
+   gen-schema consumes the pass-through kind-values; evaluation reaches the cluster registry into
+   materialization and stops at the next rung (the C6 policy-aspect-lambda `resolveAspectRef` gap,
+   orthogonal to the cross-pin).
+
+1. **belt-severed + protocol override set** — sever the seam (`passThrough = false`) and align the
+   consumer's gen-schema/gen-merge to the protocol-complete revisions:
+
+   ```
+   ulimit -s unlimited
+   nix eval --no-write-lock-file '.#nixosConfigurations' --apply builtins.attrNames \
+     --override-input den path:/abs/den-hoag \
+     --override-input gen-schema path:/abs/gen-schema \
+     --override-input gen-schema/gen-merge path:/abs/gen-merge \
+     --override-input den/gen-schema path:/abs/gen-schema \
+     --override-input den/gen-schema/gen-merge path:/abs/gen-merge
+   ```
+
+   The protocol-complete types mount directly (no pass-through); evaluation reaches the IDENTICAL next
+   rung.
+
+Both configurations converge on the same rung and, past it, the same materialization, so the corpus
+drvPath is byte-compared at the gate either way. At real migration the override set becomes a normal
+input bump and the belt retires (delete `passThroughSeam`, flip the default). The toggle witness
+`compat-schema-processing.test-passthrough-seam-severable` pins the FIRST half (severing yields kind +
+structure without the raw nixpkgs option); this override run is the SECOND half (the severed path,
+protocol-aligned, still evaluates through to the same rung), and the two together are the equivalence.
