@@ -39,7 +39,7 @@ let
 
   # Run the compiled policy body to observe the translated declaration (the include → edge row). The
   # body is unconditional, so any ctx yields the same edge.
-  attachDecls = compiled.policies.attachSystem { };
+  attachDecls = compiled.policies.attachSystem.fn { };
   edgeDecl = builtins.head attachDecls;
 
   # The rest of the C1 policy vocabulary (include is above): exclude → drop, resolve → spawn, a
@@ -84,9 +84,9 @@ let
       includes = [ ];
     };
   };
-  vExclude = builtins.head (vocab.policies.detachA { });
-  vResolve = builtins.head (vocab.policies.fanout { });
-  vFor = builtins.head (vocab.policies.forB { });
+  vExclude = builtins.head (vocab.policies.detachA.fn { });
+  vResolve = builtins.head (vocab.policies.fanout.fn { });
+  vFor = builtins.head (vocab.policies.forB.fn { });
 
   # The NORMAL v1 multi-host case: the same user (`bob`) on TWO hosts. The user REGISTRY must dedup to
   # ONE `bob` entry (den-hoag entities are field-less, so the merge is trivial and drops nothing), while
@@ -134,16 +134,16 @@ let
   baseOf = d: if (d.__derived or false) then baseOf (builtins.head d.__derive.inputs) else d;
 
   # Each pipe fixture's `pipe.from` policy body is unconditional, so any ctx yields the pipeOp declaration.
-  derivePipeOp = builtins.head ((denCompat.compile pipeFx.derivePipe).policies.shapeMetric { });
-  deliverToOp = builtins.head ((denCompat.compile pipeFx.deliverToPipe).policies.routePorts { });
-  deliverAsOp = builtins.head ((denCompat.compile pipeFx.deliverAsPipe).policies.renameRaw { });
-  sitePipeOp = builtins.head ((denCompat.compile pipeFx.sitePipe).policies.gatherPeers { });
+  derivePipeOp = builtins.head ((denCompat.compile pipeFx.derivePipe).policies.shapeMetric.fn { });
+  deliverToOp = builtins.head ((denCompat.compile pipeFx.deliverToPipe).policies.routePorts.fn { });
+  deliverAsOp = builtins.head ((denCompat.compile pipeFx.deliverAsPipe).policies.renameRaw.fn { });
+  sitePipeOp = builtins.head ((denCompat.compile pipeFx.sitePipe).policies.gatherPeers.fn { });
   siteMark = k: builtins.head (builtins.filter (m: m.__pipeMark == k) sitePipeOp.marks);
 
   # for (whole-list) vs transform (per-element): both are the `map` node; only `for`'s inert
   # `__derive.wholeList` marker keeps the distinction the run wiring (task #44) needs. Ordered
   # transform-then-for, so `.derived` is the `for` node and its single input is the `transform` node.
-  fvtOp = builtins.head ((denCompat.compile pipeFx.forVsTransform).policies.shapeStream { });
+  fvtOp = builtins.head ((denCompat.compile pipeFx.forVsTransform).policies.shapeStream.fn { });
   forDerived = fvtOp.derived;
   transformDerived = builtins.head fvtOp.derived.__derive.inputs;
 
@@ -153,7 +153,7 @@ let
   # Deferred (config-thunk) discipline: the raw quirk value + the pipe compiled over it.
   deferredCompiled = denCompat.compile pipeFx.deferredFixture;
   deferredMarks = deferredCompiled.aspects.svc.marks;
-  deferredPipeOp = builtins.head (deferredCompiled.policies.shapeMarks { });
+  deferredPipeOp = builtins.head (deferredCompiled.policies.shapeMarks.fn { });
 in
 {
   flake.tests.compat-compile-golden = {

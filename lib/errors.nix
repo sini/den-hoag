@@ -52,6 +52,23 @@ in
     policyName: kindA: stratumA: kindB: stratumB:
     fail "declaration stratum (B2)" "policy `${policyName}` produced declarations of kind `${kindA}` (stratum `${stratumA}`) and kind `${kindB}` (stratum `${stratumB}`); a policy's declarations must all classify to a single stratum";
 
+  # B2 per-declaration-stratum conservation. A policy whose value-less probe emitted nothing (its
+  # emission is gated on a context VALUE, not just coordinate presence) has its stratum derived
+  # PER DECLARATION at dispatch — expanded into one sub-rule per COVERED stratum {structural,
+  # resolution}. Enrich-feed selection (B1 keyset-ascent, attr 2) and fleet pipeOp compose-seeding
+  # (the ONE gen-pipe DAG, seeded before eval) are PROBE-TIME commitments a value-less policy cannot
+  # make: a dispatch-time enrich- or pipeOp-kind declaration from it would silently never reach its
+  # feed. So both abort LOUD — never a silent partition.
+  expansionEnrich =
+    policyName:
+    fail "per-declaration stratum (B1/B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced an `enrich` declaration at dispatch; enrich-feed selection is a probe-time commitment (attr 2 keyset-ascent), so a value-conditional policy cannot contribute enrichment — author it as an explicit enrich policy whose probe emits its enrich keys";
+  expansionPipeOp =
+    policyName:
+    fail "per-declaration stratum (collection)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced a `pipeOp` declaration at dispatch; a `pipe.from` body is ctx-INDEPENDENT by contract and its operator joins the ONE fleet gen-pipe compose DAG seeded BEFORE the eval, so a value-conditional policy — which emits nothing at the seeding probe — cannot contribute a pipe operator";
+  expansionUncovered =
+    policyName: kind: stratum:
+    fail "per-declaration stratum (B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced kind `${kind}` (stratum `${stratum}`), outside the covered {structural, resolution}; a `${stratum}`-stratum declaration from a value-conditional policy is a silent partition";
+
   # §2.2 aspect-key dispatch: an aspect key that is neither a declared facet, a registered
   # class, nor a registered quirk channel is a definition-time error, naming the aspect + key.
   unknownAspectKey =

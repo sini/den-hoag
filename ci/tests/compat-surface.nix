@@ -47,7 +47,15 @@ let
   runB =
     c:
     builtins.mapAttrs (
-      _: p: if builtins.functionArgs p == { } then map builtins.attrNames (p { }) else [ ]
+      _: p:
+      let
+        # A compiled policy is a `{ __condition; fn }` record (its gate declared as data) or a bare
+        # `ctx:` function (its gate = functionArgs). Gated policies are skipped (calling with `{ }` is
+        # invalid); ungated bare-ctx bodies run.
+        cond = if builtins.isAttrs p && p ? __condition then p.__condition else builtins.functionArgs p;
+        body = if builtins.isAttrs p && p ? fn then p.fn else p;
+      in
+      if cond == { } then map builtins.attrNames (body { }) else [ ]
     ) c.policies;
   accept =
     fx:
@@ -107,6 +115,38 @@ let
   defaultC = denCompat.compileFull fixtures.denDefault.decls;
   schemaC = denCompat.compileFull fixtures.schemaCustomKind.decls;
   homesC = denCompat.compileFull fixtures.homesMultiSystem.decls;
+
+  # ── C6 kind-include per-ref classification (ship-gate): the fix that routes a PARAMETRIC include (a bare
+  #    fn / mkPolicy record, v1 `wrapBareFn`) through `compilePolicy` instead of the identity abort, while
+  #    an aspect ref still edges and a genuinely-unresolvable ref keeps the named abort. Probe-safe bare
+  #    `_ctx:` fn (the corpus's FORMAL-gated shape is the separate second-blocker rung, evidence round). ──
+  kindIncludeMixedC = denCompat.compileFull {
+    schema.gadget = {
+      parent = "host";
+      includes = [
+        { name = "gadgetAspect"; } # aspect ref → edge via resolveAspectRef
+        # v1 wrapBareFn parametric include: a bare fn returning an include effect → compilePolicy
+        (_ctx: [
+          {
+            __policyEffect = "include";
+            value = {
+              name = "gadgetParam";
+            };
+          }
+        ])
+      ];
+    };
+    aspects.gadgetAspect = { };
+    aspects.gadgetParam = { };
+    gadget.g1 = { };
+  };
+  kindIncludeUnresolvableC = denCompat.compileFull {
+    schema.widget = {
+      parent = "host";
+      includes = [ 42 ]; # not fn/policy-record NOR entry/{name}/string → named identity abort (R9)
+    };
+    widget.w1 = { };
+  };
 
   # ── den.default THREE-KIND narrowing (v1 defaults.nix:15-19 radiates to {host,user,home}, NOT all
   #    kinds). The synthesized `__denDefault` policy destructures `{ host, ... }`; den-hoag's dispatch
@@ -284,6 +324,29 @@ in
       test-schema-kind-include-policy = {
         expr = schemaC.policies ? __kindInclude__cluster;
         expected = true;
+      };
+      # C6 fix (identity half): a mixed kind-include (aspect ref + a bare parametric-include fn) compiles
+      # both — the aspect ref to a `__kindInclude__<kind>` edge policy, the fn to its own
+      # `__kindInclude__<kind>__policy__<i>` record (v1 `wrapChild` parity) — with NO identity abort. Each
+      # produces one edge declaration.
+      test-kind-include-parametric-fn = {
+        expr = {
+          aspect = builtins.length (kindIncludeMixedC.policies.__kindInclude__gadget.fn { });
+          fn = builtins.length (kindIncludeMixedC.policies."__kindInclude__gadget__policy__0".fn { });
+        };
+        expected = {
+          aspect = 1;
+          fn = 1;
+        };
+      };
+      # C6 R9 posture: a genuinely-unresolvable kind-include ref (an int — neither fn/policy-record NOR
+      # entry/{name}/string) keeps resolveAspectRef's named identity abort, never a silent drop.
+      test-kind-include-unresolvable-aborts = {
+        expr =
+          (builtins.tryEval (
+            builtins.deepSeq (kindIncludeUnresolvableC.policies.__kindInclude__widget.fn { }) null
+          )).success;
+        expected = false;
       };
       # multi-system @system homes: two membership cells (one per host/system), ONE user registry entry.
       test-homes-multisystem-cells = {

@@ -39,8 +39,9 @@ let
   # ── R3 — os → host.class routing (os-class.nix:26-43), a FORMAL-PRESERVING canTake route ──────────────
   # The compiled policy is `{ host, ... }@ctx:` — its formals ARE the canTake gate (den-hoag fires it only
   # where a host coordinate is in scope). It routes os → the host's OS class (`host.class or null`).
-  r3Route = r2Compiled.policies.os-to-host;
-  r3CanTake = builtins.functionArgs r3Route; # { host = false; } — the canTake condition
+  r3RouteRec = r2Compiled.policies.os-to-host;
+  r3Route = r3RouteRec.fn; # the route body (the record's fn); routes os → the host's OS class
+  r3CanTake = r3RouteRec.__condition; # { host = false; } — the canTake condition, now DECLARED (compileCanTake retirement) rather than derived from a literal-formal lambda's functionArgs
   r3ToNixos = r3Route {
     host = {
       name = "h";
@@ -118,7 +119,7 @@ let
   r5SeveredInclude = (severedWiring.compileFull r5Decls).include;
 
   # ── R6 — built-in battery aspects (os-user: user class + adapter-bearing user-to-host route) ──────────
-  r6UserRoute = r2Compiled.policies.user-to-host;
+  r6UserRoute = r2Compiled.policies.user-to-host.fn;
   r6RouteOut = r6UserRoute {
     user = {
       name = "alice";
@@ -157,7 +158,7 @@ let
         }
       ];
   };
-  r7Out = r7Compiled.policies.p {
+  r7Out = r7Compiled.policies.p.fn {
     host = {
       name = "h";
     };

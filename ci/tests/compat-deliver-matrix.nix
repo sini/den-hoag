@@ -129,7 +129,7 @@ let
   compiled = compile fixture;
   # `compile` returns policy thunks; a `delivery` declaration reads no ctx (its firing scope is the
   # dispatching node, resolved at edgesAt), so any ctx yields the same intent declaration.
-  declOf = name: builtins.head (compiled.policies.${name} { });
+  declOf = name: builtins.head (compiled.policies.${name}.fn { });
 
   # ── systemFor carry-in (§2.5): v1's per-host `system` reaches the built system via the compat nixos
   #    instantiate wrapper. A stub terminal (identity) makes the injected module directly inspectable.
@@ -424,7 +424,7 @@ in
             ];
           };
         in
-        (builtins.head (bad.policies.bad { })).targetClass.name
+        (builtins.head (bad.policies.bad.fn { })).targetClass.name
       );
       expected = true;
     };

@@ -261,15 +261,20 @@ let
   isConditionalAspect =
     value: builtins.isAttrs value && (value.meta or { }) ? guard && (value.meta or { }) ? aspects;
 
-  # den-hoag policy: `ctx: [ declaration ]`. Wrap the v1 inner fn so its effects translate to
-  # declarations. The wrapper is a bare `ctx:` (no destructuring) — v1 `for`/`when` gating already
-  # lives inside `fn`, so den-hoag's dispatch runs it at every scope and `fn`'s own guard decides. The
-  # translation of each effect is eager only when the body runs (per ctx); compile itself never runs it.
-  # NB: a SYNTHESIZED policy whose own destructuring must gate dispatch (canTake via functionArgs)
-  # MUST bypass this wrapper — it erases the formals. See `defaultPolicy` (__denDefault) below.
-  compilePolicy =
-    ing: aspectRec: value: ctx:
-    prelude.concatMap (translateEffect ing aspectRec) (innerFn value ctx);
+  # den-hoag policy RECORD `{ __condition; fn }`. `fn` is a bare `ctx:` wrapper translating the v1 inner
+  # fn's effects to declarations; `__condition` is the DECLARED gate — the inner fn's own `functionArgs`
+  # (v1's destructured coords) — so den-hoag's dispatch fires the policy exactly where those coordinates
+  # are present, WITHOUT the bare-ctx wrapper having to carry the formals. (den-hoag reads a rule's gate
+  # from a lambda's literal `functionArgs`; a `ctx:` wrapper erases them, so the record declares the gate
+  # as DATA instead — the general policy vocabulary for a generated policy that cannot shape its formals.)
+  # The translation of each effect is eager only when the body runs (per ctx); compile itself never runs
+  # it. A `for`/`when` policy record (`{ __isPolicy; fn }`) contributes its inner `fn`'s formals + effects
+  # the same way (`innerFn`). A value-conditional body (emits nothing at concern-policies' value-less
+  # probe) has its stratum derived per-declaration there; this compile stays stratum-agnostic.
+  compilePolicy = ing: aspectRec: value: {
+    __condition = builtins.functionArgs (innerFn value);
+    fn = ctx: prelude.concatMap (translateEffect ing aspectRec) (innerFn value ctx);
+  };
 
   # A `__denCanTake` policy — the FORMAL-PRESERVING compile path (the twin of the bare-ctx `compilePolicy`
   # for policies whose OWN destructuring must gate dispatch, not an internal for/when guard). A shim
@@ -289,17 +294,24 @@ let
   # value-absent target renders a `__dropped` no-op — translateDelivery). A CORPUS USER policy that emits
   # value-conditionally will hit the same misclassification — a C8 watch item: it aborts loudly by design
   # (never silently mis-fires), and the resolution is to rewrite it in the canTake + null-target-drop shape.
-  compileCanTake =
-    ing: aspectRec: value:
-    let
-      translate = ctx: prelude.concatMap (translateEffect ing aspectRec) (value.fn ctx);
-    in
-    if value.__denCanTake == "host" then
-      { host, ... }@ctx: translate ctx
-    else if value.__denCanTake == "user-host" then
-      { user, host, ... }@ctx: translate ctx
-    else
-      errors.unsupportedEffect "canTake:${value.__denCanTake}";
+  compileCanTake = ing: aspectRec: value: {
+    # The route's fixed SHAPE retires into an explicit `__condition` coord set — the coords it gates
+    # on, in the `functionArgs` shape (`false` = required). A hand-written formal lambda per shape is no
+    # longer needed now that a rule's gate can be declared as data.
+    __condition =
+      if value.__denCanTake == "host" then
+        { host = false; }
+      else if value.__denCanTake == "user-host" then
+        {
+          user = false;
+          host = false;
+        }
+      else
+        errors.unsupportedEffect "canTake:${value.__denCanTake}";
+    # Emits UNCONDITIONALLY given its coordinates (a single-group probe classifies it as resolution); a
+    # value-absent target renders a `__dropped` no-op (translateDelivery).
+    fn = ctx: prelude.concatMap (translateEffect ing aspectRec) (value.fn ctx);
+  };
 
   compilePolicies =
     ing: aspectRec: policies:
@@ -405,35 +417,71 @@ let
 
   compiledPolicies = compilePolicies ing aspectRec v1Policies;
 
-  # Kind-attached includes (`den.schema.<kind>.includes`) → fire-at-kind policies: an aspect radiated to
-  # every instance of a kind. Re-expressed as a den-hoag policy that emits one `edge` per aspect, gated
-  # (by den-hoag dispatch) on the kind's own scope. The policy destructures the kind arg so it fires
-  # only at that kind's nodes.
-  kindIncludePolicies = builtins.mapAttrs (
-    kind: aspectRefs:
-    # `ctx: [ edge … ]` — a bare body (den-hoag dispatch runs it fleet-wide); the kind-scoping is the
-    # kind arg. Task 2's dispatch wiring narrows it; for C1 this is a declaration-producing policy.
-    _ctx:
-    map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs
-  ) ing.kindIncludes;
+  # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag policies,
+  # classified PER REF exactly as v1's `wrapChild` (`aspects/fx/aspect/normalize.nix`, @ pin 11866c16):
+  #   • aspect refs (an entry / `{ name }` / string, or a `__functor`'d aspect record — v1
+  #     `wrapFunctorChild`) → ONE `__kindInclude__<kind>` policy that `edge`s to each, gated on the KIND
+  #     coord so it fires at every instance of the kind (v1's fires-at-kind). A genuinely-unresolvable ref
+  #     (not entry/{name}/string NOR function/policy — e.g. an int) keeps `resolveAspectRef`'s named
+  #     identity abort (R9), never a silent drop.
+  #   • a BARE FUNCTION (`isFunction && !isAttrs` — v1 `wrapBareFn`) or a `mkPolicy`/`for`/`when` record
+  #     (`{ __isPolicy; fn }`, policy-effects.nix `mkPolicy`) is v1's PARAMETRIC-INCLUDE idiom — v1 invokes
+  #     it at the resolving node and folds the returned effects (`mkParametricNext`'s list branch). Each
+  #     becomes its own `__kindInclude__<kind>__policy__<i>` RECORD via `compilePolicy`, with the KIND
+  #     coord UNIONED into its declared gate so it fires at the kind's nodes (v1's includes-scope) even if
+  #     the function does not itself destructure the kind entity. A value-conditional parametric include
+  #     (e.g. env-to-clusters' cluster-match) emits nothing at the value-less probe → its stratum is
+  #     derived per-declaration by concern-policies (no formal-erasure throw, no misclassification).
+  isPolicyRef =
+    ref:
+    (builtins.isFunction ref && !builtins.isAttrs ref)
+    || (builtins.isAttrs ref && (ref.__isPolicy or false));
+  kindIncludePolicies =
+    let
+      perKind =
+        kind: refs:
+        let
+          kindCoord = {
+            ${kind} = false;
+          };
+          aspectRefs = builtins.filter (r: !(isPolicyRef r)) refs;
+          policyRefs = builtins.filter isPolicyRef refs;
+          aspectPolicy = prelude.optionalAttrs (aspectRefs != [ ]) {
+            "__kindInclude__${kind}" = {
+              __condition = kindCoord;
+              fn = _ctx: map (ref: declare.edge (resolveAspectRef aspectRec ref)) aspectRefs;
+            };
+          };
+          policyPolicies = builtins.listToAttrs (
+            prelude.imap0 (i: ref: {
+              name = "__kindInclude__${kind}__policy__${toString i}";
+              value =
+                let
+                  base = compilePolicy ing aspectRec ref;
+                in
+                base // { __condition = kindCoord // base.__condition; };
+            }) policyRefs
+          );
+        in
+        aspectPolicy // policyPolicies;
+    in
+    prelude.foldl' (acc: kind: acc // perKind kind ing.kindIncludes.${kind}) { } (
+      builtins.attrNames ing.kindIncludes
+    );
 
   aspects =
     builtins.mapAttrs translateAspect v1Aspects
     // defaultAspects
     // compiledPolicies.conditionalAspects;
 
-  # The synthetic `__kindInclude__<kind>` / `__denDefault` policy names cannot collide with a compiled
-  # `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a v1 policy name is a
-  # user-authored identifier that never uses it — so this namespace is disjoint from `compiledPolicies`.
-  policies =
-    compiledPolicies.policies
-    // defaultPolicy
-    // builtins.listToAttrs (
-      map (kind: {
-        name = "__kindInclude__${kind}";
-        value = kindIncludePolicies.${kind};
-      }) (builtins.attrNames kindIncludePolicies)
-    );
+  # The synthetic `__kindInclude__<kind>[__policy__<i>]` / `__denDefault` policy names cannot collide with
+  # a compiled `den.policies.<name>`: den reserves the `__` prefix for internal keys, and a v1 policy name
+  # is a user-authored identifier that never uses it — so this namespace is disjoint from `compiledPolicies`.
+  # A v1 policy declared in BOTH `den.policies` AND a `den.schema.<kind>.includes` reference keeps BOTH
+  # firings (its fleet-wide `compiledPolicies` entry AND its kind-scoped `__kindInclude` entry); only a
+  # reference-only include (an inline function never registered as a `den.policies.<name>`) fires solely
+  # via `__kindInclude`. `kindIncludePolicies` is already a flat name→policy set.
+  policies = compiledPolicies.policies // defaultPolicy // kindIncludePolicies;
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
   # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys

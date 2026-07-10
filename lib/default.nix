@@ -78,7 +78,14 @@ let
       errors
       ;
   };
-  concernPolicies = import ./concern-policies.nix { inherit prelude dispatch declare; };
+  concernPolicies = import ./concern-policies.nix {
+    inherit
+      prelude
+      dispatch
+      declare
+      errors
+      ;
+  };
 
   # The aspects concern — compiles `den.aspects` onto gen-aspects (the neededBy/guard/drop surface
   # + §2.2 key dispatch). This TOP-LEVEL instance is used ONLY for `internal.classifyKey` (which reads

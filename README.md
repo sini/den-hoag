@@ -87,6 +87,18 @@ what the guard machinery reads to decide where the policy fires (a policy fires 
 destructured key is present in the node's context). A channel-named argument — a key that is never a
 context binding — therefore never fires, which is the intended idiom for "this policy is inert".
 
+A policy may also be a **rule record** `den.policies.<name> = { __condition; fn }`: `__condition` is the
+gate declared as DATA (a `functionArgs`-shaped coord set — `{ host = false; }` requires a `host` in
+scope), and `fn` is the same `ctx: [ declarations ]` body. This is the general form for a policy whose
+gate cannot be shaped as literal formals (a programmatically-generated policy), with identical firing
+semantics to the equivalent open pattern. A policy's **stratum** (B2) is normally read from a probe of
+its body; a policy whose emission is gated on a context VALUE (so it emits nothing at the probe, or
+throws doing value-work against the sentinel) has its stratum derived PER DECLARATION at dispatch —
+each declaration produced in its own stratum's phase — so a value-conditional resolution or structural
+policy is authored plainly, no probe-shaping required. A per-declaration policy may only emit
+`structural`/`resolution` declarations; an `enrich` or `pipeOp` declaration from one aborts loud (those
+are probe-time feed/compose commitments a value-conditional policy cannot make).
+
 ## Development
 
 ```sh
