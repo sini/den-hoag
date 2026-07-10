@@ -48,6 +48,10 @@ let
   # The v1 STRUCTURAL policy verbs (`include`/`exclude`/`mkPolicy`/`pipe`): the constructor siblings of
   # the deliver surface. Inert tagged records `compile`/`pipe` already consume — constructor shape only.
   policyVerbs = import ./policy-verbs.nix { };
+  # The fx key-classification surface (#49-slice): the ONE export the corpus reads
+  # (`keyClassification.structuralKeysSet`), reproducing v1's literal set. Aliased into migrationLib's
+  # `lib.aspects.fx.keyClassification` (flake.nix), replacing that one throwing stub.
+  keyClassification = import ./key-classification.nix { };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
@@ -105,6 +109,8 @@ in
     mkPolicy
     pipe
     ;
+  # The fx key-classification surface (#49-slice) — `{ structuralKeysSet; }`, aliased into migrationLib.
+  inherit keyClassification;
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
   inherit (flakeModuleWiring) mkNixosInstantiate;

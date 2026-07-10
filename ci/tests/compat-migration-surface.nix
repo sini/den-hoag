@@ -88,18 +88,33 @@ in
       };
     };
 
-    # ── stubs throw a NAMED blocker (not silent, not a fake) — the STILL-escalated set (#49/#50) ──
+    # ── keyClassification MOVED stub→real (ship-gate #49-SLICE): `structuralKeysSet` is a real membership
+    #    set the corpus's _settings-type.nix reads to type the settings submodule, not a throwing stub. ──
+    test-keyclassification-is-real = {
+      expr = {
+        isSet = builtins.isAttrs L.aspects.fx.keyClassification.structuralKeysSet;
+        metaStructural = L.aspects.fx.keyClassification.structuralKeysSet ? "meta";
+        settingsStructural = L.aspects.fx.keyClassification.structuralKeysSet ? "settings";
+      };
+      expected = {
+        isSet = true;
+        metaStructural = true;
+        settingsStructural = true;
+      };
+    };
+
+    # ── stubs throw a NAMED blocker (not silent, not a fake) — the STILL-escalated set (#49/#50); the
+    #    keyClassification slice moved to real above, so the escalated set is now 6. ──
     test-semantic-verbs-are-named-stubs = {
       expr = map throws [
         L.policy.resolve
         L.policy.instantiate
         L.aspects.resolve
-        L.aspects.fx.keyClassification
         L.resolveEntity
         L.home
         L.capture.captureFleet
       ];
-      expected = builtins.genList (_: true) 7;
+      expected = builtins.genList (_: true) 6;
     };
 
     # ── the four-concern API stays intact under the migration merge (no key clobbered) ──

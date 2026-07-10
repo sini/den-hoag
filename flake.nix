@@ -124,7 +124,9 @@
         # den.lib.aspects.* / resolveEntity / home / capture — v1 lib surfaces (semantic; escalated).
         aspects = {
           resolve = stub "lib.aspects.resolve" "the aspect-resolution surface (board #49) — not yet available";
-          fx.keyClassification = stub "lib.aspects.fx.keyClassification" "the fx key-classification surface (board #49) — not yet available";
+          # fx.keyClassification — the #49-SLICE: real, reproducing v1's `structuralKeysSet` (the ONE export
+          # the corpus reads). The rest of the #49 semantic surface stays escalated.
+          fx.keyClassification = compat.keyClassification;
         };
         resolveEntity = stub "lib.resolveEntity" "the entity-resolution surface (R8; board #49/#50) — not yet available";
         home = stub "lib.home" "the home-entity surface (board #49) — not yet available";

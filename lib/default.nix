@@ -866,7 +866,9 @@ in
       ;
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
-    inherit (concernAspects) classifyKey;
+    # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
+    # key-classification consistency suite reads `facets` to pin the structural-key agreement.
+    inherit (concernAspects) classifyKey facets;
     # The quirks concern's composer + class-relative read, for the suite's channel scenarios.
     inherit (concernQuirks) compose consumeAt;
     # Settings/linearization builders + the raw gen-settings/gen-algebra surfaces, for the suite's

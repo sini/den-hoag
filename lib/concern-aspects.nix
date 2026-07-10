@@ -167,5 +167,10 @@ let
       errors.unknownAspectKey aspectName key;
 in
 {
-  inherit cnf aspectSchema classifyKey;
+  inherit
+    cnf
+    aspectSchema
+    classifyKey
+    facets
+    ;
 }
