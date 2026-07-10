@@ -40,6 +40,12 @@ let
   };
   # A custom `rack` kind declared corpus-style, PLUS a second module contributing another field to the same
   # kind — proving the sub-option deep-merges declarations across modules before the apply processes them.
+  # A custom `rack` kind declared corpus-style ACROSS FOUR MODULES: `options.slots` in one, `parent` in
+  # another, and `includes` in TWO more. The includes case is the fix-A regression: two modules each append
+  # a kind-attached include to `den.schema.rack.includes`. Under the old `lazyAttrsOf anything` pre-merge
+  # those two lists CONFLICTED (types.anything never concatenates lists); fix A collects the raw defs and
+  # lets the nested mkSchemaOption's OWN merge (a list-default collection) concatenate them, as v1 does.
+  incl = name: { inherit name; };
   ev = lib.evalModules {
     modules = [
       flakeStub
@@ -53,13 +59,17 @@ let
         };
       }
       { den.schema.rack.parent = null; }
+      { den.schema.rack.includes = [ (incl "i1") ]; }
+      { den.schema.rack.includes = [ (incl "i2") ]; }
     ];
   };
   kv = ev.config.den.schema.rack;
+  rawRack = ev.config.den.schema.__rawSchema.rack or { };
 in
 {
   flake.tests.compat-schema-processing = {
-    # the apply produces a gen-schema KIND-VALUE carrying the contract fields a mkInstanceRegistry reads.
+    # the apply produces a gen-schema KIND-VALUE carrying the contract fields a mkInstanceRegistry reads,
+    # deep-merged across modules (options.slots from one, kind/parent processed from others).
     test-kind-value-contract = {
       expr = {
         kind = kv.kind or "<none>";
@@ -74,18 +84,39 @@ in
         hasValidators = true;
       };
     };
-    # the RAW declarations are stashed for the shim (definitions-vs-value split) and deep-merged across the
-    # two modules (parent from one, options from the other).
-    test-raw-schema-stashed-and-merged = {
+    # FIX A — the includes CONFLICT flips to a CONCAT: two modules' `den.schema.rack.includes` concatenate
+    # via gen-schema's own collection merge, on BOTH the processed kind-value (corpus-facing) and the shim's
+    # extracted raw. Order = definition order (v1 parity: i1 before i2).
+    test-includes-concatenated = {
+      expr = {
+        processed = map (i: i.name) (kv.includes or [ ]);
+        rawForShim = map (i: i.name) (rawRack.includes or [ ]);
+      };
+      expected = {
+        processed = [
+          "i1"
+          "i2"
+        ];
+        rawForShim = [
+          "i1"
+          "i2"
+        ];
+      };
+    };
+    # the shim's raw schema (definitions-vs-value split) carries exactly what the shim reads — kinds
+    # (attrNames), `parent` (buildSchema) and concatenated `includes` (kindIncludesOf) — EXTRACTED from the
+    # processed kind-values (fix-A wrinkle (i): single source of truth, no second merge). `options` ride the
+    # processed value (test-kind-value-contract), not the shim's raw.
+    test-raw-schema-shape = {
       expr = {
         stashed = ev.config.den.schema.__rawSchema ? rack;
-        parentMerged = (ev.config.den.schema.__rawSchema.rack or { }) ? parent;
-        optionsMerged = (ev.config.den.schema.__rawSchema.rack or { }) ? options;
+        hasParent = rawRack ? parent;
+        hasIncludes = rawRack ? includes;
       };
       expected = {
         stashed = true;
-        parentMerged = true;
-        optionsMerged = true;
+        hasParent = true;
+        hasIncludes = true;
       };
     };
   };

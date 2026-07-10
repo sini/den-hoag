@@ -252,6 +252,16 @@ let
       # gen-schema's derivation is pinned by the `compat-custom-kind` formula canary; every corpus probe
       # re-proves the two pins agree. COST: O(kinds × candidate namespaces × 1 probe instance) — trivial at
       # corpus scale (~7 × ~10).
+      #
+      # INSTANCE-BASED (`identityHashFor`, reflecting the INSTANCE's present fields) is PERMANENT here, not an
+      # interim — the option-level twin `identityHashForKind` (reflecting a kind-value's OPTIONS) CANNOT be
+      # used: the shim's kind-values are deliberately OPTION-LESS (`buildSchema` keeps only `parent`; den-hoag
+      # entities are field-less), so option-level would hash `name` alone and never match an instance whose
+      # id_hash carries its other identity fields. The `identity = false` edge (an instance carrying a field
+      # the kind excludes from identity) is a NON-match, and a non-match is covered by the loud-miss property
+      # above — a named R9 abort, never a silent misclassification. So the instance-approximate hash is exact
+      # ENOUGH here by construction; `identityHashForKind` stays a general gen-schema export for consumers that
+      # DO hold option-bearing kind-values.
       instanceMatchesKind =
         kind: inst: (inst.id_hash or null) != null && schema.identityHashFor kind inst == inst.id_hash;
       # A namespace is an instance registry iff it is a non-empty attrset of id_hash-bearing entries.

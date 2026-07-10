@@ -67,28 +67,55 @@
     type = lib.types.submodule {
       freeformType = lib.types.anything;
       options.schema = lib.mkOption {
-        # `anything` (not `raw`): a kind declaration is spread across modules — nix-config sets
-        # `den.schema.cluster.{isEntity,imports}` in schema/cluster.nix and `den.schema.cluster.parent` in
-        # schema/topology.nix — so the sub-option must DEEP-MERGE them (raw is single-def, would conflict),
-        # exactly as v1's typed schema option merged, before the apply processes the merged raw declaration.
-        type = lib.types.lazyAttrsOf lib.types.anything;
-        default = { };
-        # apply = the definitions→value transform. The processed kind-values are what the CORPUS reads
-        # (config.den.schema.<K>); the RAW definitions are stashed under `__rawSchema` for the SHIM, which
-        # re-processes schema itself (ingest buildRegistries) — feeding it the processed value would
-        # double-declare the read-only `_kindNames` (definitions-vs-value split: corpus ← processed, shim ←
-        # raw, one apply carries both).
+        # def-COLLECTOR (ship-gate list-merge fix A), NOT a merging type. A kind declaration is spread across
+        # modules — nix-config sets `den.schema.cluster.{isEntity,imports}` in schema/cluster.nix, `.parent`
+        # in schema/topology.nix, and `.includes` (kind-attached aspects) in SEVERAL kubernetes aspect
+        # modules. A `lazyAttrsOf anything` pre-merge deep-merges the attrs but CONFLICTS every list-valued
+        # field (`types.anything` never concatenates lists), so the multi-module `includes` threw. Instead
+        # this type COLLECTS the raw per-module definitions unmerged (`merge = _: defs: map (d: d.value)
+        # defs`) and the apply feeds each into the nested `mkSchemaOption` eval as a SEPARATE module — so
+        # gen-schema's OWN merge runs on the DEFINITIONS (its list-default `includes` collection concatenates
+        # them, exactly as v1's schema option did), never a hand-rolled list merge here.
+        type = lib.mkOptionType {
+          name = "denSchemaDefs";
+          description = "raw per-module den.schema definitions (merged by the nested gen-schema eval, fix A)";
+          merge = _loc: defs: map (d: d.value) defs;
+        };
+        default = [ ];
         apply =
-          rawSchema:
-          (schema.evalModuleTree {
-            modules = [
-              { options.den.schema = schema.mkSchemaOption { }; }
-              { config.den.schema = rawSchema; }
-            ];
-          }).config.den.schema
-          // {
-            __rawSchema = rawSchema;
-          };
+          defsList:
+          let
+            # Feed each collected raw def as its own module → gen-schema's entry-type merges them. `includes`
+            # is declared a COLLECTION (list default ⇒ gen-schema's `acc ++ val` concat) so v1's kind-attached
+            # includes concatenate in definition order. The processed kind-values are what the CORPUS reads
+            # (config.den.schema.<K>).
+            # `filter isAttrs`: an UNDEFINED `den.schema` yields the `[ ]` default wrapped as a lone collected
+            # def (`[ [ ] ]`), which would feed a list where mkSchemaOption expects a kind set — drop such
+            # non-attrset defs (a fleet with no custom schema then processes an empty schema, as before).
+            schemaDefs = builtins.filter builtins.isAttrs defsList;
+            processed =
+              (schema.evalModuleTree {
+                modules = [
+                  { options.den.schema = schema.mkSchemaOption { collections.includes.default = [ ]; }; }
+                ]
+                ++ map (def: { config.den.schema = def; }) schemaDefs;
+              }).config.den.schema;
+            # Real kinds only (strip gen-schema's schema-level `_kindNames`/`_topology`/… book-keeping).
+            perKind = lib.filterAttrs (n: _: builtins.substring 0 1 n != "_") processed;
+            # __rawSchema for the SHIM (fix-A wrinkle, resolution (i) — single source of truth, no second
+            # merge): EXTRACT exactly what the shim reads from the raw schema — the kind NAMES (attrNames),
+            # `parent` (ingest buildSchema) and concatenated `includes` (ingest kindIncludesOf) — from the
+            # PROCESSED kind-values (gen-schema already merged them; we only read the results, never re-merge).
+            # `options`/`refs`/… ride the processed value the corpus reads, not here; feeding the shim the
+            # processed value would double-declare gen-schema's read-only `_kindNames`, so the shim still gets
+            # a raw-shaped `{ <kind> = { parent; includes; }; }` — its buildSchema strips to `{ parent }` and
+            # re-processes minimally, unchanged from before.
+            rawForShim = builtins.mapAttrs (_: kv: {
+              parent = kv.parent or null;
+              includes = kv.includes or [ ];
+            }) perKind;
+          in
+          processed // { __rawSchema = rawForShim; };
       };
     };
     default = { };
