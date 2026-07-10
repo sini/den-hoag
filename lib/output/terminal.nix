@@ -19,6 +19,7 @@
 }:
 {
   nixpkgs ? null,
+  darwin ? null,
 }:
 let
   # A10 seam: a class's core-injection strategy transforms the raw per-member module list before the
@@ -54,6 +55,34 @@ in
       bindings = { };
       nodes = { };
       extraModules = [ ];
+    };
+
+  # crossDarwin — the darwin sibling of crossNixos, the `darwin` native output class's nixpkgs crossing.
+  # THE HONEST GAP: gen-flake ships ONLY `terminals.nixosSystem` (no `darwinSystem`), so this crossing
+  # calls nix-darwin's `lib.darwinSystem` DIRECTLY rather than through a gen-flake wrapper. den-hoag still
+  # does its OWN `wrapAll` first (the merge strategy + validator toggle — exactly as crossNixos), then
+  # hands the already-wrapped modules to `darwinSystem` (which does plain module eval, no gen-bind wrap,
+  # so no second wrap to suppress). Exercised at the SHIP-GATE against a real corpus carrying a nix-darwin
+  # input (`den.darwin`); den-hoag's own CI uses `collect` (no nix-darwin input), so this path is not
+  # forced in-repo — the SAME dev-time-only status as the full-fleet P2 drv-hash arm.
+  crossDarwin =
+    {
+      name,
+      hostModules,
+      bindings,
+      classCfg,
+    }:
+    let
+      prepared = prepareModules classCfg hostModules;
+      wrapped = bind.wrapAll {
+        modules = prepared;
+        inherit bindings;
+        defaultMergeStrategy = classCfg.defaultMergeStrategy;
+      };
+    in
+    darwin.lib.darwinSystem {
+      modules = if classCfg.validators then wrapped.all else wrapped.modules;
+      specialArgs = { };
     };
 
   # collect — a nixpkgs-free default terminal. den-hoag's lib stays pure: absent a user or an external consumer

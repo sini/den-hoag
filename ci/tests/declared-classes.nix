@@ -83,8 +83,9 @@ let
       builtins.deepSeq (f.den.structural.eval.get "host:h1" "class-modules") true
     )).success;
 
-  # Built-in classNames stay exactly the three core classes (declared classes extend PER-FLEET, never the
-  # core constant) — a fleet declaring no classes has only the built-in registered set.
+  # Built-in classNames stay exactly the core classes (declared classes extend PER-FLEET, never the core
+  # constant) — a fleet declaring no classes has only the built-in registered set: the two OS-system
+  # classes (nixos, darwin) + home-manager + k8s-manifests.
   baseFleet = denHoag.mkDen [
     schemaMod
     { config.den.host.h1 = { }; }
@@ -109,10 +110,13 @@ in
       expr = typoAborts;
       expected = true;
     };
-    # core built-ins unchanged: a fleet declaring no classes sees exactly the three built-in classes.
+    # core built-ins: a fleet declaring no classes sees exactly the four built-in classes (the two
+    # OS-system classes nixos + darwin, plus home-manager + k8s-manifests) — declared classes extend this
+    # per-fleet, they do not mutate the core constant.
     test-builtin-classnames-unchanged = {
       expr = builtins.sort (a: b: a < b) baseClassNames;
       expected = [
+        "darwin"
         "home-manager"
         "k8s-manifests"
         "nixos"

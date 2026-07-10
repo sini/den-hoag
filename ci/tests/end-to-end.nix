@@ -203,10 +203,12 @@ in
 {
   flake.tests.end-to-end = {
     # ══ mkDen output shape (the consumer-facing acceptance) ═════════════════════════════════════════
-    # `mkDen fleetModules` returns exactly { den; graph; nixosConfigurations; }.
+    # `mkDen fleetModules` returns exactly { den; graph; nixosConfigurations; darwinConfigurations; } — the
+    # two OS-system output faces (nixos + darwin) beside `den` and the read-only `graph` escape hatch.
     test-mkden-return-shape = {
       expr = sort (builtins.attrNames result);
       expected = [
+        "darwinConfigurations"
         "den"
         "graph"
         "nixosConfigurations"

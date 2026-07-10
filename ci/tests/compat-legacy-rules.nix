@@ -245,10 +245,11 @@ in
         host = false;
       };
     };
-    # routes to the host's OS class: an os → host.class (nixos) delivery. (darwin ∈ the elem-gate, so a
-    # darwin host WOULD route — but the darwin OUTPUT class + terminal are M2 scope, so a darwin host aborts
-    # LOUDLY at resolveBucket until then. The SYNTHETIC fixtures are nixos-only; the REAL nix-config corpus
-    # HAS darwin hosts (plan P2 do-not-filter), so M2 registers darwin — re-verify the PIN.md survey there.)
+    # routes to the host's OS class: an os → host.class (nixos) delivery. darwin ∈ the elem-gate and is now
+    # a REGISTERED native output class (M2, lib/default.nix classNames + crossDarwin terminal), so a darwin
+    # host routes too (test-r3-elem-gate-e2e pins darwin = 1); the SYNTHETIC fixtures here stay nixos-only,
+    # but the REAL nix-config corpus HAS darwin hosts (plan P2 do-not-filter) — the P2 content oracle
+    # exercises them via `den.darwin` at the ship-gate.
     test-r3-routes-to-host-class = {
       expr = (builtins.head r3ToNixos).targetClass.name;
       expected = "nixos";
@@ -288,16 +289,20 @@ in
         realHostRoutes = false;
       };
     };
-    # END-TO-END: on the full fleet a nixos host materializes exactly one `collected:host/os` edge; a wsl
-    # host (wsl a REGISTERED class, so the drop is the elem-gate's not a resolveBucket abort) materializes
-    # NONE — v1 elem-gate fidelity through materialization.
+    # END-TO-END: on the full fleet a nixos host materializes exactly one `collected:host/os` edge; a
+    # darwin host ALSO materializes one (darwin is now a REGISTERED native output class, M2 — the elem-gate
+    # `[nixos darwin]` routes it, no longer a resolveBucket abort); a wsl host (wsl a REGISTERED declared
+    # class, so the drop is the elem-gate's, not a resolveBucket abort) materializes NONE — v1 elem-gate
+    # fidelity through materialization: route iff host.class ∈ {nixos,darwin}, inert otherwise.
     test-r3-elem-gate-e2e = {
       expr = {
         nixos = osEdgeCount "nixos";
+        darwin = osEdgeCount "darwin";
         wsl = osEdgeCount "wsl";
       };
       expected = {
         nixos = 1;
+        darwin = 1;
         wsl = 0;
       };
     };

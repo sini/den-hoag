@@ -58,6 +58,7 @@ let
   # cross-class discipline both key off a real identity (Law A2), never a bare string.
   classNames = [
     "nixos"
+    "darwin"
     "home-manager"
     "k8s-manifests"
   ];
@@ -311,6 +312,23 @@ let
         };
       };
 
+      # den.darwin — the nix-darwin FLAKE (carrying `.lib.darwinSystem`) the `darwin` class's terminal
+      # crosses through: the darwin SIBLING of `den.nixpkgs` (§2.10). `darwin` is a native output class
+      # (a macOS system type), peer to `nixos`; gen-flake ships NO `darwinSystem` terminal (only
+      # `nixosSystem`), so the crossing calls `darwin.lib.darwinSystem` DIRECTLY (output/terminal.nix
+      # `crossDarwin`). Rides `raw` like nixpkgs — inert config data, forced only at a darwin member's
+      # build, never during the pure graph walk. Absent (null, the default) ⇒ the `darwin` class defaults
+      # to the nixpkgs-free `collect` terminal (`darwinConfigurations` are collect artifacts). den-hoag's
+      # own CI runs the collect path; a REAL darwin build (the ship-gate, against a corpus with a
+      # nix-darwin input) supplies it.
+      darwinDecl = {
+        options.den.darwin = merge.mkOption {
+          type = merge.types.raw;
+          default = null;
+          description = "The nix-darwin flake the `darwin` class terminal crosses through (§2.10); null ⇒ nixpkgs-free `collect`.";
+        };
+      };
+
       # den.interpret — the gen-edge source-interpreter seam (§2.6, the A15 external-source path). Native
       # den-hoag constructs only `collected`/`value` edge sources, so the default `{ }` is complete;
       # an external consumer sets `den.interpret = { synthesize = …; rewalk = …; }` here to teach the output fold how
@@ -339,6 +357,7 @@ let
           demandKindsDecl
           demandContextDecl
           nixpkgsDecl
+          darwinDecl
           interpretDecl
         ]
         ++ userModules;
@@ -515,14 +534,34 @@ let
       # re-imported here with the supplied nixpkgs; lib/** stays nixpkgs-free (nixpkgs is inert config data
       # threaded to the terminal, never imported). Every other class keeps the nixpkgs-free `collect` default.
       npkgs = ent.config.den.nixpkgs or null;
-      crossTerminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = npkgs; };
+      ndarwin = ent.config.den.darwin or null;
+      crossTerminalLib = import ./output/terminal.nix { inherit bind flake; } {
+        nixpkgs = npkgs;
+        darwin = ndarwin;
+      };
+      # The built-in nixpkgs-crossing classes — the two OS-system output classes — each mapped to its
+      # crossing terminal, gated on ITS OWN input being supplied (`den.nixpkgs` for nixos, `den.darwin`
+      # for darwin). One general map, not a per-class `if name == …` cascade: adding a future system class
+      # is one row here. Any class NOT in this map — or whose input is null — keeps the nixpkgs-free
+      # `collect` default; a class declaring its own `instantiate` overrides the crossing.
+      crossings = {
+        nixos = {
+          input = npkgs;
+          terminal = crossTerminalLib.crossNixos;
+        };
+        darwin = {
+          input = ndarwin;
+          terminal = crossTerminalLib.crossDarwin;
+        };
+      };
       classDecls = prelude.genAttrs effectiveClassNames (
         name:
         let
           decl = ent.config.den.classes.${name} or { };
+          crossing = crossings.${name} or null;
         in
-        if name == "nixos" && npkgs != null && !(decl ? instantiate) then
-          decl // { instantiate = crossTerminalLib.crossNixos; }
+        if crossing != null && crossing.input != null && !(decl ? instantiate) then
+          decl // { instantiate = crossing.terminal; }
         else
           decl
       );
@@ -688,6 +727,24 @@ let
           }
         ) (builtins.attrNames output.systems.nixos)
       );
+
+      # darwinConfigurations — the darwin sibling of `nixosConfigurations` (§2.10). Same class-major spine
+      # (one entry per host carrying `darwin` content), same member-name re-keying. With `den.darwin` set
+      # these cross `crossDarwin` (nix-darwin's `darwinSystem`) into REAL darwin systems; absent, they are
+      # the nixpkgs-free `collect` artifacts — den-hoag's own CI path. `output.systems.darwin` always
+      # exists (`darwin` is a registered class), empty-spined when no host produces darwin content.
+      darwinConfigurations = builtins.listToAttrs (
+        map (
+          memberId:
+          let
+            entry = (structural.eval.node memberId).decls.__entry or null;
+          in
+          {
+            name = if entry != null then entry.name else memberId;
+            value = output.systems.darwin.${memberId};
+          }
+        ) (builtins.attrNames output.systems.darwin)
+      );
     in
     {
       den = {
@@ -722,9 +779,10 @@ let
         inherit graph;
       };
       # The top-level assembly face (§2.10 acceptance): `graph` (the read-only escape hatch, also under
-      # `den.graph`) and `nixosConfigurations` (the flake-output NixOS systems, host-name-keyed) lifted
-      # beside `den` so a consumer reads `mkDen fleetModules → { den; graph; nixosConfigurations; }`.
-      inherit graph nixosConfigurations;
+      # `den.graph`) and the flake-output system faces (`nixosConfigurations` / `darwinConfigurations`,
+      # host-name-keyed) lifted beside `den` so a consumer reads
+      # `mkDen fleetModules → { den; graph; nixosConfigurations; darwinConfigurations; }`.
+      inherit graph nixosConfigurations darwinConfigurations;
     };
 in
 {
