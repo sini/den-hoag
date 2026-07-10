@@ -83,18 +83,19 @@
       # shim is a drop-in `den` input. THIN by design: a capability that exists in compat is ALIASED; a
       # semantic verb den-hoag does not yet implement is a NAMED THROWING STUB (never a fake — precedent
       # gen-select's `entityKind`) routing to its board task, so a re-probe reads named blockers, not
-      # `attribute 'x' missing`. Faithful reproduction of the trivial policy constructors (include/
-      # exclude/mkPolicy/pipe as v1 `__policyEffect` records) is a bounded fast-follow.
+      # `attribute 'x' missing`. The trivial policy constructors (include/exclude/mkPolicy/pipe) are the
+      # v1 `__policyEffect`/`__pipeStage` record constructors, reproduced in compat (`policy-verbs.nix`,
+      # ship-gate T3b) and aliased here; the fleet-resolution / instantiation verbs remain stubs (#49/#50).
       stub = ref: task: throw "den-hoag compat: `${ref}` — ${task}";
       migrationLib = lib // {
         # den.lib.policy.* — the policy-authoring vocabulary nix-config writes policies with.
         policy = {
           route = compat.route; # alias — the deliver-surface route descriptor
           provide = compat.provide; # alias — the deliver-surface provide descriptor
-          include = stub "lib.policy.include" "trivial v1 include effect — reproduce as a fast-follow (ship-gate T1)";
-          exclude = stub "lib.policy.exclude" "trivial v1 exclude effect — reproduce as a fast-follow (ship-gate T1)";
-          mkPolicy = stub "lib.policy.mkPolicy" "trivial v1 named-policy wrapper — reproduce as a fast-follow (ship-gate T1)";
-          pipe = stub "lib.policy.pipe" "the pipe policy vocabulary (compat/pipe.nix compiles it) — expose the constructor as a fast-follow (ship-gate T1)";
+          include = compat.include; # alias — v1 `{ __policyEffect = "include"; value = aspect; }`
+          exclude = compat.exclude; # alias — v1 `{ __policyEffect = "exclude"; value = aspect; }`
+          mkPolicy = compat.mkPolicy; # alias — v1 `{ __isPolicy = true; name; fn; }`
+          pipe = compat.pipe; # alias — v1 pipe.{from,filter,…} constructor bag
           resolve = stub "lib.policy.resolve" "the fleet-resolution / fan-out surface (R8; board #49/#50) — not yet available";
           instantiate = stub "lib.policy.instantiate" "the declarable-instantiation surface (board #50) — not yet available";
         };

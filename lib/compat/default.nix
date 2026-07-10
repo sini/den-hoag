@@ -45,6 +45,9 @@ let
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
   deliverLib = import ./deliver.nix { inherit prelude errors; };
+  # The v1 STRUCTURAL policy verbs (`include`/`exclude`/`mkPolicy`/`pipe`): the constructor siblings of
+  # the deliver surface. Inert tagged records `compile`/`pipe` already consume — constructor shape only.
+  policyVerbs = import ./policy-verbs.nix { };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
@@ -94,6 +97,14 @@ in
   # The v1 delivery-edge surface (`deliver`/`route`/`provide`) a corpus policy body calls; the compat
   # twin of den v1's `den.lib.policy.{deliver,route,provide}`.
   inherit (deliverLib) deliver route provide;
+  # The v1 structural policy-verb surface (`include`/`exclude`/`mkPolicy`/`pipe`); the compat twin of
+  # den v1's `den.lib.policy.{include,exclude,mkPolicy,pipe}` (policy-effects.nix), consumed by nix-config.
+  inherit (policyVerbs)
+    include
+    exclude
+    mkPolicy
+    pipe
+    ;
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
   inherit (flakeModuleWiring) mkNixosInstantiate;

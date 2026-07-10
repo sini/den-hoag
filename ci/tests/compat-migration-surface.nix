@@ -1,9 +1,10 @@
-# ship-gate T1 — the G1 migration re-export layer (flake.nix). den-hoag exposes den v1's TOP-LEVEL
+# ship-gate T1/T3b — the G1 migration re-export layer (flake.nix). den-hoag exposes den v1's TOP-LEVEL
 # attrpaths so it is a drop-in `den` input for nix-config. This roster pins: every consumed `lib.*`
-# attrpath EXISTS (no `attribute 'x' missing` — the interface-block fix); aliases are the compat
-# capability (a function, not a stub); unimplemented SEMANTIC verbs are NAMED THROWING STUBS routing
-# to their board task, never fakes. `flakeModule`/`flakeModules` are TOP-LEVEL flake outputs (not lib),
-# so they are gate-verified by `nix eval den-hoag#flakeModule`, not this unit surface.
+# attrpath EXISTS (no `attribute 'x' missing` — the interface-block fix); the delivery aliases
+# (route/provide) and the structural verbs (include/exclude/mkPolicy/pipe, T3b) are real constructors
+# producing v1's inert tagged records; the still-unimplemented SEMANTIC verbs are NAMED THROWING STUBS
+# routing to their board task, never fakes. `flakeModule`/`flakeModules` are TOP-LEVEL flake outputs
+# (not lib), so they are gate-verified by `nix eval den-hoag#flakeModule`, not this unit surface.
 { denHoag, ... }:
 let
   L = denHoag; # = den-hoag.lib, the migration lib (four-concern API + the den-v1 re-export surface)
@@ -66,13 +67,30 @@ in
       };
     };
 
-    # ── stubs throw a NAMED blocker (not silent, not a fake) — the whole escalated set ──
+    # ── constructors: include/exclude/mkPolicy/pipe reproduce v1's inert tagged records (T3b) ──
+    # Byte-shape assertions, not mere `isFunction`: each produces the exact record `compile`/`pipe`
+    # consume (v1 policy-effects.nix:175/182/450/296). `pipe` is a constructor bag (attrset), so its
+    # head + a representative stage are checked.
+    test-structural-verbs-are-constructors = {
+      expr = {
+        include = (L.policy.include "aspect-ref").__policyEffect;
+        exclude = (L.policy.exclude "aspect-ref").__policyEffect;
+        mkPolicy = (L.policy.mkPolicy "p" (_: [ ])).__isPolicy;
+        pipeHead = (L.policy.pipe.from "chan" [ ]).__policyEffect;
+        pipeStage = (L.policy.pipe.filter (_: true)).__pipeStage;
+      };
+      expected = {
+        include = "include";
+        exclude = "exclude";
+        mkPolicy = true;
+        pipeHead = "pipe";
+        pipeStage = "filter";
+      };
+    };
+
+    # ── stubs throw a NAMED blocker (not silent, not a fake) — the STILL-escalated set (#49/#50) ──
     test-semantic-verbs-are-named-stubs = {
       expr = map throws [
-        L.policy.include
-        L.policy.exclude
-        L.policy.mkPolicy
-        L.policy.pipe
         L.policy.resolve
         L.policy.instantiate
         L.aspects.resolve
@@ -81,7 +99,7 @@ in
         L.home
         L.capture.captureFleet
       ];
-      expected = builtins.genList (_: true) 11;
+      expected = builtins.genList (_: true) 7;
     };
 
     # ── the four-concern API stays intact under the migration merge (no key clobbered) ──
