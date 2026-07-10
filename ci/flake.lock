@@ -2262,11 +2262,11 @@
         "gen-types": "gen-types_7"
       },
       "locked": {
-        "lastModified": 1783282742,
-        "narHash": "sha256-RMJH6zT2AduCIh8a2pMWqFHe8zPcoXRUzE96GV8BAes=",
+        "lastModified": 1783688353,
+        "narHash": "sha256-XFb1Fgl1HK9U7ErlTPn+f2npqnlcRmMgNTJmG6/5G/E=",
         "owner": "sini",
         "repo": "gen-schema",
-        "rev": "016f4cf963b170f226ae5b28386f2aaf463e29e2",
+        "rev": "74841cc8d0742a07219a48c6168e560e4d72f14a",
         "type": "github"
       },
       "original": {

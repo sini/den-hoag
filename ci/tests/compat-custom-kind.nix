@@ -1,18 +1,27 @@
 # Custom-kind instance-key DISCOVERY (ship-gate M1.5). A v1 config CHOOSES a custom kind's instance-registry
 # KEY (`options.den.<KEY> = gen-schema.mkInstanceRegistry den.schema.<kind>`) — nix-config writes `clusters`
 # for kind `cluster`; the key is arbitrary, NEVER a pluralization. The shim discovers the namespace holding a
-# kind's instances by the id_hash MARKER (gen-schema's documented identity contract `hash("<kind>|<sorted
-# primitive field=value>")`), never by name. This suite pins: discovery of a NON-pluralized key; that the
+# kind's instances by the id_hash MARKER, recomputed through gen-schema's OWN exported derivation
+# (`schema.identityHashFor`), never by name. This suite pins: discovery of a NON-pluralized key; that the
 # discovered instances (not the singular fallback) are ingested; and that strict surface-totality still
-# aborts a genuine typo (R9). The instance `id_hash` is hand-stamped with the documented formula (a gen-schema
-# instance is minted by the corpus's own gen-schema; the REAL-formula match is verified dev-time by the corpus
-# ship-gate re-probe).
+# aborts a genuine typo (R9).
+#
+# FORMULA CANARY: the fixture stamps `id_hash` with the DOCUMENTED formula (`rackHash`, computed inline);
+# the ingest's discovery recomputes it through OUR gen-schema's `identityHashFor`. If our gen-schema's
+# derivation ever drifted from the documented `<kind>|<sorted primitive field=value>`, the two would
+# mismatch → `rackFarm` matches no kind → `test-discovery-nonpluralized` FAILS in-repo (loud, before any
+# corpus run). The corpus side is re-proven by every ship-gate probe (discovery working on real
+# corpus-gen-schema instances proves that pin agrees with ours today).
 { lib, denCompat, ... }:
 let
   throws = e: !(builtins.tryEval (builtins.deepSeq e true)).success;
-  # A `rack` kind whose instances live at the CHOSEN key `rackFarm` (not `racks`, not `rack`). The instance
-  # carries the id_hash gen-schema's mkInstanceRegistry would stamp: hash("rack|name=r1|slots=12").
-  rackHash = builtins.hashString "sha256" "rack|name=r1|slots=12";
+  # A `rack` kind whose instances live at the CHOSEN key `rackFarm` (not `racks`, not `rack`). `rackHash` is
+  # the FORMULA CANARY: the PINNED id_hash literal gen-schema's `identityHashFor "rack" { name="r1"; slots=12; }`
+  # must reproduce (the documented `<kind>|<sorted primitive field=value>` content-address). The discovery
+  # (ingest → `schema.identityHashFor`) matches against it, so if OUR gen-schema's derivation ever drifts from
+  # this literal, `test-discovery-nonpluralized` FAILS in-repo — before any corpus run. Regenerate with
+  # `nix eval --expr 'builtins.hashString "sha256" "rack|name=r1|slots=12"'` if the fixture's fields change.
+  rackHash = "f25f73d7b74fa093bfe797d8fa7393952699b3fd60d76af714940a7612a62906";
   fixture = {
     schema.rack.parent = null;
     rackFarm.r1 = {

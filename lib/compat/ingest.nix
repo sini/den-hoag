@@ -241,26 +241,19 @@ let
       # A v1 config CHOOSES a custom kind's instance-registry KEY: `options.den.<KEY> =
       # gen-schema.mkInstanceRegistry den.schema.<kind>` (nix-config schema/cluster.nix). The key is
       # arbitrary — nix-config writes `clusters` for kind `cluster` — NEVER a pluralization heuristic.
-      # A gen-schema instance exposes no `.kind`, but its `id_hash` IS a content-addressed kind marker:
-      # gen-schema's DOCUMENTED identity contract (identity.nix `mkIdentityModule`) hashes
-      # `"<kind>|<sorted primitive field=value>"`. So for each declared kind we RECOMPUTE that hash from a
-      # candidate instance's own primitive fields and match the observed `id_hash` — discovery by MARKER,
-      # never by name (a kind `rack` at `den.rackFarm` resolves). `id_hashOf` replicates the documented
-      # formula; the compat CI TRIPWIRE (`compat-custom-kind` `test-idhash-contract`) fails LOUDLY if a
-      # gen-schema refactor ever changes it, so a formula drift can never silently mis-discover.
-      isPrimVal = v: builtins.isString v || builtins.isInt v || builtins.isBool v;
-      id_hashOf =
-        kind: inst:
-        let
-          fields = builtins.filter (
-            k: (builtins.substring 0 1 k != "_") && k != "id_hash" && isPrimVal (inst.${k} or null)
-          ) (builtins.sort (a: b: a < b) (builtins.attrNames inst));
-        in
-        builtins.hashString "sha256" "${kind}|${
-          builtins.concatStringsSep "|" (map (k: "${k}=${builtins.toString inst.${k}}") fields)
-        }";
+      # A gen-schema instance exposes no `.kind`, but its `id_hash` IS a content-addressed kind marker. We
+      # recompute it per candidate kind via GEN-SCHEMA'S OWN exported derivation (`schema.identityHashFor`,
+      # NOT an inline formula copy — so the recompute can never drift from `mkIdentityModule`) and match the
+      # instance's observed `id_hash` — discovery by MARKER, never by name (a kind `rack` at `den.rackFarm`
+      # resolves). VERSION-SKEW PROPERTY: the corpus's values were hashed by the CORPUS's gen-schema; the
+      # shim recomputes with ITS gen-schema. If the two derivations ever diverged, EVERY instance would
+      # mismatch → the namespace matches NO kind → surface-totality aborts NAMED (a loud MISS, R9 — never a
+      # misclassification; a wrong-kind false match needs a sha256 collision across different preimages). OUR
+      # gen-schema's derivation is pinned by the `compat-custom-kind` formula canary; every corpus probe
+      # re-proves the two pins agree. COST: O(kinds × candidate namespaces × 1 probe instance) — trivial at
+      # corpus scale (~7 × ~10).
       instanceMatchesKind =
-        kind: inst: (inst.id_hash or null) != null && id_hashOf kind inst == inst.id_hash;
+        kind: inst: (inst.id_hash or null) != null && schema.identityHashFor kind inst == inst.id_hash;
       # A namespace is an instance registry iff it is a non-empty attrset of id_hash-bearing entries.
       isInstanceRegistry =
         v:
