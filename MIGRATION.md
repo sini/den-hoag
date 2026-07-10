@@ -45,15 +45,24 @@ tagged and removable without touching the rest. Migrate them last: restate each 
 `deliver`/`route` relationship. The legacy modules' own desugar (`legacy/provides.nix`, `legacy/forwards.nix`)
 shows the exact target shape.
 
-## Home-manager: the scope-model change (what you'll see in the edge trace)
+## Users, accounts, and home-manager: the native model
 
 den v1 resolves each user as its own instantiation root and AGGREGATES home-manager at the HOST — so a v1
 edge trace shows a host-scoped `collected:host:<h>/homeManager` fold. den v2 models a user as a first-class
 CELL under its host (Law A15: every non-root scope node is its own edge-root), and folds home-manager PER
 (user, host) CELL — `collected:user:<u>/home-manager`. So when you migrate and inspect edge traces, you WILL
-see the host-scoped home-manager fold DISAPPEAR and a per-cell fold APPEAR. **This is intentional** — the
-user-as-cell model is a deliberate v2 design (first-class user registry, per-(user,host) scoped config), not
-a regression.
+see the host-scoped home-manager fold DISAPPEAR and a per-cell fold APPEAR. **This is intentional** — not a
+regression.
+
+You are migrating TO a decided destination model, not merely away from v1's shape — see the den-hoag native
+user/host integration model (spec `2026-07-10-den-hoag-user-host-integration-model.md`, decisions D1–D6). In
+that model a **user** is a decoupled registry identity — a root kind bound to hosts by MEMBERSHIP, not
+parented under a host; the **(user, host) cell** is the localized ACCOUNT, a child of the host under B4a
+containment, whose `users.users.<name>` config is derived from that binding; and **home-manager is a nixos
+INTEGRATION module** — one consumer of the account (hjem, nix-darwin, and standalone home are siblings), NOT
+a scope model of its own. Backwards compatibility is load-bearing: the `home-manager` class and existing
+`contentClass` keys keep working through the shim, and an opt-in auto-registry from `host.users` is a planned
+convenience. `den.homes` is the SAME cell model with a hostless binding (a standalone home).
 
 The CONTENT guarantee is unchanged: each user's home-manager configuration still lands byte-identically in
 the final host system. den v2 delivers it via the compat forward (`home-manager/users/<u>`), exactly where v1
