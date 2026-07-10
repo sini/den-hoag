@@ -455,6 +455,11 @@ let
     "quirks"
     "contentClass"
     "default"
+    # `reservedKeys` (den v1 `den.reservedKeys`, key-classification.nix:34) — a CONFIG-only v1 key the shim
+    # ACCEPTS and IGNORES: it extends v1's structuralKeysSet, which the compat keyClassification export
+    # (#49-slice) reproduces STATICALLY (baked `[ "settings" ]`, the corpus's value). No concern reads it, so
+    # it is a known surface (never a typo) but has no ingest/compile handler.
+    "reservedKeys"
   ]
   ++ declaredKinds
   # M1.5: the marker-discovered custom-kind instance namespaces (a v1 config CHOOSES the registry key, e.g.

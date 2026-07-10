@@ -67,5 +67,17 @@ in
       );
       expected = true;
     };
+    # `reservedKeys` (den v1 `den.reservedKeys`) is a CONFIG-only key surface-totality ACCEPTS (not a typo):
+    # it extends v1's structuralKeysSet, reproduced statically by the compat keyClassification export, so no
+    # concern reads it but it must not abort a fleet that sets it (nix-config `den.reservedKeys = [ "settings" ]`).
+    test-totality-accepts-reserved-keys = {
+      expr = throws (
+        denCompat.compile {
+          schema.rack.parent = null;
+          reservedKeys = [ "settings" ];
+        }
+      );
+      expected = false;
+    };
   };
 }
