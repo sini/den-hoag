@@ -135,11 +135,12 @@ let
           e.source;
     };
 
-  traceHoag =
-    { denCompat }:
-    fixture:
+  # The hoag trace over an ARBITRARY module list (the trace-building core). `traceHoag` is this over one
+  # fixture module; `permutationGate` (below) is this over each declaration-order permutation.
+  hoagTraceOf =
+    denCompat: modules:
     let
-      built = denCompat.mkDen [ fixture.module ];
+      built = denCompat.mkDen modules;
       den = built.den;
       hashToName = hoagHashToName den;
       roots = builtins.attrNames den.scopeRoots;
@@ -150,6 +151,10 @@ let
       arm = "hoag";
       sortKey = edgeCore.edgeSortKey;
     } normEdges;
+
+  traceHoag =
+    { denCompat }:
+    fixture: hoagTraceOf denCompat [ fixture.module ];
 
   # ══ the v1 (oracle) arm ═══════════════════════════════════════════════════════════════════════════
   mkV1 =
@@ -507,16 +512,76 @@ let
       equal = c.v1Toplevel.drvPath == c.shimToplevel.drvPath;
       diffHint = "nix-diff ${c.v1Toplevel.drvPath} ${c.shimToplevel.drvPath}";
     }) corpus;
+
+  # ── §P3 permutation regression — the fold's order-independence, end-to-end through the shim ────────────
+  # `permutationGate { permutations }`: each element of `permutations` is a DIFFERENT declaration order of
+  # the SAME fleet (a reordered module list). den-hoag's edge fold is order-independent by construction —
+  # gen-edge Law 2 (commutativity of incomparable edges) + §2.5's producer-identity tie-break — so the
+  # TRACE half is UNCONDITIONAL: every permutation renders a byte-identical sort-key list. The CONTENT half
+  # is conditional (a fixture whose ordered-list channels are not fully pinned independent of declaration
+  # order is content-excluded — `contentStable = false` — and recorded, never silently skipped): where it
+  # holds, every permutation's per-root materialized output hashes identically.
+  permutationGate =
+    { denCompat, nixpkgsLib }:
+    {
+      permutations,
+      contentStable ? true,
+    }:
+    let
+      traceKeysOf = mods: map (e: e.__sortKey) (hoagTraceOf denCompat mods);
+      # Fold a class module list to its config — undeclared options absorbed as data (the M2 cross-pipeline
+      # fold; a bare `outputFor` value is a MODULE LIST whose ORDER reflects declaration order, so hashing it
+      # directly is spuriously order-sensitive; the FOLDED config is order-independent for disjoint paths).
+      foldModules =
+        modules:
+        (nixpkgsLib.evalModules {
+          modules = modules ++ [
+            {
+              freeformType = nixpkgsLib.types.attrsOf nixpkgsLib.types.anything;
+              config._module.check = false;
+            }
+          ];
+        }).config;
+      # Per root, fold each CLASS key's module list (order-independent config); channel keys (single-producer
+      # values here) pass through — hash the result, so a real content divergence shows but a module-list
+      # ordering artifact does not.
+      contentOf =
+        mods:
+        let
+          den = (denCompat.mkDen mods).den;
+          classNames = builtins.attrNames den.classes;
+          roots = builtins.attrNames den.scopeRoots;
+          rootConfig =
+            r:
+            let
+              inner = (den.output.outputFor r).${r} or { };
+            in
+            builtins.mapAttrs (k: v: if builtins.elem k classNames then foldModules v else v) inner;
+        in
+        canonHash (map rootConfig roots);
+      traces = map traceKeysOf permutations;
+      baseTrace = builtins.head traces;
+      contents = if contentStable then map contentOf permutations else [ ];
+      baseContent = if contents == [ ] then null else builtins.head contents;
+    in
+    {
+      count = builtins.length permutations;
+      allTraceEqual = builtins.all (t: t == baseTrace) traces;
+      inherit contentStable;
+      allContentEqual = if contentStable then builtins.all (c: c == baseContent) contents else null;
+    };
 in
 {
   inherit
     traceHoag
+    hoagTraceOf
     mkV1
     nonEntityNameMap
     tagAndSort
     crossPipelineRecords
     coreGate
     contentGate
+    permutationGate
     canonHash
     # Exposed for the schema-guard suite: the entity-scope name normalizer (`hashToName -> rendered ->
     # name`) + its 64-hex id_hash predicate, so the mis-map guard is exercised directly (a colon-bearing

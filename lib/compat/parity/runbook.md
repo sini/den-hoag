@@ -13,6 +13,10 @@ nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-trace-sta
 nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-first-divergent     # P5
 nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-identity-negcontrol # P7
 nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-schema-guards        # frozen-schema + normalizer guards (pure, fast)
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-content              # P2 — content: cross-pipeline hash + contentGate shape
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-class-share          # P8 — class-share invisibility (coreGate)
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-permutation          # P3 — declaration-order independence
+nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-ledger-gate          # P6 — ship gate: corpus diffs ∖ ledger = ∅
 ```
 
 `parity-schema-guards` is pure (no den eval) and runs in a second — start there to prove the frozen-schema
@@ -101,3 +105,35 @@ For each `missing`/`extra` key, decide and record in `ledger.md`:
 Regenerate the golden after any deliberate change: re-run the capture (the `resultOf`/`crossArm` shape in
 `parity/tests/parity-structural.nix`) and update `parity/golden/traces.nix`, then re-classify in
 `ledger.md`.
+
+## P6 ship gate — corpus diffs ∖ ledger = ∅
+
+`parity-ledger-gate` (P6) is the mechanical ship condition: every golden divergence key (the `missing` +
+`extra` sets across all cross-arm fixtures) must classify into a LEDGERED family — the ordered matchers in
+`parity/tests/parity-ledger-gate.nix`, mirroring the `ledger.md` rows (L4 quirk-fold / class-fold
+domain-boundary, residual-n user-as-cell, residual-o hm-battery). An unledgered key classifies into NO
+family and FAILS the gate. So a NEW divergence — a regression that shifts an edge, or a re-baselined golden
+without a matching ledger row — cannot ship silently: you MUST add the `ledger.md` row AND (if it is a new
+family) a matcher in `parity-ledger-gate.nix`. The gate carries a negative-control (a fabricated unledgered
+key that must classify into nothing) so its teeth are proven.
+
+## Permutation regression (P3)
+
+`parity-permutation` asserts declaration-order independence end-to-end through the shim: the TRACE half is
+UNCONDITIONAL (every include/policy order renders a byte-identical sort-key list — gen-edge Law 2 +
+producer-identity tie-break); the CONTENT half is conditional (`contentStable`), comparing the FOLDED
+per-root class config (not the raw `outputFor` module list, whose order reflects declaration order — a
+harness artifact, not a real divergence). A fixture whose ordered-list channels have same-position
+multi-producers (Open Question 6) is content-excluded (`contentStable = false`) and recorded, never skipped.
+
+## The fleet arm (ship-gate, dev-time)
+
+The CI suites run the SYNTHETIC corpus. The full-fleet content arm — the real nix-config corpus
+(`nixosConfigurations` + `darwinConfigurations` + standalone home) evaluated under both den arms and diffed
+at the toplevel drv-hash level (`contentGate`) — is the SHIP-GATE, run dev-time: it evaluates the `corpus`
+flake input and crosses nixpkgs/nix-darwin, so it cannot run in den-hoag's own CI. At ship-gate: pin all
+corpus inputs identical except the den input, evaluate each configuration's toplevel `.drvPath` under both
+arms (`config.system.build.toplevel.drvPath` for nixos, `.system.drvPath` for darwin), and require the diff
+∖ ledger empty — the same P6 discipline over the real corpus. Also flip the `parity-content` cross-pipeline
+synthetics to the LIVE v1-vs-hoag comparison there (the v1 arm needs the full corpus inputs — home-manager
+et al. — which the harness deliberately omits in CI).

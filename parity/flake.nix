@@ -65,6 +65,8 @@
             inherit v1arm;
           };
           coreGate = P.oracle.coreGate { inherit denCompat; };
+          # The §P3 permutation regression (Task 9): declaration-order-independence of the shim + fold.
+          permutationGate = P.oracle.permutationGate { inherit denCompat nixpkgsLib; };
           inherit (P.oracle) contentGate canonHash;
           fixtures = import ./fixtures/topologies.nix { };
           golden = import ./golden/traces.nix;
