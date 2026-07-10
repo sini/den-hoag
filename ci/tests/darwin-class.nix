@@ -22,7 +22,7 @@ let
       server.parent = null;
     };
   };
-  fleet = denHoag.mkDen [
+  fleetModules = [
     schema
     {
       config.den = {
@@ -59,10 +59,22 @@ let
       }
     )
   ];
+  fleet = denHoag.mkDen fleetModules;
   den = fleet.den;
   eval = den.structural.eval;
   darwinBucket = (eval.get "machine:mac1" "class-modules").darwin or [ ];
   nixosBucket = (eval.get "server:box1" "class-modules").nixos or [ ];
+
+  # crossDarwin PATH via a FAKE nix-darwin flake — proves the darwin class routes through gen-flake's
+  # generic `mkSystemTerminal` with `darwin.lib.darwinSystem` as the evaluator, WITHOUT real nix-darwin
+  # (den-hoag CI carries no nix-darwin input). The fake `.lib.darwinSystem` just reflects its
+  # `{ modules; specialArgs; }` argument (the same trick gen-flake's terminal-generic suite uses). Supplying
+  # `den.darwin` makes the crossings map wire the darwin class's `instantiate` to `crossDarwin`.
+  fakeDarwin = {
+    lib.darwinSystem = args: { __fakeDarwin = true; } // args;
+  };
+  fleetCrossed = denHoag.mkDen (fleetModules ++ [ { config.den.darwin = fakeDarwin; } ]);
+  crossedMac = fleetCrossed.darwinConfigurations.mac1;
 in
 {
   flake.tests.darwin-class = {
@@ -107,6 +119,26 @@ in
     test-nixos-unaffected = {
       expr = builtins.length nixosBucket >= 1;
       expected = true;
+    };
+
+    # crossDarwin SEAM: supplying `den.darwin` crosses the darwin host through gen-flake's generic
+    # `mkSystemTerminal` with `darwin.lib.darwinSystem` as the evaluator — the darwin host reaches the fake
+    # nix-darwin builder (proving the crossing routes there; the real builder lands only at the ship-gate).
+    test-crossdarwin-routes-through-evaluator = {
+      expr = crossedMac.__fakeDarwin or false;
+      expected = true;
+    };
+    # the generic terminal handed the evaluator the terminal contract — the wrapped `modules` + a
+    # `specialArgs` carrying the cross-host `nodes` accessor, exactly as crossNixos does.
+    test-crossdarwin-terminal-contract = {
+      expr = {
+        hasModules = crossedMac ? modules;
+        hasNodes = crossedMac.specialArgs ? nodes;
+      };
+      expected = {
+        hasModules = true;
+        hasNodes = true;
+      };
     };
   };
 }

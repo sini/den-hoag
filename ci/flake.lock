@@ -20,7 +20,8 @@
         "gen-scope": "gen-scope_4",
         "gen-select": "gen-select_2",
         "gen-settings": "gen-settings",
-        "gen-types": "gen-types_8"
+        "gen-types": "gen-types_8",
+        "nixpkgs": "nixpkgs_2"
       },
       "locked": {
         "path": "..",
@@ -160,7 +161,7 @@
         "git-hooks-nix": "git-hooks-nix",
         "import-tree": "import-tree_3",
         "nix-unit": "nix-unit",
-        "nixpkgs": "nixpkgs_3",
+        "nixpkgs": "nixpkgs_4",
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
@@ -705,11 +706,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1783303803,
-        "narHash": "sha256-jn6bSjCH/OTZEfJKmxUqQ65B9wKX97gtYB6ZvY1XhFw=",
+        "lastModified": 1783655514,
+        "narHash": "sha256-sFUn4Sj/tq5U6ceYg4oGsJz7Jrpi3a8vY0TZBA8+cXc=",
         "owner": "sini",
         "repo": "gen-flake",
-        "rev": "e69888cbcfaadf39bc8294f9ca0d2e6b58aebccf",
+        "rev": "9812caf6cfb3f1946692f8304d74e04e055c3ebb",
         "type": "github"
       },
       "original": {
@@ -728,7 +729,7 @@
         "gen-schema": "gen-schema_5",
         "gen-types": "gen-types_12",
         "import-tree": "import-tree_2",
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs_3"
       },
       "locked": {
         "lastModified": 1783043594,
@@ -1106,11 +1107,11 @@
         "gen-select": "gen-select"
       },
       "locked": {
-        "lastModified": 1783311615,
-        "narHash": "sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo=",
+        "lastModified": 1783652954,
+        "narHash": "sha256-kh3kO5YWZJ1m8jXAHbuhJNCTzkjLqLSCXz2rdz3FhRo=",
         "owner": "sini",
         "repo": "gen-pipe",
-        "rev": "15e69818188dc4dfe18831db1c28e16042518824",
+        "rev": "9b850f1aa3129692c41b24678e9ec0c10b0241d6",
         "type": "github"
       },
       "original": {
@@ -3031,6 +3032,19 @@
     },
     "nixpkgs_2": {
       "locked": {
+        "lastModified": 1783224372,
+        "narHash": "sha256-FGQ8TfSm9WviNE/fQAWsKs+y4GkX8fU4EScewpw54Y8=",
+        "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1027867.d407951447dc/nixexprs.tar.xz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
+      }
+    },
+    "nixpkgs_3": {
+      "locked": {
         "lastModified": 1782723713,
         "narHash": "sha256-T6OhkwGyyGHer1lr4GkbOp//7ii23xLE7HuMmjrdkXI=",
         "rev": "b5aa0fbd538984f6e3d201be0005b4463d8b09f8",
@@ -3042,7 +3056,7 @@
         "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
       }
     },
-    "nixpkgs_3": {
+    "nixpkgs_4": {
       "locked": {
         "lastModified": 1781577229,
         "narHash": "sha256-rcUHdUtJEvMdNEl2Wq+YpHraHKfcer3KsBscpZEF2Yg=",
@@ -3055,7 +3069,7 @@
         "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
       }
     },
-    "nixpkgs_4": {
+    "nixpkgs_5": {
       "locked": {
         "lastModified": 1783224372,
         "narHash": "sha256-FGQ8TfSm9WviNE/fQAWsKs+y4GkX8fU4EScewpw54Y8=",
@@ -3072,7 +3086,7 @@
       "inputs": {
         "den-hoag": "den-hoag",
         "gen": "gen",
-        "nixpkgs": "nixpkgs_4"
+        "nixpkgs": "nixpkgs_5"
       }
     },
     "treefmt-nix": {

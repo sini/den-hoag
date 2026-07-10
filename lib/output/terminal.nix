@@ -31,10 +31,11 @@ let
   prepareModules = classCfg: hostModules: (classCfg.coreStrategy or (m: m)) hostModules;
 in
 {
-  # crossNixos — the real gen-flake crossing (gen-flake ships `terminals.nixosSystem`, NOT the spec's
-  # placeholder `mkSystems`). den-hoag does its OWN `wrapAll` first (so it controls the merge strategy
-  # and the validator toggle), then hands the already-wrapped modules to the terminal with empty
-  # bindings so the terminal's internal `wrapAll` is a no-op passthrough — one wrap, one crossing.
+  # crossNixos — the `nixos` output class's nixpkgs crossing. It routes through gen-flake's GENERIC
+  # `mkSystemTerminal` with `nixpkgs.lib.nixosSystem` as the evaluator: the nixos knowledge lives HERE,
+  # in den-hoag's crossings row (gen-flake names no system). den-hoag does its OWN `wrapAll` first (so it
+  # controls the merge strategy + the validator toggle), then hands the already-wrapped modules to the
+  # terminal with EMPTY bindings so the terminal's internal `wrapAll` is a no-op passthrough — one wrap.
   crossNixos =
     {
       name,
@@ -50,21 +51,21 @@ in
         defaultMergeStrategy = classCfg.defaultMergeStrategy;
       };
     in
-    (flake.terminals.nixosSystem { inherit nixpkgs; }) {
+    (flake.terminals.mkSystemTerminal { evaluator = nixpkgs.lib.nixosSystem; }) {
       modules = if classCfg.validators then wrapped.all else wrapped.modules;
       bindings = { };
       nodes = { };
       extraModules = [ ];
     };
 
-  # crossDarwin — the darwin sibling of crossNixos, the `darwin` native output class's nixpkgs crossing.
-  # gen-flake ships only `terminals.nixosSystem`; until it gains a `darwinSystem` terminal (board task #48),
-  # this crossing calls nix-darwin's `lib.darwinSystem` directly rather than through a gen-flake wrapper.
-  # den-hoag still does its OWN `wrapAll` first (the merge strategy + validator toggle — exactly as crossNixos), then
-  # hands the already-wrapped modules to `darwinSystem` (which does plain module eval, no gen-bind wrap,
-  # so no second wrap to suppress). Exercised at the SHIP-GATE against a real corpus carrying a nix-darwin
-  # input (`den.darwin`); den-hoag's own CI uses `collect` (no nix-darwin input), so this path is not
-  # forced in-repo — the SAME dev-time-only status as the full-fleet P2 drv-hash arm.
+  # crossDarwin — the darwin sibling of crossNixos: the `darwin` output class's crossing, SYMMETRIC with
+  # crossNixos. It routes through the SAME generic `mkSystemTerminal`, with nix-darwin's `lib.darwinSystem`
+  # as the evaluator — the darwin knowledge lives ONLY here, in den-hoag's crossings row (gen-flake gained
+  # no `darwinSystem`; board #48 closed on the generic-terminal design). den-hoag does its OWN `wrapAll`
+  # first (merge strategy + validator toggle, exactly as crossNixos), then hands the wrapped modules to
+  # the terminal with EMPTY bindings (a no-op passthrough). Exercised at the SHIP-GATE against a real
+  # corpus carrying a nix-darwin input (`den.darwin`); den-hoag's own CI uses `collect` (no nix-darwin
+  # input), so this path is dev-time only — the SAME status as the full-fleet P2 drv-hash arm.
   crossDarwin =
     {
       name,
@@ -80,9 +81,11 @@ in
         defaultMergeStrategy = classCfg.defaultMergeStrategy;
       };
     in
-    darwin.lib.darwinSystem {
+    (flake.terminals.mkSystemTerminal { evaluator = darwin.lib.darwinSystem; }) {
       modules = if classCfg.validators then wrapped.all else wrapped.modules;
-      specialArgs = { };
+      bindings = { };
+      nodes = { };
+      extraModules = [ ];
     };
 
   # collect — a nixpkgs-free default terminal. den-hoag's lib stays pure: absent a user or an external consumer

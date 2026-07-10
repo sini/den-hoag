@@ -651,7 +651,8 @@
         "gen-scope": "gen-scope_4",
         "gen-select": "gen-select_2",
         "gen-settings": "gen-settings",
-        "gen-types": "gen-types_8"
+        "gen-types": "gen-types_8",
+        "nixpkgs": "nixpkgs_17"
       },
       "locked": {
         "path": "..",
@@ -1450,7 +1451,7 @@
         "git-hooks-nix": "git-hooks-nix_2",
         "import-tree": "import-tree_4",
         "nix-unit": "nix-unit",
-        "nixpkgs": "nixpkgs_18",
+        "nixpkgs": "nixpkgs_19",
         "treefmt-nix": "treefmt-nix_9"
       },
       "locked": {
@@ -2096,11 +2097,11 @@
         "nixpkgs": "nixpkgs_16"
       },
       "locked": {
-        "lastModified": 1783303803,
-        "narHash": "sha256-jn6bSjCH/OTZEfJKmxUqQ65B9wKX97gtYB6ZvY1XhFw=",
+        "lastModified": 1783655514,
+        "narHash": "sha256-sFUn4Sj/tq5U6ceYg4oGsJz7Jrpi3a8vY0TZBA8+cXc=",
         "owner": "sini",
         "repo": "gen-flake",
-        "rev": "e69888cbcfaadf39bc8294f9ca0d2e6b58aebccf",
+        "rev": "9812caf6cfb3f1946692f8304d74e04e055c3ebb",
         "type": "github"
       },
       "original": {
@@ -2119,7 +2120,7 @@
         "gen-schema": "gen-schema_6",
         "gen-types": "gen-types_12",
         "import-tree": "import-tree_3",
-        "nixpkgs": "nixpkgs_17"
+        "nixpkgs": "nixpkgs_18"
       },
       "locked": {
         "lastModified": 1783043594,
@@ -2537,11 +2538,11 @@
         "gen-select": "gen-select"
       },
       "locked": {
-        "lastModified": 1783311615,
-        "narHash": "sha256-xTR5d0xMtTetN5R4P6yBZY1DoepBVTpSl2/zWLsirIo=",
+        "lastModified": 1783652954,
+        "narHash": "sha256-kh3kO5YWZJ1m8jXAHbuhJNCTzkjLqLSCXz2rdz3FhRo=",
         "owner": "sini",
         "repo": "gen-pipe",
-        "rev": "15e69818188dc4dfe18831db1c28e16042518824",
+        "rev": "9b850f1aa3129692c41b24678e9ec0c10b0241d6",
         "type": "github"
       },
       "original": {
@@ -6470,6 +6471,19 @@
     },
     "nixpkgs_17": {
       "locked": {
+        "lastModified": 1783224372,
+        "narHash": "sha256-FGQ8TfSm9WviNE/fQAWsKs+y4GkX8fU4EScewpw54Y8=",
+        "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1027867.d407951447dc/nixexprs.tar.xz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
+      }
+    },
+    "nixpkgs_18": {
+      "locked": {
         "lastModified": 1782723713,
         "narHash": "sha256-T6OhkwGyyGHer1lr4GkbOp//7ii23xLE7HuMmjrdkXI=",
         "rev": "b5aa0fbd538984f6e3d201be0005b4463d8b09f8",
@@ -6481,26 +6495,13 @@
         "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
       }
     },
-    "nixpkgs_18": {
+    "nixpkgs_19": {
       "locked": {
         "lastModified": 1781577229,
         "narHash": "sha256-rcUHdUtJEvMdNEl2Wq+YpHraHKfcer3KsBscpZEF2Yg=",
         "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
         "type": "tarball",
         "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1017464.567a49d1913c/nixexprs.tar.xz?lastModified=1781577229&rev=567a49d1913ce81ac6e9582e3553dd90a955875f"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
-      }
-    },
-    "nixpkgs_19": {
-      "locked": {
-        "lastModified": 1783224372,
-        "narHash": "sha256-FGQ8TfSm9WviNE/fQAWsKs+y4GkX8fU4EScewpw54Y8=",
-        "rev": "d407951447dcd00442e97087bf374aad70c04cea",
-        "type": "tarball",
-        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1027867.d407951447dc/nixexprs.tar.xz"
       },
       "original": {
         "type": "tarball",
@@ -6521,6 +6522,19 @@
         "ref": "nixpkgs-unstable",
         "repo": "nixpkgs",
         "type": "github"
+      }
+    },
+    "nixpkgs_20": {
+      "locked": {
+        "lastModified": 1783224372,
+        "narHash": "sha256-FGQ8TfSm9WviNE/fQAWsKs+y4GkX8fU4EScewpw54Y8=",
+        "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1027867.d407951447dc/nixexprs.tar.xz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
       }
     },
     "nixpkgs_3": {
@@ -6938,7 +6952,7 @@
         "den-v2": "den-v2",
         "gen": "gen",
         "home-manager": "home-manager_3",
-        "nixpkgs": "nixpkgs_19"
+        "nixpkgs": "nixpkgs_20"
       }
     },
     "rust-analyzer-src": {

@@ -314,9 +314,10 @@ let
 
       # den.darwin — the nix-darwin FLAKE (carrying `.lib.darwinSystem`) the `darwin` class's terminal
       # crosses through: the darwin SIBLING of `den.nixpkgs` (§2.10). `darwin` is a native output class
-      # (a macOS system type), peer to `nixos`; gen-flake ships NO `darwinSystem` terminal (only
-      # `nixosSystem`), so the crossing calls `darwin.lib.darwinSystem` DIRECTLY (output/terminal.nix
-      # `crossDarwin`). Rides `raw` like nixpkgs — inert config data, forced only at a darwin member's
+      # (a macOS system type), peer to `nixos`; the crossing routes through gen-flake's GENERIC
+      # `mkSystemTerminal` with `darwin.lib.darwinSystem` as the evaluator (output/terminal.nix
+      # `crossDarwin`) — gen-flake names no system, the darwin knowledge lives in this crossing. Rides
+      # `raw` like nixpkgs — inert config data, forced only at a darwin member's
       # build, never during the pure graph walk. Absent (null, the default) ⇒ the `darwin` class defaults
       # to the nixpkgs-free `collect` terminal (`darwinConfigurations` are collect artifacts). den-hoag's
       # own CI runs the collect path; a REAL darwin build (the ship-gate, against a corpus with a
@@ -549,7 +550,7 @@ let
       # `collect` (den-hoag stays pure; a real build supplies `crossNixos` per class).
       #
       # The ONE real nixpkgs crossing (§2.10, Law A15): when `den.nixpkgs` is supplied, the `nixos` class
-      # crosses through `crossNixos` (gen-flake `terminals.nixosSystem`) by default — so `nixosConfigurations`
+      # crosses through `crossNixos` (gen-flake `terminals.mkSystemTerminal` + `nixpkgs.lib.nixosSystem`) by default — so `nixosConfigurations`
       # are REAL NixOS systems — unless the class declares its own `instantiate`. The terminal builder is
       # re-imported here with the supplied nixpkgs; lib/** stays nixpkgs-free (nixpkgs is inert config data
       # threaded to the terminal, never imported). Every other class keeps the nixpkgs-free `collect` default.
