@@ -21,6 +21,12 @@
     gen-demand.url = "github:sini/gen-demand";
     gen-pipe.url = "github:sini/gen-pipe";
     gen-flake.url = "github:sini/gen-flake";
+
+    # FORMATTER-ONLY input. The lib/ substrate is nixpkgs-lib-free (ci/tests/zero-machinery +
+    # boundary enforce it) and never imports this; nixpkgs enters the root ONLY to supply the
+    # committed `formatter` output below, so `nix fmt` works at the repo root. The nixos-unstable
+    # tarball matches ci/'s nixpkgs (one nixfmt-rfc-style version across root + CI).
+    nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
   };
 
   outputs =
@@ -72,5 +78,15 @@
         # by source path — the SAME dev-time pattern the parity flake uses for den v1's `edge.nix`.
         edgeCore = import "${inputs.gen-edge}/lib/core.nix" { prelude = inputs.gen-prelude.lib; };
       };
+
+      # The committed formatter config — `nix fmt` at the repo root runs `nixfmt-tree` (treefmt
+      # preconfigured with nixfmt-rfc-style, the ecosystem's Nix formatting convention agents
+      # formatted by before this pinned it). It traverses the tree and formats `.nix` with the SAME
+      # nixfmt the ci/ treefmt + the pre-commit hook run, so root `nix fmt` is idempotent with them.
+      # (ci/'s treefmt additionally runs actionlint + mdformat for the CI format gate; this root
+      # output is the self-contained `nix fmt` a visitor runs.)
+      formatter = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
+        system: inputs.nixpkgs.legacyPackages.${system}.nixfmt-tree
+      );
     };
 }

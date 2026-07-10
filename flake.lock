@@ -1532,6 +1532,19 @@
         "type": "github"
       }
     },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1783224372,
+        "narHash": "sha256-FGQ8TfSm9WviNE/fQAWsKs+y4GkX8fU4EScewpw54Y8=",
+        "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1027867.d407951447dc/nixexprs.tar.xz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
+      }
+    },
     "root": {
       "inputs": {
         "gen-algebra": "gen-algebra",
@@ -1552,7 +1565,8 @@
         "gen-scope": "gen-scope_4",
         "gen-select": "gen-select_2",
         "gen-settings": "gen-settings",
-        "gen-types": "gen-types_8"
+        "gen-types": "gen-types_8",
+        "nixpkgs": "nixpkgs_2"
       }
     }
   },
