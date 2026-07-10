@@ -1,0 +1,46 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Formatting: the ci flake's `formatter` output (treefmt — nixfmt + actionlint + mdformat),
+  # the SAME formatter the git-hooks pre-commit `treefmt` hook runs, so `nix fmt` is idempotent
+  # with a clean local commit. `--ci` = --fail-on-change --no-cache.
+  format:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix fmt -- --ci
+
+  # Tests: the two nix-unit flakes — `ci#tests` (the 488-test four-concern + shim-law suite) and
+  # `parity#tests` (the v1-vs-hoag differential, 71 tests, on SYNTHETIC fixtures + the n=1 live
+  # cross). Both are pure evals, so nix-unit runs them directly (no builder). `ulimit -s unlimited`
+  # raises the eval stack for the deep module-system evals (the pre-commit `ci` hook does the same).
+  #
+  # NOTE: the FULL-corpus content parity (contentGate over the real nix-config fleet, home-manager +
+  # nix-darwin crossings) is dev-time ONLY — parity/tests/parity-content.nix documents why it can't
+  # run in this repo's CI. `parity#tests` deliberately does NOT force the `corpus` input; it exercises
+  # the same mechanism on drvPath-bearing synthetic fixtures. All forced inputs (den-v1, gen, nixpkgs,
+  # home-manager) are public and fetch from the committed flake.lock.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: ci#tests
+        run: |
+          ulimit -s unlimited 2>/dev/null || true
+          nix run nixpkgs#nix-unit -- --flake ./ci#tests
+      - name: parity#tests
+        run: |
+          ulimit -s unlimited 2>/dev/null || true
+          nix run nixpkgs#nix-unit -- --flake ./parity#tests

@@ -3,7 +3,12 @@
 # byte-contract edge surface (`edgeSortKey` + `assertEdgeParity`), and the den-hoag arm exposes
 # `compat.parity`. The actual v1-vs-hoag diff (P1–P8) lands from Task 7; this just closes the loop
 # so every later harness task has a working TDD flake.
-{ lib, denCompat, denV1, ... }:
+{
+  lib,
+  denCompat,
+  denV1,
+  ...
+}:
 {
   flake.tests.scaffold = {
     # v1 arm resolves and carries the frozen edge byte contract (edge.nix / edges/parity.nix).
