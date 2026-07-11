@@ -140,6 +140,54 @@ in
       };
     };
 
+    # ── (6b) USERDETECT SENTINEL PROOF (FIX-B residual, shim-owned): userDetectFn's `isOsSupported` is the
+    #    FIRST operand (no `isEnabled` short-circuit), so it IS forced at the value-less sentinel. `host.class
+    #    or null` → `elem null supportedOses` = false → gated-inert `[ ]`, no hard-fail; `user.classes` is
+    #    shielded by `&&` once isOsSupported is false. Both `host` and `user` are required coords (sentinel-
+    #    filled). ────────────────────────────────────────────────────────────────────────────────────────
+    test-userdetect-sentinel-no-hard-fail = {
+      expr =
+        let
+          r = builtins.tryEval (
+            (mk [ ]).userDetect.policies."droidHm-user-detect" {
+              host = {
+                id_hash = "«probe»";
+                name = "«probe»";
+              };
+              user = {
+                id_hash = "«probe»";
+                name = "«probe»";
+              };
+            }
+          );
+        in
+        {
+          ok = r.success;
+          empty = r.success && r.value == [ ];
+        };
+      expected = {
+        ok = true;
+        empty = true;
+      };
+    };
+    # ── (6c) USERDETECT FIRES at a real (user,host) cell with a real class: droid host + a homeManager user
+    #    (supportedOses = [droid]) OPENS the gate → the include list is non-empty (the `or null` never
+    #    triggers on a real, class-stamped host). ─────────────────────────────────────────────────────────
+    test-userdetect-fires-at-real-cell = {
+      expr =
+        builtins.length (
+          (mk [ ]).userDetect.policies."droidHm-user-detect" {
+            host = droidHost;
+            user = {
+              id_hash = "u";
+              name = "me";
+              classes = [ "homeManager" ];
+            };
+          }
+        ) > 0;
+      expected = true;
+    };
+
     # ── (7) hm-host FORWARDING pair: makeHomeEnv threads `schemaIncludes` (the corpus forwards
     #    `config.den.schema.hm-host.includes or [ ]`) into the droid path; on class-A it stays inert whether
     #    the forwarded set is EMPTY (corpus shape) or NONEMPTY (synthetic) — no double-provision on nixos. ──
