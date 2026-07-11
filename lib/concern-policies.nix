@@ -10,15 +10,19 @@
 #
 # STRATUM (B2). A rule fires in exactly ONE stratum — gen-dispatch runs each rule only in its group's
 # phase and validates that its declarations all classify to that group. The stratum is read by probing
-# produce on a sentinel context (every gate coord filled with a sentinel entry), which yields the
-# produced kinds' stratum. The probe is FORMAL-PRESERVING (it fills the DECLARED gate, so a record's
-# bare-ctx body sees its coords) and tryEval-GUARDED: a body doing value-work against the sentinel
-# that reaches a `throw`/`assert` (e.g. a constructor's identity-law abort) is caught and treated
-# IDENTICALLY to an empty probe — both route to the per-declaration EXPANSION path. HONEST LIMIT:
-# `tryEval` cannot catch a non-recoverable eval error (missing attribute, head-of-empty), so a body
-# that field-accesses/iterates a sentinel coord bare still fails the probe HARD — loudly, pointing at
-# the probe (the documented pre-record failure mode). A value-conditional body reaches its coords via
-# `or` defaults (the corpus idiom), which yields the clean empty-probe path.
+# produce on a sentinel context (every REQUIRED gate coord filled with a sentinel entry), which yields the
+# produced kinds' stratum. The probe fills only the REQUIRED coords (a `functionArgs` `false`): a DEFAULTED
+# coord (`true`) is OMITTED, so the body's own default applies — a default is the AUTHOR's declared
+# probe-safe value, so clobbering it with a sentinel entry is a probe defect, not a policy signal (e.g. a
+# `{ accessGroups ? [], … }` body doing `elem g accessGroups` would see a `{ id_hash; name }` SET and throw
+# "expected a list but found a set", which tryEval does NOT catch). The probe is FORMAL-PRESERVING for the
+# required gate (a record's bare-ctx body sees its required coords) and tryEval-GUARDED: a body doing
+# value-work against the sentinel that reaches a `throw`/`assert` (e.g. a constructor's identity-law abort)
+# is caught and treated IDENTICALLY to an empty probe — both route to the per-declaration EXPANSION path.
+# HONEST LIMIT: `tryEval` cannot catch a non-recoverable eval error (missing attribute, head-of-empty), so a
+# body that field-accesses/iterates a REQUIRED sentinel coord bare still fails the probe HARD — loudly,
+# pointing at the probe (the documented pre-record failure mode). A value-conditional body reaches its
+# coords via `or` defaults / defaulted formals (the corpus idiom), which yields the clean empty-probe path.
 #
 # EXPANSION (the value-conditional path). When the probe observes no emission the stratum cannot be
 # read up front — the policy's emission is gated on a ctx VALUE, so it emits nothing at the value-less
@@ -71,7 +75,13 @@
       probeOf =
         condition: produce:
         let
-          probeCtx = prelude.genAttrs (builtins.attrNames condition) (_: probeEntry);
+          # Sentinel-fill ONLY the REQUIRED gate coords (`functionArgs` `false`). A DEFAULTED coord (`true`,
+          # e.g. env-users' `accessGroups ? []`) is OMITTED so the body's declared default applies, instead of
+          # a `{ id_hash; name }` sentinel entry that a list-op would choke on ("expected a list but found a
+          # set" — uncatchable by tryEval). A default is the author's probe-safe value; filling only required
+          # coords is a strict probe-quality improvement with no trade-off.
+          requiredCoords = builtins.filter (n: !condition.${n}) (builtins.attrNames condition);
+          probeCtx = prelude.genAttrs requiredCoords (_: probeEntry);
           try = builtins.tryEval (
             let
               a = produce "«probe»" probeCtx;

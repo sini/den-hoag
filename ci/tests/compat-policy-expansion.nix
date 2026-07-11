@@ -266,6 +266,56 @@ in
       };
     };
 
+    # ── FIX-B part 1 (probe fills REQUIRED coords only) — a DEFAULTED gate coord is NOT sentinel-filled, so
+    #    the body's default applies (env-users' `accessGroups ? []` shape, corpus users.nix:107). Pre-fix the
+    #    probe filled it with a `{ id_hash; name }` SET → `elem g accessGroups` threw "expected a list but
+    #    found a set" (uncatchable by tryEval → the whole fleet eval crashed at the value-less probe). ──────
+    test-defaulted-coord-not-sentinel-filled = {
+      expr =
+        let
+          # `req` REQUIRED (false → sentinel-filled), `opt` DEFAULTED (true → omitted, so `or []` applies).
+          # The body LIST-OPS on `opt`: CLEAN when omitted; a "found a set" crash if it were the sentinel.
+          c = compile {
+            foo = gated {
+              req = false;
+              opt = true;
+            } (ctx: if builtins.elem "admin" (ctx.opt or [ ]) then [ (declare.edge (ent "a")) ] else [ ]);
+          };
+        in
+        {
+          probesClean = ids c.policy;
+          firesAtReal = producedKinds (ruleBy c.policy "foo#resolution") {
+            req = ent "R";
+            opt = [ "admin" ];
+          };
+        };
+      expected = {
+        probesClean = [
+          "foo#resolution"
+          "foo#structural"
+        ];
+        firesAtReal = [ "edge" ];
+      };
+    };
+
+    # A REQUIRED coord is STILL sentinel-filled (unchanged behavior): the body reads `ctx.req.id_hash` (the
+    # sentinel marker) at the probe and EMITS, so the rule stays SINGLE-group — proving the required coord
+    # got a sentinel entry (were it omitted, `ctx.req.id_hash` would be an uncatchable missing-attribute).
+    test-required-coord-still-sentinel-filled = {
+      expr =
+        let
+          c = compile { foo = gated { req = false; } (ctx: [ (declare.edge (ent ctx.req.id_hash)) ]); };
+        in
+        {
+          ids = ids c.policy;
+          group = (builtins.head c.policy).group;
+        };
+      expected = {
+        ids = [ "foo" ];
+        group = "resolution";
+      };
+    };
+
     # R3 — a policy declared in BOTH `den.policies` AND a `den.schema.<kind>.includes` reference keeps BOTH
     # firings: its fleet-wide compiled entry AND its kind-scoped `__kindInclude` entry. Both use the COERCED
     # `{ __isPolicy }` record shape (the bridge coercion; direct `compile` applies it by hand) — that is what
