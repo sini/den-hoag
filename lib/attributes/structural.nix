@@ -77,13 +77,21 @@
       self: id:
       let
         base = self.get id "inherited-context";
+        # SCOPE-LOCAL FIRING pre-filter: a rule may DECLARE the node-kinds it fires at (`__firesAtKinds`,
+        # a list). Drop a rule whose list excludes THIS node's kind BEFORE dispatch (absent = every node),
+        # so an include-scoped rule fires only at its owner-kind nodes — a coord shared with a descendant
+        # kind (inherited down a P edge) no longer over-fires. `.type` is total (every node carries a kind).
+        nodeKind = (self.node id).type;
+        applicableEnrich = builtins.filter (
+          r: !(r ? __firesAtKinds) || builtins.elem nodeKind r.__firesAtKinds
+        ) policiesRules.enrich;
         # one enrich dispatch at a context → its fired enrich declarations. classify is a
         # constant single-kind tag here (every rule in policiesRules.enrich is an enrich
         # declaration); the general declaration classifier would be ceremony.
         enrichAt =
           ctx:
           (dispatch.dispatch {
-            rules = policiesRules.enrich;
+            rules = applicableEnrich;
             inherit id;
             context = ctx;
             match = dispatch.fromFunctionMatch;
@@ -151,6 +159,13 @@
       self: id:
       let
         ctx0 = self.get id "enriched-context";
+        # SCOPE-LOCAL FIRING pre-filter (see attr 2): drop a rule whose `__firesAtKinds` excludes this
+        # node's kind before dispatch (absent = every node), so an include-scoped rule fires only at its
+        # owner-kind nodes — an ancestor coord inherited by a descendant kind no longer over-fires.
+        nodeKind = (self.node id).type;
+        applicablePolicy = builtins.filter (
+          r: !(r ? __firesAtKinds) || builtins.elem nodeKind r.__firesAtKinds
+        ) policiesRules.policy;
         # §B3 linked-context, folded from the structural phase's own `link` declarations —
         # forward-threaded through `combine`, so it never feeds back into the links it reads. The
         # node's own bindings shadow it (`linkedContext // ctx`): a link only ADDS a target's
@@ -168,7 +183,7 @@
       {
         inherit
           (dispatch.dispatch {
-            rules = policiesRules.policy;
+            rules = applicablePolicy;
             inherit id;
             context = ctx0;
             match = dispatch.fromFunctionMatch;

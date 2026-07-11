@@ -59,9 +59,12 @@ let
     schema.host.includes = [ hmcRec ];
     hosts.x86_64-linux.h1.class = "nixos";
   };
-  # the compiled standalone policy's produce at a REAL host ctx — the spawn declaration carrying the spec.
+  # host-modules-capture is include-referenced (`schema.host.includes`), so SCOPE-LOCAL FIRING (board #57,
+  # ledger u3) removes its fleet-wide global — it fires SOLELY via its `__kindInclude__host__policy__0` arm
+  # (index 0: the direct compile carries no built-in host includes). The arm's `.fn` is the SAME compiled
+  # body; forcing its produce at a REAL host ctx yields the spawn declaration carrying the spec.
   fired = builtins.head (
-    compiled.policies.host-modules-capture.fn {
+    compiled.policies."__kindInclude__host__policy__0".fn {
       host = {
         id_hash = "h";
         name = "h1";

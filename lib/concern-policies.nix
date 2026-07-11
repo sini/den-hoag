@@ -170,6 +170,12 @@ let
           __pipeOps = [ ];
         }) coveredStrata;
 
+      # `__firesAtKinds` (LAW, name-agnostic): a rule may DECLARE the node-kinds it fires at — a list of
+      # kind names. The stratum dispatch PRE-FILTERS a rule out at a node whose kind is absent from the list
+      # (a rule WITHOUT the annotation fires at every node). It is threaded from the policy VALUE onto EVERY
+      # compiled rule (the single-group rule OR each expansion sub-rule) and SURVIVES `strip` below, so the
+      # structural-stratum reader can consult it. The core stamps nothing itself — a caller (e.g. an
+      # include-arm compiler) supplies the kinds; this only carries the annotation through the compile.
       mkRules =
         name: v:
         let
@@ -179,14 +185,17 @@ let
           # Probe WITHOUT the single-stratum check (stamp only): a genuine mixed-stratum policy must
           # abort below, never be swallowed by the probe's tryEval as an empty result.
           probeActs = probeOf condition (stampProduce name base.produce);
+          firesAt = prelude.optionalAttrs (v ? __firesAtKinds) { inherit (v) __firesAtKinds; };
+          baseRules =
+            if probeActs == [ ] then
+              mkExpanded name condition base
+            else
+              # Non-empty probe → single-group. `checkStratum` enforces the one-stratum law on the observed
+              # emission (B2); it runs OUTSIDE the probe's tryEval, so a mixed-stratum policy aborts loud
+              # rather than silently expanding.
+              builtins.seq (declare.checkStratum name probeActs) [ (mkSingle name condition base probeActs) ];
         in
-        if probeActs == [ ] then
-          mkExpanded name condition base
-        else
-          # Non-empty probe → single-group. `checkStratum` enforces the one-stratum law on the observed
-          # emission (B2); it runs OUTSIDE the probe's tryEval, so a mixed-stratum policy aborts loud
-          # rather than silently expanding.
-          builtins.seq (declare.checkStratum name probeActs) [ (mkSingle name condition base probeActs) ];
+        map (r: r // firesAt) baseRules;
 
       rules = prelude.concatMap (name: mkRules name policies.${name}) (builtins.attrNames policies);
       strip =

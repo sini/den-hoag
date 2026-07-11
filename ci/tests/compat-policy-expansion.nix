@@ -545,11 +545,13 @@ in
       ];
     };
 
-    # R3 — a policy declared in BOTH `den.policies` AND a `den.schema.<kind>.includes` reference keeps BOTH
-    # firings: its fleet-wide compiled entry AND its kind-scoped `__kindInclude` entry. Both use the COERCED
-    # `{ __isPolicy }` record shape (the bridge coercion; direct `compile` applies it by hand) — that is what
-    # makes the include reference classify as a POLICY (a bare fn would be a parametric aspect, R14).
-    test-both-case-keeps-both-firings = {
+    # R3 — SCOPE-LOCAL FIRING (board #57, ledger u3): a policy declared in BOTH `den.policies` AND a
+    # `den.schema.<kind>.includes` reference fires SOLELY via its kind-scoped `__kindInclude` arm — its
+    # fleet-wide compiled entry is REMOVED (`includeReferencedNames`: v1 fires a policy only where INCLUDED,
+    # not by mere `den.policies` presence). The include reference is the COERCED `{ __isPolicy }` record
+    # (the bridge coercion; direct `compile` applies it by hand) — that is what makes it classify as a
+    # POLICY (a bare fn would be a parametric aspect, R14) and carry the `.name` the removal set keys on.
+    test-included-policy-fires-only-via-arm = {
       expr =
         let
           pRec = {
@@ -573,14 +575,18 @@ in
             };
             k.k1 = { };
           };
+          arm = c.policies."__kindInclude__k__policy__0";
         in
         {
           fleetWide = c.policies ? p;
           kindScoped = c.policies ? "__kindInclude__k__policy__0";
+          # the surviving arm is confined to owner-kind nodes (Part 2 — `__firesAtKinds`).
+          armFiresAtKind = arm.__firesAtKinds;
         };
       expected = {
-        fleetWide = true;
+        fleetWide = false;
         kindScoped = true;
+        armFiresAtKind = [ "k" ];
       };
     };
 

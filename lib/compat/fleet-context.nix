@@ -6,9 +6,17 @@
 # `secretsConfig` at flake scope, inherited fleet-wide; `env-to-hosts` (:42-77) resolves each host UNDER
 # its environment binding `{ environment = env; }` (:70-72 `resolve.to "host" { host = hostCfg; }`), so a
 # host inherits its environment ENTITY. den-hoag compat NEVER runs that fan-out: `den.lib.policy.resolve`
-# is STUBBED (R8; flake.nix:159, board #49/#50), hosts are compat-membership ROOTS, so
-# `to-fleet`/`fleet-to-envs`/`env-to-hosts` stay lazily inert (gated on `self`/`environment` coords the
-# fan-out itself never binds). A host node's enriched-context then carried only `{ __entry, host }`,
+# is STUBBED (R8; flake.nix:159, board #49/#50), hosts are compat-membership ROOTS, and the SCOPE-LOCAL
+# FIRING rung (board #57, ledger u3) confines each fan-out policy to its OWNER-KIND scope:
+#   - `to-fleet`/`fleet-to-envs` (flake/fleet includes) are `{ self, … }`-gated on a coord the fan-out
+#     never binds, so they stay lazily inert regardless;
+#   - `env-to-hosts`/`env-to-clusters` (environment includes) are `{ environment, … }`-gated, and THIS
+#     module's enrich SATISFIES that gate — but they fire via their `__kindInclude__environment__policy`
+#     arm ONLY (their fleet-wide global is REMOVED, `includeReferencedNames`), and `__firesAtKinds =
+#     [ "environment" ]` confines that arm to environment-KIND nodes, which do NOT exist in compat (no
+#     env→host containment; the env-scope fan-out is the stubbed surface). So the `resolve` stub is NEVER
+#     forced — the pre-#57 over-fire (the enriched `{ environment }` gate matching HOST nodes) is closed.
+# A host node's enriched-context then carried only `{ __entry, host }`,
 # leaving every corpus consumer of these ctx keys DEAD:
 #   - the ~40 `{ environment, ... }` channel/module sites (the k3s frontier — k3s.nix:49's
 #     `{ environment, host, ... }` emit rode raw on the missing `environment` arg, U9.1's resolveParametric

@@ -840,11 +840,11 @@ let
   # default aspect the host-coord gate is the SAME firing set (ledger row u3: kind-scoped == scope-local
   # here; board #57 unmoved — this arm adds no general scope-local mechanism).
   #
-  # DOUBLE-FIRE (accepted — the kind-include precedent verbatim, see the `policies` fold note below): a
-  # record that is ALSO a `den.policies.<name>` keeps BOTH firings (its fleet-wide `compiledPolicies`
-  # entry AND this `__default__policy__<i>` entry); an inline-only record (an mkPolicy value never
-  # registered under `den.policies`, corpus-zero) fires solely here — self-documenting coverage for the
-  # future inline case.
+  # SCOPE-LOCAL FIRING (board #57, ledger u3, see the `policies` fold note below): a record that is ALSO a
+  # `den.policies.<name>` fires SOLELY via this `__default__policy__<i>` include arm — its fleet-wide
+  # `compiledPolicies` entry is REMOVED (`includeReferencedNames`, v1 register-on-include: a `den.policies`
+  # name fires only where INCLUDED). An inline-only record (an mkPolicy value never registered under
+  # `den.policies`, corpus-zero) fires here too — the removal set no-ops on a name with no global entry.
   defaultIncludes = (v1Decls.default or { }).includes or [ ];
   defaultPolicyRefs = builtins.filter isPolicyRef defaultIncludes;
   defaultNonPolicyDecl =
@@ -865,6 +865,14 @@ let
             host = false;
           }
           // base.__condition;
+          # SCOPE-LOCAL FIRING (board #57, ledger u3): `den.default` radiates to v1's {host, user, home} =
+          # den-hoag's {host, user} (home folds into user; see the `__denDefault` radiation note below).
+          # `__firesAtKinds` pins that radiation set at dispatch (matching `__denDefault`'s `{ host }`-gate
+          # firing set) — closing even the corpus-zero host-nested-custom-kind residual the coord gate leaves.
+          __firesAtKinds = [
+            "host"
+            "user"
+          ];
         };
     }) defaultPolicyRefs
   );
@@ -1050,10 +1058,17 @@ let
           );
           # The kind's ONE edge policy edges the STATIC refs AND the synthetic aspects (by name → full record
           # via aspectRec), gated on the KIND coord so it fires at every instance (unchanged for static-only).
+          # SCOPE-LOCAL FIRING (board #57, ledger u3): `__firesAtKinds = [ kind ]` confines the arm to
+          # OWNER-KIND nodes at dispatch (concern-policies threads it; structural.nix pre-filters). The KIND
+          # coord alone is INSUFFICIENT — a DESCENDANT kind inherits an ancestor coord down its P edge (a user
+          # cell carries its host's `host` coord, structural.nix attr 1), so a `{ host }`-gated host include
+          # would ALSO fire at every user cell; the kind annotation is what pins v1's fire-AT-the-owner-kind
+          # (schema.nix:184-199 `requiredEntityArgs` — a `{host,…}` policy fires at host scopes, NOT user).
           edgeRefs = staticRefs ++ map (n: { name = n; }) (builtins.attrNames synthAspects);
           aspectPolicy = prelude.optionalAttrs (edgeRefs != [ ]) {
             "__kindInclude__${kind}" = {
               __condition = kindCoord;
+              __firesAtKinds = [ kind ];
               fn = _ctx: map (ref: declare.edge (resolveAspectRef aspectRec ref)) edgeRefs;
             };
           };
@@ -1064,7 +1079,11 @@ let
                 let
                   base = compilePolicy ing normalizeList aspectRec ref;
                 in
-                base // { __condition = kindCoord // base.__condition; };
+                base
+                // {
+                  __condition = kindCoord // base.__condition;
+                  __firesAtKinds = [ kind ];
+                };
             }) policyRefs
           );
         in
@@ -1090,18 +1109,41 @@ let
     // compiledPolicies.conditionalAspects
     // kindIncludeAspects;
 
+  # ── SCOPE-LOCAL POLICY FIRING (board #57, ledger u3) — v1 `installPolicies` parity. ──
+  # v1 fires a policy ONLY where it is REGISTERED — scope-local, via an INCLUDE (den nix/lib/aspects/fx/
+  # policy/default.nix:82-113 `installPolicies` "Policies fire where they're registered — scope-local only";
+  # subtree fan-out filtered by `requiredEntityArgs`, schema.nix:157-199). A `den.policies.<name>` is a NAMED
+  # DEFINITION; presence alone fires NOWHERE — it must be INCLUDED to function. So a policy NAME referenced
+  # from an include is REMOVED from the fleet-wide compiled set (`includeReferencedNames`); its firing rides
+  # its `__kindInclude__<kind>__policy__<i>` / `__default__policy__<i>` arm ALONE, which `__firesAtKinds`
+  # confines to owner-kind nodes (Part 2). INVARIANT: an include-referenced policy fires via EXACTLY its
+  # include arms. The removal set covers every arm-creating path — `expandRefs` (which hoists inline-aspect
+  # `.includes`) over every kind's raw includes, plus the default includes — via the SAME `isPolicyRef`
+  # filter each arm builder uses, so the arm set and the removal set coincide. A policy `.name` is its
+  # `den.policies` KEY (the bridge coercion, policy-type.nix); a reference-only inline record (no
+  # `den.policies.<name>`) yields a name `removeAttrs` no-ops on. The SHIM-SYNTHETIC globals (builtins.nix:
+  # fleet-context-enrich, user-to-host, host-to-users) are NOT include-referenced, so they SURVIVE as
+  # DELIBERATE compat mechanisms (the enrich fixpoint / the ambient os-user route) — verified: neither is a
+  # `.includes` reference (user-to-host/host-to-users ride `.excludes`, not scanned here).
+  #
   # The synthetic `__kindInclude__<kind>[__policy__<i> | __aspect__<i>]` / `__denDefault` /
   # `__default__policy__<i>` names cannot collide with a compiled `den.policies.<name>` (nor a v1 aspect):
   # den reserves the `__` prefix for internal keys, and a v1 policy/aspect name is a user-authored
   # identifier that never uses it — so this namespace is disjoint from `compiledPolicies` (and each
-  # positional arm is disjoint within itself by index). A v1 policy declared in BOTH `den.policies` AND an
-  # includes reference — a `den.schema.<kind>.includes` entry OR a `den.default.includes` entry — keeps
-  # BOTH firings (its fleet-wide `compiledPolicies` entry AND its include-scoped `__kindInclude`/
-  # `__default__policy` entry); only a reference-only include (an inline record never registered as a
-  # `den.policies.<name>`) fires solely via its include arm. `kindIncludePolicies` and
-  # `defaultIncludePolicies` are already flat name→policy sets.
+  # positional arm is disjoint within itself by index). `kindIncludePolicies` and `defaultIncludePolicies`
+  # are already flat name→policy sets.
+  includeReferencedNames =
+    let
+      kindPolicyRefs = prelude.concatMap (
+        kind: builtins.filter isPolicyRef (expandRefs ing.kindIncludes.${kind})
+      ) (builtins.attrNames ing.kindIncludes);
+    in
+    builtins.filter (n: n != null) (map (r: r.name or null) (kindPolicyRefs ++ defaultPolicyRefs));
   policies =
-    compiledPolicies.policies // defaultPolicy // kindIncludePolicies // defaultIncludePolicies;
+    (builtins.removeAttrs compiledPolicies.policies includeReferencedNames)
+    // defaultPolicy
+    // kindIncludePolicies
+    // defaultIncludePolicies;
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
   # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys

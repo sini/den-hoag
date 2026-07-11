@@ -8,8 +8,10 @@
 #   (1) PARTITION — the record compiles to a `__default__policy__<i>` policy, NEVER `__default` aspect
 #       content (no `fn` leak, no `__isPolicy` element in the normalized includes);
 #   (2) GATE — the compiled policy's `__condition` is the `__default` radiation coord `{ host = false; }`
-#       (fires at every host + user cell, never a custom-kind scope — the same firing set v1's
-#       scope-local registration produces for the fleet-radiated default aspect; ledger u3, #57 unmoved);
+#       PLUS `__firesAtKinds = [ "host" "user" ]` (board #57, ledger u3): it fires at every host + user
+#       cell, never a custom-kind scope — the SAME firing set v1's scope-local registration produces for
+#       the fleet-radiated default aspect. The `den.policies` registration's fleet-wide global is REMOVED
+#       (`includeReferencedNames`), so the record fires SOLELY via its `__default__policy__<i>` arm;
 #   (3) INERTNESS at class-A (the w3 declaration-level witness) — at a nixos-classed host ctx the
 #       corpus-shaped body takes its false branch and the compiled fn emits `[ ]`;
 #   (4) BEHAVIORAL — a nixos-only fleet carrying the record resolves crash-free (the corpus probe's
@@ -49,7 +51,8 @@ let
   };
 
   # The corpus shape in miniature: a battery-ish static ref + the policy record, BOTH in
-  # `den.default.includes`; the record ALSO under `den.policies` (the double-fire precedent shape).
+  # `den.default.includes`; the record ALSO under `den.policies` (the scope-local case: its global is
+  # REMOVED, so it fires solely via the `__default__policy__<i>` arm — board #57, ledger u3).
   decls = {
     aspects.batteryish.nixos.marker = 1;
     policies.drop-on-droid = dropRec;
@@ -106,19 +109,28 @@ in
         includeCount = 1;
       };
     };
-    # (2) GATE: `__condition = { host = false; }` — the `__default` radiation coord (host + user cells,
-    #     never a custom kind; the same mechanism compat-surface pins for `__denDefault`). The
-    #     double-fire precedent holds: the `den.policies` registration ALSO compiles (both firings kept).
-    test-radiation-coord-and-double-registration = {
+    # (2) GATE + SCOPE-LOCAL FIRING (board #57, ledger u3): `__condition = { host = false; }` — the
+    #     `__default` radiation coord (host + user cells, never a custom kind; the same mechanism
+    #     compat-surface pins for `__denDefault`) — PLUS `__firesAtKinds = [ "host" "user" ]` confining the
+    #     arm to the radiation kinds. The `den.policies.drop-on-droid` registration is ALSO include-referenced
+    #     (it rides `default.includes`), so its fleet-wide global is REMOVED — the record fires SOLELY via
+    #     this `__default__policy__0` arm (v1: a policy fires only where INCLUDED, not by `den.policies`
+    #     presence). This REPLACES the former double-fire (both-firings) precedent.
+    test-radiation-coord-and-scope-local = {
       expr = {
         cond = c.policies.__default__policy__0.__condition;
+        firesAtKinds = c.policies.__default__policy__0.__firesAtKinds;
         alsoCompiledFleetWide = c.policies ? drop-on-droid;
       };
       expected = {
         cond = {
           host = false;
         };
-        alsoCompiledFleetWide = true;
+        firesAtKinds = [
+          "host"
+          "user"
+        ];
+        alsoCompiledFleetWide = false;
       };
     };
     # (3) INERTNESS at class-A (w3, declaration-level): at a nixos-classed host ctx the compiled fn's
