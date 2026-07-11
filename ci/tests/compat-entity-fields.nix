@@ -68,37 +68,36 @@ let
   # carrying the stamped structural fields (the exact value `{ host, ... }: … host.system` reads).
   ctxHostAt = id: (eval.get id "enriched-context").host;
 
-  # ── broadcast-hub-peer settings-read PIN (ledger u6 / board #59) — the SOFT-read twin of the hard-read
-  #    class the `system` stamp closed. The corpus gates the hub-peer broadcast on
-  #    `host.settings.core.network.syncthing.isHub or false` (nix-config policies/pipes.nix:166) — a
-  #    DISPATCH-time read of the host's SETTINGS off the ctx entity. v1 binds the full host config as ctx
-  #    (the corpus declares `isHub = true` on the hub host's RAW config, hosts/uplink.nix:26), so the read
-  #    is LIVE there; the shim's ctx entity carries ONLY the static stamped fields — the `or false` read
-  #    silently degrades and the broadcast NEVER fires where v1 fires it. A hard bare-field read fails
-  #    LOUD (self-announcing); this `or`-guarded read is the SILENT half, hence the pin. LOUD PIN: if #59
-  #    lands (resolved settings on the ctx entity, or a static declared-layer derivation),
-  #    `bodyDegradesAtStampedShape`/`realCtxLacksSettings` FLIP — update this test with ledger row u6.
+  # ── broadcast-hub-peer settings-read pin (ledger u6 / board #59) — FLIPPED by the host-settings
+  #    entity-stamp rung. The ctx entity now CARRIES v1's settings view (ingest.nix
+  #    `harvestedHostFields` → `hostEntityFields` → the instanceConfig stamp; harvest-first, raw
+  #    authored fallback on this harvest-less mkDen-direct path), so the corpus's
+  #    `host.settings.core.network.syncthing.isHub or false` (nix-config policies/pipes.nix:166) reads
+  #    the REAL value at dispatch — the u6 silent degradation is CLOSED at the read. RESIDUAL
+  #    (self-announcing, pinned below): broadcast-hub-peer is a VALUE-CONDITIONAL policy whose firing
+  #    branch emits a `pipe.from` — the fleet pipe compose DAG seeds pre-eval from ctx-INDEPENDENT
+  #    bodies (the concern-policies pipeOp law), so the now-live emission aborts NAMED at the hub node:
+  #    u6's announcement class upgraded from SILENT-wrong-content to LOUD named abort. The late pipe
+  #    contribution (v1 fires pipe stages scope-local wherever a policy fires) is the #59 dispatch-time
+  #    remainder. The in-pipe broadcast PREDICATES (pipes.nix:147,157 — settings reads INSIDE an
+  #    unconditionally-seeded `pipe.from` body) are fully served by the stamp.
   hubBody =
     { host, ... }:
     optionals (host.settings.core.network.syncthing.isHub or false) [
       (pipe.from "syncthing-peers" [ (pipe.broadcast ({ user, ... }: true)) ])
     ];
-  # The EXACT shape the shim's real ctx host entity has today: the static stamped fields, no `settings`.
-  stampedShapeCtx = {
-    host = {
-      id_hash = "h";
-      name = "hub";
-      class = "nixos";
-      system = "x86_64-linux";
-    };
-  };
-  # The corpus hub declaration, verbatim idiom (hosts/uplink.nix:26): the host FILE sets the settings value
-  # on the raw host config. The declared layer is INGEST-KNOWN raw data (`flatHosts.hub.settings` — pinned
-  # below), yet it does NOT reach the ctx entity — that gap is exactly what #59 adjudicates.
+  # The corpus hub declaration, verbatim idiom (hosts/uplink.nix:26) — PLUS the rest of the stamped
+  # field set (board #59, authored raw here: mkDen-direct has no harvest, so the stamp falls back to
+  # the authored fields — the same values a harvest would carry for authored-only fields).
   hubHostDecls = {
     hosts.x86_64-linux.hub = {
       class = "nixos";
       settings.core.network.syncthing.isHub = true;
+      environment = "prod";
+      networking.interfaces.eth0.ipv4 = [ "10.0.0.1/24" ];
+      secretPath = "/secrets/hosts/hub";
+      public_key = "/secrets/hosts/hub/key.pub";
+      system-owner = "op";
     };
   };
   settingsFleet =
@@ -185,51 +184,89 @@ in
       };
     };
 
-    # (u6/#59 pin) — the broadcast-hub-peer settings-read degrades SILENTLY today. Five facts pinned:
-    #   bodyDegradesAtStampedShape — at the shim's real ctx shape (static fields, no settings) the `or
-    #     false` gate reads false → the body emits NOTHING (the degraded branch, current behavior);
-    #   bodyFiresWithSettings — with `settings…isHub = true` ON the ctx entity the SAME body emits the
-    #     syncthing-peers pipe effect (the gap IS the missing settings view, nothing else);
-    #   realCtxLacksSettings — at a REAL node whose host config declares `isHub = true` corpus-style, the
-    #     ctx entity still carries NO `settings` (so the real dispatch takes the degraded branch);
-    #   resolvesSilently — the degraded node resolves CLEAN (no throw): silent, NOT self-announcing —
-    #     why this needs a ledger row + drv-hash verification rather than a loud abort;
-    #   declaredLayerIngestKnown — the host-FILE-declared settings layer IS ingest-visible raw data
-    #     (`entities.instances.host.hub.settings…`), the #59 static-derivation candidate's input.
-    test-settings-read-policy-degrades = {
-      expr = {
-        bodyDegradesAtStampedShape = hubBody stampedShapeCtx == [ ];
-        bodyFiresWithSettings =
-          let
-            r = hubBody (
-              stampedShapeCtx
-              // {
-                host = stampedShapeCtx.host // {
-                  settings.core.network.syncthing.isHub = true;
-                };
-              }
-            );
-          in
-          builtins.length r == 1
-          && (builtins.head r).__policyEffect == "pipe"
-          && (builtins.head r).value.pipeName == "syncthing-peers";
-        realCtxLacksSettings =
-          !((settingsFleet.structural.eval.get "host:hub" "enriched-context").host ? settings);
-        resolvesSilently =
-          (builtins.tryEval (
-            builtins.deepSeq (map (n: n.key) (
-              settingsFleet.structural.eval.get "host:hub" "resolved-aspects"
-            )) true
-          )).success;
-        declaredLayerIngestKnown =
-          settingsCompiled.entities.instances.host.hub.settings.core.network.syncthing.isHub;
-      };
+    # (u6/#59 pin, FLIPPED — the host-settings entity-stamp rung) five facts pinned:
+    #   realCtxCarriesSettings — the REAL ctx entity now carries the settings view (the stamp; here the
+    #     raw authored fallback — mkDen-direct has no harvest), so the u6 read gap is CLOSED;
+    #   bodyFiresAtRealCtx — the corpus body applied to the REAL ctx entity takes the FIRING branch and
+    #     emits the syncthing-peers pipe effect (v1's dispatch-time read, restored at the ctx level);
+    #   firingNodeAbortsNamed — the RESIDUAL, self-announcing: the fired emission is a pipeOp from a
+    #     VALUE-CONDITIONAL policy, which the pre-eval pipe-DAG seeding law rejects NAMED (catchable
+    #     throw) — u6's silent-wrong-content upgraded to a LOUD abort; the late pipe contribution is
+    #     the #59 dispatch-time remainder (this pin flips again when it lands);
+    #   declaredLayerIngestKnown — the host-FILE-declared settings layer stays ingest-visible raw data
+    #     (`entities.instances.host.hub.settings…`), unchanged input surface;
+    #   (the field-set coverage twin is test-stamped-field-set below.)
+    test-settings-read-policy-fires = {
+      expr =
+        let
+          realHubCtx = (settingsFleet.structural.eval.get "host:hub" "enriched-context").host;
+          r = hubBody { host = realHubCtx; };
+        in
+        {
+          realCtxCarriesSettings = realHubCtx.settings.core.network.syncthing.isHub or false;
+          bodyFiresAtRealCtx =
+            builtins.length r == 1
+            && (builtins.head r).__policyEffect == "pipe"
+            && (builtins.head r).value.pipeName == "syncthing-peers";
+          firingNodeAbortsNamed =
+            !(builtins.tryEval (
+              builtins.deepSeq (map (n: n.key) (
+                settingsFleet.structural.eval.get "host:hub" "resolved-aspects"
+              )) true
+            )).success;
+          declaredLayerIngestKnown =
+            settingsCompiled.entities.instances.host.hub.settings.core.network.syncthing.isHub;
+        };
       expected = {
-        bodyDegradesAtStampedShape = true;
-        bodyFiresWithSettings = true;
-        realCtxLacksSettings = true;
-        resolvesSilently = true;
+        realCtxCarriesSettings = true;
+        bodyFiresAtRealCtx = true;
+        firingNodeAbortsNamed = true;
         declaredLayerIngestKnown = true;
+      };
+    };
+
+    # (board #59, field-set coverage) — the full harvest-carried field record rides the ctx entity with
+    # its real per-host values (raw authored fallback on this mkDen-direct path). `ipv4`/`ipv6` are
+    # corpus-COMPUTED fields (schema/host.nix:181-206, readOnly — only a harvest carries them), so on
+    # the harvest-less path they pin to the null fallback — the honest fallback ceiling.
+    test-stamped-field-set = {
+      expr =
+        let
+          h = (settingsFleet.structural.eval.get "host:hub" "enriched-context").host;
+        in
+        {
+          environment = h.environment;
+          networking = h.networking;
+          secretPath = h.secretPath;
+          public_key = h.public_key;
+          systemOwner = h.system-owner;
+          ipv4NullWithoutHarvest = h.ipv4 == null && h.ipv6 == null;
+        };
+      expected = {
+        environment = "prod";
+        networking.interfaces.eth0.ipv4 = [ "10.0.0.1/24" ];
+        secretPath = "/secrets/hosts/hub";
+        public_key = "/secrets/hosts/hub/key.pub";
+        systemOwner = "op";
+        ipv4NullWithoutHarvest = true;
+      };
+    };
+
+    # (board #59, the unauthored default) — a host declaring NO settings carries the `{ }` fallback
+    # (v1's empty settingsType default, corpus host.nix:304): soft `or`-reads degrade cleanly, and the
+    # namespace is present (never a missing-attribute throw on the `host.settings` spine itself).
+    test-unauthored-settings-empty = {
+      expr =
+        let
+          h = ctxHostAt "host:pc";
+        in
+        {
+          settings = h.settings;
+          softReadDegrades = h.settings.core.network.syncthing.isHub or "absent";
+        };
+      expected = {
+        settings = { };
+        softReadDegrades = "absent";
       };
     };
   };

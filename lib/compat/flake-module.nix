@@ -183,17 +183,31 @@ let
       # config as the ctx entity, so those fields are present at real dispatch there; the shim reproduces
       # them on the field-less entry (the probe sentinel carries all three — see flake-module
       # `probeSentinelModule`). Every other kind's instances stay `{ }`.
+      #
+      # PLUS the harvest-carried field record (board #59, ingest.nix `harvestedHostFields` — settings/
+      # networking/ipv4/ipv6/environment/secretPath/public_key/system-owner): v1's ctx entity is the
+      # RESOLVED host config, so corpus aspect bodies read `host.settings.<path>` at the MODULE FIXPOINT
+      # (delivery depth, xfs-disk-longhorn.nix:19) and policies read `host.settings…isHub or false` at
+      # DISPATCH (pipes.nix:166, ledger u6). One stamp DUAL-SERVES both: the entity entry IS the ctx
+      # entity at dispatch AND the `host` binding at the terminal (bindingsAt reads enriched-context).
+      # Source = the instance-eval HARVEST (typed, aspect-defaults-merged — the source invariant), so
+      # the delivery-depth read sees v1's exact merged view.
       hostClassName = compiled.entities.hostClassName or { };
       hostSystemName = compiled.entities.hostSystemName or { };
       hostHostName = compiled.entities.hostHostName or { };
+      hostEntityFields = compiled.entities.hostEntityFields or { };
       instanceConfig = builtins.mapAttrs (
         kind: insts:
         if kind == "host" then
-          builtins.mapAttrs (name: _: {
-            class = hostClassName.${name} or null;
-            system = hostSystemName.${name} or null;
-            hostName = hostHostName.${name} or null;
-          }) insts
+          builtins.mapAttrs (
+            name: _:
+            {
+              class = hostClassName.${name} or null;
+              system = hostSystemName.${name} or null;
+              hostName = hostHostName.${name} or null;
+            }
+            // (hostEntityFields.${name} or { })
+          ) insts
         else
           builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;

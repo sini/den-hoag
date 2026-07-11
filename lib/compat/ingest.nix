@@ -39,6 +39,59 @@ let
       inherit name;
     };
 
+  # ── the harvest-carried v1 host-config FIELD SET (board #59 — the delivery-depth settings rung) ────
+  # v1 binds the RESOLVED host config as the ctx entity (pin 11866c16 nix/lib/aspects/fx/
+  # assemble-pipes.nix:154), so corpus aspect class bodies read these fields off `host` BOTH at
+  # dispatch (policy predicates) and at the MODULE FIXPOINT (delivery depth — the class body inside
+  # the real nixosSystem). den-hoag entities are field-less; the shim stamps this set onto the host
+  # ENTRY (the class/system/hostName pattern, extended — flake-module.nix `instanceConfig`), sourced
+  # from the per-host schema-typed instance-eval HARVEST: the corpus's OWN kind module merges
+  # aspect-declared settings option DEFAULTS under host-authored values there (nix-config
+  # schema/host.nix:301-309 `settings` option, :149 settingsType via _settings-type.nix), so the
+  # harvest value IS v1's merged `host.settings` view — v1-faithful by construction.
+  #
+  # SOURCE INVARIANT: HARVEST first (typed, defaults-merged) — NEVER the raw authored field where a
+  # harvest exists (raw would drop the aspect-declared defaults, e.g. xfs-disk-longhorn's mountPoint).
+  # The raw authored fallback serves only harvest-less paths (mkDen-direct fixtures; no bridge ⇒ no
+  # harvest — the same posture as instantiateFor). EXCLUDED from the stamp: the evaluator fields
+  # (`instantiate` / `home-manager.module`) STAY compile-side id_hash maps (instantiateFor et al.) —
+  # resolution state must never carry heavy nixpkgs closures (the deepSeq-state hazard).
+  #
+  # DUAL-SERVE: both read surfaces are the SAME entity entry, so one stamp closes both —
+  #   dispatch ctx (enriched-context): pipes.nix:147,157,166 `host.settings…isHub or false`
+  #     broadcast predicates (ledger u6, the silent soft-read half — CLOSED for hosts);
+  #   delivery binding (bindingsAt → the class-module `host` arg): the loud hard-read half.
+  #
+  # Fallback value = the field's no-kind-module shape: `{ }` for the attrset namespaces (settings /
+  # networking — soft `or`-reads degrade cleanly, matching v1's empty settingsType default, corpus
+  # host.nix:304), null for scalars/lists (a hard read on an undeclared field fails loud, as v1's
+  # missing option would).
+  #
+  # Corpus readers served (aspect class bodies at delivery depth + dispatch predicates):
+  #   settings     — disk/xfs-disk-longhorn.nix:19, disk/zfs-disk-single.nix:68, disk/btrfs-disko.nix:39,
+  #                  bgp.nix:23,34,400, k3s.nix:55-79,314, k3s/bootstrap.nix:31, prometheus.nix:13,
+  #                  cilium-bgp.nix:35-36, ollama.nix:39, impermanence/{zfs.nix:15,btrfs.nix:11},
+  #                  openssh.nix:60,68, containers.nix:119, thunderbolt-mesh-of.nix:53,79,
+  #                  linux-kernel.nix:30, syncthing/hub.nix:62 + the pipes.nix predicates (u6)
+  #   ipv4 / ipv6  — bgp.nix:22,35, k3s.nix:52-53,143-188, media-scratch.nix:15, prometheus.nix:17,
+  #                  ollama.nix:28, headscale.nix:145 (corpus-COMPUTED fields, host.nix:181-206 —
+  #                  readOnly, never authored: ONLY the harvest carries them)
+  #   environment  — alloy.nix:25, cilium-bgp.nix:50, haproxy.nix:26
+  #   networking   — networking.nix:25
+  #   secretPath   — tailscale/secrets.nix:7, network-initrd.nix:25
+  #   public_key   — hostsfile.nix:21
+  #   system-owner — sunshine.nix:10
+  harvestedHostFields = {
+    settings = { };
+    networking = { };
+    ipv4 = null;
+    ipv6 = null;
+    environment = null;
+    secretPath = null;
+    public_key = null;
+    system-owner = null;
+  };
+
   # v1's `den.hosts` accepts TWO addressings, normalized by `preprocessHosts` (pin 11866c16
   # nix/lib/entities/host.nix:31-43 `hostsOption.apply` → nix/lib/entities/_types.nix:152-172) BEFORE
   # the `attrsOf systemType` merge — the shim reproduces that same normalization here, fused with the
@@ -155,21 +208,34 @@ let
         withBuiltins
         // prelude.optionalAttrs (withBuiltins ? host) {
           host = withBuiltins.host // {
-            options.class = schema.mkOption {
-              type = schema.types.raw;
-              default = null;
-              description = "v1 host OS class (nixos/darwin) — the R3/R6 route gate reads it (compat).";
-            };
-            options.system = schema.mkOption {
-              type = schema.types.raw;
-              default = null;
-              description = "v1 host platform system (the demoted `den.hosts.<system>` key) — the home-platform route gate reads it (compat).";
-            };
-            options.hostName = schema.mkOption {
-              type = schema.types.raw;
-              default = null;
-              description = "v1 host network hostName (base default `config.name`, pin 11866c16 entities/host.nix:63) — the hostname battery reads it (compat).";
-            };
+            options = {
+              class = schema.mkOption {
+                type = schema.types.raw;
+                default = null;
+                description = "v1 host OS class (nixos/darwin) — the R3/R6 route gate reads it (compat).";
+              };
+              system = schema.mkOption {
+                type = schema.types.raw;
+                default = null;
+                description = "v1 host platform system (the demoted `den.hosts.<system>` key) — the home-platform route gate reads it (compat).";
+              };
+              hostName = schema.mkOption {
+                type = schema.types.raw;
+                default = null;
+                description = "v1 host network hostName (base default `config.name`, pin 11866c16 entities/host.nix:63) — the hostname battery reads it (compat).";
+              };
+            }
+            # The harvest-carried field set (board #59 — `harvestedHostFields` above): declared so the
+            # `instanceConfig` stamp (flake-module.nix) is legal on the strict host kind. Same raw+null
+            # shape as class/system/hostName, so entity identity stays name-derived (unperturbed).
+            // builtins.mapAttrs (
+              f: _fallback:
+              schema.mkOption {
+                type = schema.types.raw;
+                default = null;
+                description = "v1 host config field `${f}` — harvest-stamped onto the ctx entity (board #59; see harvestedHostFields).";
+              }
+            ) harvestedHostFields;
           };
         };
       kinds = builtins.attrNames withHostFields;
@@ -480,6 +546,20 @@ let
       # `host ? class`-gated `host.hostName` read, so its null stamp stays inert.
       hostHostName = builtins.mapAttrs (name: h: h.hostName or name) flatHosts;
 
+      # The harvest-carried field set stamped onto the host ENTITY, per host (board #59 — see
+      # `harvestedHostFields` above for the law, the source invariant, and the corpus reader census).
+      # Read order per field: HARVEST (v1's merged, schema-typed view — the instance eval materialized
+      # aspect-declared settings defaults under the authored values) → the raw authored field
+      # (harvest-less mkDen-direct paths only) → the field's no-kind-module fallback. mkFleetModule
+      # stamps the whole record beside class/system/hostName, so both the dispatch ctx and the delivery
+      # binding (the SAME entity entry) carry it.
+      hostEntityFields = builtins.mapAttrs (
+        name: h:
+        builtins.mapAttrs (
+          f: fallback: (hostHarvest.${name} or { }).${f} or (h.${f} or fallback)
+        ) harvestedHostFields
+      ) flatHosts;
+
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
       classRegistry = builtinClasses // prelude.genAttrs declaredClassNames classEntry;
@@ -515,6 +595,9 @@ let
         hostClassName
         hostSystemName
         hostHostName
+        # board #59: the harvest-carried per-host field record (settings/networking/ipv4/…) the
+        # instanceConfig entity stamp reads — the delivery-depth `host.settings.*` binding source.
+        hostEntityFields
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;

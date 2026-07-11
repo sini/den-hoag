@@ -71,6 +71,34 @@ let
           type = lib.types.nullOr lib.types.str;
           default = null;
         };
+        # the corpus's dynamic per-aspect settings namespace (host.nix:301-309 via _settings-type.nix),
+        # faithful shape: a typed submodule tree mirroring an aspect path, carrying an aspect-DECLARED
+        # option default (mountPoint — corpus xfs-disk-longhorn.nix:9-13) the host does not author.
+        settings = lib.mkOption {
+          type = lib.types.submodule {
+            options.disk = lib.mkOption {
+              type = lib.types.submodule {
+                options.probe = lib.mkOption {
+                  type = lib.types.submodule {
+                    options = {
+                      device_id = lib.mkOption {
+                        type = lib.types.str;
+                        default = "";
+                      };
+                      mountPoint = lib.mkOption {
+                        type = lib.types.str;
+                        default = "/var/lib/probe";
+                      };
+                    };
+                  };
+                  default = { };
+                };
+              };
+              default = { };
+            };
+          };
+          default = { };
+        };
       };
       config = {
         secretPath = lib.mkDefault "/secrets/hosts/${config.name}";
@@ -96,9 +124,12 @@ let
     inherit lib;
     kindModule = corpusKindModule;
     flatHosts = {
-      # default channel — the corpus's dominant case (channel omitted ⇒ "nixos-unstable").
+      # default channel — the corpus's dominant case (channel omitted ⇒ "nixos-unstable"); authors ONE
+      # settings field (device_id, the axon-01.nix:40 idiom) — the other (mountPoint) resolves to the
+      # aspect-declared default in the SAME eval (the board #59 merge golden below).
       chan = {
         system = "x86_64-linux";
+        settings.disk.probe.device_id = "/dev/disk/by-id/probe-0001";
       };
       # explicit channel — per-host channel selection.
       master = {
@@ -258,6 +289,18 @@ in
       expected = {
         instantiate = null;
         class = "nixos";
+      };
+    };
+    # (board #59) the corpus's settings MERGE materializes in the SAME harvest: the aspect-declared
+    # option DEFAULT (mountPoint) under the host-authored value (device_id) — v1's merged
+    # `host.settings` view (corpus host.nix:301-309 / _settings-type.nix), the source the entity
+    # stamp (ingest.nix hostEntityFields) reads. This is the harvest-check golden: the corpus's OWN
+    # schema eval does the merging, v1-faithful by construction.
+    test-settings-merge-materializes = {
+      expr = harvest.chan.settings.disk.probe;
+      expected = {
+        device_id = "/dev/disk/by-id/probe-0001";
+        mountPoint = "/var/lib/probe";
       };
     };
     # GENERALITY: the SAME eval materializes the other schema-declared per-host defaults —

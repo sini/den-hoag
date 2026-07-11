@@ -1175,6 +1175,9 @@ builtins.seq surfaceTotalityOk {
       hostClassName
       hostSystemName
       hostHostName
+      # board #59: the harvest-carried per-host field record (settings/networking/ipv4/…) —
+      # flake-module.nix `instanceConfig` stamps it onto the host entity beside class/system/hostName.
+      hostEntityFields
       ;
   };
   inherit aspects policies;
