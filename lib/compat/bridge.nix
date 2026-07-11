@@ -226,6 +226,59 @@
             ) merged;
         };
       };
+      # v1-parity MERGE for `den.default` — the THIRD instance of the bridge's declared-option pattern
+      # (after `options.schema` def-collector and `options.policies` coercion). v1 declares
+      # `options.den.default` (modules/aspects/defaults.nix:3-6, pin 11866c16) as an `aspectType` SUBMODULE
+      # whose `includes` sub-option is `lib.types.listOf (providerType …)` (nix/lib/aspects/types.nix:696-699):
+      # multiple module definitions of `den.default.includes` therefore CONCATENATE in module-definition
+      # order (standard nixpkgs `listOf` merge). The corpus radiates the base battery set across TWO modules —
+      # `modules/den/defaults.nix` (`define-user`/`hostname`/`primary-user`/`inputs'`/`self'`) and
+      # `modules/den/batteries/nix-on-droid.nix` (the `drop-user-to-host-on-droid` policy) — so both must fold
+      # into one aspect. The freeform `anything` above CONFLICTS the two `includes` LISTS (empirically: `anything`
+      # never concatenates a nested list-valued key), the SAME R4-radiation wall the `schema`/`policies` fixes
+      # solved for their keys. This is why `den.default` is the ONE exception to raw absorption here.
+      #
+      # We reproduce v1's cross-module fold as a hand-rolled per-field merge (mirroring the `policies` coercion's
+      # mkOptionType, NOT a new engine), using v1's OWN deep-merge shape (nix/lib/aspects/types.nix:478-491):
+      # colliding LISTS concatenate (⇒ `includes`/`excludes` concat in def order, v1's listOf semantics), colliding
+      # ATTRSETS recurse (⇒ freeform class keys like `nixos`/`homeManager` deep-merge, as v1's aspectKeyType did),
+      # and scalars keep last-def-wins. No per-element type wraps the `includes` entries, so aspect/policy RECORDS
+      # and bare parametric FUNCTIONS ride through byte-identical (a `listOf anything` would erase a bare fn's
+      # formals — the same top-level-fn hazard the `policies` coercion documents). The shim re-derives the aspect's
+      # synthetic `provides`/`_`/`__functor` from this raw record via its own `translateAspect` (compile.nix
+      # `defaultAspects` → `__default`), so the bridge need only produce the MERGED raw def, not v1's full submodule.
+      #
+      # CORPUS CEILING (STOP-GATE cleared): the corpus sets `den.default` ONLY via `.includes`, with NO
+      # `mkDefault`/`mkForce` on the value — so no priority machinery is exercised beyond what the module system
+      # resolves at the def level BEFORE this merge is called. A whole-value priority (`den.default = mkForce …`)
+      # is honored by nixpkgs upstream of `merge`; per-sub-path inner priorities are unused by the corpus.
+      options.default = lib.mkOption {
+        description = "den.default aspect — cross-module folded at the bridge boundary (v1 aspectType parity, defaults.nix:3-6 / types.nix:696-699,478-491): `includes`/`excludes` lists CONCATENATE in module-definition order, freeform class-key attrsets deep-merge, scalars last-def-wins.";
+        default = { };
+        type = lib.mkOptionType {
+          name = "denDefault";
+          description = "raw per-module den.default definitions folded by v1's deep-merge (lists concat, attrs recurse, scalars last-wins)";
+          merge =
+            _loc: defs:
+            let
+              deepMerge =
+                a: b:
+                a
+                // builtins.mapAttrs (
+                  bk: bv:
+                  if !(a ? ${bk}) then
+                    bv
+                  else if builtins.isAttrs a.${bk} && builtins.isAttrs bv then
+                    deepMerge a.${bk} bv
+                  else if builtins.isList a.${bk} && builtins.isList bv then
+                    a.${bk} ++ bv
+                  else
+                    bv
+                ) b;
+            in
+            lib.foldl' (acc: d: deepMerge acc d.value) { } defs;
+        };
+      };
     };
     default = { };
     description = "The den v1 declaration surface (absorbed raw here; desugared by the compat two-eval).";

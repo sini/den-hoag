@@ -126,6 +126,70 @@ let
     }
     .fn
   );
+
+  # ── den.default v1-parity cross-module FOLD through the bridge (R4 radiation, the THIRD declared-option) ──
+  # v1's `den.default` is an aspectType SUBMODULE whose `includes` is a `listOf` (nix/lib/aspects/types.nix:
+  # 696-699): TWO modules setting `den.default.includes` CONCATENATE in module-definition order. Through the
+  # freeform `anything` the two lists CONFLICTED (`anything` never concatenates a nested list-valued key — the
+  # SAME R4-radiation wall the `schema`/`policies` fixes hit); `options.default` reproduces v1's deep-merge fold
+  # (nix/lib/aspects/types.nix:478-491): lists concat, attrsets recurse, scalars last-def-wins.
+  defaultCfg = evalBridgeConfig {
+    imports = [
+      {
+        den.default.includes = [
+          { name = "a"; }
+          { name = "b"; }
+        ];
+      }
+      { den.default.includes = [ { name = "c"; } ]; }
+    ];
+  };
+  # THE CORPUS SHAPE: a 5-entry base (modules/den/defaults.nix — define-user/hostname/primary-user/inputs'/
+  # self') + a 1-entry append (modules/den/batteries/nix-on-droid.nix — the drop-user-to-host-on-droid policy)
+  # fold into ONE 6-entry aspect, order preserved. This is exactly the RUNG's conflicting pair.
+  corpusShapeCfg = evalBridgeConfig {
+    imports = [
+      {
+        den.default.includes = [
+          { name = "define-user"; }
+          { name = "hostname"; }
+          { name = "primary-user"; }
+          { name = "inputs'"; }
+          { name = "self'"; }
+        ];
+      }
+      {
+        den.default.includes = [
+          {
+            __isPolicy = true;
+            name = "drop-user-to-host-on-droid";
+          }
+        ];
+      }
+    ];
+  };
+  # SINGLE-module: byte-stable — the merged value is exactly the raw def, no wrapping/synthesis at the bridge.
+  singleCfg = evalBridgeConfig { den.default.includes = [ { name = "only"; } ]; };
+  # NON-includes field surface: freeform class-key attrsets DEEP-MERGE across modules (v1 aspectKeyType) while
+  # `includes` concatenates simultaneously, and a scalar (`description`) keeps last-def-wins (v1 str option).
+  mixedCfg = evalBridgeConfig {
+    imports = [
+      {
+        den.default = {
+          includes = [ { name = "x"; } ];
+          nixos.a = 1;
+          description = "first";
+        };
+      }
+      {
+        den.default = {
+          includes = [ { name = "y"; } ];
+          nixos.b = 2;
+          description = "second";
+        };
+      }
+    ];
+  };
 in
 {
   flake.tests.compat-bridge = {
@@ -207,6 +271,57 @@ in
           cluster = false;
           environment = false;
         };
+      };
+    };
+
+    # den.default: two modules' `includes` CONCATENATE in module-definition order (v1 listOf semantics) —
+    # the RUNG's conflict (the freeform `anything` threw "conflicting definition values") is now a clean fold.
+    test-default-includes-concat-order = {
+      expr = map (x: x.name) defaultCfg.den.default.includes;
+      expected = [
+        "a"
+        "b"
+        "c"
+      ];
+    };
+    # The corpus shape (5-entry base + 1-entry droid append) folds into one ordered 6-entry aspect.
+    test-default-corpus-shape = {
+      expr = map (x: x.name) corpusShapeCfg.den.default.includes;
+      expected = [
+        "define-user"
+        "hostname"
+        "primary-user"
+        "inputs'"
+        "self'"
+        "drop-user-to-host-on-droid"
+      ];
+    };
+    # Single-module: byte-stable — the bridge folds one def to exactly its raw value (no synthesis here; the
+    # shim's translateAspect derives provides/_/__functor downstream).
+    test-default-single-module-bytestable = {
+      expr = singleCfg.den.default;
+      expected = {
+        includes = [ { name = "only"; } ];
+      };
+    };
+    # Full field surface: class-key attrsets deep-merge, includes concat, scalar last-def-wins — the fields
+    # v1's aspectType submodule merges. (Corpus uses only `includes`; this pins the general v1-parity fold.)
+    test-default-mixed-fields-merge = {
+      expr = {
+        includes = map (x: x.name) mixedCfg.den.default.includes;
+        nixos = mixedCfg.den.default.nixos;
+        description = mixedCfg.den.default.description;
+      };
+      expected = {
+        includes = [
+          "x"
+          "y"
+        ];
+        nixos = {
+          a = 1;
+          b = 2;
+        };
+        description = "second";
       };
     };
   };
