@@ -43,10 +43,69 @@ let
   shimDrvPath =
     (hoag.compat.mkDenWith [ fixture ] { nixosTerminal = crossNixos; })
     .nixosConfigurations.igloo.config.system.build.toplevel.drvPath;
+
+  # ── M2.5 channel-binding smoke (the corpus collector shape at the real crossing) ──────────────────
+  # Two quirk channels + the corpus's two bare channel-arg consumer shapes (firewall-collector /
+  # secrets-collector, nix-config defaults.nix host includes): `igloo` EMITS a firewall fragment (the
+  # value case); `bare` emits nothing on either channel (the totality case — pre-totality the shim arm
+  # threw `called without required argument 'firewall'` here; den v1 injects every registered pipe
+  # ctx-present-and-empty, pin 11866c16 assemble-pipes.nix:951). `age-secrets` is emitted NOWHERE
+  # (totality for a fleet-wide-silent channel). Both hosts must be drvPath-equal across arms.
+  channelFixture =
+    { den, ... }:
+    {
+      den.hosts.x86_64-linux = {
+        igloo = { };
+        bare = { };
+      };
+      den.quirks.firewall.description = "smoke firewall channel";
+      den.quirks.age-secrets.description = "smoke never-emitted channel";
+      den.aspects.fw-collector.nixos = { firewall, lib, ... }: lib.mkMerge firewall;
+      den.aspects.sec-collector.nixos = { age-secrets, lib, ... }: lib.mkMerge age-secrets;
+      den.aspects.igloo = {
+        includes = [
+          den.aspects.fw-collector
+          den.aspects.sec-collector
+        ];
+        firewall = {
+          networking.firewall.allowedTCPPorts = [ 7654 ];
+        };
+        nixos = {
+          networking.hostName = "igloo";
+          boot.isContainer = true;
+        };
+      };
+      den.aspects.bare = {
+        includes = [
+          den.aspects.fw-collector
+          den.aspects.sec-collector
+        ];
+        nixos = {
+          networking.hostName = "bare";
+          boot.isContainer = true;
+        };
+      };
+    };
+
+  chanV1 = v1arm.crossV1 { fixtureModule = channelFixture; };
+  chanShim =
+    (hoag.compat.mkDenWith [ channelFixture ] { nixosTerminal = crossNixos; }).nixosConfigurations;
+  chanHost = host: rec {
+    v1DrvPath = chanV1.${host}.config.system.build.toplevel.drvPath;
+    shimDrvPath = chanShim.${host}.config.system.build.toplevel.drvPath;
+    equal = v1DrvPath == shimDrvPath;
+    diffHint = "nix-diff ${v1DrvPath} ${shimDrvPath}";
+  };
+  channels = {
+    emitting = chanHost "igloo"; # firewall fragment emitted + collected
+    silent = chanHost "bare"; # zero emissions on both channels — the totality witness
+  };
 in
 {
   configuration = "nixosConfigurations.igloo";
   inherit v1DrvPath shimDrvPath;
   equal = v1DrvPath == shimDrvPath;
   diffHint = "nix-diff ${v1DrvPath} ${shimDrvPath}";
+  inherit channels;
+  allEqual = (v1DrvPath == shimDrvPath) && channels.emitting.equal && channels.silent.equal;
 }

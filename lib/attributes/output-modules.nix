@@ -46,6 +46,11 @@
   result,
   classesByName,
   classOfNode,
+  # The REGISTERED channel names (`attrNames den.quirks`) — the terminal binding surface's totality
+  # domain (see `bindingsAt`). Required, not defaulted: the channel-binding law is total over the
+  # registration set, so the caller must state it (a defaulted `[ ]` would silently reopen the
+  # absent-key defect the law closes).
+  channelNames,
   demandEdges ? [ ],
   # The gen-edge source interpreters (`{ synthesize ? …; rewalk ? …; }`), threaded through `den.interpret`.
   # Native den-hoag constructs no synthesize/rewalk edge, so the default `{ }` is complete; an external consumer
@@ -247,8 +252,30 @@ let
     ) local;
 
   # The binding set handed to a member's class modules: the node's entity bindings (host/user/env
-  # entries + enrichments) plus its own resolved channel emissions.
-  bindingsAt = id: (result.get id "enriched-context") // channelBindingsAt id;
+  # entries + enrichments) plus the fleet's channel bindings.
+  #
+  # CHANNEL TOTALITY (the native law): a REGISTERED channel is a named binding surface whose
+  # collected value at any node is TOTAL — the EMPTY collection when nothing is emitted there,
+  # analogous to an option's default. The absent key was the defect: gen-bind's `wrapAll` binds a
+  # module arg iff the binding KEY exists (gen-bind wrap.nix `boundArgNames`), so a class module
+  # destructuring a channel arg (`{ firewall, lib, ... }:`) at a node with zero emissions on that
+  # channel was passed through unwrapped and the evaluator called it without its required argument —
+  # at the first FORCING terminal only (the nixpkgs crossing; the `collect` terminal never forces,
+  # which is why the gap stayed latent). den v1 parity CONFIRMS the law, it is not its source
+  # (pin 11866c16 assemble-pipes.nix:951 `lib.genAttrs pipeNames` — every registered pipe is
+  # ctx-present at every scope, empty or not).
+  #
+  # KNOWN CEILING (out of scope here): the per-channel value is the node's OWN emissions
+  # (attribute 10). A bare channel-arg consumer of a channel moved by a collect/broadcast POLICY
+  # would under-read through this surface — such a consumer needs the received-collections read
+  # (`consumeAt`), not the local binding. The corpus's two bare-arg consumers (`firewall`,
+  # `age-secrets`) are host-local channels with no collect/broadcast policy (nix-config
+  # policies/pipes.nix declares none for either), so local ≡ received for both.
+  bindingsAt =
+    id:
+    (result.get id "enriched-context")
+    // prelude.genAttrs channelNames (_: [ ])
+    // channelBindingsAt id;
 
   memberClassName =
     id:

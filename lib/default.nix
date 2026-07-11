@@ -655,7 +655,12 @@ let
       # demand-free fleet's `demandEdges` is `[ ]`, so the fold is byte-identical to the pre-A11 output.
       output = attributesLib.mkOutputModules {
         result = structural.eval;
-        inherit classesByName classOfNode demandEdges;
+        inherit
+          classesByName
+          classOfNode
+          demandEdges
+          channelNames
+          ;
         interpret = ent.config.den.interpret or { };
       };
 
