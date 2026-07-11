@@ -823,6 +823,7 @@ builtins.seq surfaceTotalityOk {
       systemFor
       instantiateFor
       hostClassName
+      hostSystemName
       ;
   };
   inherit aspects policies;

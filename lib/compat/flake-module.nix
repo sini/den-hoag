@@ -153,15 +153,23 @@ let
   mkFleetModuleWith =
     compiled: nixosTerminal:
     let
-      # Instances cross FIELD-LESS (den-hoag entities carry no content), EXCEPT the host's `class` field:
-      # v1's `host.class` is structural entity data the built-in os/user routes gate on (R3/R6), so the host
-      # kind declares it (ingest.nix `buildSchema`) and it is stamped here from the compile-side
-      # `hostClassName` map. Every other kind's instances stay `{ }`.
+      # Instances cross FIELD-LESS (den-hoag entities carry no content), EXCEPT the host's `class` and
+      # `system` fields: v1's `host.class`/`host.system` are structural entity data the built-in os/user
+      # routes (R3/R6, `ctx.host.class`) and the home-platform routes (`ctx.host.system`) gate on, so the
+      # host kind declares them (ingest.nix `buildSchema`) and they are stamped here from the compile-side
+      # `hostClassName`/`hostSystemName` maps. v1 binds the FULL host config as the ctx entity, so those
+      # fields are present at real dispatch there; the shim reproduces them on the field-less entry (the
+      # probe sentinel already carries both — see flake-module `probeSentinelModule`). Every other kind's
+      # instances stay `{ }`.
       hostClassName = compiled.entities.hostClassName or { };
+      hostSystemName = compiled.entities.hostSystemName or { };
       instanceConfig = builtins.mapAttrs (
         kind: insts:
         if kind == "host" then
-          builtins.mapAttrs (name: _: { class = hostClassName.${name} or null; }) insts
+          builtins.mapAttrs (name: _: {
+            class = hostClassName.${name} or null;
+            system = hostSystemName.${name} or null;
+          }) insts
         else
           builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;

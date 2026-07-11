@@ -104,13 +104,15 @@ let
         (if declared ? host then { } else { host.parent = null; })
         // (if declared ? user then { } else { user.parent = "host"; })
         // declared;
-      # v1's `host.class` (nixos/darwin) is a STRUCTURAL entity FIELD (den v1 host entities carry it), NOT
-      # aspect content — so the host kind DECLARES it as an instance field (gen-schema kind `options`),
-      # `raw` + default null (a synthetic `user@host` home, or a class-less custom host, carries none). The
-      # field rides the entity into the policy ctx, so the built-in `os-to-host`/`user-to-host` routes
-      # (R3/R6) can gate on `ctx.host.class ∈ {nixos,darwin}` exactly as v1 does. id_hash is name-derived
-      # (sha256 "host|name=<name>"), so adding a field does NOT perturb entity identity.
-      withHostClassField =
+      # v1's `host.class` (nixos/darwin) and `host.system` (the `den.hosts.<system>.<name>` path key that
+      # `flattenHosts` demoted to a field) are STRUCTURAL entity FIELDS (den v1 host entities carry them),
+      # NOT aspect content — so the host kind DECLARES them as instance fields (gen-schema kind `options`),
+      # `raw` + default null (a synthetic `user@host` home, or a class-/system-less custom host, carries
+      # none). The fields ride the entity into the policy ctx, so the built-in `os-to-host`/`user-to-host`
+      # routes (R3/R6) gate on `ctx.host.class ∈ {nixos,darwin}`, and the home-platform routes gate on
+      # `ctx.host.system` (`hasPrefix "aarch64-"` / `hasSuffix "-linux"`/`"-darwin"`), exactly as v1 does.
+      # id_hash is name-derived (sha256 "host|name=<name>"), so adding fields does NOT perturb entity identity.
+      withHostFields =
         withBuiltins
         // prelude.optionalAttrs (withBuiltins ? host) {
           host = withBuiltins.host // {
@@ -119,18 +121,23 @@ let
               default = null;
               description = "v1 host OS class (nixos/darwin) — the R3/R6 route gate reads it (compat).";
             };
+            options.system = schema.mkOption {
+              type = schema.types.raw;
+              default = null;
+              description = "v1 host platform system (the demoted `den.hosts.<system>` key) — the home-platform route gate reads it (compat).";
+            };
           };
         };
-      kinds = builtins.attrNames withHostClassField;
+      kinds = builtins.attrNames withHostFields;
       checkParent =
         kind:
         let
-          p = withHostClassField.${kind}.parent;
+          p = withHostFields.${kind}.parent;
         in
         if p == null || builtins.elem p kinds then true else errors.unknownParentKind kind p;
       _checked = builtins.all checkParent kinds;
     in
-    builtins.seq _checked withHostClassField;
+    builtins.seq _checked withHostFields;
 
   # Kind-attached includes (`den.schema.<kind>.includes = [ <aspect> ]`) → `{ <kind> = [ <aspectName> ]; }`,
   # the raw material `compile` turns into fire-at-kind policies (an aspect radiated to every instance of
@@ -400,6 +407,14 @@ let
       # `host ? class` does — a classless host is NOT inert (v1 derives), so the shim derives too.
       hostClassName = builtins.mapAttrs (_: classOfHost) flatHosts;
 
+      # Per-host platform SYSTEM keyed by host name — the value mkFleetModule stamps onto the den-hoag host
+      # entity's declared `system` field, so the home-platform route gates read `ctx.host.system` exactly as
+      # v1 does (v1 binds the full host config as the ctx entity — pin 11866c16
+      # nix/lib/aspects/fx/assemble-pipes.nix:154 — so `host.system` is present there). The value is v1's
+      # `den.hosts.<system>.<name>` path key demoted to a field by `flattenHosts`; absent (a synthetic or
+      # system-less host) → null, so the route's `hasPrefix`/`hasSuffix` test is false, matching v1's default.
+      hostSystemName = builtins.mapAttrs (_: h: h.system or null) flatHosts;
+
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
       classRegistry = builtinClasses // prelude.genAttrs declaredClassNames classEntry;
@@ -428,6 +443,7 @@ let
         systemFor
         instantiateFor
         hostClassName
+        hostSystemName
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;
