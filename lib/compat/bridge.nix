@@ -50,6 +50,26 @@
   options,
   ...
 }:
+let
+  # v1's OWN deep-merge shape (pin 11866c16 nix/lib/aspects/types.nix:478-490), the ONE fold shared by
+  # the `options.default` and `options.aspects` declared-option instances: colliding ATTRSETS recurse,
+  # colliding LISTS concatenate, everything else (scalars AND fns — never merged, never wrapped) keeps
+  # last-def-wins.
+  v1DeepMerge =
+    a: b:
+    a
+    // builtins.mapAttrs (
+      bk: bv:
+      if !(a ? ${bk}) then
+        bv
+      else if builtins.isAttrs a.${bk} && builtins.isAttrs bv then
+        v1DeepMerge a.${bk} bv
+      else if builtins.isList a.${bk} && builtins.isList bv then
+        a.${bk} ++ bv
+      else
+        bv
+    ) b;
+in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
   # surface (v1 grammar as inert data), and — being a submodule, not a leaf — is a legal PARENT for the
@@ -258,31 +278,15 @@
       # `mkDefault`/`mkForce` on the value — so no priority machinery is exercised beyond what the module system
       # resolves at the def level BEFORE this merge is called. A whole-value priority (`den.default = mkForce …`)
       # is honored by nixpkgs upstream of `merge`; per-sub-path inner priorities are unused by the corpus.
+      # CEILING SHARED with `options.aspects` (fork D there): a 2-module collision under an mkOption-bearing
+      # subtree (`settings`) would recurse into option-record internals — corpus-zero on both surfaces.
       options.default = lib.mkOption {
         description = "den.default aspect — cross-module folded at the bridge boundary (v1 aspectType parity, defaults.nix:3-6 / types.nix:696-699,478-491): `includes`/`excludes` lists CONCATENATE in module-definition order, freeform class-key attrsets deep-merge, scalars last-def-wins.";
         default = { };
         type = lib.mkOptionType {
           name = "denDefault";
           description = "raw per-module den.default definitions folded by v1's deep-merge (lists concat, attrs recurse, scalars last-wins)";
-          merge =
-            _loc: defs:
-            let
-              deepMerge =
-                a: b:
-                a
-                // builtins.mapAttrs (
-                  bk: bv:
-                  if !(a ? ${bk}) then
-                    bv
-                  else if builtins.isAttrs a.${bk} && builtins.isAttrs bv then
-                    deepMerge a.${bk} bv
-                  else if builtins.isList a.${bk} && builtins.isList bv then
-                    a.${bk} ++ bv
-                  else
-                    bv
-                ) b;
-            in
-            lib.foldl' (acc: d: deepMerge acc d.value) { } defs;
+          merge = _loc: defs: lib.foldl' (acc: d: v1DeepMerge acc d.value) { } defs;
         };
       };
       # v1-parity RAW-PRESERVATION for `den.batteries` — the FOURTH instance of the bridge's declared-option
@@ -321,6 +325,49 @@
           name = "denBatteries";
           description = "raw per-module den.batteries definitions unioned (shallow, later-def-wins per name); values pass through untouched (no anything top-level-fn erasure)";
           merge = _loc: defs: lib.foldl' (acc: d: acc // d.value) { } defs;
+        };
+      };
+      # v1-parity RAW-PRESERVING DEEP-MERGE for `den.aspects` — the FIFTH instance of the bridge's
+      # declared-option pattern (after `options.schema`/`options.policies`/`options.default`/
+      # `options.batteries`), unblocking the corpus drvPath. v1 declares `options.den.aspects`
+      # (nix/nixModule/aspects.nix:6, pin 11866c16) with `aspectsType` (nix/lib/aspects/types.nix:740-742),
+      # whose per-class-key content wrapper holds every fn value RAW (`aspectContentType` stores defs
+      # unmerged in `__contentValues`, types.nix:421 — a fn NEVER passes through a fn-merge). The freeform
+      # `anything` above instead sends a fn at ANY attrset depth through its lambda-merge branch (nixpkgs
+      # lib/types.nix:353-359), wrapping it in a bare `arg:` lambda — ERASING `functionArgs` — so EVERY
+      # corpus aspect class fn crossed formals-erased, gen-bind's formals-driven wrapAll bound nothing, and
+      # the corpus drvPath threw `function 'nixos' called without required argument 'firewall'` (corpus
+      # modules/den/aspects/core/network/firewall-collector.nix:3) inside the real nixosSystem.
+      #
+      # THE LOAD-BEARING MECHANISM (why this fold fixes it): deepMerge recurses ONLY on collision (both
+      # sides attrset at a shared key). A single-def subtree rides `bv` RAW, UNRECURSED. `anything` ALWAYS
+      # recurses per-key (even single-def), which is what wraps a single-def leaf lambda into `arg:…`
+      # (formals erased). So firewall-collector's single-path `nixos` fn rides `bv` RAW under deepMerge →
+      # formals intact. Same v1 deep-merge shape as `options.default` (v1 types.nix:478-490, the shared
+      # `v1DeepMerge`): colliding attrsets recurse (the namespace ancestors — `core`/`apps`/`services`/… —
+      # union across the corpus's one-aspect-per-file modules), colliding lists concat (`includes`, v1's
+      # listOf semantics), scalars last-def-wins. The shim re-derives `provides`/`_`/`__functor` + identity
+      # via translateAspect (compile.nix); no shim consumer reads v1's `__contentValues`/`__provider`
+      # typing off the bridge (compile.nix documents both as absent at the raw boundary).
+      #
+      # CEILING (fork A, corpus-zero): a fn-vs-fn collision at ONE class key is LAST-DEF-WINS here, where
+      # v1 COLLECTS BOTH defs (`__contentValues`, types.nix:421) for emit-classes. The corpus has exactly
+      # ONE cross-module aspect path (`core.impermanence` — impermanence.nix + darwin.nix, DISJOINT keys),
+      # so no corpus def is dropped; adopt collect-both only when a real 2-module same-key class def
+      # appears (`ci/tests/compat-bridge.nix` test-aspects-fnfn-collision-lastwins-ceiling pins the
+      # semantics so any change announces). Fork C (corpus-zero): a TOP-LEVEL bare-fn aspect now reaches
+      # translateAspect's fn-branch coercion (compile.nix) with PRESERVED formals, so compile's callGated
+      # gates it correctly — a free correctness improvement over the erased-formals ride. Fork D CEILING
+      # shared with `options.default` (see its comment): mkOption-bearing `settings` subtrees, corpus-zero
+      # collisions. (#58 note: owning this fold makes v1's `annotateDeep` fold-time `__provider`
+      # annotation — the dedup upgrade path — easier later.)
+      options.aspects = lib.mkOption {
+        description = "den.aspects — cross-module raw-preserving deep-merge at the bridge boundary (v1 aspectsType parity, nixModule/aspects.nix:6 / types.nix:740-742,478-490): attrsets recurse ONLY on collision, lists concat, scalars/fns last-def-wins RAW — a class fn is never wrapped, so its formals survive to gen-bind (the freeform `anything` erases a fn's functionArgs at any depth).";
+        default = { };
+        type = lib.mkOptionType {
+          name = "denAspects";
+          description = "raw per-module den.aspects definitions folded by v1's deep-merge (attrs recurse on collision only, lists concat, scalars/fns last-wins raw)";
+          merge = _loc: defs: lib.foldl' (acc: d: v1DeepMerge acc d.value) { } defs;
         };
       };
     };

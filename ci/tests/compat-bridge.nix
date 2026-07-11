@@ -263,6 +263,104 @@ let
         )
       ];
     }).config.flake;
+
+  # ── den.aspects RAW-PRESERVING DEEP-MERGE through the bridge (the FIFTH declared-option; the aspects RUNG) ──
+  # The corpus drvPath blocker: the freeform `anything` sends a fn at ANY attrset depth through its
+  # lambda-merge branch (nixpkgs lib/types.nix:353-359) — SINGLE-DEF INCLUDED, because `anything` always
+  # recurses per-key — wrapping it in a bare `arg:` lambda and ERASING `functionArgs`. So EVERY corpus
+  # aspect class fn crossed formals-erased, gen-bind's formals-driven wrapAll bound nothing, and the
+  # corpus drvPath threw `function 'nixos' called without required argument 'firewall'`
+  # (firewall-collector.nix:3) inside the real nixosSystem. The declared `options.aspects` folds with
+  # v1's deep-merge (types.nix:478-490, pin 11866c16), which recurses ONLY on collision — a single-def
+  # subtree rides raw, unrecursed, so a class fn's formals survive (v1 parity: aspectContentType stores
+  # fn defs raw in `__contentValues`, types.nix:421).
+  collectorFn =
+    { firewall, lib, ... }:
+    lib.mkMerge firewall;
+  # CONTRAST (the load-bearing proof): the SAME nested single-def class-fn shape through `anything.merge`
+  # ERASES formals — the erasure is NOT a multi-def artifact.
+  anythingErasedAspect =
+    builtins.functionArgs
+      (lib.types.anything.merge
+        [ "den" "aspects" ]
+        [
+          {
+            file = "m";
+            value = {
+              core.fw.nixos = collectorFn;
+            };
+          }
+        ]
+      ).core.fw.nixos;
+  # END-TO-END through the REAL bridge: the extra module's `core.fw` unions with fleetBase's `igloo`
+  # (a genuine cross-module den.aspects merge), and the nested class fn keeps its declared formals.
+  aspectsCfg = evalBridgeConfig { den.aspects.core.fw.nixos = collectorFn; };
+  # THE CORPUS'S ONLY cross-module aspect path (corpus-zero pin, fork A): `core.impermanence` is defined
+  # by TWO modules with DISJOINT keys (impermanence.nix: includes/settings/nixos/homeManager;
+  # darwin.nix: darwin). The union must carry BOTH class fns raw + the includes list intact. This is the
+  # ENTIRE corpus cross-module surface — a future same-key collision has no corpus witness and falls to
+  # the last-wins ceiling below.
+  impermanenceCfg = evalBridgeConfig {
+    imports = [
+      {
+        den.aspects.core.impermanence = {
+          includes = [
+            { name = "btrfs"; }
+            { name = "zfs"; }
+          ];
+          nixos = _: { imports = [ ]; };
+          homeManager = {
+            home.persistence = { };
+          };
+        };
+      }
+      {
+        den.aspects.core.impermanence.darwin = _: { };
+      }
+    ];
+  };
+  # CEILING pin (fork A): fn-vs-fn at ONE class key is LAST-DEF-WINS (v1 collects BOTH via
+  # `__contentValues`, types.nix:421 — adopt collect-both only when a real 2-module same-key class def
+  # appears in the corpus). This test pins the current semantics so any change announces here.
+  fnFnCfg = evalBridgeConfig {
+    imports = [
+      { den.aspects.col.nixos = { firewall, ... }: firewall; }
+      {
+        den.aspects.col.nixos =
+          { age-secrets, ... }:
+          age-secrets;
+      }
+    ];
+  };
+  # END-TO-END CROSSED (the corpus fail shape, in-repo): a registered channel + the bare-arg collector
+  # aspect (firewall-collector verbatim) + an emitting host, through the REAL bridge into a REAL crossed
+  # NixOS system. Pre-fix this threw the RUNG's verbatim blocker (`called without required argument
+  # 'firewall'`); post-fix the binding flows and the emitted fragment lands in the built config.
+  aspectsE2ECrossed =
+    (lib.evalModules {
+      modules = [
+        flakeStub
+        bridge
+        (
+          { den, ... }:
+          {
+            den.quirks.firewall.description = "bridge channel";
+            den.aspects.fw-collector.nixos =
+              { firewall, lib, ... }:
+              lib.mkMerge firewall;
+            den.aspects.igloo = {
+              includes = [ den.aspects.fw-collector ];
+              nixos = hostContent;
+              firewall = {
+                networking.firewall.allowedTCPPorts = [ 7654 ];
+              };
+            };
+            den.hosts.x86_64-linux.igloo = { };
+            den.nixpkgs = nixpkgs;
+          }
+        )
+      ];
+    }).config.flake;
 in
 {
   flake.tests.compat-bridge = {
@@ -441,6 +539,85 @@ in
     test-batteries-e2e-crossed-host-gated-resolves = {
       expr = batteriesE2ECrossed.nixosConfigurations.igloo.config.networking.hostName;
       expected = "igloo";
+    };
+
+    # den.aspects (the aspects RUNG): THE PROOF the declared option is load-bearing — at the SAME nixpkgs
+    # lib, `anything.merge` ERASES a nested SINGLE-DEF class fn's formals (it always recurses per-key)
+    # while the declared deep-merge rides the single-def subtree raw, unrecursed.
+    test-aspects-anything-erases-declared-preserves = {
+      expr = {
+        anything = anythingErasedAspect;
+        declared = builtins.functionArgs aspectsCfg.den.aspects.core.fw.nixos;
+      };
+      expected = {
+        anything = { };
+        declared = {
+          firewall = false;
+          lib = false;
+        };
+      };
+    };
+    # Cross-module union at the den.aspects ROOT: the extra module's `core.fw` merges beside fleetBase's
+    # `igloo`, both subtrees raw (the corpus's one-aspect-per-file radiation shape).
+    test-aspects-cross-module-root-union = {
+      expr = {
+        keys = builtins.sort (a: b: a < b) (builtins.attrNames aspectsCfg.den.aspects);
+        iglooIntact = aspectsCfg.den.aspects.igloo.nixos.networking.hostName;
+      };
+      expected = {
+        keys = [
+          "core"
+          "igloo"
+        ];
+        iglooIntact = "igloo";
+      };
+    };
+    # THE CORPUS'S ONLY cross-module aspect path (corpus-zero pin): `core.impermanence`'s disjoint-key
+    # union carries BOTH class fns as REAL fns and the includes list intact.
+    test-aspects-impermanence-disjoint-union = {
+      expr = {
+        keys = builtins.sort (a: b: a < b) (
+          builtins.attrNames impermanenceCfg.den.aspects.core.impermanence
+        );
+        nixosIsFn = builtins.isFunction impermanenceCfg.den.aspects.core.impermanence.nixos;
+        darwinIsFn = builtins.isFunction impermanenceCfg.den.aspects.core.impermanence.darwin;
+        includes = map (x: x.name) impermanenceCfg.den.aspects.core.impermanence.includes;
+      };
+      expected = {
+        keys = [
+          "darwin"
+          "homeManager"
+          "includes"
+          "nixos"
+        ];
+        nixosIsFn = true;
+        darwinIsFn = true;
+        includes = [
+          "btrfs"
+          "zfs"
+        ];
+      };
+    };
+    # CEILING pin (fork A): fn-vs-fn at one class key = LAST-DEF-WINS, formals of the LAST def preserved.
+    # v1 collects BOTH (`__contentValues`, types.nix:421) — flipping this test = adopting collect-both.
+    test-aspects-fnfn-collision-lastwins-ceiling = {
+      expr = builtins.functionArgs fnFnCfg.den.aspects.col.nixos;
+      expected = {
+        age-secrets = false;
+      };
+    };
+    # END-TO-END CROSSED (the corpus fail shape): the bare-arg collector's binding flows through the REAL
+    # bridge — the host builds AND the channel-emitted firewall fragment lands in the built config.
+    # Pre-fix: `function 'nixos' called without required argument 'firewall'` (the RUNG's verbatim throw).
+    test-aspects-e2e-crossed-collector-binds = {
+      expr = {
+        hostName = aspectsE2ECrossed.nixosConfigurations.igloo.config.networking.hostName;
+        ports = aspectsE2ECrossed.nixosConfigurations.igloo.config.networking.firewall.allowedTCPPorts;
+      };
+      expected = {
+        hostName = "igloo";
+        ports = [ 7654 ];
+      };
     };
   };
 }
