@@ -117,6 +117,81 @@ let
       acc: k: builtins.removeAttrs acc [ k ] // { ${v1ClassKeyMap.${k} or k} = attrs.${k}; }
     ) attrs (builtins.attrNames attrs);
 
+  # ── v1 NESTED-ASPECT discriminator (the blade.shuo rung) — v1 `nix/lib/aspects/fx/
+  # key-classification.nix:69-80` `isNestedKey` + `:49-56` `looksLikeClassContent`, pin 11866c16. ──
+  #
+  # v1 partitions an aspect's non-structural/non-class/non-quirk keys (classifyKeys, :82-111): a key whose
+  # ATTRSET value carries ≥1 RECOGNIZED sub-key — structural, quirk, or class-with-class-like-content — is
+  # a NESTED ASPECT (`nestedKeys`); the rest are `unregisteredClassKeys` (typos). A nested aspect is NEVER
+  # emitted at the parent's scope (key-classification.nix:67-68: "sub-aspects are never auto-walked … they
+  # activate via explicit `includes`") — v1 routes it to the navigable synthetic `_`/provides child
+  # (types.nix mergeWithAspectMeta/aspectContentType) and annotates it with a `__provider` path
+  # (types.nix:560-574) that IS its identity when navigated (normalize.nix wrapChild:95-119). The corpus
+  # manifestation: `den.aspects.<host>.<user>` per-user sub-aspects (blade.nix:51/61, cortex.nix:175/185
+  # `sini`/`shuo` — each `{ includes = [ … ]; }`, whose `includes` sub-key is what classifies it nested),
+  # consumed ONLY by the dispatch-emitted `user-aspect-auto-include` (corpus defaults.nix:14-22; the
+  # translateEffect content-set include arm below).
+  #
+  # The shim reproduces the discriminator to SPLIT (translateAspect): nested keys are STRIPPED from the
+  # parent — strip-ONLY, no registration (Fork-B ruling): the auto-include emission re-reads the value off
+  # the bridge's `config.den.aspects` (bridge.nix `_module.args.den`), never off the compiled registry, so
+  # a registered sub-aspect would be unreferenced dead weight. A NON-nested unknown key (a typo — value not
+  # an attrset, or an attrset with no recognized sub-key) is LEFT IN PLACE and still aborts at the §2.2
+  # three-branch dispatch (v1's `unregisteredClassKeys` posture — never a silent swallow). CEILING (out-of-
+  # corpus): a parametric aspect RESULT with nested keys is not split (groundRec has no nested arm — v1
+  # classifies at resolution, so it would nested-classify there); it self-announces at §2.2 if it arrives.
+  #
+  # v1's `unwrapContentValuesForClassification` pre-step is SKIPPED: `__contentValues` wrappers are v1
+  # aspectContentType typing the raw bridge never constructs (the same reason `__provider` is absent).
+  # `looksLikeClassContent` forces a sub-value to WHNF only under a CLASS-named sub-key — v1's own forcing
+  # posture (key-classification.nix:62-64, the #580 flake-fixpoint guard).
+  v1StructuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
+  # den-hoag-only facets (concern-aspects.nix `facets`) that v1's structural set lacks — a parent key
+  # named like these is shim vocabulary, never a nested-aspect candidate. KEEP IN SYNC with that list.
+  hoagOnlyFacets = [
+    "neededBy"
+    "tags"
+    "projects"
+    "key"
+    "id_hash"
+  ];
+  # v1 key-classification.nix:49-56 verbatim: class-like content is a fn, a __contentValues wrapper, or an
+  # attrset with ≥1 attrset/fn-valued key — rejects flat-scalar sets that merely shadow a class name.
+  looksLikeClassContent =
+    v:
+    builtins.isFunction v
+    || (builtins.isAttrs v && v ? __contentValues)
+    || (
+      builtins.isAttrs v
+      && builtins.any (k: builtins.isAttrs v.${k} || builtins.isFunction v.${k}) (builtins.attrNames v)
+    );
+  # `mkIsNestedAspectKey classNames quirkNames` → `attrs: k: bool` — fleet-parameterised (the class set is
+  # builtins + declared classes, the quirk set the fleet's channels; same cnf grain as mkNormalize). The
+  # parent key `k` is tested POST-grounding (class keys already den-hoag-spelled); a SUB-key is grounded
+  # through the same v1ClassKeyMap before the class test (nested content is untouched by the parent fold).
+  mkIsNestedAspectKey =
+    classNames: quirkNames:
+    let
+      classSet = prelude.genAttrs classNames (_: true);
+      quirkSet = prelude.genAttrs quirkNames (_: true);
+      recognizedSubKey =
+        val: sk:
+        v1StructuralKeysSet ? ${sk}
+        || quirkSet ? ${sk}
+        || (classSet ? ${v1ClassKeyMap.${sk} or sk} && looksLikeClassContent val.${sk});
+      isCandidate =
+        k:
+        !(v1StructuralKeysSet ? ${k})
+        && !(builtins.elem k hoagOnlyFacets)
+        && !(classSet ? ${k})
+        && !(quirkSet ? ${k})
+        && builtins.substring 0 2 k != "__";
+    in
+    attrs: k:
+    isCandidate k
+    && builtins.isAttrs attrs.${k}
+    && builtins.any (recognizedSubKey attrs.${k}) (builtins.attrNames attrs.${k});
+
   # ── v1 aspect-include WRAP-GROUND builder (§339; cf. v1 `nix/lib/aspects/fx/aspect/normalize.nix`
   #    `wrapChild`/`wrapBareFn`). den-hoag requires a parametric aspect include to be a gen-aspects
   #    `__isWrappedFn` functor; a v1 bare-fn include (`includes = [ ({host,...}: <content>) ]`) is NOT
@@ -275,11 +350,12 @@ let
   # Near-identity aspect translation (§2.2 aspect row). den-hoag's aspect submodule already accepts the
   # v1 shape — `includes`/`neededBy`/`settings`/`meta.{guard,drop}`/`projects`/`tags` and freeform
   # class/quirk keys ride THROUGH untouched (a quirk key becomes a channel contribution at the aspect's
-  # producing class+scope, so PR #623 falls out). The only rewrites: a bare parametric FUNCTION coerces
+  # producing class+scope, so PR #623 falls out). The rewrites: a bare parametric FUNCTION coerces
   # to `{ includes = [ fn ]; }` (v1's own coercion), `excludes` folds into `meta.drop`, class keys are
-  # grounded, and the v1-only structural keys are dropped.
+  # grounded, NESTED-ASPECT keys are split off (v1 `isNestedKey` — see mkIsNestedAspectKey; strip-only,
+  # the emission path re-reads them off the bridge config), and the v1-only structural keys are dropped.
   translateAspect =
-    normalizeList: name: aspect:
+    normalizeList: isNestedAspectKey: name: aspect:
     # LEGACY SURFACE SENTINEL (C5): `provides` must have been desugared by legacy/provides.nix (applied
     # by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is severed —
     # fail LOUDLY naming the surface rather than dropping the declaration (sentinels.nix / errors.nix).
@@ -300,29 +376,79 @@ let
               in
               builtins.removeAttrs acc [ k ] // { ${k'} = aspect.${k}; }
             ) withoutDropped (builtins.attrNames withoutDropped);
+            # NESTED-ASPECT SPLIT (v1 key-classification.nix:69-80 `isNestedKey`, applied POST-grounding):
+            # strip the nested sub-aspect keys (blade's `sini`/`shuo`) from the parent, so the parent's
+            # content is pure facet/class/quirk and never trips the §2.2 dispatch at its own scope (v1
+            # never auto-walks a nested aspect). Strip-ONLY (Fork-B): the dispatch-emitted include re-reads
+            # the sub-aspect off the bridge config and re-wraps it (translateEffect content-set arm). A
+            # typo key fails the discriminator and STAYS — aborting at §2.2, v1's unregisteredClassKeys.
+            nestedKeys = builtins.filter (isNestedAspectKey grounded) (builtins.attrNames grounded);
+            parent = builtins.removeAttrs grounded nestedKeys;
             # Fold `excludes` into `meta.drop` (aspect-level constraint) without clobbering a declared drop.
-            meta = grounded.meta or { };
+            meta = parent.meta or { };
             metaWithDrop =
-              if excludes == [ ] then
-                grounded.meta or null
-              else
-                meta // { drop = (meta.drop or [ ]) ++ excludes; };
+              if excludes == [ ] then parent.meta or null else meta // { drop = (meta.drop or [ ]) ++ excludes; };
           in
-          grounded
+          parent
           // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
-          // prelude.optionalAttrs (grounded ? includes) {
-            includes = normalizeList "${name}:include" grounded.includes;
+          // prelude.optionalAttrs (parent ? includes) {
+            includes = normalizeList "${name}:include" parent.includes;
           }
       )
     );
+
+  # ── DISPATCH-EMITTED content-set include (the census TWIN path — the revived arm). A v1 policy body
+  # emits `policy.include den.aspects.<path>` where the navigated value crosses the raw bridge as a BARE
+  # content set (no id_hash/name — the bridge's `anything` drops v1's `__provider` annotation, the same
+  # boundary fact the kind-include contentRefs arm documents). Two corpus consumers:
+  #   • `user-aspect-auto-include` (defaults.nix:14-22) emits `den.aspects.<host>.<user>` at user cells —
+  #     the nested sub-aspects the translateAspect split strips (blade/cortex × sini/shuo);
+  #   • `cluster-aspect` (policies/clusters.nix:73) emits `den.aspects.<cluster>` at cluster scopes
+  #     (`den.aspects.axon`, clusters/axon.nix:101).
+  # The emitted value is GROUNDED through the SAME normalizeList machinery translateAspect uses (class
+  # keys grounded, `.includes` children wrapped/recursed — so the sub-aspect's firefox/steam/spicetify
+  # includes resolve at the cell) and stamped a DETERMINISTIC SCOPE-COORD identity (Fork-A ruling; the
+  # census intent `cluster-aspect@<cluster.name>`): name = `<emitted>@<coord names>`, id_hash = sha256
+  # over the firing cell's entity-coord id_hashes — stable across eval order, DISTINCT per cell
+  # (`<emitted>@blade.shuo` ≠ `<emitted>@cortex.shuo`; single-emission per cell makes dedup moot).
+  # CEILING (documented, not guarded): the identity is the CELL's, not the policy's — TWO content-set-
+  # emitting policies firing at ONE cell would collide (corpus: one per scope kind — user cells get
+  # user-aspect-auto-include, cluster scopes cluster-aspect); and a content set referenced from TWO cells
+  # lands twice under distinct identities (v1 dedups by `__provider` name — the board #58 registry
+  # restructure, NOT this arm). At the value-less stratum probe the coords are sentinel entries (which
+  # carry id_hash/name), so the derivation is probe-safe — though both corpus emitters gate on a real
+  # aspect-name match and emit nothing at the probe (expansion path).
+  isEmittedContentSet =
+    v:
+    builtins.isAttrs v
+    && !(v ? id_hash)
+    && !(v ? name)
+    && !(v ? __functor)
+    && !((v.__isPolicy or false) || (v.__denCanTake or null) != null);
+  mkEmittedAspect =
+    normalizeList: ctx: v:
+    let
+      coordKeys = builtins.sort builtins.lessThan (
+        builtins.filter (
+          k: builtins.substring 0 2 k != "__" && builtins.isAttrs ctx.${k} && ctx.${k} ? id_hash
+        ) (builtins.attrNames ctx)
+      );
+      name = "<emitted>@" + builtins.concatStringsSep "." (map (k: ctx.${k}.name or "?") coordKeys);
+      id_hash = builtins.hashString "sha256" (
+        "den-compat-emitted-include:"
+        + builtins.concatStringsSep "," (map (k: "${k}=${ctx.${k}.id_hash}") coordKeys)
+      );
+    in
+    builtins.head (normalizeList "${name}:content" [ v ]) // { inherit name id_hash; };
 
   # Translate ONE v1 policy effect record → den-hoag declaration(s): the structural/resolution
   # vocabulary (include/exclude/resolve + the instantiate spawn). The delivery-edge vocabulary
   # (deliver/route/provide) and the pipe stages ride named seams until their own passes land. Every
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
-  # checks pass; a stray string would abort named.
+  # checks pass; a stray string would abort named. `ctx` (the firing scope's coords) and `normalizeList`
+  # serve ONLY the content-set include arm (the scope-coord emission identity + grounding).
   translateEffect =
-    ing: aspectRec: effect:
+    ing: normalizeList: aspectRec: ctx: effect:
     let
       kind = effect.__policyEffect or null;
     in
@@ -331,7 +457,10 @@ let
     if effect.__delivery or false then
       [ (translateDelivery ing effect) ]
     else if kind == "include" then
-      [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
+      if isEmittedContentSet effect.value then
+        [ (declare.edge (mkEmittedAspect normalizeList ctx effect.value)) ]
+      else
+        [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "exclude" then
       # An aspect exclude prunes an aspect edge (`drop`). A POLICY exclude (`__denCanTake`/`__isPolicy`/
       # function target) suppresses a policy's FIRING — a distinct mechanism (v1 `drop-user-to-host-on-droid`,
@@ -424,9 +553,9 @@ let
   # it. A `for`/`when` policy record (`{ __isPolicy; fn }`) contributes its inner `fn`'s formals + effects
   # the same way (`innerFn`). A value-conditional body (emits nothing at concern-policies' value-less
   # probe) has its stratum derived per-declaration there; this compile stays stratum-agnostic.
-  compilePolicy = ing: aspectRec: value: {
+  compilePolicy = ing: normalizeList: aspectRec: value: {
     __condition = builtins.functionArgs (innerFn value);
-    fn = ctx: prelude.concatMap (translateEffect ing aspectRec) (innerFn value ctx);
+    fn = ctx: prelude.concatMap (translateEffect ing normalizeList aspectRec ctx) (innerFn value ctx);
   };
 
   # A `__denCanTake` policy — the FORMAL-PRESERVING compile path (the twin of the bare-ctx `compilePolicy`
@@ -447,7 +576,7 @@ let
   # value-absent target renders a `__dropped` no-op — translateDelivery). A CORPUS USER policy that emits
   # value-conditionally will hit the same misclassification — a C8 watch item: it aborts loudly by design
   # (never silently mis-fires), and the resolution is to rewrite it in the canTake + null-target-drop shape.
-  compileCanTake = ing: aspectRec: value: {
+  compileCanTake = ing: normalizeList: aspectRec: value: {
     # The route's fixed SHAPE retires into an explicit `__condition` coord set — the coords it gates
     # on, in the `functionArgs` shape (`false` = required). A hand-written formal lambda per shape is no
     # longer needed now that a rule's gate can be declared as data.
@@ -463,11 +592,11 @@ let
         errors.unsupportedEffect "canTake:${value.__denCanTake}";
     # Emits UNCONDITIONALLY given its coordinates (a single-group probe classifies it as resolution); a
     # value-absent target renders a `__dropped` no-op (translateDelivery).
-    fn = ctx: prelude.concatMap (translateEffect ing aspectRec) (value.fn ctx);
+    fn = ctx: prelude.concatMap (translateEffect ing normalizeList aspectRec ctx) (value.fn ctx);
   };
 
   compilePolicies =
-    ing: aspectRec: policies:
+    ing: normalizeList: aspectRec: policies:
     let
       names = builtins.attrNames policies;
       # Partition: `when`-over-inline-aspect values become aspects (conditional activation); a
@@ -482,8 +611,10 @@ let
     in
     {
       policies =
-        prelude.genAttrs policyNames (name: compilePolicy ing aspectRec policies.${name})
-        // prelude.genAttrs canTakeNames (name: compileCanTake ing aspectRec policies.${name});
+        prelude.genAttrs policyNames (name: compilePolicy ing normalizeList aspectRec policies.${name})
+        // prelude.genAttrs canTakeNames (
+          name: compileCanTake ing normalizeList aspectRec policies.${name}
+        );
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
         name:
@@ -526,7 +657,11 @@ let
   # fleet's DECLARED classes (`den.classes` — e.g. `wsl`), so a bare-fn include emitting a declared-class
   # key routes as CLASS content, not a nested aspect (Fork A). `v1Classes` is fleet-scoped, so this must
   # live in the function body (where the decls are), not at top level.
-  normalizeList = mkNormalize (builtinClasses ++ builtins.attrNames v1Classes);
+  allClassNames = builtinClasses ++ builtins.attrNames v1Classes;
+  normalizeList = mkNormalize allClassNames;
+  # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
+  # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
+  isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
 
   # `den.default` (v1 modules/aspects/defaults.nix:15-19): the default aspect, injected THERE via
   # `lib.genAttrs [ "host" "user" "home" ]` as a schema `includes = [ den.default ]` for EXACTLY the three
@@ -584,7 +719,7 @@ let
       name = "__default__policy__${toString i}";
       value =
         let
-          base = compilePolicy ing aspectRec ref;
+          base = compilePolicy ing normalizeList aspectRec ref;
         in
         base
         // {
@@ -598,7 +733,7 @@ let
 
   defaultAspects =
     if hasDefault then
-      { __default = translateAspect normalizeList "__default" defaultNonPolicyDecl; }
+      { __default = translateAspect normalizeList isNestedAspectKey "__default" defaultNonPolicyDecl; }
     else
       { };
   defaultPolicy =
@@ -624,7 +759,7 @@ let
   # laziness ties the knot without a loop.
   aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
 
-  compiledPolicies = compilePolicies ing aspectRec v1Policies;
+  compiledPolicies = compilePolicies ing normalizeList aspectRec v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag declarations,
   # classified PER REF exactly as v1's `wrapChild` (`aspects/fx/aspect/normalize.nix`, @ pin 11866c16). v1's
@@ -668,16 +803,21 @@ let
   #   host:        core/network/firewall-collector.nix:2, core/secrets (defaults.nix:8-9)
   #   user:        core/users/resolved-user-emitter.nix:4, core/network/syncthing/peers.nix:58
   #   flake-parts: aspects/devshell/{kubernetes.nix:27, secrets.nix:22, images.nix:22}, batteries/{nix-on-droid.nix:217 (deploy-slab), colmena.nix:132}
-  # TWIN (the DISPATCH-EMITTED include path — `translateEffect` `kind == "include"` runs the SAME
-  # resolveAspectRef on a policy-EMITTED `den.aspects.<x>` value): corpus census —
-  #   • `user-aspect-auto-include` (defaults.nix:20, `den.aspects.<host>.<user>`) = CORPUS-ZERO — no nested
-  #     per-host-per-user aspect exists in the fleet (only `den.aspects.<host>` host aspects), so it never
-  #     fires; LATENT/self-announcing if a consumer ever adds one.
-  #   • `cluster-aspect` (clusters.nix:79, `den.aspects.<cluster>`) DOES fire (`den.aspects.axon` exists) but
-  #     SINGLE-EMISSION per cluster → no dedup need. When it surfaces (behind #50), the fix is a small
-  #     extension of THIS arm at the translateEffect include site with a DETERMINISTIC dispatch-emission
-  #     identity (`cluster-aspect@<cluster.name>` — stable per cluster; single-emission makes dedup moot),
-  #     NOT the __provider registry restructure (board #58, the aspect-INCLUDE multi-reference dedup, row u5).
+  # TWIN (the DISPATCH-EMITTED include path — `translateEffect` `kind == "include"` now routes a
+  # policy-EMITTED bare `den.aspects.<x>` value through `mkEmittedAspect`, the scope-coord-identity
+  # re-wrap; ledger row u7): corpus census — CORRECTED 2026-07-10; the earlier census here claimed
+  # `user-aspect-auto-include` was CORPUS-ZERO, FALSIFIED by the blade §2.2 abort (the grep missed the
+  # nested keys inside the host-aspect blocks) —
+  #   • `user-aspect-auto-include` (defaults.nix:14-22, `den.aspects.<host>.<user>`) FIRES at FOUR corpus
+  #     sites: blade.nix:51/61 + cortex.nix:175/185 (hosts blade/cortex × users sini/shuo, each a nested
+  #     `{ includes = […]; }` sub-aspect). Served by THIS rung: translateAspect splits the nested keys off
+  #     the parent (mkIsNestedAspectKey) and the include arm re-wraps the emitted value with the
+  #     deterministic cell identity (`<emitted>@blade.shuo` ≠ `<emitted>@cortex.shuo`).
+  #   • `cluster-aspect` (policies/clusters.nix:73 — path corrected from the old `clusters.nix:79` cite,
+  #     `den.aspects.<cluster>`) fires for `den.aspects.axon` (clusters/axon.nix:101): the SAME arm,
+  #     SINGLE-EMISSION per cluster (identity `<emitted>@axon`; dedup moot).
+  #   Multi-reference dedup stays board #58 (the __provider registry restructure, row u5) — the emission
+  #   identity here is the CELL's re-wrap, deliberately NOT v1's __provider name.
   isContentRef =
     ref:
     builtins.isAttrs ref
@@ -784,7 +924,7 @@ let
               name = "__kindInclude__${kind}__policy__${toString i}";
               value =
                 let
-                  base = compilePolicy ing aspectRec ref;
+                  base = compilePolicy ing normalizeList aspectRec ref;
                 in
                 base // { __condition = kindCoord // base.__condition; };
             }) policyRefs
@@ -807,7 +947,7 @@ let
   kindIncludeAspects = kindInclude.aspects;
 
   aspects =
-    builtins.mapAttrs (translateAspect normalizeList) v1Aspects
+    builtins.mapAttrs (translateAspect normalizeList isNestedAspectKey) v1Aspects
     // defaultAspects
     // compiledPolicies.conditionalAspects
     // kindIncludeAspects;
