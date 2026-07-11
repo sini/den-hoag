@@ -602,12 +602,16 @@ let
   #   host:        core/network/firewall-collector.nix:2, core/secrets (defaults.nix:8-9)
   #   user:        core/users/resolved-user-emitter.nix:4, core/network/syncthing/peers.nix:58
   #   flake-parts: aspects/devshell/{kubernetes.nix:27, secrets.nix:22, images.nix:22}, batteries/{nix-on-droid.nix:217 (deploy-slab), colmena.nix:132}
-  # TWIN (latent, not this arm): the DISPATCH-EMITTED include path — `translateEffect` `kind == "include"`
-  # runs the SAME resolveAspectRef on a policy-EMITTED value (corpus `cluster-aspect` clusters.nix:79,
-  # `user-aspect-auto-include` defaults.nix:20 — both `den.aspects.<x>` content). Those are gated (fire only
-  # where the aspect exists) and self-announce with the same abort if reached; a dispatch-emitted value has no
-  # STATIC position so the positional identity here does NOT apply — the __provider upgrade path is the fix
-  # for that site too if it surfaces.
+  # TWIN (the DISPATCH-EMITTED include path — `translateEffect` `kind == "include"` runs the SAME
+  # resolveAspectRef on a policy-EMITTED `den.aspects.<x>` value): corpus census —
+  #   • `user-aspect-auto-include` (defaults.nix:20, `den.aspects.<host>.<user>`) = CORPUS-ZERO — no nested
+  #     per-host-per-user aspect exists in the fleet (only `den.aspects.<host>` host aspects), so it never
+  #     fires; LATENT/self-announcing if a consumer ever adds one.
+  #   • `cluster-aspect` (clusters.nix:79, `den.aspects.<cluster>`) DOES fire (`den.aspects.axon` exists) but
+  #     SINGLE-EMISSION per cluster → no dedup need. When it surfaces (behind #50), the fix is a small
+  #     extension of THIS arm at the translateEffect include site with a DETERMINISTIC dispatch-emission
+  #     identity (`cluster-aspect@<cluster.name>` — stable per cluster; single-emission makes dedup moot),
+  #     NOT the __provider registry restructure (board #58, the aspect-INCLUDE multi-reference dedup, row u5).
   isContentRef =
     ref:
     builtins.isAttrs ref

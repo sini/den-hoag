@@ -51,11 +51,25 @@ let
   #    clusters.nix:96) is coerced to `{ __isPolicy; name; fn }` — its formals ride INTACT on the NESTED `fn`
   #    — and its `den.schema.cluster.includes` REFERENCE arrives as that RECORD (the coerced corpus shape).
   #    Here `ctnFn` is the raw body and `ctnRec` mirrors the bridge coercion (direct `compile` gets no bridge,
-  #    so the record is applied by hand). Body calls the board-#50 `instantiate` STUB (a throw). ────────────
-  instantiateStub = _spec: throw "den-hoag compat: `den.lib.policy.instantiate` — board #50 stub";
+  #    so the record is applied by hand). Body now emits the UN-STUBBED (#50) `instantiate` EFFECT (`inst` =
+  #    the constructor's `{ __policyEffect = "instantiate"; value = spec }`) — so it PROBES SINGLE-GROUP (an
+  #    unconditional emission), where the old #50 STUB-throw made it look value-conditional (expansion). The
+  #    DISPOSITION is unchanged: cluster-to-nixidy still never fires at a real node (no `environment` coord is
+  #    bound onto cluster nodes, board #49) → `nixidyEnvs` still silently EMPTY. ─────────────────────────────
+  inst = spec: {
+    __policyEffect = "instantiate";
+    value = spec;
+  };
   ctnFn =
     { cluster, environment, ... }:
-    [ (instantiateStub { inherit (cluster) name; }) ];
+    [
+      (inst {
+        inherit (cluster) name;
+        class = "k8s-manifests";
+        instantiate = { modules, ... }: modules;
+        intoAttr = [ "nixidyEnvs" ];
+      })
+    ];
   ctnRec = {
     __isPolicy = true;
     name = "cluster-to-nixidy";
@@ -72,7 +86,7 @@ let
     };
   };
   ctnKindRec = ctnCompiled.policies."__kindInclude__cluster__policy__0";
-  ctnExpanded = compile { cluster-to-nixidy = ctnKindRec; };
+  ctnRecompiled = compile { cluster-to-nixidy = ctnKindRec; };
   # Behavioural inert: a plain host is cluster-less + env-less, so the {cluster,environment}-gated policy
   # never fires there — the host resolves CLEAN (no throw, no instantiate).
   ctnFleet =
@@ -501,23 +515,19 @@ in
         environment = false;
       };
     };
-    # (b) COMPILES (no uncatchable throw): the `instantiate` STUB throw is tryEval-caught at the value-less
-    #     probe → per-declaration EXPANSION into two sub-rules, each gated on {cluster, environment}.
-    test-cluster-to-nixidy-expands-gated = {
+    # (b) SINGLE-GROUP (the #50 un-stub): the `instantiate` constructor now EMITS (no throw), so the body
+    #     produces UNCONDITIONALLY at the value-less probe → a single-group resolution rule gated on
+    #     {cluster, environment} (the old STUB-throw made it LOOK value-conditional → expansion; the emission
+    #     reveals it is unconditional). Its produce is a `spawn { instantiate }` (childless-inert; the intoAttr
+    #     nixidyEnvs family is den-hoag-absent → latent, ledger u2).
+    test-cluster-to-nixidy-single-group = {
       expr = {
-        ids = ids ctnExpanded.policy;
-        conds = map (r: r.condition) ctnExpanded.policy;
+        ids = ids ctnRecompiled.policy;
+        conds = map (r: r.condition) ctnRecompiled.policy;
       };
       expected = {
-        ids = [
-          "cluster-to-nixidy#resolution"
-          "cluster-to-nixidy#structural"
-        ];
+        ids = [ "cluster-to-nixidy" ];
         conds = [
-          {
-            cluster = false;
-            environment = false;
-          }
           {
             cluster = false;
             environment = false;
@@ -527,9 +537,9 @@ in
     };
     # (c) INERT at a cluster-less/env-less node: a plain host resolves CLEAN — the {cluster,environment}-
     #     gated policy never fires (den-hoag binds no `environment` onto cluster nodes; no env→cluster
-    #     containment, board #49), so no instantiate + no throw → `nixidyEnvs` silently EMPTY. LOUD PIN: if
-    #     den-hoag gains env→cluster containment (#49) or the instantiate surface lands (#50), this flips —
-    #     update together with ledger row u2.
+    #     containment, board #49), so no instantiate emission → `nixidyEnvs` silently EMPTY. The #50 un-stub
+    #     did NOT flip this (disposition unchanged: the emission is gated by the same missing `environment`
+    #     coord); env→cluster containment (#49) is what would materialize nixidyEnvs — update with ledger u2.
     test-cluster-to-nixidy-inert-at-plain-host = {
       expr = (builtins.tryEval (builtins.deepSeq ctnHostRa true)).success;
       expected = true;

@@ -157,7 +157,21 @@
           mkPolicy = compat.mkPolicy; # alias — v1 `{ __isPolicy = true; name; fn; }`
           pipe = compat.pipe; # alias — v1 pipe.{from,filter,…} constructor bag
           resolve = stub "lib.policy.resolve" "the fleet-resolution / fan-out surface (R8; board #49/#50) — not yet available";
-          instantiate = stub "lib.policy.instantiate" "the declarable-instantiation surface (board #50) — not yet available";
+          # instantiate — v1 `den.lib.policy.instantiate spec` (policy-effects.nix:243): request post-pipeline
+          # instantiation of an entity's CLASS content into a flake output. Compile's `translateEffect` handles
+          # `kind == "instantiate"` (→ `declare.spawn { instantiate = spec }` — a CHILDLESS-INERT resolution
+          # declaration: fleetChildren is membership-driven, so a spawn with no `{ host; user }` binding adds no
+          # scope node; the spec rides PARKED on the declaration for the future intoAttr output family, never
+          # discarded). Takes BOTH v1 call shapes: the spec RECORD (colmena host-modules-capture / clusters
+          # cluster-to-nixidy — `{ name; class; instantiate; intoAttr }`) AND the RAW ENTITY (fleet.nix:74
+          # `instantiate hostCfg` — the class-A registration; SUBSUMED by den-hoag's native nixos class terminal,
+          # so it lands INERT — no double registration). CLASS-A-MINIMAL: nixosConfigurations materialize
+          # natively; the class-C/D intoAttr families (colmenaHive / nixidyEnvs) are den-hoag-absent → LATENT
+          # (ledger rows). The intoAttr OUTPUT FAMILY is its own rung (board #50) when the class-C/D arms come up.
+          instantiate = spec: {
+            __policyEffect = "instantiate";
+            value = spec;
+          };
         };
         # den.lib.aspects.* / resolveEntity / home / capture — v1 lib surfaces (semantic; escalated).
         aspects = {
