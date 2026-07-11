@@ -83,6 +83,41 @@ let
         };
       }
     ]).den;
+
+  # A bare CONTENT SET kind-include — the corpus `den.aspects.<path>` shape: a class/quirk-keyed set with NO
+  # id_hash/name (v1 identifies it via __provider, which the raw bridge drops). Two representative shapes: a
+  # HOST-class content set (firewall-collector's `{ nixos = …; }`) and a USER content set (syncthing.peer).
+  hostContentSet = {
+    nixos.csMarker = "H";
+  };
+  userContentSet = {
+    home-manager.csMarker = "U";
+  };
+  csCompiled = denCompat.compile {
+    schema.host.includes = [ hostContentSet ];
+    schema.user.includes = [ userContentSet ];
+    hosts.x86_64-linux.h1.class = "nixos";
+  };
+  csFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          schema.host.includes = [ hostContentSet ];
+          hosts.x86_64-linux.h1.class = "nixos";
+        };
+      }
+    ]).den;
+  # An UNRESOLVABLE ref (an int) matches NONE of the arms → the edge policy's resolveAspectRef keeps its named
+  # identity abort (the R9 fall-through stays LOUD, never a silent drop).
+  intFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          schema.host.includes = [ 42 ];
+          hosts.x86_64-linux.h1.class = "nixos";
+        };
+      }
+    ]).den;
 in
 {
   flake.tests.compat-kindinclude = {
@@ -128,6 +163,41 @@ in
     #     (v1 `mkParametricNext`'s include-only branch is unbuilt — out-of-corpus, self-announcing).
     test-barefn-list-result-aborts = {
       expr = raOkAt listFleet "host:h1";
+      expected = false;
+    };
+    # (5) CONTENT-SET ARM (the identity-boundary rung): a bare `den.aspects.<x>` content set — at BOTH host
+    #     and user kind-includes — compiles to a SYNTHETIC ASPECT (not a policy, not the resolveAspectRef
+    #     abort), the same arm as a bare fn.
+    test-contentset-is-synthetic-aspect = {
+      expr = {
+        hostAspect = csCompiled.aspects ? "__kindInclude__host__aspect__0";
+        userAspect = csCompiled.aspects ? "__kindInclude__user__aspect__0";
+        hostEdge = csCompiled.policies ? "__kindInclude__host";
+        notPolicy = csCompiled.policies ? "__kindInclude__host__policy__0";
+      };
+      expected = {
+        hostAspect = true;
+        userAspect = true;
+        hostEdge = true;
+        notPolicy = false;
+      };
+    };
+    # (6) FIRES AT A REAL HOST: the content-set's class content materializes in the host's nixos bucket (the
+    #     grounded synthetic-aspect content forwardExpand folds like any registered aspect — no crash).
+    test-contentset-content-at-real-host = {
+      expr = {
+        ok = raOkAt csFleet "host:h1";
+        hasNixos = (bucketAt csFleet "host:h1" "nixos") != [ ];
+      };
+      expected = {
+        ok = true;
+        hasNixos = true;
+      };
+    };
+    # (7) FALL-THROUGH STAYS LOUD: an unresolvable ref (an int) matches no arm → the edge policy's
+    #     resolveAspectRef keeps its named identity abort (R9), never a silent drop.
+    test-unresolvable-fallthrough-aborts = {
+      expr = raOkAt intFleet "host:h1";
       expected = false;
     };
   };

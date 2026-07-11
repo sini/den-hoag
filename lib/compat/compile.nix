@@ -587,6 +587,35 @@ let
     ref: builtins.isAttrs ref && ((ref.__isPolicy or false) || (ref.__denCanTake or null) != null);
   # A bare-fn kind-include (the R14 parametric-aspect arm): a function that is not a policy record.
   isBareFnRef = ref: builtins.isFunction ref && !(isPolicyRef ref);
+  # A bare CONTENT-SET kind-include ref: a static aspect VALUE inlined with NO id_hash/name — v1's
+  # `den.aspects.<path>` navigation carries a `__provider` annotation (den aspects/types.nix) that the raw
+  # bridge (`_module.args.den = config.den`) drops, so the reference arrives as bare class/quirk-keyed
+  # content (`{ nixos = …; }` / `{ devshell = …; }` / `{ resolved-users = …; }`). It is not resolvable by
+  # resolveAspectRef; it rides the SAME synthetic-aspect arm as a bare fn (positional identity, grounded
+  # content). CEILING (positional ≠ v1's __provider name — Fork-A): a content set referenced TWICE would land
+  # DUPLICATE content (v1 dedups by provider name; the shim cannot mechanically guard — content-set equality
+  # is unassertable with fns inside). OUT-OF-CORPUS: every corpus content-set ref is single-referenced. The
+  # UPGRADE PATH is a bridge-side __provider-style annotation recovering v1's identity + dedup (the
+  # composition seam if a multi-ref consumer or the dedup need ever surfaces).
+  #
+  # CORPUS CENSUS (nix-config @ b0b20769) — 9 static content-set kind-include refs (all single-referenced):
+  #   host:        core/network/firewall-collector.nix:2, core/secrets (defaults.nix:8-9)
+  #   user:        core/users/resolved-user-emitter.nix:4, core/network/syncthing/peers.nix:58
+  #   flake-parts: aspects/devshell/{kubernetes.nix:27, secrets.nix:22, images.nix:22}, batteries/{nix-on-droid.nix:217 (deploy-slab), colmena.nix:132}
+  # TWIN (latent, not this arm): the DISPATCH-EMITTED include path — `translateEffect` `kind == "include"`
+  # runs the SAME resolveAspectRef on a policy-EMITTED value (corpus `cluster-aspect` clusters.nix:79,
+  # `user-aspect-auto-include` defaults.nix:20 — both `den.aspects.<x>` content). Those are gated (fire only
+  # where the aspect exists) and self-announce with the same abort if reached; a dispatch-emitted value has no
+  # STATIC position so the positional identity here does NOT apply — the __provider upgrade path is the fix
+  # for that site too if it surfaces.
+  isContentRef =
+    ref:
+    builtins.isAttrs ref
+    && !(ref ? id_hash)
+    && !(ref ? name)
+    && !(ref ? __functor)
+    && !(isPolicyRef ref)
+    && !(isInlineAspect ref);
 
   # An INLINE ASPECT ref in a `den.schema.<kind>.includes` list: an attrs carrying content inline (v1's
   # `{ policies; includes }` battery, nix/lib/home-env.nix `makeHomeEnv`) rather than a resolvable
@@ -641,20 +670,35 @@ let
           };
           policyRefs = builtins.filter isPolicyRef refs;
           bareFnRefs = builtins.filter isBareFnRef refs;
-          staticRefs = builtins.filter (r: !(isPolicyRef r) && !(isBareFnRef r)) refs;
-          # BARE-FN ARM (R14 parametric aspect): each bare fn wraps through the SAME normalizeList machinery
-          # translateAspect uses for a bare-fn aspect (`{ includes = normalizeList … [ fn ] }`) and registers
-          # as a SYNTHETIC ASPECT under a positional identity (the collision-fix naming — distinct id_hash per
-          # index via `ing.aspectEntry`). No new dispatch mechanism: it is a plain static aspect the edge
-          # policy edges at every kind instance, whose sole include is the wrapped fn (invoked with the node
-          # ctx at forwardExpand → callGated → grounded ATTRSET content).
+          contentRefs = builtins.filter isContentRef refs;
+          staticRefs = builtins.filter (r: !(isPolicyRef r) && !(isBareFnRef r) && !(isContentRef r)) refs;
+          # SYNTHETIC-ASPECT ARM (R14 parametric aspect + the content-set sibling). Each bare FN and each bare
+          # CONTENT SET wraps through the SAME normalizeList machinery translateAspect uses and registers as a
+          # SYNTHETIC ASPECT under a positional identity (the collision-fix naming — distinct id_hash per index
+          # via `ing.aspectEntry`), which the SAME edge policy edges at every kind instance. No new dispatch
+          # mechanism:
+          #   • a bare FN → `{ includes = normalizeList … [ fn ] }` — the wrapped fn is the aspect's sole
+          #     include, invoked with the real node ctx at forwardExpand → callGated → grounded ATTRSET content.
+          #   • a bare CONTENT SET → `head (normalizeList … [ set ])` = the GROUNDED content DIRECTLY (a plain
+          #     class/quirk-keyed aspect body, the shape a `den.aspects.<x>` reference resolves to in v1) — so
+          #     the edge to it folds its class content like any registered aspect (no fn to invoke).
+          #   FNs are indexed FIRST, so existing bare-fn synths keep their `__aspect__<i>` names (byte-stable).
+          synthRefs = bareFnRefs ++ contentRefs;
           synthAspects = builtins.listToAttrs (
-            prelude.imap0 (i: fn: {
-              name = "__kindInclude__${kind}__aspect__${toString i}";
-              value = {
-                includes = normalizeList "__kindInclude__${kind}__aspect__${toString i}:include" [ fn ];
-              };
-            }) bareFnRefs
+            prelude.imap0 (
+              i: ref:
+              let
+                synthName = "__kindInclude__${kind}__aspect__${toString i}";
+              in
+              {
+                name = synthName;
+                value =
+                  if builtins.isFunction ref then
+                    { includes = normalizeList "${synthName}:include" [ ref ]; }
+                  else
+                    builtins.head (normalizeList "${synthName}:content" [ ref ]);
+              }
+            ) synthRefs
           );
           # The kind's ONE edge policy edges the STATIC refs AND the synthetic aspects (by name → full record
           # via aspectRec), gated on the KIND coord so it fires at every instance (unchanged for static-only).
