@@ -81,6 +81,30 @@ let
         ];
       };
     }
+    # A SYNTHETIC kind declaring a METHOD (u8 path 1) — the corpus's `den.schema.cluster.methods.*`
+    # declaration shape (`schemaFn <desc> <type> <fn>`; the fn takes its arg-names off the INSTANCE
+    # config). The bridge re-injects gen-schema's methods module into the belt's `__functor`, so a
+    # mounted `greeter` instance carries `greet`, computed KIND-GENERICALLY from its OWN `who` field —
+    # NO cluster/method knowledge in the shim.
+    {
+      den.schema.greeter = {
+        isEntity = true;
+        imports = [
+          (_: {
+            options.who = lib.mkOption {
+              type = lib.types.str;
+              default = "world";
+            };
+          })
+        ];
+        methods.greet =
+          denHoag.internal.schema.schemaFn "greet helper" (lib.types.functionTo lib.types.str)
+            (
+              { who, ... }:
+              suffix: "hi-${who}-${suffix}"
+            );
+      };
+    }
   ];
   ev = lib.evalModules {
     modules = [
@@ -104,6 +128,35 @@ let
   # Mount the kind-value as a module exactly as the corpus's gen-schema mkInstanceType does (imports = [ kv ]),
   # in a NIXPKGS evalModules — the option-crossing that threw `deprecationMessage missing` before.
   widgetMounted = lib.evalModules { modules = [ widgetKv ]; };
+
+  # ── u8 path 1: METHODS re-injection through the belt ────────────────────────────────────────────────
+  greeterKv = ev.config.den.schema.greeter;
+  # Mount the greeter instance (NIXPKGS evalModules, as the corpus's mkInstanceType does): the re-injected
+  # methods module must cross the strict eval and compute `greet` from the instance's OWN `who` field.
+  greeterMounted = lib.evalModules { modules = [ greeterKv ]; };
+  greeterMountedOverride = lib.evalModules {
+    modules = [
+      greeterKv
+      { who = "moon"; }
+    ];
+  };
+  # NO-METHODS byte-identity: widget declares no methods ⇒ its `__functor` imports = `rawImportsOf` ALONE
+  # (no methods module appended); greeter declares one method ⇒ exactly ONE extra import (the methods module).
+  widgetFunctorImports = (widgetKv.__functor null null).imports;
+  greeterFunctorImports = (greeterKv.__functor null null).imports;
+  # readOnly posture: a method option is readOnly, so a consumer def colliding with the method name is
+  # REJECTED by the module system (two definitions of a read-only option).
+  greeterCollision = builtins.tryEval (
+    let
+      e = lib.evalModules {
+        modules = [
+          greeterKv
+          { greet = _: "override"; }
+        ];
+      };
+    in
+    builtins.seq (e.config.greet) true
+  );
 in
 {
   flake.tests.compat-schema-processing = {
@@ -198,6 +251,38 @@ in
         beltKeepsStructure = true;
         beltCarriesRawNixpkgsOption = true;
       };
+    };
+
+    # u8 PATH 1 — the METHODS SEAM: a mounted instance carries the kind's method, computed KIND-GENERICALLY
+    # from the instance's OWN field. `greet` reads `who` off the instance config; the default instance sees
+    # `who = "world"`, an override module sees `who = "moon"` — the drop that threw `getAssignment missing`.
+    test-method-injected-computes-from-instance-field = {
+      expr = {
+        default = greeterMounted.config.greet "x";
+        overridden = greeterMountedOverride.config.greet "x";
+      };
+      expected = {
+        default = "hi-world-x";
+        overridden = "hi-moon-x";
+      };
+    };
+    # NO-METHODS byte-identity: widget (no methods) → `__functor` imports = rawImportsOf ALONE (1 module,
+    # unchanged from pre-fix); greeter (one method) → exactly ONE extra import (the injected methods module).
+    test-no-methods-kind-functor-byte-identical = {
+      expr = {
+        widget = builtins.length widgetFunctorImports;
+        greeter = builtins.length greeterFunctorImports;
+      };
+      expected = {
+        widget = 1;
+        greeter = 2;
+      };
+    };
+    # readOnly posture: a method option is readOnly, so a consumer definition colliding with the method
+    # name is rejected by the module system (the injected `config.greet` + the user def = two defs).
+    test-method-readonly-collision-rejected = {
+      expr = greeterCollision.success;
+      expected = false;
     };
   };
 }

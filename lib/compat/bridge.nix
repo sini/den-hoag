@@ -186,13 +186,33 @@ in
               kindName: structure: structure // { isEntity = rawFieldOf kindName "isEntity" false; }
             ) perKind;
             # THE SEAM (belt only): swap the kind-value's option-declaring MODULE (`__functor`) for the
-            # corpus's OWN raw nixpkgs `imports`/`options`. This — and only this — is the pass-through.
+            # corpus's OWN raw nixpkgs `imports`/`options` — PLUS gen-schema's injected METHODS MODULE
+            # (u8 path 1). gen-schema injects a per-kind methods module into a kind-value's `__functor`
+            # (entry-type.nix:207-217, `mkMethodsModule` mounted INSIDE the merged module): a readOnly
+            # option PER declared method whose `config` value = the method `fn` applied to the genAttrs of
+            # its declared arg-names read off the INSTANCE config (methods.nix:19-35). The belt rebuilds
+            # `__functor` from the corpus's raw nixpkgs decls and so DROPPED that module — the corpus's
+            # `config.den.clusters.<c>.getAssignment` registry read (k3s.nix:86,161) then threw
+            # `attribute 'getAssignment' missing`, and the same latent drop hit `den.environments.<e>.
+            # getDomainFor`. Re-inject it here, KIND-GENERIC by construction: it runs over whatever
+            # `structure.methods` the DISCOVERED kind declares — host/user declare NONE ⇒ `{ }` ⇒ NO extra
+            # import ⇒ byte-identical `__functor`; cluster/environment declare methods ⇒ the module rides.
+            # Reuses gen-schema's OWN `mkMethodsModule` (`schema._internal`): the method's `type` is ALREADY
+            # the corpus's nixpkgs type (the corpus `schemaFn`s it with `lib.types.functionTo …`), so no
+            # gen-schema type object crosses; and the method `fn` CLOSES OVER any registry it needs at corpus
+            # DECLARATION time (cluster `secrets`/`domainFor` close over `config.den.environments`), so
+            # nothing extra crosses. Zero corpus-specific knowledge here — no kind names, no method names.
             passThroughSeam = builtins.mapAttrs (
               kindName: structure:
+              let
+                methods = structure.methods or { };
+              in
               structure
               // {
                 __functor = _self: _args: {
-                  imports = rawImportsOf kindName;
+                  imports =
+                    rawImportsOf kindName
+                    ++ lib.optional (methods != { }) (schema._internal.mkMethodsModule kindName methods);
                   options = rawOptionsOf kindName;
                 };
               }
