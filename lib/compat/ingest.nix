@@ -3,7 +3,8 @@
 # hand-off PAST this file carries entries, never `"kind:name"` strings (the boundary lint enforces the
 # rest of the shim stays string-free). The conversions:
 #
-#   - `den.hosts.<sys>.<name>` (two-level) → a FLAT host registry, `system` demoted to a field (once).
+#   - `den.hosts.<sys>.<name>` (two-level) AND `den.hosts.<name>` (flat, grouped by its own `system`
+#     field — v1 `preprocessHosts`) → a FLAT host registry, `system` demoted to a field (once).
 #   - `den.homes.<sys>.<name>` and `host.users.<u>` → user registry entries + `member` tuples (users
 #     first-class, §8). A standalone home `user@host` binds to the declared host or a SYNTHETIC host
 #     identity parsed from its name (§2.5 nameMatches) — never instantiating a real host entity.
@@ -38,13 +39,51 @@ let
       inherit name;
     };
 
-  # `den.hosts.<sys>.<name>` → `{ <name> = <hostAttrs> // { system = <sys>; }; }`. Flat, once. A name
-  # colliding across systems is a v1 authoring error surfaced by the later merge, not masked here.
+  # v1's `den.hosts` accepts TWO addressings, normalized by `preprocessHosts` (pin 11866c16
+  # nix/lib/entities/host.nix:31-43 `hostsOption.apply` → nix/lib/entities/_types.nix:152-172) BEFORE
+  # the `attrsOf systemType` merge — the shim reproduces that same normalization here, fused with the
+  # `system`-demotion, so every host lands FLAT with `system` a field (once):
+  #   - `den.hosts.<sys>.<name>` — top key ∈ flakeExposed is a SYSTEM GROUP (two-level). Its host attrs
+  #     carry no `system` field, so `// { system = <sys>; }` demotes the path key to a field.
+  #   - `den.hosts.<name>` — top key ∉ flakeExposed is a FLAT host (one-level, v1 `directHosts`). v1
+  #     GROUPS it by its own `system` field (_types.nix:157-170), throwing if absent; the corpus
+  #     `slab`/`patch` (hosts/slab.nix:3, hosts/patch.nix:3) declare it (aarch64-linux/aarch64-darwin).
+  #     The flat attrs ALREADY carry `system`, so the entry rides through as-is (v1's `removeAttrs cfg
+  #     ["system"]` then re-derives the identical value from the group key — net-equal to keeping it).
+  # The `system ∈ flakeExposed` test IS v1's (`reservedSystems = genAttrs lib.systems.flakeExposed`,
+  # _types.nix:147); reproduced literally here since the shim is nixpkgs-lib-free (frozen at the pin).
+  # A name colliding across the two addressings is a v1 authoring error — v1's `recursiveUpdate
+  # systemGroups grouped` (_types.nix:172) lets the flat/grouped side win, matched here by `//` order.
+  flakeExposedSystems = prelude.genAttrs [
+    "x86_64-linux"
+    "aarch64-linux"
+    "armv6l-linux"
+    "armv7l-linux"
+    "i686-linux"
+    "x86_64-darwin"
+    "aarch64-darwin"
+    "powerpc64le-linux"
+    "riscv64-linux"
+    "x86_64-freebsd"
+  ] (_: true);
   flattenHosts =
     hosts:
-    prelude.foldl' (
-      acc: sys: acc // builtins.mapAttrs (_: h: h // { system = sys; }) hosts.${sys}
-    ) { } (builtins.attrNames hosts);
+    let
+      keys = builtins.attrNames hosts;
+      systemKeys = builtins.filter (k: flakeExposedSystems ? ${k}) keys;
+      flatKeys = builtins.filter (k: !(flakeExposedSystems ? ${k})) keys;
+      fromGroups = prelude.foldl' (
+        acc: sys: acc // builtins.mapAttrs (_: h: h // { system = sys; }) hosts.${sys}
+      ) { } systemKeys;
+      fromFlat = prelude.foldl' (
+        acc: name:
+        acc
+        // {
+          ${name} = if hosts.${name} ? system then hosts.${name} else errors.flatHostNoSystem name;
+        }
+      ) { } flatKeys;
+    in
+    fromGroups // fromFlat;
 
   # Split a home registry key `"user@host"` (or bare `"user"`) into its bound user + host names. The
   # host is null for an unbound standalone home. `builtins.split "@"` yields `[ user [] host ]`; keeping
@@ -457,6 +496,7 @@ let
 in
 {
   inherit
+    flakeExposedSystems
     flattenHosts
     homeBindings
     hostUserBindings

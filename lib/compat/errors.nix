@@ -66,6 +66,18 @@ in
     keys:
     fail "inline-aspect kind-include (C1)" "an inline aspect in a `den.schema.<kind>.includes` list carries key(s) beyond {includes, policies}: [${builtins.concatStringsSep ", " keys}] — the shim expands only the v1 `{ policies; includes }` battery shape (nix/lib/home-env.nix); class-content on an inline include is not hoisted. Register it as a named `den.aspects.<name>` and include it by reference (`{ name = \"<name>\"; }`)";
 
+  # A FLAT `den.hosts.<name>` entry (keyed by a HOST NAME, not a flakeExposed system string — the v1
+  # `preprocessHosts` `directHosts` branch, pin 11866c16 nix/lib/entities/_types.nix:156-170) that omits
+  # its `system` field. v1 GROUPS a flat host by that field (`${system} = … ${name} = …`) and THROWS when
+  # it is absent (_types.nix:160-162: "den: flat host '<name>' must specify 'system'"). The shim reproduces
+  # that loud abort at the ingestion boundary rather than mis-demoting the host's own fields into systems —
+  # a flat host with no system is a shape v1 ALSO rejects. Named here so a corpus author greets the same
+  # requirement v1 states (the corpus `slab`/`patch` both declare `system`, so this fires only on genuine
+  # malformation).
+  flatHostNoSystem =
+    name:
+    fail "hosts (ingest)" "flat host `${name}` (a `den.hosts.<name>` entry keyed by NAME, not a flakeExposed system) must declare a `system` field — v1 groups it by that field (nix/lib/entities/_types.nix:156-170) and throws `den: flat host '${name}' must specify 'system'` when absent; add e.g. `system = \"x86_64-linux\";` or nest it under `den.hosts.<system>.${name}`";
+
   # A v1 `den.schema.<kind>` names a `parent` kind that no other kind declares — the containment DAG is
   # broken at ingestion. Named at definition time so a schema typo fails legibly, not deep in the fleet
   # product. (den-hoag's built-in `host`/`user` are always present.)
