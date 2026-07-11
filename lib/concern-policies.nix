@@ -27,15 +27,19 @@
 # EXPANSION (the value-conditional path). When the probe observes no emission the stratum cannot be
 # read up front — the policy's emission is gated on a ctx VALUE, so it emits nothing at the value-less
 # sentinel. Rather than guess ONE stratum (the silent-partition sin), the policy is expanded into one
-# sub-rule per COVERED stratum {structural, resolution}: each fires at the SAME gated nodes and keeps
-# only its-stratum declarations, so every declaration is produced in ITS stratum's phase with that
-# phase's context — the one-rule/one-stratum law holds PER SUB-RULE while the policy's declarations
+# sub-rule per COVERED stratum {structural, resolution, collection}: each fires at the SAME gated nodes
+# and keeps only its-stratum declarations, so every declaration is produced in ITS stratum's phase with
+# that phase's context — the one-rule/one-stratum law holds PER SUB-RULE while the policy's declarations
 # self-route by kind (B2's readers pull `actions.<stratum>` by kind, independent of the producing
 # rule). Expansion is the CONSERVATIVE branch: a policy misclassified INTO it still fires correctly at
 # real coord values; misclassifying a value-conditional policy OUT of it (as a fixed single stratum)
-# would mis-place its declarations. An expansion policy that produces an enrich- or pipeOp- (or other
-# uncovered-stratum) declaration at dispatch aborts LOUD (`errors.expansion*`): those are probe-time
-# feed/compose commitments a value-less policy cannot make.
+# would mis-place its declarations. Two conservation limits abort LOUD (`errors.expansion*`): an
+# enrich-kind declaration (enrich-feed selection is a probe-time B1 commitment a value-less policy
+# cannot make) and a DERIVED/route pipeOp (a channel-shaping DAG or delivery route seeds the ONE fleet
+# gen-pipe compose BEFORE eval, from ctx-independent bodies). But a pure SITE-MARK pipeOp on a bare
+# channel ref is NOT a compose commitment — site marks are per-node emission wiring fired WHERE the
+# policy fires (v1 register-pipe-effect.nix:15 scopedPipeEffects), so it is per-node DATA and rides the
+# `#collection` sub-rule (`declare.isSiteMarkData`), seeding no compose op.
 {
   prelude,
   dispatch,
@@ -106,17 +110,23 @@ let
       coveredStrata = [
         "structural"
         "resolution"
+        "collection"
       ];
-      # Per-declaration conservation guard (loud): an expansion policy may only produce covered-stratum
-      # declarations. Enrich (B1 keyset-ascent feed) and pipeOp (the fleet compose DAG) are seeded at
-      # the probe, which a value-conditional policy never reaches — so either kind is a silent partition.
+      # Per-declaration conservation guard (loud). An expansion policy may only produce covered-stratum
+      # declarations. Enrich (B1 keyset-ascent feed) is seeded at the probe, which a value-conditional
+      # policy never reaches — so it is a silent partition and aborts. The collection stratum is COVERED
+      # only for a pure SITE-MARK pipeOp (`declare.isSiteMarkData`): site marks are per-node emission
+      # DATA (fired where the policy fires — v1 register-pipe-effect.nix:15 scopedPipeEffects), NOT a
+      # compose commitment, so they pass through. A DERIVED/route pipeOp is a genuine probe-time compose
+      # commitment (the ONE fleet gen-pipe DAG, seeded before eval) a value-less policy cannot make → it
+      # STILL aborts (posture retained for the genuine operator).
       assertCovered =
         name: a:
         let
           s = declare.stratumOf a;
         in
         if s == "collection" then
-          errors.expansionPipeOp name
+          (if declare.isSiteMarkData a then a else errors.expansionPipeOp name)
         else if s == "structural" && declare.kindOf a == "enrich" then
           errors.expansionEnrich name
         else if !(builtins.elem s coveredStrata) then
@@ -137,11 +147,13 @@ let
         __pipeOps = builtins.filter (a: (a.__action or null) == "pipeOp") probeActs;
       };
 
-      # The expansion sub-rules (empty or throwing probe): one per covered stratum, each keeping only
-      # its-stratum declarations. The `__policy` stamp carries the ORIGINAL name (attribution), while a
-      # `#<stratum>` identity keeps the sub-rules distinct for gen-dispatch (override/tie-break machinery
-      # never keys a value-conditional policy: it emits no pipeOp, so the pipe producer tie-break never
-      # sees these ids, and no compiled policy declares overrides).
+      # The expansion sub-rules (empty or throwing probe): one per covered stratum {structural,
+      # resolution, collection}, each keeping only its-stratum declarations. The `__policy` stamp carries
+      # the ORIGINAL name (attribution), while a `#<stratum>` identity keeps the sub-rules distinct for
+      # gen-dispatch. The `#collection` sub-rule carries a value-conditional policy's per-node SITE-MARK
+      # pipeOp (allowed by `assertCovered`); it still sets `__pipeOps = [ ]`, so the compose-seeding
+      # producer tie-break never keys a value-conditional policy — the site-mark pipeOp is per-node
+      # emission data, not a compose op — and no compiled policy declares overrides.
       mkExpanded =
         name: condition: base:
         let
@@ -189,8 +201,12 @@ let
       policy = map strip (builtins.filter (r: !r.__isEnrich) rules);
       # The fleet-wide pipe operator declarations (collection stratum) — den-hoag threads their
       # `derived` channels + routes into the ONE gen-pipe compose (default.nix `policyOps`). Only
-      # single-group (probe-emitting) policies contribute; an expansion policy that produces a pipeOp
-      # aborts (a value-conditional `pipe.from` breaks the ctx-independence contract).
+      # single-group (probe-emitting) policies contribute (their `__pipeOps`): the derived-op DAG + the
+      # delivery routes are ctx-INDEPENDENT compose commitments seeded before eval. An expansion
+      # (value-conditional) policy contributes NOTHING here — `__pipeOps = [ ]` on every sub-rule. A
+      # DERIVED/route pipeOp from such a policy aborts (`errors.expansionPipeOp`, ctx-independence
+      # contract); a pure SITE-MARK pipeOp is per-node emission data (allowed through the `#collection`
+      # sub-rule) and correctly seeds no compose op.
       pipeOps = prelude.concatMap (r: r.__pipeOps) rules;
     };
 in

@@ -68,19 +68,18 @@ let
   # carrying the stamped structural fields (the exact value `{ host, ... }: … host.system` reads).
   ctxHostAt = id: (eval.get id "enriched-context").host;
 
-  # ── broadcast-hub-peer settings-read pin (ledger u6 / board #59) — FLIPPED by the host-settings
-  #    entity-stamp rung. The ctx entity now CARRIES v1's settings view (ingest.nix
-  #    `harvestedHostFields` → `hostEntityFields` → the instanceConfig stamp; harvest-first, raw
-  #    authored fallback on this harvest-less mkDen-direct path), so the corpus's
+  # ── broadcast-hub-peer settings-read pin (ledger u6 / u9) — the ctx entity carries v1's settings view
+  #    (ingest.nix `harvestedHostFields` → `hostEntityFields` → the instanceConfig stamp; harvest-first,
+  #    raw authored fallback on this harvest-less mkDen-direct path), so the corpus's
   #    `host.settings.core.network.syncthing.isHub or false` (nix-config policies/pipes.nix:166) reads
-  #    the REAL value at dispatch — the u6 silent degradation is CLOSED at the read. RESIDUAL
-  #    (self-announcing, pinned below): broadcast-hub-peer is a VALUE-CONDITIONAL policy whose firing
-  #    branch emits a `pipe.from` — the fleet pipe compose DAG seeds pre-eval from ctx-INDEPENDENT
-  #    bodies (the concern-policies pipeOp law), so the now-live emission aborts NAMED at the hub node:
-  #    u6's announcement class upgraded from SILENT-wrong-content to LOUD named abort. The late pipe
-  #    contribution (v1 fires pipe stages scope-local wherever a policy fires) is the #59 dispatch-time
-  #    remainder. The in-pipe broadcast PREDICATES (pipes.nix:147,157 — settings reads INSIDE an
-  #    unconditionally-seeded `pipe.from` body) are fully served by the stamp.
+  #    the REAL value at dispatch (the u6 read gap, CLOSED). The now-LIVE firing branch emits a
+  #    `pipe.from` — a value-conditional pipeOp. The SITE-MARK rung (this commit) recognizes it as per-
+  #    node emission DATA: a broadcast site mark on a BARE channel ref (no deriving DAG, no route) is NOT
+  #    a compose commitment, so it rides the `#collection` expansion sub-rule (`declare.isSiteMarkData`)
+  #    and the hub node RESOLVES CLEAN — u6's LOUD named abort is now GONE (the corpus re-probe frontier
+  #    at `__kindInclude__host__policy__11` clears). The site marks are still UNCONSUMED by lib wiring
+  #    (ledger u9); delivery is the next rung. The in-pipe broadcast PREDICATES (pipes.nix:147,157 —
+  #    settings reads INSIDE an unconditionally-seeded `pipe.from` body) are served by the stamp.
   hubBody =
     { host, ... }:
     optionals (host.settings.core.network.syncthing.isHub or false) [
@@ -184,15 +183,16 @@ in
       };
     };
 
-    # (u6/#59 pin, FLIPPED — the host-settings entity-stamp rung) five facts pinned:
-    #   realCtxCarriesSettings — the REAL ctx entity now carries the settings view (the stamp; here the
-    #     raw authored fallback — mkDen-direct has no harvest), so the u6 read gap is CLOSED;
+    # (u6/u9 pin — the host-settings entity-stamp rung + the SITE-MARK rung) four facts pinned:
+    #   realCtxCarriesSettings — the REAL ctx entity carries the settings view (the stamp; here the raw
+    #     authored fallback — mkDen-direct has no harvest), so the u6 read gap is CLOSED;
     #   bodyFiresAtRealCtx — the corpus body applied to the REAL ctx entity takes the FIRING branch and
     #     emits the syncthing-peers pipe effect (v1's dispatch-time read, restored at the ctx level);
-    #   firingNodeAbortsNamed — the RESIDUAL, self-announcing: the fired emission is a pipeOp from a
-    #     VALUE-CONDITIONAL policy, which the pre-eval pipe-DAG seeding law rejects NAMED (catchable
-    #     throw) — u6's silent-wrong-content upgraded to a LOUD abort; the late pipe contribution is
-    #     the #59 dispatch-time remainder (this pin flips again when it lands);
+    #   firingNodeResolvesClean — the SITE-MARK rung: the fired emission is a pure SITE-MARK pipeOp
+    #     (broadcast mark on a bare channel ref), recognized as per-node DATA by `declare.isSiteMarkData`
+    #     and allowed through the `#collection` expansion sub-rule, so the hub node RESOLVES CLEAN —
+    #     u6's LOUD named abort is GONE (the corpus re-probe frontier clears). Site marks stay UNCONSUMED
+    #     by lib wiring (ledger u9); delivery is the next rung (this pin flips again when it lands);
     #   declaredLayerIngestKnown — the host-FILE-declared settings layer stays ingest-visible raw data
     #     (`entities.instances.host.hub.settings…`), unchanged input surface;
     #   (the field-set coverage twin is test-stamped-field-set below.)
@@ -208,8 +208,8 @@ in
             builtins.length r == 1
             && (builtins.head r).__policyEffect == "pipe"
             && (builtins.head r).value.pipeName == "syncthing-peers";
-          firingNodeAbortsNamed =
-            !(builtins.tryEval (
+          firingNodeResolvesClean =
+            (builtins.tryEval (
               builtins.deepSeq (map (n: n.key) (
                 settingsFleet.structural.eval.get "host:hub" "resolved-aspects"
               )) true
@@ -220,7 +220,7 @@ in
       expected = {
         realCtxCarriesSettings = true;
         bodyFiresAtRealCtx = true;
-        firingNodeAbortsNamed = true;
+        firingNodeResolvesClean = true;
         declaredLayerIngestKnown = true;
       };
     };

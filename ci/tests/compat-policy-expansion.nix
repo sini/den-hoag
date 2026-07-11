@@ -1,10 +1,12 @@
 # Per-declaration-stratum policy expansion (B2) + the record policy vocabulary. A value-conditional
 # policy — one whose emission is gated on a context VALUE, so it emits nothing at concern-policies'
 # value-less probe (or throws doing non-entry work on the sentinel) — is expanded into one sub-rule per
-# COVERED stratum {structural, resolution}, each keeping only its-stratum declarations. So every
-# declaration is produced in ITS stratum's phase (the one-rule/one-stratum law holds per sub-rule) while
-# the policy's declarations self-route by kind. Enrich- or pipeOp-kind declarations from an expansion
-# policy abort LOUD (probe-time commitments a value-less policy cannot make). Exercised directly through
+# COVERED stratum {structural, resolution, collection}, each keeping only its-stratum declarations. So
+# every declaration is produced in ITS stratum's phase (the one-rule/one-stratum law holds per sub-rule)
+# while the policy's declarations self-route by kind. An enrich-kind declaration or a DERIVED/route
+# pipeOp from an expansion policy aborts LOUD (probe-time compose/feed commitments a value-less policy
+# cannot make); a pure SITE-MARK pipeOp on a bare channel ref is per-node emission DATA and rides the
+# `#collection` sub-rule (`declare.isSiteMarkData`), seeding no compose op. Exercised directly through
 # `denHoag.internal.compilePolicies` (concern-policies' rule compiler) + the compat compile output.
 { denHoag, denCompat, ... }:
 let
@@ -39,6 +41,52 @@ let
       id_hash = "h";
       name = "match";
     };
+  };
+  noMatchCtx = {
+    host = {
+      id_hash = "h";
+      name = "other";
+    };
+  };
+
+  # A bare channel REFERENCE (compilePipe's base seed: no deriving stages → `__derived = false`).
+  bareRef = ch: {
+    __genPipeChannel = true;
+    __derived = false;
+    id = ch;
+    name = ch;
+  };
+  # The corpus broadcast-hub-peer shape (nix-config pipes.nix:164-170): a value-conditional pipeOp
+  # carrying ONLY a broadcast SITE MARK on a bare channel ref — no deriving DAG, no delivery route — so
+  # per-node emission DATA, not a compose commitment. Built via the SAME `declare.pipeOp` constructor
+  # `compilePipe` uses (lib/compat/pipe.nix:276-281), so it is faithful to the real compile output.
+  hubPeerPipeOp = declare.pipeOp {
+    channel = "syncthing-peers";
+    derived = bareRef "syncthing-peers";
+    routes = [ ];
+    marks = [
+      {
+        __pipeMark = "broadcast";
+        receiver = { user, ... }: true;
+      }
+    ];
+  };
+  # NON-site-mark collection decls that STILL abort under expansion (genuine probe-time compose
+  # commitments): a DERIVED-op pipeOp (channel-shaping DAG, `derived.__derived = true`) and a
+  # delivery-ROUTE pipeOp (`routes != []`).
+  derivedPipeOp = declare.pipeOp {
+    channel = "c";
+    derived = (bareRef "c") // {
+      __derived = true;
+    };
+    routes = [ ];
+    marks = [ { __pipeMark = "broadcast"; } ];
+  };
+  routePipeOp = declare.pipeOp {
+    channel = "c";
+    derived = bareRef "c";
+    routes = [ { to = "other"; } ];
+    marks = [ { __pipeMark = "broadcast"; } ];
   };
 
   ruleBy = feed: id: builtins.head (builtins.filter (r: r.identity == id) feed);
@@ -122,6 +170,7 @@ in
         };
       expected = {
         policy = [
+          "foo#collection"
           "foo#resolution"
           "foo#structural"
         ];
@@ -224,6 +273,7 @@ in
         };
       expected = {
         compiled = [
+          "foo#collection"
           "foo#resolution"
           "foo#structural"
         ];
@@ -253,8 +303,10 @@ in
       expected = false;
     };
 
-    # R2 — conservation: a value-conditional policy that produces a pipeOp (collection) declaration at
-    # dispatch aborts loud (the fleet compose DAG is seeded at the probe, which it never reaches).
+    # R2 — conservation: a value-conditional policy that produces a BARE pipeOp (no marks, no derived, no
+    # routes) at dispatch aborts loud — it is not site-mark DATA, so the fleet-compose-commitment posture
+    # is retained (the DAG is seeded at the probe, which it never reaches). RETAINED verbatim across the
+    # site-mark rung: a bare pipeOp still aborts.
     test-value-conditional-pipeop-aborts = {
       expr =
         let
@@ -266,6 +318,67 @@ in
         in
         (builtins.tryEval (
           builtins.deepSeq (producedKinds (ruleBy c.policy "foo#resolution") matchCtx) null
+        )).success;
+      expected = false;
+    };
+
+    # NEW (site-mark rung) — a value-conditional PURE SITE-MARK pipeOp (the corpus broadcast-hub-peer
+    # shape) is per-node emission DATA, not a compose commitment: it EXPANDS into 3 sub-rules INCLUDING
+    # `#collection`, that sub-rule produces the pipeOp at a matching ctx and [] at a non-matching one, it
+    # seeds NO compose op (`pipeOps == []` — the seeding law untouched), and there is NO abort. Before
+    # this rung the collection stratum aborted unconditionally at `assertCovered`.
+    test-value-conditional-sitemark-pipeop-expands = {
+      expr =
+        let
+          c = compile { foo = gated hostCond (vc hubPeerPipeOp); };
+        in
+        {
+          ids = ids c.policy;
+          enrich = ids c.enrich;
+          composeSeeds = c.pipeOps;
+          collectionAtMatch = producedKinds (ruleBy c.policy "foo#collection") matchCtx;
+          collectionAtNonMatch = producedKinds (ruleBy c.policy "foo#collection") noMatchCtx;
+          structuralAtMatch = producedKinds (ruleBy c.policy "foo#structural") matchCtx;
+          resolutionAtMatch = producedKinds (ruleBy c.policy "foo#resolution") matchCtx;
+        };
+      expected = {
+        ids = [
+          "foo#collection"
+          "foo#resolution"
+          "foo#structural"
+        ];
+        enrich = [ ];
+        composeSeeds = [ ];
+        collectionAtMatch = [ "pipeOp" ];
+        collectionAtNonMatch = [ ];
+        structuralAtMatch = [ ];
+        resolutionAtMatch = [ ];
+      };
+    };
+
+    # NEW (site-mark rung) — a value-conditional DERIVED-op pipeOp (channel-shaping DAG,
+    # `derived.__derived = true`) STILL aborts: it is a genuine probe-time compose commitment a
+    # value-less policy cannot make.
+    test-value-conditional-derived-pipeop-aborts = {
+      expr =
+        let
+          c = compile { foo = gated hostCond (vc derivedPipeOp); };
+        in
+        (builtins.tryEval (
+          builtins.deepSeq (producedKinds (ruleBy c.policy "foo#collection") matchCtx) null
+        )).success;
+      expected = false;
+    };
+
+    # NEW (site-mark rung) — a value-conditional delivery-ROUTE pipeOp (`routes != []`) STILL aborts (the
+    # same compose-commitment law: a delivery route seeds the fleet compose before eval).
+    test-value-conditional-route-pipeop-aborts = {
+      expr =
+        let
+          c = compile { foo = gated hostCond (vc routePipeOp); };
+        in
+        (builtins.tryEval (
+          builtins.deepSeq (producedKinds (ruleBy c.policy "foo#collection") matchCtx) null
         )).success;
       expected = false;
     };
@@ -312,6 +425,7 @@ in
         };
       expected = {
         probesClean = [
+          "foo#collection"
           "foo#resolution"
           "foo#structural"
         ];
@@ -372,6 +486,7 @@ in
         };
       expected = {
         linuxExpands = [
+          "r#collection"
           "r#resolution"
           "r#structural"
         ];
@@ -424,6 +539,7 @@ in
             );
           }).policy;
       expected = [
+        "drop#collection"
         "drop#resolution"
         "drop#structural"
       ];

@@ -56,6 +56,22 @@ let
   stratumOf = actions.classify;
   kindOf = a: a.__action;
 
+  # LAW: the collection stratum's compose commitments are the DERIVED-op DAG (channel-shaping) and the
+  # delivery ROUTES — those seed the ONE fleet gen-pipe compose BEFORE eval, from ctx-INDEPENDENT bodies.
+  # A pipeOp carrying ONLY site marks on a BARE channel ref (`derived.__derived = false`, no deriving
+  # stages, no routes) makes NO probe-time compose commitment: site marks are per-node EMISSION wiring
+  # (default.nix:509 "Site `marks` … are per-scope EMISSION wiring, not compose ops"), fired WHERE the
+  # policy fires — the v1 parity is register-pipe-effect.nix:15's per-scope `scopedPipeEffects`
+  # scopedAppend at dispatch. So such a pipeOp is per-node DATA, not a compose op; `isSiteMarkData`
+  # is the predicate concern-policies' value-conditional expansion guard uses to ALLOW it through (a
+  # DERIVED/route pipeOp from a value-less policy still aborts — it IS a probe-time commitment).
+  isSiteMarkData =
+    a:
+    kindOf a == "pipeOp"
+    && (a.marks or [ ]) != [ ]
+    && !(a.derived.__derived or false)
+    && (a.routes or [ ]) == [ ];
+
   # Static kind → stratum map — the errors.mixedStratum naming and structural.nix's vocabulary
   # interface consume it (the inverse of `groups`).
   kindToStratum = prelude.foldl' (
@@ -196,6 +212,7 @@ actions
     stratumOf
     kindOf
     kindToStratum
+    isSiteMarkData
     importEdgesOf
     checkStratum
     member

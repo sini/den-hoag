@@ -55,19 +55,21 @@ in
   # B2 per-declaration-stratum conservation. A policy whose value-less probe emitted nothing (its
   # emission is gated on a context VALUE, not just coordinate presence) has its stratum derived
   # PER DECLARATION at dispatch — expanded into one sub-rule per COVERED stratum {structural,
-  # resolution}. Enrich-feed selection (B1 keyset-ascent, attr 2) and fleet pipeOp compose-seeding
-  # (the ONE gen-pipe DAG, seeded before eval) are PROBE-TIME commitments a value-less policy cannot
-  # make: a dispatch-time enrich- or pipeOp-kind declaration from it would silently never reach its
-  # feed. So both abort LOUD — never a silent partition.
+  # resolution, collection}. Enrich-feed selection (B1 keyset-ascent, attr 2) and fleet pipeOp
+  # compose-seeding (the ONE gen-pipe DAG's DERIVED-op chains + delivery routes, seeded before eval)
+  # are PROBE-TIME commitments a value-less policy cannot make: a dispatch-time enrich- or DERIVED/route
+  # pipeOp-kind declaration from it would silently never reach its feed. So both abort LOUD — never a
+  # silent partition. A pure SITE-MARK pipeOp (bare channel ref, no deriving/routes) is per-node
+  # emission DATA, NOT a compose op, so it is ALLOWED through the collection sub-rule (see isSiteMarkData).
   expansionEnrich =
     policyName:
     fail "per-declaration stratum (B1/B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced an `enrich` declaration at dispatch; enrich-feed selection is a probe-time commitment (attr 2 keyset-ascent), so a value-conditional policy cannot contribute enrichment — author it as an explicit enrich policy whose probe emits its enrich keys";
   expansionPipeOp =
     policyName:
-    fail "per-declaration stratum (collection)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced a `pipeOp` declaration at dispatch; a `pipe.from` body is ctx-INDEPENDENT by contract and its operator joins the ONE fleet gen-pipe compose DAG seeded BEFORE the eval, so a value-conditional policy — which emits nothing at the seeding probe — cannot contribute a pipe operator";
+    fail "per-declaration stratum (collection)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced a `pipeOp` declaration carrying a DERIVED operator (a channel-shaping DAG) or a delivery route at dispatch; those seed the ONE fleet gen-pipe compose DAG BEFORE the eval from ctx-INDEPENDENT bodies, so a value-conditional policy — which emits nothing at the seeding probe — cannot contribute one. (A pure SITE-MARK pipeOp on a bare channel ref is per-node emission data, fired where the policy fires, and IS allowed through expansion.)";
   expansionUncovered =
     policyName: kind: stratum:
-    fail "per-declaration stratum (B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced kind `${kind}` (stratum `${stratum}`), outside the covered {structural, resolution}; a `${stratum}`-stratum declaration from a value-conditional policy is a silent partition";
+    fail "per-declaration stratum (B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced kind `${kind}` (stratum `${stratum}`), outside the covered {structural, resolution, collection (site-mark pipeOps)}; a `${stratum}`-stratum declaration from a value-conditional policy is a silent partition";
 
   # §2.2 aspect-key dispatch: an aspect key that is neither a declared facet, a registered
   # class, nor a registered quirk channel is a definition-time error, naming the aspect + key.
