@@ -42,7 +42,9 @@ let
   attachDecls = compiled.policies.attachSystem.fn { };
   edgeDecl = builtins.head attachDecls;
 
-  # The rest of the C1 policy vocabulary (include is above): exclude → drop, resolve → spawn, a
+  # The rest of the C1 policy vocabulary (include is above): exclude → drop, resolve.to <root> → relate
+  # (R2, the `__targetKind` arm: an existing-node target carries its non-entity bindings; a leaf target
+  # would be a member), a
   # `for`-wrapped policy (v1 emits an `__isPolicy` record whose `fn` gates on ctx) → its inner edge,
   # and a `when`-over-inline-aspect (v1 emits a conditional-aspect record) → a den-hoag conditional
   # ASPECT, not a policy (its guard reads the path set, A9.1 — v1 lifts it to avoid the resolved cycle).
@@ -61,7 +63,13 @@ let
       {
         __policyEffect = "resolve";
         __shared = false;
-        value = { };
+        __targetKind = "host"; # a root kind (host ∈ parentKinds) → a relation to host:h1
+        value = {
+          host = {
+            name = "h1";
+          };
+          extra = 1;
+        };
         includes = [ ];
       }
     ];
@@ -260,9 +268,21 @@ in
       expr = vExclude.__action;
       expected = "drop";
     };
-    test-resolve-becomes-spawn = {
-      expr = vResolve.__action;
-      expected = "spawn";
+    # R2: `resolve.to <root-kind>` → a `relate` carrying the emission's NON-entity bindings (the honest
+    # keyset — `value` minus the entity key) into the target root's ctx.
+    test-resolve-to-becomes-relate = {
+      expr = {
+        action = vResolve.__action;
+        target = vResolve.target.id_hash == builtins.hashString "sha256" "host|name=h1";
+        bindings = vResolve.bindings;
+      };
+      expected = {
+        action = "relate";
+        target = true;
+        bindings = {
+          extra = 1;
+        };
+      };
     };
     test-for-wrapped-inner-edge = {
       expr = vFor.__action;

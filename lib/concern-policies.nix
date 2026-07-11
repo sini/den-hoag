@@ -47,15 +47,21 @@
   errors,
 }:
 let
-  # `compileWith sentinelFields policies` — compile with a CONFIGURABLE probe sentinel. `sentinelFields`
-  # merges onto the universal `{ id_hash; name }` stand-in, so a caller that KNOWS a policy body reads a
-  # coord FIELD on the sentinel (a consumer's corpus fact) can supply a TYPE-CORRECT NON-MATCHING value for it:
-  # the body then takes its value-conditional FALSE branch (→ expansion, the conservative branch) instead of
-  # hard-failing on a missing attribute. `compile` = the default `{ }` (the universal sentinel), byte-
-  # identical for every native caller. Core stays FIELD-AGNOSTIC (no den field names here); the CONSUMER
-  # supplies the fields it knows its own policy bodies read.
+  # `compileWith sentinelFields resolveFamilyNames policies` — compile with a CONFIGURABLE probe sentinel
+  # AND a CONFIGURABLE resolve-family tag set. Two corpus-facts-as-config knobs (the SAME composition-first
+  # precedent — core stays FIELD/NAME-agnostic; the CONSUMER supplies what it knows about its own bodies):
+  #   • `sentinelFields` merges onto the universal `{ id_hash; name }` probe stand-in, so a caller that KNOWS
+  #     a policy body reads a coord FIELD on the sentinel supplies a TYPE-CORRECT NON-MATCHING value for it —
+  #     the body takes its value-conditional FALSE branch (→ expansion) instead of hard-failing.
+  #   • `resolveFamilyNames` (R2 REQUIREMENT 2) STAMPS `__resolveFamily = true` on the named compiled
+  #     policies — the DECLARED tag a VALUE-CONDITIONAL resolve policy needs (its value-less probe emits no
+  #     member/relate, so it cannot be DETECTED). A v1 corpus authors `resolve.to` policies WITHOUT the
+  #     den-hoag tag on the value, so the shim flake-module supplies the corpus resolve-emitting names here.
+  #     A name NOT supplied that DOES emit member/relate at a root is caught LOUD by the R2 untagged guard
+  #     (attributes/structural.nix attr 4 `resolveFamilyUntagged`) — the omission catch, never a silent drop.
+  # `compile` = the defaults `{ }` / `[ ]`, byte-identical for every native caller.
   compileWith =
-    sentinelFields: policies:
+    sentinelFields: resolveFamilyNames: policies:
     let
       # A universal entry stand-in: passes requireEntry (has id_hash) so probing a policy that forwards ctx
       # entries into constructors succeeds without touching any real registry. `sentinelFields` enriches it
@@ -196,7 +202,10 @@ let
           # abort below, never be swallowed by the probe's tryEval as an empty result.
           probeActs = probeOf condition (stampProduce name base.produce);
           firesAt = prelude.optionalAttrs (v ? __firesAtKinds) { inherit (v) __firesAtKinds; };
-          explicitRF = v.__resolveFamily or false;
+          # DECLARED resolve-family (R2): the policy value's own `__resolveFamily` tag OR the caller-supplied
+          # `resolveFamilyNames` set (the shim's corpus tag set — a v1 body carries no den-hoag tag). Either
+          # marks a value-conditional resolve policy the pre-pass must dispatch (member/relate cannot be probed).
+          explicitRF = (v.__resolveFamily or false) || builtins.elem name resolveFamilyNames;
           expanded = probeActs == [ ];
           baseRules =
             if expanded then
@@ -256,8 +265,9 @@ let
     };
 in
 {
-  # Default sentinel (the universal `{ id_hash; name }`) — byte-identical to the pre-configurable behavior
-  # for every existing caller (native fleets, the unit suites driving `internal.compilePolicies`).
-  compile = compileWith { };
+  # Default sentinel (the universal `{ id_hash; name }`) + no resolve-family tags — byte-identical to the
+  # pre-configurable behavior for every existing caller (native fleets, the unit suites driving
+  # `internal.compilePolicies`); a native fleet's resolve-family policies are DETECTED, not tagged.
+  compile = compileWith { } [ ];
   inherit compileWith;
 }

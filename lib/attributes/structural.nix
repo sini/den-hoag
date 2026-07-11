@@ -189,26 +189,57 @@
           extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
           combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
         };
-        # DOUBLE-FIRE DISCIPLINE (design note 2026-07-11 §3(ii)) + A5. Resolve-family declarations
-        # {member, relate} are consumed by the STAGED ROOT-RESOLUTION pre-pass at membership-INDEPENDENT
-        # roots ONLY. A resolve policy fires in BOTH passes (a policy is `ctx: [decls]`), but at a root its
-        # member/relate were already routed by the pre-pass and the main run's structural consumers
-        # (attr 5/6) never read them — so at a membership-DERIVED node (a fleet cell, `parent != null`) a
-        # resolve-family emission has NO legitimate consumer: routing it here would be a silent second
-        # partition. Abort LOUD (naming the policy + scope) — never a silent drop. A resolve policy that
-        # should not over-fire at a descendant cell restricts its scope via `__firesAtKinds` (attr 2/4).
+        # DOUBLE-FIRE DISCIPLINE (design note 2026-07-11 §3(ii)) + A5 + R2 REQUIREMENT 1. Resolve-family
+        # declarations {member, relate} are consumed by the STAGED ROOT-RESOLUTION pre-pass at membership-
+        # INDEPENDENT roots ONLY. A resolve policy fires in BOTH passes (a policy is `ctx: [decls]`); the
+        # main run's structural consumers (attr 5/6) never read member/relate. So a resolve-family emission
+        # in the main run has three cases:
+        #   • at a membership-DERIVED node (a fleet cell, `parent != null`) → NO legitimate consumer (the
+        #     pre-pass only fires at roots): abort LOUD `memberAtCell` (never a silent second partition; A5).
+        #   • at a membership-INDEPENDENT root by a FEED policy (in `resolveFamilyNames`) → the pre-pass
+        #     already routed the emission; this is the BENIGN double-fire — pass through (R1's verified posture).
+        #   • at a membership-INDEPENDENT root by a NON-feed policy (untagged AND undetected) → the pre-pass
+        #     never dispatched it, so the emission would SILENTLY DROP: abort LOUD `resolveFamilyUntagged`
+        #     (R2 REQUIREMENT 1 — converts the R1 reviewer's silent-drop edge to loud, with the tag remedy).
+        # A resolve policy that should not over-fire at a descendant cell restricts scope via `__firesAtKinds`.
+        #
+        # The FEED name-set: the resolve-family feed rules' identities strip their `#<stratum>` expansion
+        # suffix back to the original policy name (a value-conditional resolve policy expands to
+        # `<name>#structural`; a detected one keeps `<name>`) — the declarations carry the ORIGINAL `__policy`
+        # stamp, so this maps identities back to it. Derived from `policiesRules.resolveFamily` (already in
+        # scope), so R2 REQUIREMENT 1 stays local to this file (no default.nix/equations plumbing).
+        resolveFamilyPolicyNames = builtins.listToAttrs (
+          map (
+            r:
+            let
+              m = builtins.match "(.*)#structural" r.identity;
+            in
+            {
+              name = if m == null then r.identity else builtins.head m;
+              value = true;
+            }
+          ) policiesRules.resolveFamily
+        );
         #
         # THE GUARD IS PER-ELEMENT AND LAZY: the check rides each structural declaration and fires ONLY
-        # when that element is actually forced by a consumer (attr 6 `importEdgesOf`) — a cell that never
+        # when that element is actually forced by a consumer (attr 6 `importEdgesOf`) — a node that never
         # consumes its structural stratum pays nothing. Eagerly scanning the group here would force every
-        # structural element at every cell, breaking the per-cell laziness the resolution stratum relies on
-        # (b2 demand-laziness) — so the guard maps the group instead of filtering it.
+        # structural element at every node, breaking the per-cell laziness the resolution stratum relies on
+        # (b2 demand-laziness) — so the guard maps the group instead of filtering it. A non-resolve-family
+        # declaration (spawn/link/…) is returned untouched, so the map is result-identity for a native fleet.
         isMembershipDerived = (self.node id).parent != null;
         guardResolveFamily =
           a:
-          if declarations.isResolveFamily a then errors.memberAtCell (a.__policy or "«anonymous»") id else a;
+          if !(declarations.isResolveFamily a) then
+            a
+          else if isMembershipDerived then
+            errors.memberAtCell (a.__policy or "«anonymous»") id
+          else if resolveFamilyPolicyNames ? ${a.__policy or "«anonymous»"} then
+            a # a feed policy's benign double-fire at a root (the pre-pass consumed its emission)
+          else
+            errors.resolveFamilyUntagged (a.__policy or "«anonymous»") id;
         guardedActions =
-          if isMembershipDerived && (result.actions ? structural) then
+          if result.actions ? structural then
             result.actions // { structural = map guardResolveFamily result.actions.structural; }
           else
             result.actions;

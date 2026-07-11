@@ -80,6 +80,15 @@ in
         pipeStage = (L.policy.pipe.filter (_: true)).__pipeStage;
         # instantiate — #50 un-stubbed (v1 policy-effects.nix:243): a plain effect constructor now.
         instantiate = (L.policy.instantiate { name = "n"; }).__policyEffect;
+        # resolve — R2 un-stubbed (v1 policy-effects.nix:128-171): the functor bag; `resolve.to <kind>`
+        # produces the tagged resolve record the compat `__targetKind` arm consumes.
+        resolve =
+          (L.policy.resolve.to "user" {
+            user = {
+              id_hash = "u";
+              name = "n";
+            };
+          }).__policyEffect;
       };
       expected = {
         include = "include";
@@ -88,6 +97,7 @@ in
         pipeHead = "pipe";
         pipeStage = "filter";
         instantiate = "instantiate";
+        resolve = "resolve";
       };
     };
 
@@ -107,17 +117,16 @@ in
     };
 
     # ── stubs throw a NAMED blocker (not silent, not a fake) — the STILL-escalated set (#49); the
-    #    keyClassification slice + `policy.instantiate` (#50 un-stubbed, now a constructor below) moved to
-    #    real, so the escalated set is now 5. ──
+    #    keyClassification slice + `policy.instantiate` (#50) + `policy.resolve` (R2, now the functor bag
+    #    above) moved to real, so the escalated set is now 4. ──
     test-semantic-verbs-are-named-stubs = {
       expr = map throws [
-        L.policy.resolve
         L.aspects.resolve
         L.resolveEntity
         L.home
         L.capture.captureFleet
       ];
-      expected = builtins.genList (_: true) 5;
+      expected = builtins.genList (_: true) 4;
     };
 
     # ── the four-concern API stays intact under the migration merge (no key clobbered) ──

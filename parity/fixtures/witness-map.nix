@@ -117,23 +117,24 @@ rec {
       pin = "compat-compile-golden";
     };
 
-    # r6 `policy.resolve` / `.shared` — fan-out (`spawn` / `spawnShared`). Both the isolated and shared
-    # branches, run to force the spawn declaration.
+    # r6 `policy.resolve.to <kind>` — the R2 `__targetKind` arm. An EXISTING-node (root) target → a
+    # `relate` carrying the emission's non-entity bindings; a LEAF-dim target → a `member` (which needs the
+    # firing node's parent coord in ctx, so runBodies' empty-ctx probe witnesses only the root/relate arm —
+    # the member arm is pinned by compat-resolve). The bare `resolve` / `.shared` / `.withIncludes` arms are
+    # corpus-unexercised (named aborts), so the run-body surface here is the root→relate translation.
     policyResolve = {
       decls = {
-        policies.fanoutPlain = _ctx: [
+        policies.fanoutRelate = _ctx: [
           {
             __policyEffect = "resolve";
             __shared = false;
-            value = { };
-            includes = [ ];
-          }
-        ];
-        policies.fanoutShared = _ctx: [
-          {
-            __policyEffect = "resolve";
-            __shared = true;
-            value = { };
+            __targetKind = "host"; # a root kind (host ∈ parentKinds) → a relation to host:h1
+            value = {
+              host = {
+                name = "h1";
+              };
+              extra = 1;
+            };
             includes = [ ];
           }
         ];

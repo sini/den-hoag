@@ -34,6 +34,64 @@ _: {
     inherit name fn;
   };
 
+  # `resolve` — v1's fleet-resolution / fan-out functor bag, REPRODUCED EXACTLY from the frozen pin
+  # (den nix/lib/policy-effects.nix:128-171 @ sg0zid5qgicrs1fcxn11bxgsafv8kl2d-source). Each arm builds the
+  # tagged `{ __policyEffect = "resolve"; … }` record `compile.nix` `translateEffect` (kind == "resolve")
+  # consumes: the `__targetKind`-dispatching arm turns a leaf-dim target into a `member` tuple and an
+  # existing-node target into a `relate` (user-delivery R2, design note 2026-07-11 §3(i)). Constructor SHAPE
+  # only — no semantic here (the pin's own comments: `resolve` creates a fan-out branch; `.shared` a non-
+  # isolated one; `.to` names the target kind; `.withIncludes` rides classes with the resolved node).
+  #   resolve.to "user" { user = e; } ⇒
+  #     { __policyEffect = "resolve"; __shared = false; __targetKind = "user"; value = { user = e; }; includes = [ ]; }
+  # CORPUS CENSUS (nix-config @ b0b20769, modules/den/policies/): ONLY `resolve.to "<kind>" { … }` is
+  # exercised (users/fleet/clusters) — bare `resolve`, `resolve.withIncludes`, `resolve.shared.*` and
+  # `resolve.to.withIncludes` are v1-surface totality (reproduced faithfully so a future body compiles
+  # unchanged); the compile arm gives the corpus-unexercised arms a NAMED abort (never silent).
+  resolve =
+    let
+      # mkResolve — a plain fan-out (no explicit target); mkResolveWith rides `includes`; mkResolveTo names
+      # the target KIND (`__targetKind`); mkResolveToWith does both. Every arm is the pin's verbatim record.
+      mkResolve = shared: bindings: {
+        __policyEffect = "resolve";
+        __shared = shared;
+        value = bindings;
+        includes = [ ];
+      };
+      mkResolveWith = shared: includes: bindings: {
+        __policyEffect = "resolve";
+        __shared = shared;
+        value = bindings;
+        inherit includes;
+      };
+      mkResolveTo = shared: kind: bindings: {
+        __policyEffect = "resolve";
+        __shared = shared;
+        __targetKind = kind;
+        value = bindings;
+        includes = [ ];
+      };
+      mkResolveToWith = shared: kind: includes: bindings: {
+        __policyEffect = "resolve";
+        __shared = shared;
+        __targetKind = kind;
+        value = bindings;
+        inherit includes;
+      };
+    in
+    {
+      __functor = _: mkResolve false; # resolve { bindings } — plain isolated fan-out
+      withIncludes = mkResolveWith false; # resolve.withIncludes includes bindings
+      shared = {
+        __functor = _: mkResolve true; # resolve.shared { bindings } — non-isolated fan-out
+        to = mkResolveTo true; # resolve.shared.to "kind" { bindings }
+        withIncludes = mkResolveWith true; # resolve.shared.withIncludes includes bindings
+      };
+      to = {
+        __functor = _: mkResolveTo false; # resolve.to "kind" { bindings } — explicit target kind
+        withIncludes = mkResolveToWith false; # resolve.to.withIncludes "kind" includes bindings
+      };
+    };
+
   # The pipe policy vocabulary: `pipe.from name [ stages ]` heads a channel derivation; the remaining
   # constructors are the inert stage records `compilePipe` folds left-to-right (`pipe.nix`).
   pipe = {

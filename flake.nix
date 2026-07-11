@@ -159,7 +159,11 @@
           };
           mkPolicy = compat.mkPolicy; # alias — v1 `{ __isPolicy = true; name; fn; }`
           pipe = compat.pipe; # alias — v1 pipe.{from,filter,…} constructor bag
-          resolve = stub "lib.policy.resolve" "the fleet-resolution / fan-out surface (R8; board #49/#50) — not yet available";
+          # resolve — v1's fleet-resolution functor bag, faithfully reproduced (policy-effects.nix:128-171)
+          # and consumed by the compat `__targetKind` arm (member for leaf-dim targets, relate for existing
+          # roots) that the staged root-resolution pre-pass then routes (user-delivery R2, design note
+          # 2026-07-11 §3(i)). Un-stubbed: the corpus's env→host→user chain now runs whole.
+          resolve = compat.resolve; # alias — v1 `resolve`/`resolve.to`/`.shared`/`.withIncludes` bag
           # instantiate — v1 `den.lib.policy.instantiate spec` (policy-effects.nix:243): request post-pipeline
           # instantiation of an entity's CLASS content into a flake output. Compile's `translateEffect` handles
           # `kind == "instantiate"` (→ `declare.spawn { instantiate = spec }` — a CHILDLESS-INERT resolution

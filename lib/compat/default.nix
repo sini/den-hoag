@@ -139,6 +139,9 @@ in
     exclude
     mkPolicy
     pipe
+    # `resolve` — v1's fleet-resolution functor bag (policy-effects.nix:128-171), the faithful un-stub
+    # aliased into migrationLib (user-delivery R2); consumed by nix-config's fleet/user/cluster policies.
+    resolve
     ;
   # The fx key-classification surface (#49-slice) — `{ structuralKeysSet; }`, aliased into migrationLib.
   inherit keyClassification;

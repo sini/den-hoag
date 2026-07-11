@@ -300,3 +300,47 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   `probeSentinelModule`). Field NAMES stay consumer-side (composition-first). C8 watch class: self-announcing
   — an un-enriched probe read hard-fails LOUDLY (`attribute 'hasAspect' missing` on the sentinel), never a
   silent wrong stratum. Re-open only when a corpus policy body reads hasAspect at probe depth.
+
+- **resolve — THE `__targetKind` ARM SHIPPED (user-delivery R2, 2026-07-11; the corpus resolve chain
+  runs at the resolution level).** `den.lib.policy.resolve` is UN-STUBBED — v1's functor bag reproduced
+  verbatim (policy-effects.nix:128-171: `resolve`/`.to`/`.shared`/`.withIncludes`, `lib/compat/policy-verbs.nix`)
+  — and the compat translate arm (`compile.nix` `translateEffect` kind == "resolve") dispatches on
+  `__targetKind` against the DISCOVERED containment topology (`ing.schema`, zero kind literals): a product
+  LEAF dim → a `member` tuple (identity-wrapped entity under the firing node's parent coord); an
+  EXISTING-node (root) kind → a `relate` carrying the emission's NON-entity bindings into the target root's
+  ctx (env-to-hosts' `accessGroups` → the host scope, read by env-users). The corpus-unexercised arms (bare
+  `resolve` / `.shared` / `.withIncludes`) are NAMED aborts (`errors.resolve*`), never silent. The staged
+  R1 pre-pass consumes the emissions; **REQUIREMENT 1** (the untagged-loud guard, `attributes/structural.nix`
+  attr 4 `errors.resolveFamilyUntagged`) converts the R1 reviewer's silent-drop edge to loud (a member/relate
+  at a root by a NON-feed policy aborts named); **REQUIREMENT 2** (the `den.resolveFamilyNames` knob, the
+  `probeSentinelFields` corpus-facts-as-config precedent) STAMPS `__resolveFamily` on the corpus's five
+  resolve-emitting policies (env-users, env-to-hosts, env-to-clusters, to-fleet, fleet-to-envs;
+  `resolveFamilyModule`) — value-conditional bodies whose empty probe cannot be DETECTED. Witnesses:
+  `ci/tests/compat-resolve.nix` (constructor bag shape; leaf→member identity-wrapped/parent-coord;
+  root→relate target-id + honest bindings keyset; unexercised-arm aborts; untagged-loud guard + tagged-benign
+  double-fire). Gates: CI 777/777, parity 71/71. **R3 = the oracle run** (the drv byte-compare) is BLOCKED by
+  the re-probe frontier below.
+
+- **R2 RE-PROBE FRONTIER — the NixOS assertion gate does NOT clear; a CORE multi-cell-kind limitation
+  (NOT an R2 arm defect; R3/core territory).** `nix eval …nixosConfigurations.axon-01…toplevel.drvPath --override-input den path:…/den-hoag` reaches the NixOS module assertions and throws (VERBATIM): *"Failed
+  assertions: - You should specify at least one authorized key for initrd SSH - Neither the root account nor
+  any wheel user has a password or SSH authorized key … - users.users.nix-remote-build.shell is set to zsh,
+  but programs.zsh.enable is not true"* — the SAME user-content-absent class the u8 row named ("the NixOS
+  assertion gate … board-#49 territory"), NOT advanced by R2, and NO drvPath is produced. ATTRIBUTION
+  (verified, `nix eval` on the corpus schema): the corpus containment topology (`topology.nix`: host.parent =
+  environment, **cluster**.parent = environment, user.parent = host) has TWO co-equal LEAF/cell kinds —
+  `cluster` AND `user` — but den-hoag CORE selects a SINGLE `leafKind = builtins.head cellKinds`
+  (`lib/default.nix`), which alphabetically picks `cluster`; so `dimKinds = chainOf cluster = [cluster, environment]` and `user` is NOT a product dimension. A user membership tuple (coords `{ user; host }`) over
+  a cluster-leaf product errors inside gen-product (`membership.nix` Strategy-3 filter, "attribute 'host'
+  missing"), so no user cell materializes and user aspect content (authorized keys / wheel / shells) never
+  reaches axon-01. The R2 arm itself is correct and witnessed (it emits the user member; the multi-cell core
+  gap is what blocks materialization). **R3/core rung:** generalize `leafKind`/`cellChildrenFor`/`dimKinds`
+  to MULTIPLE cell kinds (each cell kind its own product sub-family) so `user` and `cluster` cells coexist —
+  then the corpus user chain materializes and R3's drv byte-compare becomes reachable.
+
+- **u8 / user.settings — UNCHANGED by R2 (still #49-gated latent).** R2 does not change the u8 disposition:
+  corpus users still do NOT deliver as ctx entities (their cells do not materialize under the multi-cell-kind
+  gap above), so `user.settings.<path>` reads (gpg.nix / bitwarden.nix / git.nix `or`-guarded) stay the
+  #49-gated latent the u8 row records, sourced from `den.users.registry.<name>` when the chain materializes.
+  Nothing in the settings surface (#49) changed. Likewise u1/#55 (unfree class-coord) is orthogonal — R2's
+  resolve landing touches neither the per-class `class`-coord injection nor the ctx-coord survey.

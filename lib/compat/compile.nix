@@ -588,17 +588,72 @@ let
       in
       if isPolicyTarget then errors.excludeOfPolicy else [ (declare.drop (resolveAspectRef aspectRec v)) ]
     else if kind == "resolve" then
-      # A fan-out: a new instantiation node (`spawn`, or `spawnShared` for a non-isolated branch). The
-      # binding half (`value`) becomes `member` relations for entity-valued bindings; scalar bindings
-      # are context data the spawned node carries (the edge-wiring pass reads them off the declaration).
+      # THE RESOLVE ARM (user-delivery R2, design note 2026-07-11 §3(i)). v1 `resolve.to <kind> { … }` →
+      # a den-hoag RESOLVE-FAMILY declaration the STAGED ROOT-RESOLUTION pre-pass consumes. Dispatch on
+      # `__targetKind` against the DISCOVERED containment topology (`ing.schema` — zero kind literals):
+      #   • a product LEAF dim (a CELL kind: has a parent, nothing nests under it) → a MEMBER tuple with
+      #     coords { <leaf> = the identity-wrapped target entity; <parentDim> = the FIRING node's own entry
+      #     (`ctx.<parentDim>`) }. The leaf entity is wrapped to the ingest identity (sha256
+      #     "<kind>|name=<name>", ingest.nix:177) so its id_hash matches the registry factor node / the pre-
+      #     pass rootNodeIndex; `via = { policy; scope }` is threaded by the pre-pass off the `__policy` stamp
+      #     (staged-resolution.nix), so the constructor need only build coords (A5). Corpus: env-users'
+      #     `resolve.to "user" { user; }` → member { user; host }.
+      #   • an EXISTING-node kind (a ROOT kind — host/cluster/environment/fleet) → a RELATION to that target
+      #     root carrying the NON-ENTITY bindings. THE HONEST-KEYSET ADAPTER (B1): the declared binding keyset
+      #     = the emission's non-entity keys (`value` minus the entity key); the entity key under
+      #     `value.<targetKind>` (identity-wrapped) identifies the target root. The pre-pass folds the
+      #     bindings into the target root's ctx. Corpus: env-to-hosts' `resolve.to "host" { host; accessGroups; }`
+      #     → relate to host:<name> carrying { accessGroups } (→ the host scope's ctx, read by env-users).
+      # `includes` / `__shared`: corpus-UNEXERCISED (census nix-config @ b0b20769: only bare `resolve.to`),
+      # so a NAMED abort (never silent) — implement faithfully when a corpus body first exercises them.
       let
+        tk = effect.__targetKind or null;
         shared = effect.__shared or false;
-        spawnDecl = (if shared then declare.spawnShared else declare.spawn) {
-          classes = effect.includes or [ ];
-          bindings = effect.value or { };
+        includes = effect.includes or [ ];
+        val = effect.value or { };
+        # Containment topology, discovered from the ingested schema (no kind literals): a cell/leaf kind
+        # has a parent AND is nothing's parent; every other kind is a root — the SAME partition den-hoag's
+        # `cellKinds`/`rootScopeKinds` (default.nix) computes, reproduced here from `ing.schema`.
+        topo = ing.schema;
+        parentOf = k: (topo.${k} or { }).parent or null;
+        parentKinds = prelude.unique (
+          builtins.filter (p: p != null) (map parentOf (builtins.attrNames topo))
+        );
+        isLeafDim = k: (parentOf k != null) && !(builtins.elem k parentKinds);
+        # Identity-wrap a v1 target entity into the ingest entry (name-derived id_hash) — so the coord/
+        # target id_hash matches the registry factor node (fleet.nix factorOf) and the pre-pass rootNodeIndex.
+        wrapEntry = k: e: {
+          id_hash = builtins.hashString "sha256" "${k}|name=${e.name}";
+          inherit (e) name;
         };
       in
-      [ spawnDecl ]
+      if tk == null then
+        errors.resolveNoTargetKind
+      else if shared then
+        errors.resolveShared tk
+      else if includes != [ ] then
+        errors.resolveWithIncludes tk
+      else if !(topo ? ${tk}) then
+        errors.resolveUnknownKind tk
+      else if isLeafDim tk then
+        # LEAF-dim target → a membership tuple placing the resolved entity under the firing node.
+        let
+          pd = parentOf tk;
+        in
+        [
+          (declare.member {
+            ${tk} = wrapEntry tk val.${tk};
+            ${pd} = ctx.${pd};
+          })
+        ]
+      else
+        # ROOT-kind target → a relation carrying the non-entity bindings into the target root's ctx.
+        [
+          (declare.relate {
+            target = wrapEntry tk val.${tk};
+            bindings = builtins.removeAttrs val [ tk ];
+          })
+        ]
     else if kind == "spawn" then
       # A v1 `policy.spawn { classes }` (policy-effects.nix `spawn`) — a deferred home-projection spawn
       # (the projected content sees fleet-wide pipe values, PR #623). A den-hoag `spawn` of the named

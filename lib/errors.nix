@@ -36,6 +36,17 @@ in
     policyName: scopeId:
     fail "member discipline (A5)" "policy `${policyName}` emitted `member` at membership-derived scope `${scopeId}`; member is accepted only at membership-independent nodes";
 
+  # UNTAGGED resolve-family emission (design note 2026-07-11 §3(ii), slice R2 REQUIREMENT 1). A `member`/
+  # `relate` produced in the MAIN run at a membership-INDEPENDENT root by a policy that is NOT in the
+  # resolve-family feed — so the STAGED ROOT-RESOLUTION pre-pass never dispatched it and never consumed the
+  # emission, and the main run's structural consumers (attr 5/6) never read member/relate at a root either.
+  # That is the R1 reviewer's SILENT-DROP edge: the tuple/relation would simply vanish. Convert it to LOUD.
+  # (A feed policy double-firing benignly at a root is ALLOWED — the pre-pass consumed its emission; only an
+  # UNTAGGED, unconsumed one aborts.) Names the policy + the scope. Raised in attributes/structural.nix attr 4.
+  resolveFamilyUntagged =
+    policyName: scopeId:
+    fail "resolve-family discipline (R2)" "policy `${policyName}` emitted a resolve-family declaration (`member`/`relate`) at membership-independent root `${scopeId}` in the main run, but it is NOT in the staged pre-pass's resolve-family feed — so the pre-pass never routed the emission (a silent drop). Declare `__resolveFamily = true` on the policy (or add its name to the shim's `den.resolveFamilyNames`) so the pre-pass consumes its member/relate";
+
   # Resolve-family relation target (design note 2026-07-11 §3(ii), slice R1): a `relate` whose target
   # entry resolves to NO existing root scope node. A relation carries ctx INTO an existing membership-
   # independent root (it never creates one), so an unknown/leaf target is a definition error — the leaf-

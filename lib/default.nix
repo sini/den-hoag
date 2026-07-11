@@ -413,6 +413,23 @@ let
         };
       };
 
+      # den.resolveFamilyNames — the resolve-family TAG SET (R2 REQUIREMENT 2, the corpus-facts-as-config
+      # precedent alongside `probeSentinelFields`). concern-policies stamps `__resolveFamily = true` on each
+      # named compiled policy, so the STAGED ROOT-RESOLUTION pre-pass dispatches it — the DECLARED tag a
+      # value-conditional resolve policy needs (its value-less probe emits no member/relate, so it cannot be
+      # DETECTED). A v1 corpus authors `resolve.to` policies without the den-hoag tag on the value, so the
+      # shim supplies the corpus resolve-emitting names (its `resolveFamilyModule`). A NAMED
+      # policy that emits member/relate at a root but is OMITTED here is caught LOUD by the untagged guard
+      # (attributes/structural.nix `resolveFamilyUntagged`). Native default `[ ]` — a native fleet's
+      # resolve-family policies are DETECTED (probe emits), never tagged.
+      resolveFamilyNamesDecl = {
+        options.den.resolveFamilyNames = merge.mkOption {
+          type = merge.types.raw;
+          default = [ ];
+          description = "policy names concern-policies stamps `__resolveFamily = true` on, so the staged pre-pass dispatches them (R2). The declared tag a value-conditional resolve policy needs. Native default `[ ]`.";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
@@ -433,6 +450,7 @@ let
           enrichBindingsDecl
           enrichContextDecl
           probeSentinelDecl
+          resolveFamilyNamesDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -564,8 +582,11 @@ let
 
       # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
       # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
-      # `probeSentinelFields` (native default `{ }`) configures the value-less stratum probe's sentinel.
-      policiesRules = concernPolicies.compileWith ent.config.den.probeSentinelFields ent.config.den.policies;
+      # `probeSentinelFields` (native default `{ }`) configures the value-less stratum probe's sentinel;
+      # `resolveFamilyNames` (native default `[ ]`, R2) stamps the resolve-family tag on the named policies.
+      policiesRules =
+        concernPolicies.compileWith ent.config.den.probeSentinelFields ent.config.den.resolveFamilyNames
+          ent.config.den.policies;
 
       # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
       # plus the den-managed demand channel (§B) AND the collection-stratum pipe operators threaded
@@ -987,7 +1008,10 @@ in
       ;
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
-    compilePoliciesWith = concernPolicies.compileWith;
+    # The probe-sentinel convenience (`compilePoliciesWith sentinelFields policies`) keeps its 2-arg shape —
+    # the resolve-family tag set defaults to `[ ]` here (the R2 knob is a fleet-level `den.resolveFamilyNames`
+    # option, not a unit-suite concern). `compileWith` is the full 3-arg form default.nix threads.
+    compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ];
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     inherit (concernAspects) classifyKey facets;

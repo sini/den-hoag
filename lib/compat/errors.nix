@@ -106,6 +106,22 @@ in
     effect:
     fail "policy effect" "unsupported v1 policy effect `${effect}` — the shim compiles include/exclude/resolve and for/when; deliver/route/provide and pipe land with their own passes";
 
+  # THE RESOLVE ARM — corpus-UNEXERCISED variants (user-delivery R2, design note 2026-07-11 §3(i)). The
+  # census (nix-config @ b0b20769, modules/den/policies/) exercises ONLY `resolve.to "<kind>" { … }`: bare
+  # `resolve {}`, `resolve.shared.*` and `resolve.*.withIncludes` are v1-surface totality the constructor
+  # reproduces faithfully, but the compat ARM has no corpus-verified translation for them yet. Each names
+  # itself here (LOUD, never a silent drop) so the rung that first needs it greets a named blocker.
+  resolveNoTargetKind = fail "resolve arm (R2)" "a bare `resolve { … }` (no `__targetKind`) has no compat translation — the shim routes `resolve.to \"<kind>\" { … }` (leaf → member, root → relate). The corpus (b0b20769) never emits a bare resolve; supply an explicit target kind, or build the untargeted fan-out arm when a corpus body first needs it";
+  resolveShared =
+    kind:
+    fail "resolve arm (R2)" "`resolve.shared.to \"${kind}\" { … }` (non-isolated fan-out) has no compat translation — the corpus (b0b20769) uses only the isolated `resolve.to`. Build the shared-branch member/relate semantics when a corpus body first exercises it";
+  resolveWithIncludes =
+    kind:
+    fail "resolve arm (R2)" "`resolve.*.withIncludes` targeting `${kind}` (a resolved node riding `includes` classes) has no compat translation — the corpus (b0b20769) emits `includes = [ ]` at every `resolve.to`. Build the includes-riding arm (the resolved cell's edged classes) when a corpus body first exercises it";
+  resolveUnknownKind =
+    kind:
+    fail "resolve arm (R2)" "`resolve.to \"${kind}\" { … }` names a kind absent from the ingested containment schema (`ing.schema`) — a resolve target must be a declared kind (a leaf dim → member, or a root kind → relate). Declare `den.schema.${kind}` (with its `parent`), or fix the target-kind spelling";
+
   # PARAMETRIC-ASPECT RESULT (R14, the bare-fn kind-include arm) — a bare-fn include (`den.schema.<kind>.
   # includes = [ ({ … }: <body>) ]`, or a nested bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose
   # `__fn` RESULT is type-dispatched exactly as v1 `mkParametricNext` (aspect.nix:53-93): an ATTRSET is aspect
