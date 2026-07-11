@@ -279,6 +279,44 @@
             lib.foldl' (acc: d: deepMerge acc d.value) { } defs;
         };
       };
+      # v1-parity RAW-PRESERVATION for `den.batteries` — the FOURTH instance of the bridge's declared-option
+      # pattern (after `options.schema`/`options.policies`/`options.default`). den v1 provisions batteries as
+      # ambient module VALUES (modules/aspects/batteries/, pin 11866c16); the shim reproduces the corpus set
+      # at `config.den.batteries.<name>` (lib/compat/batteries.nix). A battery value has THREE shapes: an
+      # aspect RECORD (`{ name; includes; }` — define-user/hostname/inputs'/self', with bare-fn ELEMENTS
+      # nested inside a `.includes` LIST), a `__functor` (unfree), or — the failing shape — a TOP-LEVEL bare
+      # parametric FUNCTION (primary-user = `userToHostContext { user, host, ... }: …`, batteries.nix:119-150).
+      # The corpus references a battery BY VALUE (`den.default.includes = [ den.batteries.primary-user ]`,
+      # corpus modules/den/defaults.nix:28-34).
+      #
+      # THROUGH THE FREEFORM `anything` a TOP-LEVEL bare-fn battery hits nixpkgs' `types.anything` LAMBDA-merge
+      # branch (nixpkgs lib/types.nix:353-359): it wraps the fn in a bare `arg: anything.merge (map (d: d.value
+      # arg) defs)` lambda, ERASING `functionArgs` (→ `{ }`) and making the fn OPAQUE. The bare-fn battery
+      # therefore rides `den.default.includes` PRE-MANGLED. Downstream compile.nix `normalizeList`/`callGated`
+      # (§339, v1 `can-take.nix` required-coord parity) DOES wrap it, but reads that ERASED `functionArgs`, so
+      # its gate sees `required = [ ]` and fires the wrapper UNCONDITIONALLY — at a HOST scope (ctx has `host`,
+      # no `user`) the wrapper re-applies `userToHostContext { }` → the UNCATCHABLE `called without required
+      # argument 'user'`. (Record batteries survived: `anything`'s LIST branch does not recurse elements, so
+      # define-user's nested include fns keep their formals and `callGated` gates them correctly — only the
+      # TOP-LEVEL bare-fn shape was mangled.) This is the SAME top-level-fn-erasure hazard `options.policies`
+      # documents; the batteries arm simply never had a declared option, and only surfaced once 8cf3f31 unblocked
+      # the `den.default` cross-module fold so the primary-user element could radiate to a host scope at all.
+      #
+      # A battery value is coerced NOWHERE — it must ride BYTE-IDENTICAL (a bare fn stays a bare fn so
+      # `callGated` reads its REAL formals; a record/functor stays itself), so this is a plain raw-preserving
+      # UNION (shallow `//`, later-def-wins per battery name — the corpus has a single `den.batteries` def),
+      # NOT the `policies` coercion nor the `default` deep-merge. The KEY stays inert-by-reference (no concern
+      # reads `den.batteries`; a referenced battery rides the include list), so compile's surface-totality
+      # already accepts it (knownSurfaceKeys `"batteries"`).
+      options.batteries = lib.mkOption {
+        description = "den.batteries raw-preserved at the bridge boundary (v1 ambient battery membership): a battery VALUE (bare parametric fn / aspect record / __functor) rides byte-identical, so compile's normalizeList/callGated reads a bare-fn battery's real formals — the freeform `anything` erases a top-level fn's functionArgs (the same hazard options.policies documents).";
+        default = { };
+        type = lib.mkOptionType {
+          name = "denBatteries";
+          description = "raw per-module den.batteries definitions unioned (shallow, later-def-wins per name); values pass through untouched (no anything top-level-fn erasure)";
+          merge = _loc: defs: lib.foldl' (acc: d: acc // d.value) { } defs;
+        };
+      };
     };
     default = { };
     description = "The den v1 declaration surface (absorbed raw here; desugared by the compat two-eval).";

@@ -222,6 +222,54 @@ let
         };
       }
     ]).den;
+
+  # ── (8) primary-user (the bare-fn-battery RUNG). The corpus's `den.batteries.primary-user` is a TOP-LEVEL
+  #    bare fn `{ user, host, ... }: …` (batteries.nix:134). THROUGH THE BRIDGE freeform it was MANGLED
+  #    (nixpkgs `types.anything` lambda-merge → `functionArgs` erased → callGated's required-coord gate
+  #    DEFEATED → the RUNG's `userToHostContext called without required argument 'user'` at a host scope). The
+  #    bridge's declared `options.batteries` now preserves the bare fn (compat-bridge witnesses prove it
+  #    survives the freeform). Here the UNMANGLED value's gate/fire is pinned via mkDen (whose internal
+  #    gen-schema `raw` never mangled it): the REAL battery is a strict `{ user, host }` fn, so at a HOST scope
+  #    (no `user`) callGated gates it INERT (resolves, no throw), and the primary-user SHAPE (canonical
+  #    `user.name` — sidestepping the ORTHOGONAL `user.userName` ctx-field divergence, a further latent rung)
+  #    FIRES wheel/networkmanager at a (user,host) cell. ────────────────────────────────────────────────────
+  realPuFnArgs = builtins.functionArgs bat.primary-user;
+  # host-only fleet with the REAL battery value → gated clean at the host (never reaches the `userName` read).
+  realPuHostFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          default.includes = [ bat.primary-user ];
+          hosts.x86_64-linux.h1.class = "nixos";
+        };
+      }
+    ]).den;
+  realPuHostOk = raOkAt realPuHostFleet "host:h1";
+  puShape =
+    { user, host, ... }:
+    {
+      name = "primary-user(${user.name}@${host.name})";
+      nixos.users.users.${user.name} = {
+        isNormalUser = true;
+        extraGroups = [
+          "wheel"
+          "networkmanager"
+        ];
+      };
+    };
+  puShapeFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          default.includes = [ puShape ];
+          hosts.x86_64-linux.h1 = {
+            class = "nixos";
+            users.alice.classes = [ "homeManager" ];
+          };
+        };
+      }
+    ]).den;
+  puHasWheel = id: nixpkgsLib.hasInfix "wheel" (builtins.toJSON (bucketAt puShapeFleet id "nixos"));
 in
 {
   flake.tests.compat-batteries = {
@@ -345,6 +393,35 @@ in
         firesWithoutClass = false;
         firesWithClass = true;
         hostCtxLacksClass = true;
+      };
+    };
+
+    # (8a) the REAL `den.batteries.primary-user` is a strict `{ user, host }` bare fn (the shape the bridge
+    #      freeform erased); radiated via `den.default` to a HOST scope its `user` coord is absent → callGated
+    #      gates it INERT (resolves, NO throw) — the RUNG's blocker resolved, with the EXACT corpus value.
+    test-primary-user-host-gated-inert = {
+      expr = {
+        realFnArgs = realPuFnArgs;
+        hostResolves = realPuHostOk;
+      };
+      expected = {
+        realFnArgs = {
+          host = false;
+          user = false;
+        };
+        hostResolves = true;
+      };
+    };
+    # (8b) the primary-user SHAPE (canonical user.name) gates OUT at the host (no wheel) and FIRES at the
+    #      (user,host) cell → nixos.users.users.<u>.extraGroups carries wheel/networkmanager (the shape).
+    test-primary-user-cell-fires-wheel = {
+      expr = {
+        hostFires = puHasWheel "host:h1";
+        cellFires = puHasWheel "user:alice@host:h1";
+      };
+      expected = {
+        hostFires = false;
+        cellFires = true;
       };
     };
 

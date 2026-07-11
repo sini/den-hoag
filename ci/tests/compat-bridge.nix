@@ -190,6 +190,79 @@ let
       }
     ];
   };
+
+  # ── den.batteries RAW-PRESERVATION through the bridge (the FOURTH declared-option; the bare-fn-battery RUNG) ──
+  # A battery VALUE riding the freeform `anything` is mangled the SAME way a top-level policy fn is: a TOP-LEVEL
+  # bare-fn battery (`den.batteries.primary-user = { user, host, ... }: …`, batteries.nix:119-150) hits nixpkgs'
+  # `types.anything` LAMBDA-merge branch (lib/types.nix:353-359) → wrapped in a bare `arg:` lambda,
+  # `functionArgs` ERASED to `{ }`. It then rides `den.default.includes` PRE-MANGLED, so compile's `callGated`
+  # gate (v1 can-take.nix parity — reads `functionArgs`) sees `required = [ ]` and fires it UNCONDITIONALLY —
+  # at a host scope (no `user`) the wrapper re-applies `userToHostContext { }` → the uncatchable RUNG throw
+  # `called without required argument 'user'`. The declared `options.batteries` (a shallow raw-preserving union)
+  # keeps the bare fn BYTE-IDENTICAL so its real formals survive to the gate. This surfaced only once 8cf3f31
+  # unblocked the `den.default` cross-module fold so the primary-user element could radiate to a host scope.
+  #
+  # Reconstruct the REAL bridge WITH batteries.nix imported (the shim provisions the corpus batteries there,
+  # exactly as flake.nix's `flakeModule` does); `withSystem`/`inputs`/`self` are stubbed — only inputs'/self'
+  # force them, and those batteries are never referenced here.
+  batteriesArgs = {
+    _module.args = {
+      withSystem = _sys: g: g { };
+      inputs = { };
+      self = { };
+    };
+  };
+  batteriesBridgeCfg =
+    (lib.evalModules {
+      modules = [
+        flakeStub
+        bridge
+        batteriesArgs
+        "${denHoagSrc}/lib/compat/batteries.nix"
+        fleetBase
+      ];
+    }).config;
+  puThroughBridge = batteriesBridgeCfg.den.batteries.primary-user;
+  defineUserNestedFn = builtins.head batteriesBridgeCfg.den.batteries.define-user.includes;
+  # CONTRAST (the load-bearing proof): the SAME top-level bare-fn shape through `anything.merge` ERASES formals.
+  batteryFn =
+    { user, host, ... }:
+    {
+      nixos.users.users.${user.userName}.extraGroups = [ "wheel" ];
+    };
+  anythingErasedBattery = builtins.functionArgs (
+    lib.types.anything.merge
+      [ "den" "batteries" "primary-user" ]
+      [
+        {
+          file = "m";
+          value = batteryFn;
+        }
+      ]
+  );
+  # END-TO-END (the corpus path): primary-user, read through the bridge's `den.batteries` and placed in
+  # `den.default.includes` (exactly as corpus modules/den/defaults.nix:28-34), radiated to a REAL crossed host
+  # — GATED OUT at the host scope (no `user`), so the host builds and its hostName resolves through the full
+  # fixpoint. Pre-fix this throws `userToHostContext called without required argument 'user'` (the RUNG's
+  # verbatim blocker).
+  batteriesE2ECrossed =
+    (lib.evalModules {
+      modules = [
+        flakeStub
+        bridge
+        batteriesArgs
+        "${denHoagSrc}/lib/compat/batteries.nix"
+        (
+          { den, ... }:
+          {
+            den.hosts.x86_64-linux.igloo = { };
+            den.aspects.igloo.nixos = hostContent;
+            den.default.includes = [ den.batteries.primary-user ];
+            den.nixpkgs = nixpkgs;
+          }
+        )
+      ];
+    }).config.flake;
 in
 {
   flake.tests.compat-bridge = {
@@ -323,6 +396,51 @@ in
         };
         description = "second";
       };
+    };
+
+    # den.batteries (the bare-fn-battery RUNG): a TOP-LEVEL bare-fn battery keeps its formals through the REAL
+    # bridge (declared `options.batteries` preserves; the freeform `anything` erased them). A record battery's
+    # nested include fn (define-user) and a `__functor` battery (unfree) ride byte-identical too.
+    test-batteries-barefn-formals-preserved-through-bridge = {
+      expr = {
+        primaryUserIsFn = builtins.isFunction puThroughBridge;
+        primaryUserFnArgs = builtins.functionArgs puThroughBridge;
+        defineUserNestedFnArgs = builtins.functionArgs defineUserNestedFn;
+        unfreeIsFunctor = batteriesBridgeCfg.den.batteries.unfree ? __functor;
+      };
+      expected = {
+        primaryUserIsFn = true;
+        primaryUserFnArgs = {
+          host = false;
+          user = false;
+        };
+        defineUserNestedFnArgs = {
+          host = false;
+          user = false;
+        };
+        unfreeIsFunctor = true;
+      };
+    };
+    # THE PROOF the declared option is load-bearing: at the SAME nixpkgs lib, `anything.merge` ERASES a
+    # top-level bare-fn battery's formals (the root cause) while `options.batteries` preserves them.
+    test-batteries-anything-erases-declared-preserves = {
+      expr = {
+        anything = anythingErasedBattery;
+        declared = builtins.functionArgs puThroughBridge;
+      };
+      expected = {
+        anything = { };
+        declared = {
+          host = false;
+          user = false;
+        };
+      };
+    };
+    # END-TO-END: primary-user (via `den.batteries`, in `den.default.includes`) radiated to a REAL crossed host
+    # is GATED OUT at the host scope — the host builds and hostName resolves (pre-fix: the RUNG's throw).
+    test-batteries-e2e-crossed-host-gated-resolves = {
+      expr = batteriesE2ECrossed.nixosConfigurations.igloo.config.networking.hostName;
+      expected = "igloo";
     };
   };
 }
