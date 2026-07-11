@@ -57,7 +57,8 @@ let
       dropped = d.target == null;
       # `resolveBucket`: from/to name a den-hoag fold bucket (a quirk channel) or a class (§9). A channel
       # delivery flows through the fold now; a class delivery's bucket is empty until class content joins.
-      toEntry = if dropped then droppedTargetSentinel else ing.resolveBucket "deliver" d.target;
+      toEntry =
+        if dropped then droppedTargetSentinel else ing.resolveBucket "deliver" (groundClassName d.target);
       annotations =
         prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
         // prelude.optionalAttrs (d.guard != null) { guard = true; }
@@ -74,7 +75,7 @@ let
         else if isModule then
           toEntry
         else
-          ing.resolveBucket "deliver" d.sourceClass;
+          ing.resolveBucket "deliver" (groundClassName d.sourceClass);
       targetClass = toEntry;
       module = d.moduleSource;
       inherit (d)
@@ -90,9 +91,21 @@ let
   # v1 class-key names that differ from den-hoag's (§ grounded terminology): a v1 aspect's class key is
   # renamed to the den-hoag class it targets before passing through, so `classifyKey` recognises it.
   # Identity for every already-grounded name; extended as the corpus surfaces more (harness-driven).
+  # v1 keys home-manager content under `homeManager` (pin 11866c16 nix/lib/entities/home.nix:124
+  # `class = strOpt "…" "homeManager"`; nix/denTest.nix:108 `den.schema.user.classes = ["homeManager"]`),
+  # so den-hoag's registered `home-manager` class is the grounded terminology this normalizes to (R2).
   v1ClassKeyMap = {
     homeManager = "home-manager";
   };
+
+  # Ground ONE v1 class-NAME string (not an attrset key) through the SAME v1ClassKeyMap — for the
+  # class-name FIELDS a translated route/deliver effect resolves against `resolveBucket` (§9 C6):
+  # `sourceClass` (v1 `fromClass`) and `target` (v1 `intoClass`). A v1 policy emits v1 spellings
+  # (corpus modules/den/classes/home-platform.nix:12/22/32 `intoClass = "homeManager"`), so the raw
+  # name would abort `unknown class homeManager` at resolveBucket without this. Identity for an
+  # already-grounded name (corpus `flake-parts`, `homeLinux`/…, `devshell`) — a pure passthrough there,
+  # so the deliver's LOUD abort on a genuinely-unknown name is preserved. Single v1ClassKeyMap source.
+  groundClassName = name: v1ClassKeyMap.${name} or name;
 
   # Ground a v1 aspect attrset's CLASS keys (the same v1ClassKeyMap translateAspect applies statically) —
   # applied to a wrapped include's RUNTIME result AND to a static include attrset, because a v1 battery fn
