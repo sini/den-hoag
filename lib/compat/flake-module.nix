@@ -18,6 +18,7 @@
   schema,
   compile,
   ingest,
+  annotate,
   legacy,
 }:
 let
@@ -80,22 +81,42 @@ let
   # when a consumer supplies them; only `den` is bound unconditionally (the corpus's dominant reference).
   # den-hoag core probes and `concern-aspects` moduleArgs carry ZERO legacy names — this binding lives in
   # the shim's v1 eval, never crosses into den-hoag.
+  # board #58 (Fork A): the `__provider`-annotated view of a v1 `den` surface — `annotate` is the
+  # post-fold walk (annotate.nix; v1 annotateDeep, pin types.nix:561-574). Applied to BOTH direct-path
+  # consumers below: the legacy `den` binding (the navigation surface a module's `with den.aspects` —
+  # and a policy's emitted `den.aspects.<path>` — reads) and the evalV1 read-back (compile's input), so
+  # the direct mkDen path exercises the SAME identity mechanism the bridge ships (CI/parity fixtures
+  # must run the shipped mechanism, not a fallback). Idempotent on the bridge path — its tree arrives
+  # already annotated (`!(v ? __provider)`). The fleet's declared classes/quirks feed the walk's
+  # exclusion guard, exactly as v1 reads its own registries at annotation time (types.nix:540-542).
+  annotatedView =
+    den:
+    den
+    // {
+      aspects = annotate {
+        classNames = builtins.attrNames (den.classes or { });
+        quirkNames = builtins.attrNames (den.quirks or { });
+      } (den.aspects or { });
+    };
+
   bindLegacyEnv =
     {
       config,
       ...
     }:
     {
-      config._module.args.den = config.den;
+      config._module.args.den = annotatedView config.den;
     };
 
   # Eval the v1 modules in the v1-shaped tree and read back `config.den` (the v1 declaration surface,
-  # verbatim) for `compile` to desugar. `bindLegacyEnv` (R1) binds `den` so a v1 module body may reference
-  # it. Only `flakeModuleCore` (not the legacy tag modules) declares options here.
+  # verbatim, `aspects` __provider-annotated) for `compile` to desugar. `bindLegacyEnv` (R1) binds `den`
+  # so a v1 module body may reference it. Only `flakeModuleCore` (not the legacy tag modules) declares
+  # options here.
   evalV1 =
     userModules:
-    (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
-    .config.den;
+    annotatedView
+      (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
+      .config.den;
 
   # The compat nixos instantiate wrapper (§2.5 carry-in + ship-gate M2): v1's per-host `system` and
   # per-host `instantiate` never reach den-hoag's pipeline (den-hoag entities are field-less), so they are

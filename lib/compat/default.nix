@@ -62,6 +62,14 @@ let
   # reproduced with the CONSUMER's nixpkgs lib (an inert call argument; the file imports no
   # nixpkgs). Consumed by the bridge (`den._hostHarvest`) + the compat-instance-eval unit suite.
   instanceEval = import ./instance-eval.nix { };
+  # board #58 (Fork A): the post-fold `__provider` annotation walk (v1 annotateDeep, pin
+  # types.nix:561-574) — applied by the bridge (corpus path) and the flake-module wiring (direct
+  # mkDen path), each idempotently, so every navigated `den.aspects` value carries its provenance
+  # path and compile's `stampProvider` can recover v1's include identity.
+  annotateLib = import ./annotate.nix {
+    inherit prelude;
+    builtinClassNames = builtins.attrNames denHoag.classes;
+  };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
@@ -96,6 +104,7 @@ let
         compile
         ingest
         ;
+      annotate = annotateLib.annotateAspects;
       legacy = legacyArg;
     };
   flakeModuleWiring = mkWiring legacy;
@@ -123,6 +132,9 @@ in
   inherit keyClassification;
   # Fork (i) per-host schema-typed instance eval (ship-gate M2) — the bridge's harvest builder.
   inherit instanceEval;
+  # board #58 (Fork A) — the post-fold `__provider` annotation walk; the bridge applies it to the
+  # merged corpus tree (both consumers: the `den` module arg + the fleet def).
+  inherit (annotateLib) annotateAspects;
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
   inherit (flakeModuleWiring) mkNixosInstantiate;

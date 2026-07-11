@@ -117,6 +117,38 @@ let
       acc: k: builtins.removeAttrs acc [ k ] // { ${v1ClassKeyMap.${k} or k} = attrs.${k}; }
     ) attrs (builtins.attrNames attrs);
 
+  # ── PROVIDER-IDENTITY STAMP (board #58, Fork A) — v1 `wrapChild` parity (pin 11866c16 nix/lib/
+  # aspects/fx/aspect/normalize.nix:95-119). A navigated aspect value carries `__provider` (the
+  # post-fold annotation walk, annotate.nix; v1 annotateDeep, types.nix:561-574); derive
+  # `name = last __provider` and `meta.aspect-chain = init __provider` so gen-aspects `identity.key`
+  # (`aspectPath = meta.aspect-chain ++ [ name ]`) equals the FULL provider path — the SAME identity
+  # from EVERY inclusion path, so N references of one aspect resolve ONCE (forwardExpand's seen-dedup;
+  # the u5 multi-reference dedup, e.g. the corpus's 11× nginx). NO REGISTRY LOOKUP: the stamped value
+  # CARRIES its content — identity recovery never resolves a name against a registry (the
+  # `resolveAspectRef` no-lookup posture below), so a recovered name can never land on an empty record.
+  # A value with its OWN `name` keeps it (v1's `!(child ? name)` gate, normalize.nix:96).
+  # `id_hash` rides along by the aspectEntry convention over the provider path: the collection stratum
+  # reads `content.id_hash` as the A12 producer key (collections.nix) — a native registry aspect gets it
+  # from den-hoag's idModule, a compat-normalized include record gets it HERE, so a quirk-emitting
+  # aspect delivered via include has a producer identity. ──
+  stampProvider =
+    v:
+    if
+      builtins.isAttrs v && !(v ? name) && builtins.isList (v.__provider or null) && v.__provider != [ ]
+    then
+      v
+      // {
+        name = prelude.last v.__provider;
+        id_hash =
+          v.id_hash
+            or (builtins.hashString "sha256" ("den-aspect:" + builtins.concatStringsSep "/" v.__provider));
+        meta = (v.meta or { }) // {
+          aspect-chain = prelude.init v.__provider;
+        };
+      }
+    else
+      v;
+
   # ── v1 NESTED-ASPECT discriminator (the blade.shuo rung) — v1 `nix/lib/aspects/fx/
   # key-classification.nix:69-80` `isNestedKey` + `:49-56` `looksLikeClassContent`, pin 11866c16. ──
   #
@@ -137,9 +169,10 @@ let
   # the bridge's `config.den.aspects` (bridge.nix `_module.args.den`), never off the compiled registry, so
   # a registered sub-aspect would be unreferenced dead weight. A NON-nested unknown key (a typo — value not
   # an attrset, or an attrset with no recognized sub-key) is LEFT IN PLACE and still aborts at the §2.2
-  # three-branch dispatch (v1's `unregisteredClassKeys` posture — never a silent swallow). CEILING (out-of-
-  # corpus): a parametric aspect RESULT with nested keys is not split (groundRec has no nested arm — v1
-  # classifies at resolution, so it would nested-classify there); it self-announces at §2.2 if it arrives.
+  # three-branch dispatch (v1's `unregisteredClassKeys` posture — never a silent swallow). The split now
+  # ALSO runs on the include path (`groundRec`, board #58): with provider identities every navigated
+  # value's content reaches §2.2, so nested keys are stripped wherever v1's walk would never walk them —
+  # including a parametric RESULT (the old out-of-corpus "no nested arm" ceiling, since closed).
   #
   # v1's `unwrapContentValuesForClassification` pre-step is SKIPPED: `__contentValues` wrappers are v1
   # aspectContentType typing the raw bridge never constructs (the same reason `__provider` is absent).
@@ -155,15 +188,29 @@ let
     "key"
     "id_hash"
   ];
-  # v1 key-classification.nix:49-56 verbatim: class-like content is a fn, a __contentValues wrapper, or an
-  # attrset with ≥1 attrset/fn-valued key — rejects flat-scalar sets that merely shadow a class name.
+  # v1 key-classification.nix:49-56: class-like content is a fn, a __contentValues wrapper, or an
+  # attrset with ≥1 attrset/fn/LIST-valued key (or the EMPTY attrset) — rejects non-empty flat-scalar
+  # sets that merely shadow a class name. RAW-BOUNDARY WIDENING (board #58, the `lix`/`etcd` frontier):
+  # v1 classifies over its TYPED tree, where every class-keyed value is an aspectContentType wrapper and
+  # passes via the `__contentValues` arm unconditionally — so v1's attrset arm never judges raw module
+  # bodies. The shim's raw boundary DOES: an imports-only class body (`nixos = { imports = [ … ]; }` —
+  # corpus core.nix.lix, core.system.disko) carries only a LIST-valued key, and a declared-no-op body
+  # (`nixos = { }` — corpus services.k3s.etcd) carries none at all; both would fail v1's literal attrset
+  # arm, leaving the nested sub-aspect on its parent to abort §2.2 at every including scope. List-valued
+  # keys and the empty body are accepted as class-like; a non-empty flat-SCALAR shadow set is still
+  # rejected (the arm's purpose).
   looksLikeClassContent =
     v:
     builtins.isFunction v
     || (builtins.isAttrs v && v ? __contentValues)
     || (
       builtins.isAttrs v
-      && builtins.any (k: builtins.isAttrs v.${k} || builtins.isFunction v.${k}) (builtins.attrNames v)
+      && (
+        v == { }
+        || builtins.any (
+          k: builtins.isAttrs v.${k} || builtins.isFunction v.${k} || builtins.isList v.${k}
+        ) (builtins.attrNames v)
+      )
     );
   # `mkIsNestedAspectKey classNames quirkNames` → `attrs: k: bool` — fleet-parameterised (the class set is
   # builtins + declared classes, the quirk set the fleet's channels; same cnf grain as mkNormalize). The
@@ -174,11 +221,20 @@ let
     let
       classSet = prelude.genAttrs classNames (_: true);
       quirkSet = prelude.genAttrs quirkNames (_: true);
+      # `__`-prefixed sub-keys are INVISIBLE to the discriminator (board #58): the annotation walk
+      # stamps `__provider` (a v1 STRUCTURAL key) onto every unregistered attrset child, so counting it
+      # recognized would flip every annotated typo-attrset to nested (silently stripped) — weakening the
+      # §2.2 abort posture this discriminator exists to preserve. v1 classifies over UNWRAPPED values
+      # (`unwrapContentValuesForClassification`), so its own annotation never feeds its discriminator
+      # either; skipping `__*` reproduces that invisibility at the raw boundary.
       recognizedSubKey =
         val: sk:
-        v1StructuralKeysSet ? ${sk}
-        || quirkSet ? ${sk}
-        || (classSet ? ${v1ClassKeyMap.${sk} or sk} && looksLikeClassContent val.${sk});
+        !(prelude.hasPrefix "__" sk)
+        && (
+          v1StructuralKeysSet ? ${sk}
+          || quirkSet ? ${sk}
+          || (classSet ? ${v1ClassKeyMap.${sk} or sk} && looksLikeClassContent val.${sk})
+        );
       isCandidate =
         k:
         !(v1StructuralKeysSet ? ${k})
@@ -211,13 +267,16 @@ let
   # hmContext, and via den.default radiation hostname/inputs'/… ). We thread a per-position NAME PATH
   # (owning-aspect prefix + list index, recursively) so every wrap has a DISTINCT, traceable key.
   mkNormalize =
-    classNames:
+    classNames: quirkNames:
     let
       # den-hoag's built-in class set PLUS the fleet's declared classes (`den.classes`), enough to route a
       # battery fn's class content (nixos/darwin/home-manager/wsl/…) at class-A.
       wrapCnf = {
         classes = prelude.genAttrs classNames (_: { });
       };
+      # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
+      # registry-side instance; see `groundRec` for why the include path needs its own split.
+      isNested = mkIsNestedAspectKey classNames quirkNames;
       # Normalize a `.includes` list, naming each element by its POSITION under `prefix` (distinct keys).
       # The name is built by CONCATENATION (`prefix + ":" + toString i`), NOT by interpolating two values
       # around a colon — that interpolation idiom is the shim's `kind:name` scope-string form, which the
@@ -225,6 +284,29 @@ let
       # NAME, never a scope-string, but concatenation keeps the core lint-clean regardless).
       normalizeList =
         prefix: refs: prelude.imap0 (i: ref: normalize (prefix + ":" + toString i) ref) refs;
+      # STATIC-INCLUDE IDENTITY (board #58 — the "<anon>"-collapse fix, the STATIC twin of the DISTINCT
+      # WRAP NAMES fix above). That fix gave the FN arm per-position `meta.loc` keys; the static arm
+      # stayed nameless, so every navigated static include keyed `"<anon>"` (gen-aspects `aspectPath`),
+      # forwardExpand's seen-dedup kept only the FIRST sibling, transitive chains starved behind their
+      # intermediate's key, and the content-driven member spine (output-modules `contentIdsOf`) dropped
+      # starved hosts from `nixosConfigurations` entirely — the corpus zero-content diagnosis. Identity:
+      # `stampProvider` (v1 wrapChild, normalize.nix:95-119) when the value is annotated; the DISTINCT
+      # POSITIONAL name as the annotation-less inline-literal fallback — v1's own nameless posture
+      # (children.nix's `<parent>/<anon>:<idx>` rename).
+      stampIdentity =
+        fallbackName: ref:
+        let
+          s = stampProvider ref;
+        in
+        if s ? name then
+          s
+        else
+          s
+          // {
+            name = fallbackName;
+            # the A12 producer key for the positional-fallback arm (see stampProvider's id_hash note).
+            id_hash = s.id_hash or (builtins.hashString "sha256" "den-aspect:${fallbackName}");
+          };
       # COORD GATE + ARG-SHAPING (v1 canTake parity): v1 fires a child fn ONLY where its every REQUIRED coord
       # is in scope, and calls it with a PRECISELY-shaped coord set. den-hoag's forwardExpand invokes a
       # wrapped fn UNCONDITIONALLY with the full enriched-context (which carries `__entry` + the scope
@@ -291,15 +373,33 @@ let
           # corpus-zero) grounds to content whose `fn` key aborts at the §2.2 three-branch dispatch —
           # self-announcing, never a silent drop. An id_hash-bearing entry is already a resolved record —
           # pass it (and strings) through the `else`.
-          groundRec name ref
+          groundRec name (stampIdentity name ref)
         else
           ref;
-      # Ground an aspect attrset's class keys AND recurse its `.includes` under a per-position name path —
-      # this grounds inputs'/self's nested static `{ homeManager._module.args… }` → `home-manager` and
-      # wraps a nested bare fn (transitive), each child keyed distinctly under `${name}:include`.
+      # Ground an aspect attrset's class keys, SPLIT OFF its nested sub-aspect keys, AND recurse its
+      # `.includes` under a per-position name path — this grounds inputs'/self's nested static
+      # `{ homeManager._module.args… }` → `home-manager` and wraps a nested bare fn (transitive), each
+      # child keyed distinctly under `${name}:include`.
+      #
+      # THE NESTED SPLIT (board #58 follow-through): v1 never auto-walks a nested sub-aspect at ANY
+      # resolution path — "sub-aspects are never auto-walked … they activate via explicit `includes`"
+      # (v1 key-classification.nix:67-68 @ pin) applies during v1's resolve WALK, i.e. to navigated
+      # include values exactly as to registry records. The shim's split lived only on the registry path
+      # (translateAspect) because pre-#58 a navigated static include never resolved far enough for its
+      # content to be classified (the "<anon>" collapse starved it); with provider identities every
+      # navigated value's content now reaches §2.2, so a parent aspect carrying nested sub-aspects
+      # (corpus `core.nix` with `linux-builder`/…) would abort `aspect declares key <nested>` at the
+      # including scope without the split here. Strip-ONLY, same as the registry side (Fork-B): the
+      # nested value is re-reachable by explicit navigation, never registered. This also aligns the
+      # parametric-RESULT arm with v1 (a result's nested keys nested-classify at resolution — the old
+      # "no nested arm" ceiling comment above is superseded by exactly this).
       groundRec =
         name: attrs:
-        (groundKeys attrs)
+        let
+          grounded = groundKeys attrs;
+          nestedKeys = builtins.filter (isNested grounded) (builtins.attrNames grounded);
+        in
+        (builtins.removeAttrs grounded nestedKeys)
         // prelude.optionalAttrs (attrs ? includes) {
           includes = normalizeList "${name}:include" attrs.includes;
         };
@@ -308,12 +408,17 @@ let
 
   # v1 aspect STRUCTURAL keys that do NOT pass through as den-hoag aspect content: `provides` rides the
   # legacy module (Task 4), `policies`/`excludes` are re-expressed here, `__*` are v1 pipeline internals.
+  # `__provider` (board #58): the annotation walk stamps it on every aspect-tree node; the REGISTRY
+  # record is keyed by its top-level name already, so the path is stripped here — the compiled registry
+  # stays byte-identical to the pre-annotation shim (and never carries an untyped list key into
+  # den-hoag's `den.aspects` option). Navigated INCLUDE values keep theirs (identity via stampProvider).
   droppedAspectKeys = [
     "provides"
     "policies"
     "excludes"
     "classes"
     "_"
+    "__provider"
   ];
 
   # Resolve a v1 aspect REFERENCE to the den-hoag aspect record den-hoag's resolution consumes. Accepts
@@ -388,9 +493,29 @@ let
             meta = parent.meta or { };
             metaWithDrop =
               if excludes == [ ] then parent.meta or null else meta // { drop = (meta.drop or [ ]) ++ excludes; };
+            # board #58 KEY-ALIGNMENT: `keyOf` consumers over v1-NAVIGATED aspect values OUTSIDE the
+            # include path — literal-form `neededBy` triggers (resolved-aspects `indexByNeededBy`) and
+            # `meta.drop`/`excludes` constraint refs (`applyConstraints`/`constraintSeen`) — must see
+            # the SAME provider-derived identity the resolved nodes carry, else a provider-keyed
+            # resolved set never matches an `"<anon>"`-keyed trigger/drop. Corpus-zero today (the
+            # provides desugar emits SELECTOR-form neededBy, legacy/provides.nix:24; corpus `excludes`
+            # are policy excludes on schema kinds), stamped for coherence. Provider-ONLY (no positional
+            # fallback): a nameless un-annotated literal ref stays `"<anon>"` — v1's own posture.
+            stampRefs = map stampProvider;
+            metaStamped =
+              if metaWithDrop == null then
+                null
+              else
+                metaWithDrop
+                // prelude.optionalAttrs (builtins.isList (metaWithDrop.drop or null)) {
+                  drop = stampRefs metaWithDrop.drop;
+                };
           in
           parent
-          // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
+          // (if metaStamped == null then { } else { meta = metaStamped; })
+          // prelude.optionalAttrs (builtins.isList (parent.neededBy or null)) {
+            neededBy = stampRefs parent.neededBy;
+          }
           // prelude.optionalAttrs (parent ? includes) {
             includes = normalizeList "${name}:include" parent.includes;
           }
@@ -407,17 +532,16 @@ let
   #     (`den.aspects.axon`, clusters/axon.nix:101).
   # The emitted value is GROUNDED through the SAME normalizeList machinery translateAspect uses (class
   # keys grounded, `.includes` children wrapped/recursed — so the sub-aspect's firefox/steam/spicetify
-  # includes resolve at the cell) and stamped a DETERMINISTIC SCOPE-COORD identity (Fork-A ruling; the
-  # census intent `cluster-aspect@<cluster.name>`): name = `<emitted>@<coord names>`, id_hash = sha256
-  # over the firing cell's entity-coord id_hashes — stable across eval order, DISTINCT per cell
-  # (`<emitted>@blade.shuo` ≠ `<emitted>@cortex.shuo`; single-emission per cell makes dedup moot).
-  # CEILING (documented, not guarded): the identity is the CELL's, not the policy's — TWO content-set-
-  # emitting policies firing at ONE cell would collide (corpus: one per scope kind — user cells get
-  # user-aspect-auto-include, cluster scopes cluster-aspect); and a content set referenced from TWO cells
-  # lands twice under distinct identities (v1 dedups by `__provider` name — the board #58 registry
-  # restructure, NOT this arm). At the value-less stratum probe the coords are sentinel entries (which
-  # carry id_hash/name), so the derivation is probe-safe — though both corpus emitters gate on a real
-  # aspect-name match and emit nothing at the probe (expansion path).
+  # includes resolve at the cell). IDENTITY (board #58 supersession of the old scope-coord Fork-A
+  # ruling): an ANNOTATED emitted value (one navigated off a `__provider`-stamped tree — the corpus
+  # path, since the bridge's `den` module arg is annotated) takes v1's PROVIDER identity (wrapChild,
+  # normalize.nix:95-119 — v1 has no separate emitted-identity class), dissolving both old ceilings
+  # (cell-identity collision of two emitters at one cell; double-landing of one set referenced from two
+  # cells). An annotation-LESS value (closure-captured/synthetic) falls back to the DETERMINISTIC
+  # SCOPE-COORD identity: name = `<emitted>@<coord names>`, id_hash over the firing cell's entity-coord
+  # id_hashes — stable across eval order, distinct per cell. At the value-less stratum probe the coords
+  # are sentinel entries (which carry id_hash/name), so the fallback derivation is probe-safe — though
+  # both corpus emitters gate on a real aspect-name match and emit nothing at the probe (expansion path).
   isEmittedContentSet =
     v:
     builtins.isAttrs v
@@ -427,19 +551,33 @@ let
     && !((v.__isPolicy or false) || (v.__denCanTake or null) != null);
   mkEmittedAspect =
     normalizeList: ctx: v:
-    let
-      coordKeys = builtins.sort builtins.lessThan (
-        builtins.filter (
-          k: builtins.substring 0 2 k != "__" && builtins.isAttrs ctx.${k} && ctx.${k} ? id_hash
-        ) (builtins.attrNames ctx)
-      );
-      name = "<emitted>@" + builtins.concatStringsSep "." (map (k: ctx.${k}.name or "?") coordKeys);
-      id_hash = builtins.hashString "sha256" (
-        "den-compat-emitted-include:"
-        + builtins.concatStringsSep "," (map (k: "${k}=${ctx.${k}.id_hash}") coordKeys)
-      );
-    in
-    builtins.head (normalizeList "${name}:content" [ v ]) // { inherit name id_hash; };
+    if builtins.isList (v.__provider or null) && v.__provider != [ ] then
+      # PROVIDER IDENTITY (board #58 — supersedes the scope-coord identity for ANNOTATED values). v1
+      # applies provider identity to ANY navigated `__provider`-bearing value regardless of arrival
+      # path (wrapChild, normalize.nix:95-119) — the emitted arm is not a separate identity class
+      # under v1. Both u7 identity CEILINGS dissolve: identity is the VALUE's, not the cell's — a
+      # content set referenced from two cells dedups to one resolved node per cell key-space, and two
+      # content-set emitters at one cell cannot collide. `name`/`meta.aspect-chain` come from the
+      # normalize static arm's stampProvider (grounding rides the SAME normalizeList), which also
+      # stamps `id_hash` — the aspectEntry convention over the provider path, deterministic and
+      # eval-order-free.
+      builtins.head (normalizeList "<emitted>" [ v ])
+    else
+      # SCOPE-COORD FALLBACK (annotation-less content sets — closure-captured / synthetic values that
+      # never crossed an annotated tree): the deterministic per-cell identity, unchanged.
+      let
+        coordKeys = builtins.sort builtins.lessThan (
+          builtins.filter (
+            k: builtins.substring 0 2 k != "__" && builtins.isAttrs ctx.${k} && ctx.${k} ? id_hash
+          ) (builtins.attrNames ctx)
+        );
+        name = "<emitted>@" + builtins.concatStringsSep "." (map (k: ctx.${k}.name or "?") coordKeys);
+        id_hash = builtins.hashString "sha256" (
+          "den-compat-emitted-include:"
+          + builtins.concatStringsSep "," (map (k: "${k}=${ctx.${k}.id_hash}") coordKeys)
+        );
+      in
+      builtins.head (normalizeList "${name}:content" [ v ]) // { inherit name id_hash; };
 
   # Translate ONE v1 policy effect record → den-hoag declaration(s): the structural/resolution
   # vocabulary (include/exclude/resolve + the instantiate spawn). The delivery-edge vocabulary
@@ -658,7 +796,7 @@ let
   # key routes as CLASS content, not a nested aspect (Fork A). `v1Classes` is fleet-scoped, so this must
   # live in the function body (where the decls are), not at top level.
   allClassNames = builtinClasses ++ builtins.attrNames v1Classes;
-  normalizeList = mkNormalize allClassNames;
+  normalizeList = mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { }));
   # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
   # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
   isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));

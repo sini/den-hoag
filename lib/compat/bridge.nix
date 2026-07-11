@@ -69,6 +69,22 @@ let
       else
         bv
     ) b;
+
+  # board #58 (Fork A): the `__provider`-annotated fleet surface — ONE post-fold walk over the merged
+  # `den.aspects` tree (compat.annotateAspects, annotate.nix; v1 annotateDeep, pin types.nix:561-574),
+  # feeding BOTH consumers below: the corpus policy closures' `den` module arg (the navigation surface
+  # a dispatch-emitted `den.aspects.<path>` include reads) and the fleet def handed to the shim (the
+  # navigation surface an aspect's `with den.aspects` includes read via compile). POST-fold, never
+  # inside `v1DeepMerge` — the fold's recurse-only-on-collision property is the load-bearing
+  # formals-preservation mechanism (`options.aspects` comment) and stays byte-identical. The fleet's
+  # declared classes/quirks feed the walk's exclusion guard (v1 reads its own registries the same way,
+  # types.nix:540-542).
+  annotatedDen = config.den // {
+    aspects = compat.annotateAspects {
+      classNames = builtins.attrNames (config.den.classes or { });
+      quirkNames = builtins.attrNames (config.den.quirks or { });
+    } (config.den.aspects or { });
+  };
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
@@ -381,7 +397,9 @@ in
   # arg carries BOTH the config surface (config.den) AND the lib surface at `den.lib` (v1's
   # `options.den.lib`), so the bridge splices the migration lib onto `.lib` — the same drop-in surface
   # `inputs.den.lib` exposes. The shim reproduces the config half separately inside its OWN v1 eval.
-  config._module.args.den = config.den // {
+  # `aspects` rides ANNOTATED (board #58): a corpus policy navigating `den.aspects.<path>` off this arg
+  # gets the `__provider`-bearing value, so its emitted include recovers v1's provider identity.
+  config._module.args.den = annotatedDen // {
     lib = denLib;
   };
 
@@ -428,8 +446,10 @@ in
       };
       fleet = [
         {
+          # `annotatedDen` (board #58): the fleet's `den.aspects` carries the post-fold `__provider`
+          # annotation, so compile's include grounding recovers v1's provider identity.
           den =
-            builtins.removeAttrs config.den [
+            builtins.removeAttrs annotatedDen [
               "nixpkgs"
               "darwin"
             ]

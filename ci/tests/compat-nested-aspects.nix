@@ -13,9 +13,13 @@
 #   • the TYPO POSTURE: a non-nested unknown key (scalar value, or attrset with no recognized sub-key)
 #     stays on the parent and still aborts LOUDLY at the §2.2 three-branch dispatch;
 #   • the EMITTED-INCLUDE arm (translateEffect + mkEmittedAspect): the emitted bare content set grounds
-#     through normalizeList (class keys grounded, includes wrapped) and is stamped the deterministic
-#     SCOPE-COORD identity (Fork-A: `<emitted>@<coord names>`, id_hash over the cell's coord id_hashes —
-#     distinct per cell, `<emitted>@blade.shuo` ≠ `<emitted>@cortex.shuo`, stable across eval order);
+#     through normalizeList (class keys grounded, includes wrapped). IDENTITY — SUPERSEDED by board #58
+#     (the __provider annotation rung): an ANNOTATED emitted value (the corpus path — the bridge's `den`
+#     module arg is annotated) takes v1's PROVIDER identity (wrapChild, normalize.nix:95-119 @ pin), so
+#     the old cell-identity ceilings (two emitters at one cell; one set from two cells) dissolve. The
+#     deterministic SCOPE-COORD identity (`<emitted>@<coord names>`, id_hash over the cell's coord
+#     id_hashes — distinct per cell, stable across eval order) remains as the annotation-LESS FALLBACK,
+#     which is what the closure-captured fixtures here exercise;
 #   • the INTEGRATION: at a real (user,host) cell the auto-included sub-aspect's home-manager content
 #     materializes in the cell's home-manager bucket (the relaxed w3 witness; full byte-parity rides the
 #     ship-gate content oracle).
@@ -87,9 +91,10 @@ let
       }
     ]).den;
 
-  # ── (4) EMITTED-INCLUDE unit (translateEffect include arm): a policy emitting a bare content set gets
-  #    the scope-coord identity, and the emitted content's class keys are GROUNDED (homeManager →
-  #    home-manager, the lookahead-iii fix: the emission rides the same normalizeList as translateAspect).
+  # ── (4) EMITTED-INCLUDE unit (translateEffect include arm): an annotation-LESS emitted content set
+  #    gets the scope-coord FALLBACK identity (board #58 posture), and the emitted content's class keys
+  #    are GROUNDED (homeManager → home-manager, the lookahead-iii fix: the emission rides the same
+  #    normalizeList as translateAspect).
   peCompiled = denCompat.compile {
     policies.p =
       { host, user, ... }:
@@ -137,6 +142,58 @@ let
       {
         id_hash = "H-blade";
         name = "blade";
+      }
+      {
+        id_hash = "U-shuo";
+        name = "shuo";
+      };
+
+  # ── (4') PROVIDER identity (board #58 supersession): the SAME emission with an ANNOTATED value — a
+  #    `__provider`-bearing content set (what the corpus policy actually navigates off the bridge's
+  #    annotated `den` arg) takes v1's provider identity (wrapChild, normalize.nix:95-119): name = last,
+  #    meta.aspect-chain = init, id_hash = the aspectEntry convention over the provider path — CELL-
+  #    INDEPENDENT (the same value emitted at two cells is ONE identity). ────────────────────────────
+  peProvCompiled = denCompat.compile {
+    policies.p =
+      { host, user, ... }:
+      [
+        {
+          __policyEffect = "include";
+          value = {
+            includes = [ ];
+            homeManager.x = true;
+            __provider = [
+              "blade"
+              "shuo"
+            ];
+          };
+        }
+      ];
+    hosts.x86_64-linux.h1.class = "nixos";
+  };
+  provEmitAt =
+    hostEntry: userEntry:
+    builtins.head (
+      peProvCompiled.policies.p.fn {
+        host = hostEntry;
+        user = userEntry;
+      }
+    );
+  provEmitBlade =
+    provEmitAt
+      {
+        id_hash = "H-blade";
+        name = "blade";
+      }
+      {
+        id_hash = "U-shuo";
+        name = "shuo";
+      };
+  provEmitCortex =
+    provEmitAt
+      {
+        id_hash = "H-cortex";
+        name = "cortex";
       }
       {
         id_hash = "U-shuo";
@@ -248,8 +305,8 @@ in
       expr = cmOkAt attrsTypoFleet "host:h1";
       expected = false;
     };
-    # (4) EMITTED IDENTITY (Fork-A): deterministic scope-coord name + id_hash — distinct per cell,
-    #     stable across invocations, and the emitted content's class keys are grounded.
+    # (4) EMITTED IDENTITY — the annotation-less scope-coord FALLBACK (board #58): deterministic name +
+    #     id_hash — distinct per cell, stable across invocations, class keys grounded.
     test-emitted-identity-scope-coord = {
       expr = {
         name = bladeEmit.aspect.name;
@@ -261,6 +318,26 @@ in
         name = "<emitted>@blade.shuo";
         distinct = true;
         stable = true;
+        grounded = true;
+      };
+    };
+    # (4') EMITTED IDENTITY — PROVIDER (board #58 supersession): an ANNOTATED emitted value takes v1's
+    #      provider identity (wrapChild normalize.nix:95-119) — name = last __provider, aspect-chain =
+    #      init, id_hash = the aspectEntry convention over the path, CELL-INDEPENDENT (both old u7
+    #      ceilings dissolve); class keys still grounded through the same normalizeList.
+    test-emitted-identity-provider = {
+      expr = {
+        name = provEmitBlade.aspect.name;
+        chain = provEmitBlade.aspect.meta.aspect-chain;
+        idHash = provEmitBlade.aspect.id_hash;
+        cellIndependent = provEmitBlade.aspect.id_hash == provEmitCortex.aspect.id_hash;
+        grounded = provEmitBlade.aspect ? home-manager && !(provEmitBlade.aspect ? homeManager);
+      };
+      expected = {
+        name = "shuo";
+        chain = [ "blade" ];
+        idHash = builtins.hashString "sha256" "den-aspect:blade/shuo";
+        cellIndependent = true;
         grounded = true;
       };
     };
@@ -281,8 +358,11 @@ in
       };
     };
     # (6) IDENTITY AT THE CELLS: one emitted aspect per matching cell, keyed by ITS cell (byte-identical
-    #     content on both hosts — distinctness comes from the scope coords); the non-matching cell and
-    #     the host scope carry none.
+    #     content on both hosts — the fixtures are closure-captured, so the scope-coord FALLBACK applies;
+    #     the corpus path takes provider identity, test 4'); the non-matching cell and the host scope
+    #     carry none. board #58 flip: the emitted set's static include CHILD now carries the distinct
+    #     POSITIONAL identity (`…:content:0:include:0`) instead of the old shared `"<anon>"` — it lands
+    #     in the prefix filter, and two such children can no longer collapse onto one dedup key.
     test-autoinclude-identity-per-cell = {
       expr = {
         blade = emittedKeysAt "user:shuo@host:blade";
@@ -291,8 +371,14 @@ in
         host = emittedKeysAt "host:blade";
       };
       expected = {
-        blade = [ "<emitted>@blade.shuo" ];
-        cortex = [ "<emitted>@cortex.shuo" ];
+        blade = [
+          "<emitted>@blade.shuo"
+          "<emitted>@blade.shuo:content:0:include:0"
+        ];
+        cortex = [
+          "<emitted>@cortex.shuo"
+          "<emitted>@cortex.shuo:content:0:include:0"
+        ];
         plain = [ ];
         host = [ ];
       };
