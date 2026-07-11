@@ -213,3 +213,36 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   classless darwin → darwin routes). This SUPERSEDES the review's null-default adjudication — a null default
   would leave darwin hosts unrouted; the parity-correct behavior is v1's system derivation. Row `p`
   classification: `bug-in-hoag` → FIXED.
+
+- **M2 instantiate-default gap — per-host SCHEMA-TYPED INSTANCE EVAL (fork (i); FIXED 2026-07-10).**
+  The last gap between the evaluated host list and the first real drvPath: the corpus's per-host
+  `instantiate` is a SCHEMA-DECLARED default (`den.schema.host.imports` module — nix-config
+  schema/host.nix:325 `instantiate = mkDefault resolvedChannel.nixosSystem`, channel table :117-142
+  closing over the corpus's locked inputs), which v1 materialized by evaluating each host through the
+  kind's instance submodule (pin 11866c16 nix/lib/entities/host.nix:53-57 `mkInstanceType den.schema.host
+  { strict = false; … }` — the `instantiate` OPTION lives there, :81-105, base default = den's own inputs
+  :98-104 at priority 1500; the corpus's mkDefault 1000 wins). The shim's bridge crossed RAW authored
+  decls (no instance eval), so `instantiateFor` read `flatHosts.<h>.instantiate or null` = null and every
+  corpus member fell to `collect`. FIX (fork (i), ruled over the targeted extract — the channel table is a
+  PRIVATE let-binding, so both forks pay the corpus-module eval; (i) pays it ONCE and generally):
+  `lib/compat/instance-eval.nix` reproduces v1's instance eval at the bridge — one LAZY nixpkgs-lib
+  `evalModules` per host (the CONSUMER's `lib`, R10-style) over base entity module (v1's option decls,
+  cited per option; `home-manager.module`'s v1 decl site is the hm battery's hostConf, pin
+  nix/lib/home-env.nix:35-55 via batteries/home-manager.nix:28, NOT entities/host.nix) + the corpus's raw
+  host-kind module (the M1.75 emitted kind-value functor) + the authored attrs. The harvest rides as the
+  reserved `den._hostHarvest` (`_`-exempt, like `_declaredKeys`); ingest's `instantiateFor` reads its
+  `.instantiate` authored-first (mkDen-direct paths: no bridge ⇒ no harvest ⇒ byte-identical), and the
+  FULL harvested instance is stored (`entities.hostHarvest`) so the later hmModuleFor/secretPathFor grains
+  read the SAME eval. ONE VALUE DEVIATION, priority-faithful: the base `instantiate` default is null (the
+  D7 "fall to the lower grains" slot) — den-hoag carries no nixpkgs; v1's slot holds den's own
+  `inputs.nixpkgs.lib.nixosSystem`, whose den-hoag analog IS the class-terminal grains. DARWIN CEILING
+  unchanged (harvest materializes `darwinSystem` too; the wrapper stays nixos-stamped until the class-B
+  arm). FINDING (out of scope here, its own row when the arm lands): the standalone
+  `user@unregistered-host` home shape aborts in den-hoag fleet children (`fleet.nix:36` keys every
+  membership cell by `id_hash`; a synthetic host entry carries none) — the den.homes / board #49 surface,
+  so the synthetic-host guard is witnessed at the grain's seams instead. Witness suite
+  `ci/tests/compat-instance-eval.nix` (13 tests: channel default materializes + evaluator identity by
+  application, per-host channel selection, base fields, darwin branch, authored-wins + base-default
+  priority interplay, generality (hm module + secretPath), ingest harvest read + no-harvest null +
+  unknown-id null, bridge end-to-end channel crossing + no-phantom + no-schema collect). Gates: ci
+  670/670, parity 71/71.

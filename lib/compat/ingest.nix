@@ -426,16 +426,26 @@ let
       # instantiateFor (ship-gate M2, the per-entity instantiation grain, D7): v1's per-host
       # `host.instantiate` (nix-config schema/host.nix — `resolvedChannel.nixosSystem`, a
       # `{ modules; specialArgs; } -> system` EVALUATOR embedding that host's channel nixpkgs) keyed by
-      # host id_hash. The `hosts` sub-option is `raw` (flake-module.nix), so this function rides through
-      # `flatHosts` untouched. Like systemFor, it is a nixpkgs-BOUND function, so it stays a compile-time
-      # `id_hash -> evaluator` map — NEVER a field on the strict, field-less den-hoag entity (the C1
-      # type-crossing dodge) — and is forced only at the terminal (the compat nixos wrapper crosses via it
-      # per host). Absent (the fleet declares no per-host instantiate) -> null, and the wrapper falls to the
-      # class-level terminal (the global `den.nixpkgs` grain, or the pure nixpkgs-free `collect`).
+      # host id_hash. TWO sources, authored-first: the AUTHORED field (`flatHosts.<h>.instantiate` — the
+      # `hosts` sub-option is `raw` (flake-module.nix), so a fixture's evaluator function rides through
+      # `flatHosts` untouched) or the SCHEMA-MATERIALIZED default from the bridge's per-host schema-typed
+      # instance eval (fork (i), `_hostHarvest` — instance-eval.nix): v1 materialized the corpus's
+      # `instantiate = mkDefault resolvedChannel.nixosSystem` (host.nix:325) by evaluating each host
+      # through the kind's instance submodule (pin 11866c16 nix/lib/entities/host.nix:53-57), and the
+      # harvest reproduces exactly that, folding v1's priorities (authored 100 < corpus mkDefault 1000 <
+      # base default 1500) — so both reads agree where a host authors one, and the authored-first chain
+      # keeps mkDen-direct paths (no bridge ⇒ no harvest) byte-identical. Like systemFor, the evaluator is
+      # a nixpkgs-BOUND function, so it stays a compile-time `id_hash -> evaluator` map — NEVER a field on
+      # the strict, field-less den-hoag entity (the C1 type-crossing dodge) — and is forced only at the
+      # terminal (the compat nixos wrapper crosses via it per host). Absent from both (no authored field,
+      # no schema default — the harvest's base default is null, the D7 "fall to the lower grains" slot) ->
+      # null, and the wrapper falls to the class-level terminal (the global `den.nixpkgs` grain, or the
+      # pure nixpkgs-free `collect`).
+      hostHarvest = v1Decls._hostHarvest or { };
       instantiateByHostId = builtins.listToAttrs (
         map (name: {
           name = registries.host.${name}.id_hash;
-          value = flatHosts.${name}.instantiate or null;
+          value = flatHosts.${name}.instantiate or ((hostHarvest.${name} or { }).instantiate or null);
         }) (builtins.attrNames flatHosts)
       );
       instantiateFor = host: instantiateByHostId.${host.id_hash} or null;
@@ -481,6 +491,11 @@ let
         contentClass
         systemFor
         instantiateFor
+        # The full per-host harvest (fork (i), lazy — the ONE schema-typed instance eval per host).
+        # `instantiateFor` reads it above; the LATER per-host grains (hmModuleFor `home-manager.module`,
+        # secretPathFor — corpus host.nix:319,329) read the SAME entries, never a re-eval. Empty for
+        # mkDen-direct paths (no bridge ⇒ no `_hostHarvest`).
+        hostHarvest
         hostClassName
         hostSystemName
         classRegistry

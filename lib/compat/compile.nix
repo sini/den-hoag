@@ -1031,6 +1031,9 @@ builtins.seq surfaceTotalityOk {
       contentClass
       systemFor
       instantiateFor
+      # fork (i): the full per-host schema-typed harvest (lazy; `_hostHarvest` via the bridge) —
+      # `instantiateFor` reads its `.instantiate`; the later per-host grains read the SAME eval.
+      hostHarvest
       hostClassName
       hostSystemName
       ;

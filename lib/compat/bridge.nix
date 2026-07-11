@@ -16,14 +16,20 @@
 # pre-merged `config.den` def — so gen-schema types never enter the consumer's evalModules.
 #
 # INSTANTIATION (D7): a fleet's per-host nixpkgs crossing is a DECLARED instantiation — the corpus sets
-# `host.instantiate = <channel>.nixosSystem` (nix-config schema/host.nix). Honoring that declared per-host
-# evaluator is ship-gate M2; THIS milestone (M1) wires the mechanics on the global-fallback grain: when
-# `den.nixpkgs` is supplied it crosses ALL nixos members through one `crossNixos` (real NixOS systems),
-# else the nixpkgs-free `collect` terminal (the member keys are present — a non-empty `nixosConfigurations`
-# — with inspectable module artifacts, not built systems). `den.darwin` is the symmetric fallback; the
-# per-host darwin crossing is also M2. `mkDen`/`mkDenWith`/`evalV1` are UNTOUCHED (Law preservation): the
-# bridge is flake-parts-side assembly only, so the parity harness (which drives `mkDen` directly) and
-# den-hoag's own mkDen-direct paths stay byte-identical.
+# `host.instantiate = <channel>.nixosSystem` (nix-config schema/host.nix:325, a SCHEMA-DECLARED default,
+# not an authored per-host field). Ship-gate M2 honors it in TWO halves: the compat nixos wrapper
+# (flake-module.nix mkNixosInstantiate) crosses a host through its own evaluator when `instantiateFor`
+# yields one, and the bridge's per-host SCHEMA-TYPED INSTANCE EVAL (fork (i), `hostHarvest` below)
+# MATERIALIZES the schema default so `instantiateFor` sees it at all — v1 materialized it by evaluating
+# each host through the kind's instance submodule (pin 11866c16 nix/lib/entities/host.nix:53-57); raw
+# authored decls alone never carry it. The M1 global-fallback grain remains underneath: when
+# `den.nixpkgs` is supplied, instantiate-less nixos members cross through one `crossNixos` (real NixOS
+# systems), else the nixpkgs-free `collect` terminal (the member keys are present — a non-empty
+# `nixosConfigurations` — with inspectable module artifacts, not built systems). `den.darwin` is the
+# symmetric fallback; the per-host darwin crossing is the class-B arm (the wrapper is nixos-stamped
+# only). `mkDen`/`mkDenWith`/`evalV1` are UNTOUCHED (Law preservation): the bridge is flake-parts-side
+# assembly only, so the parity harness (which drives `mkDen` directly) and den-hoag's own mkDen-direct
+# paths stay byte-identical (no bridge ⇒ no harvest ⇒ `instantiateFor` reads authored fields alone).
 #
 # `mkCrossNixos nixpkgs` — the `crossNixos` builder closure (flake.nix threads `lib.internal.{bind,flake}`
 # + the terminal source); called with the consumer-supplied `den.nixpkgs` at fold time.
@@ -350,6 +356,29 @@
       declaredDenKeys = builtins.filter (k: builtins.substring 0 1 k != "_") (
         builtins.attrNames ((options.den.type.getSubOptions or (_: { })) [ ])
       );
+      # ── Per-host SCHEMA-TYPED INSTANCE EVAL (ship-gate M2, fork (i)) ────────────────────────────
+      # v1 materializes schema-declared per-host defaults by evaluating each host through the host
+      # KIND's instance submodule (pin 11866c16 nix/lib/entities/host.nix:53-57); the corpus's
+      # channel machinery (nix-config schema/host.nix:117-142,325) declares `instantiate =
+      # mkDefault resolvedChannel.nixosSystem` there. The bridge reproduces that instance eval
+      # HERE — the one place with the consumer's nixpkgs `lib` (R10-style; this file's sanctioned
+      # nixpkgs touch, still import-free) — via `compat.instanceEval` (instance-eval.nix): one
+      # LAZY evalModules per host over base entity module + the corpus's raw host-kind module +
+      # the authored attrs. The harvest rides to ingest as the reserved `_hostHarvest` (like
+      # `_declaredKeys`: `_`-exempt from surface-totality, skipped by custom-kind discovery),
+      # where `instantiateFor` reads `.instantiate` (the M2 per-entity grain) and the LATER
+      # grains (hmModuleFor/secretPathFor) will read the SAME eval. The kind module is the M1.75
+      # emitted kind-value itself (a functor the module system applies: passThroughSeam returns
+      # the corpus's raw `{ imports; options }`; the severed processed path is gen-schema's
+      # option-declaring module, mounting once the consumer pins are protocol-complete). A fleet
+      # with no host kind harvests base-only — every default null, the grain absent —
+      # byte-identical to the pre-harvest bridge.
+      hostKindModule = (config.den.schema or { }).host or { };
+      hostHarvest = compat.instanceEval {
+        inherit lib;
+        kindModule = hostKindModule;
+        flatHosts = compat.ingest.flattenHosts (config.den.hosts or { });
+      };
       fleet = [
         {
           den =
@@ -361,6 +390,7 @@
               # the shim gets the RAW schema (it re-processes; the processed value is the corpus's, not ours).
               schema = config.den.schema.__rawSchema or { };
               _declaredKeys = declaredDenKeys;
+              _hostHarvest = hostHarvest;
             };
         }
       ];
