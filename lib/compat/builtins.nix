@@ -25,6 +25,24 @@
 #     the ship-gate class-F/G rows (devShells / packages). The attr EXISTS unconditionally (class-A reads
 #     `flake-system.includes` for every artifact), but FIRING throws the routed message — self-announcing:
 #     if a class-A re-probe surfaces the throw, the chain IS class-A-reachable and we PROVIDE it then.
+#     GATED BY v1's OWN FORMALS (`{ system, ... }`): each stub carries the destructuring pattern its v1
+#     policy declares at the pin — `system-to-flake-parts` flake-parts.nix:9-10, `system-to-os-outputs`
+#     flake.nix:53-54, `system-to-hm-outputs` flake.nix:67-68, all `{ system, ... }:`. `system` is a v1
+#     flake-SYSTEM coord (v1 binds it only at a flake-system node — flake.nix:50 `resolve.to "flake-system"
+#     { inherit system; }`, flake-parts.nix:14 `name = "flake-parts-${system}"`), NOT the host's `system`
+#     FIELD (`host.system` rides NESTED under the `host` coord, never a top-level ctx key). den-hoag reads a
+#     `den.policies.<name>` fn's `functionArgs` as its dispatch gate, and compiles EVERY `den.policies.<name>`
+#     into a FLEET-WIDE standalone rule (compile.nix `compiledPolicies` → `policies`; ledger u3 / board #57),
+#     so the gate is what bounds its firing. With `{ system, ... }` the fleet-wide rule's condition is
+#     `{ system = false; }` → it fires ONLY where a `system` coord is bound = v1's flake-system nodes, which
+#     the corpus NEVER spawns (the `flake → flake-system` fan-out `flake-to-systems` is NOT provisioned; hosts
+#     arrive via the nixos class terminal). So the stubs are gated-inert for class-A THROUGH THE CORRECT
+#     MECHANISM (v1's own gate), self-announcing ONLY at a genuine flake-system node.
+#     EVAL-ORDER HISTORY: the stubs were previously `_ctx:` bare fns — EMPTY `functionArgs` ⇒ the fleet-wide
+#     rule's condition was `{ }` ⇒ they fired at EVERY node by DISPATCH (not by demand), surfacing the throw at
+#     `host:axon-01` class-modules once the class-A arm reached class-modules. Earlier ship-gate probes never
+#     crossed class-modules, so the empty gate went unobserved until this rung. The `{ system, ... }` gate is
+#     v1's gate verbatim — fire-by-demand restored.
 {
   prelude,
   errors,
@@ -55,9 +73,17 @@ let
       ];
   };
   # A v1 flake-OUTPUT built-in the class-A arm does not reproduce: exists for the ingest attr access, throws
-  # a named, class-F/G-routed message when fired at a real flake-system node.
+  # a named, class-F/G-routed message when fired at a real flake-system node. GATED by v1's OWN formals
+  # (`{ system, ... }:`, verbatim from the pin — flake-parts.nix:9-10, flake.nix:53-54, flake.nix:67-68), so
+  # den-hoag's `functionArgs` gate compiles the fleet-wide rule with condition `{ system = false; }` and it
+  # fires ONLY where a `system` flake-system coord is bound (v1's flake-system nodes) — corpus-absent, hence
+  # gated-inert for class-A by DEMAND, not the empty `_ctx:` gate that fired everywhere by DISPATCH (header,
+  # eval-order history). `system` is a flake-system COORD (v1 `resolve.to "flake-system" { inherit system; }`),
+  # NOT the host's nested `host.system` FIELD; a host node's ctx carries no top-level `system` key (empirically
+  # verified — a host cell's coords are the fleet product dims host/user/env/cluster, never `system`).
   outputStub =
-    name: v1src: _ctx:
+    name: v1src:
+    { system, ... }:
     throw "den-compat builtin: `den.policies.${name}` is a v1 flake-OUTPUT policy (${v1src} @ pin 11866c16); its firing populates flake outputs (packages/devShells/flake-parts) — ship-gate class F/G, not the class-A nixosConfigurations arm (which crosses the nixos class terminal). Reproduce it with the class-F/G rows (needs the fleet-resolution surface, board #49/#50).";
 in
 {
