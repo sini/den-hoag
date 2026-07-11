@@ -2,8 +2,8 @@
 # dispatch body reads `host.system`/`host.class` off it directly (nix-config classes/home-platform.nix:29 —
 # `lib.hasPrefix "aarch64-" host.system`, a HARD read with no `or` fallback). den-hoag entities are field-less,
 # so the shim must reproduce those STRUCTURAL fields on the entry: ingest.nix `buildSchema` declares them as
-# host-kind `options` and flake-module.nix `instanceConfig` stamps them from the `hostClassName`/`hostSystemName`/
-# `hostHostName` maps. C9 closed `class`; the `system` rung closed `system` (the demoted `den.hosts.<system>.<name>`
+# host-kind `options` and flake-module.nix `instanceConfig` stamps them from ingest's `entityFields`
+# (the structural trio + the registry-passthrough stamp). C9 closed `class`; the `system` rung closed `system` (the demoted `den.hosts.<system>.<name>`
 # path key); this rung closes `hostName` (v1 base-entity option `strOpt "Network hostname" config.name`, pin
 # 11866c16 entities/host.nix:63 — the hostname battery reads it). The probe sentinel carries all three
 # (`probeSentinelModule` {class, system, hostName}); the gap was the REAL entry.
@@ -69,8 +69,8 @@ let
   ctxHostAt = id: (eval.get id "enriched-context").host;
 
   # ── broadcast-hub-peer settings-read pin (ledger u6 / u9) — the ctx entity carries v1's settings view
-  #    (ingest.nix `harvestedHostFields` → `hostEntityFields` → the instanceConfig stamp; harvest-first,
-  #    raw authored fallback on this harvest-less mkDen-direct path), so the corpus's
+  #    (the bridge-registry passthrough: registry stampOf → `_entityStamps` → ingest `entityFields` →
+  #    the instanceConfig stamp), so the corpus's
   #    `host.settings.core.network.syncthing.isHub or false` (nix-config policies/pipes.nix:166) reads
   #    the REAL value at dispatch (the u6 read gap, CLOSED). The now-LIVE firing branch emits a
   #    `pipe.from` — a value-conditional pipeOp. The SITE-MARK rung (this commit) recognizes it as per-
@@ -86,24 +86,99 @@ let
       (pipe.from "syncthing-peers" [ (pipe.broadcast ({ user, ... }: true)) ])
     ];
   # The corpus hub declaration, verbatim idiom (hosts/uplink.nix:26) — PLUS the rest of the stamped
-  # field set (board #59, authored raw here: mkDen-direct has no harvest, so the stamp falls back to
-  # the authored fields — the same values a harvest would carry for authored-only fields).
+  # field set. The ctx-entity stamp is REGISTRY-SOURCED (the bridge-registry passthrough): the fixture
+  # builds `_entityStamps.hosts` with the REAL registry machinery (denCompat.registry — mkHostsOption
+  # over a corpus-shaped kind module, stampTreeOf/stampOf), exactly what the bridge computes and
+  # passes; mkDen-direct fleets carry NO stamps otherwise (the raw-authored census fallback died with
+  # the census). `bare` authors nothing — the registry materializes its option defaults.
   hubHostDecls = {
-    hosts.x86_64-linux.hub = {
-      class = "nixos";
-      settings.core.network.syncthing.isHub = true;
-      environment = "prod";
-      networking.interfaces.eth0.ipv4 = [ "10.0.0.1/24" ];
-      secretPath = "/secrets/hosts/hub";
-      public_key = "/secrets/hosts/hub/key.pub";
-      system-owner = "op";
+    hosts.x86_64-linux = {
+      hub = {
+        class = "nixos";
+        settings.core.network.syncthing.isHub = true;
+        environment = "prod";
+        networking.interfaces.eth0.ipv4 = [ "10.0.0.1/24" ];
+        secretPath = "/secrets/hosts/hub";
+        public_key = "/secrets/hosts/hub/key.pub";
+        system-owner = "op";
+      };
+      bare = {
+        class = "nixos";
+      };
     };
   };
+  # The corpus-shaped host kind module (nix-config schema/host.nix): the dynamic settings namespace
+  # (typed tree with the aspect-declared `isHub` default, :301-309), typed networking (:207-249), the
+  # scalar fields, and the COMPUTED readOnly `ipv4` (:181-194 — never authored; ONLY the registry
+  # carries it, the harvest-era "fallback ceiling" now a real value).
+  fieldKindModule =
+    { config, ... }:
+    let
+      inherit (nixpkgsLib) mkOption types;
+      sub =
+        opts:
+        mkOption {
+          type = types.submodule { options = opts; };
+          default = { };
+        };
+      strOpt = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+    in
+    {
+      options = {
+        settings = sub {
+          core = sub {
+            network = sub {
+              syncthing = sub {
+                isHub = mkOption {
+                  type = types.bool;
+                  default = false;
+                };
+              };
+            };
+          };
+        };
+        networking = mkOption {
+          type = types.attrsOf (types.attrsOf (types.attrsOf (types.listOf types.str)));
+          default = { };
+        };
+        environment = strOpt;
+        secretPath = strOpt;
+        public_key = strOpt;
+        system-owner = strOpt;
+        ipv4 = mkOption {
+          type = types.listOf types.str;
+          readOnly = true;
+        };
+      };
+      config.ipv4 = builtins.concatLists (
+        map (i: i.ipv4 or [ ]) (builtins.attrValues (config.networking.interfaces or { }))
+      );
+    };
+  registryLib = denCompat.registry;
+  hubStampTree = registryLib.stampTreeOf (
+    registryLib.hostInstanceOptions {
+      lib = nixpkgsLib;
+      kindModule = fieldKindModule;
+    }
+  );
+  hubApplied =
+    (registryLib.mkHostsOption {
+      lib = nixpkgsLib;
+      kindModule = fieldKindModule;
+    }).apply
+      hubHostDecls.hosts;
+  hubStamps = builtins.mapAttrs (_: e: registryLib.stampOf hubStampTree e) (
+    registryLib.flattenRegistry hubApplied
+  );
   settingsFleet =
     (mkDen [
       {
         config.den = hubHostDecls // {
           policies.broadcast-hub-peer = mkPolicy "broadcast-hub-peer" hubBody;
+          _entityStamps.hosts = hubStamps;
         };
       }
     ]).den;
@@ -184,8 +259,9 @@ in
     };
 
     # (u6/u9 pin — the host-settings entity-stamp rung + the SITE-MARK rung) four facts pinned:
-    #   realCtxCarriesSettings — the REAL ctx entity carries the settings view (the stamp; here the raw
-    #     authored fallback — mkDen-direct has no harvest), so the u6 read gap is CLOSED;
+    #   realCtxCarriesSettings — the REAL ctx entity carries the settings view (the REGISTRY-sourced
+    #     stamp — `_entityStamps.hosts` built by the real registry machinery), so the u6 read gap is
+    #     CLOSED;
     #   bodyFiresAtRealCtx — the corpus body applied to the REAL ctx entity takes the FIRING branch and
     #     emits the syncthing-peers pipe effect (v1's dispatch-time read, restored at the ctx level);
     #   firingNodeResolvesClean — the SITE-MARK rung: the fired emission is a pure SITE-MARK pipeOp
@@ -225,10 +301,11 @@ in
       };
     };
 
-    # (board #59, field-set coverage) — the full harvest-carried field record rides the ctx entity with
-    # its real per-host values (raw authored fallback on this mkDen-direct path). `ipv4`/`ipv6` are
-    # corpus-COMPUTED fields (schema/host.nix:181-206, readOnly — only a harvest carries them), so on
-    # the harvest-less path they pin to the null fallback — the honest fallback ceiling.
+    # (field-set coverage) — the full REGISTRY-stamped field record rides the ctx entity with its real
+    # per-host values (goldens IDENTICAL to the harvest-era pins). `ipv4` is a corpus-COMPUTED field
+    # (schema/host.nix:181-194, readOnly — never authored; ONLY the registry carries it): the stamp
+    # now carries the REAL computed value where the census-fallback era pinned null — the honest
+    # ceiling upgraded to the v1 value.
     test-stamped-field-set = {
       expr =
         let
@@ -240,7 +317,7 @@ in
           secretPath = h.secretPath;
           public_key = h.public_key;
           systemOwner = h.system-owner;
-          ipv4NullWithoutHarvest = h.ipv4 == null && h.ipv6 == null;
+          ipv4Computed = h.ipv4;
         };
       expected = {
         environment = "prod";
@@ -248,25 +325,47 @@ in
         secretPath = "/secrets/hosts/hub";
         public_key = "/secrets/hosts/hub/key.pub";
         systemOwner = "op";
-        ipv4NullWithoutHarvest = true;
+        ipv4Computed = [ "10.0.0.1/24" ];
       };
     };
 
-    # (board #59, the unauthored default) — a host declaring NO settings carries the `{ }` fallback
-    # (v1's empty settingsType default, corpus host.nix:304): soft `or`-reads degrade cleanly, and the
-    # namespace is present (never a missing-attribute throw on the `host.settings` spine itself).
-    test-unauthored-settings-empty = {
+    # (the unauthored default) — a host declaring NO settings carries v1's MATERIALIZED settingsType
+    # view (the aspect-declared defaults tree, corpus host.nix:301-309 — the registry materializes it;
+    # the census era pinned the `{ }` shim fallback instead): soft `or`-reads read the REAL default,
+    # and the namespace is present (never a missing-attribute throw on the `host.settings` spine).
+    test-unauthored-settings-defaults = {
       expr =
         let
-          h = ctxHostAt "host:pc";
+          h = (settingsFleet.structural.eval.get "host:bare" "enriched-context").host;
         in
         {
           settings = h.settings;
           softReadDegrades = h.settings.core.network.syncthing.isHub or "absent";
         };
       expected = {
-        settings = { };
-        softReadDegrades = "absent";
+        settings.core.network.syncthing.isHub = false;
+        softReadDegrades = false;
+      };
+    };
+
+    # THE STRUCTURAL-EXCLUSION ABSENCE PIN, end-to-end (the registry stamp's deepSeq law at the REAL
+    # ctx entity): `instantiate` (the evaluator) and `home-manager` (the module tree) — both
+    # `types.raw` — are ABSENT from the dispatched entity, while the data fields ride. The
+    # resolution-state deepSeq (this fleet resolves) is itself the no-heavy-closure witness.
+    test-ctx-entity-structural-exclusion = {
+      expr =
+        let
+          h = (settingsFleet.structural.eval.get "host:hub" "enriched-context").host;
+        in
+        {
+          hasInstantiate = h ? instantiate;
+          hasHomeManager = h ? home-manager;
+          hasSettings = h ? settings;
+        };
+      expected = {
+        hasInstantiate = false;
+        hasHomeManager = false;
+        hasSettings = true;
       };
     };
   };

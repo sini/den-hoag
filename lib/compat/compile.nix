@@ -1189,16 +1189,11 @@ builtins.seq surfaceTotalityOk {
       instantiateFor
       # R6: the per-host home-manager NixOS module grain (terminal-side twin of instantiateFor).
       hmModuleFor
-      # fork (i): the full per-host schema-typed harvest (lazy; `_hostHarvest` via the bridge) —
-      # `instantiateFor`/`hmModuleFor` read its `.instantiate`/`.home-manager.module`; the later per-host
-      # grain reads the SAME eval.
-      hostHarvest
-      hostClassName
-      hostSystemName
-      hostHostName
-      # board #59: the harvest-carried per-host field record (settings/networking/ipv4/…) —
-      # flake-module.nix `instanceConfig` stamps it onto the host entity beside class/system/hostName.
-      hostEntityFields
+      # The bridge-registry passthrough: the per-KIND per-entity ctx-entity field record (the host's
+      # structural class/system/hostName trio + every kind's structural-exclusion registry stamp,
+      # `den._entityStamps` via the bridge) — flake-module.nix `instanceConfig` stamps it onto EVERY
+      # kind's entities.
+      entityFields
       ;
   };
   inherit aspects policies;

@@ -203,42 +203,23 @@ let
   mkFleetModuleWith =
     compiled: nixosTerminal:
     let
-      # Instances cross FIELD-LESS (den-hoag entities carry no content), EXCEPT the host's `class`,
-      # `system` and `hostName` fields: v1's `host.class`/`host.system`/`host.hostName` are structural
-      # entity data the built-in os/user routes (R3/R6, `ctx.host.class`), the home-platform routes
-      # (`ctx.host.system`), and the hostname battery (`${host.class}.networking.hostName = host.hostName`)
-      # gate on / read, so the host kind declares them (ingest.nix `buildSchema`) and they are stamped here
-      # from the compile-side `hostClassName`/`hostSystemName`/`hostHostName` maps. v1 binds the FULL host
-      # config as the ctx entity, so those fields are present at real dispatch there; the shim reproduces
-      # them on the field-less entry (the probe sentinel carries all three — see flake-module
-      # `probeSentinelModule`). Every other kind's instances stay `{ }`.
-      #
-      # PLUS the harvest-carried field record (board #59, ingest.nix `harvestedHostFields` — settings/
-      # networking/ipv4/ipv6/environment/secretPath/public_key/system-owner): v1's ctx entity is the
-      # RESOLVED host config, so corpus aspect bodies read `host.settings.<path>` at the MODULE FIXPOINT
-      # (delivery depth, xfs-disk-longhorn.nix:19) and policies read `host.settings…isHub or false` at
-      # DISPATCH (pipes.nix:166, ledger u6). One stamp DUAL-SERVES both: the entity entry IS the ctx
-      # entity at dispatch AND the `host` binding at the terminal (bindingsAt reads enriched-context).
-      # Source = the instance-eval HARVEST (typed, aspect-defaults-merged — the source invariant), so
-      # the delivery-depth read sees v1's exact merged view.
-      hostClassName = compiled.entities.hostClassName or { };
-      hostSystemName = compiled.entities.hostSystemName or { };
-      hostHostName = compiled.entities.hostHostName or { };
-      hostEntityFields = compiled.entities.hostEntityFields or { };
+      # Instances cross FIELD-LESS (den-hoag entities carry no content), PLUS each kind's ctx-entity
+      # field record (`entityFields`, ingest.nix — the bridge-registry passthrough): the host's
+      # structural `class`/`system`/`hostName` trio (the R3/R6 route gates, the home-platform routes,
+      # the hostname battery — v1 binds the FULL host config as the ctx entity, so those fields are
+      # present at real dispatch there; the probe sentinel carries all three, `probeSentinelModule`)
+      # UNIONED with the registry-passthrough stamp — the bridge-eval'd merged registry entry minus
+      # the structural exclusion (registry.nix stampTreeOf). v1's ctx entity is the RESOLVED entity
+      # config, so corpus aspect bodies read `host.settings.<path>` at the MODULE FIXPOINT (delivery
+      # depth, xfs-disk-longhorn.nix:19), policies read `host.settings…isHub or false` at DISPATCH
+      # (pipes.nix:166, ledger u6), and cluster/environment aspect fns read `cluster.networks`/
+      # `cluster.getAssignment` off THEIR ctx entities (u8 path 2). One stamp DUAL-SERVES both read
+      # depths: the entity entry IS the ctx entity at dispatch AND the coord binding at the terminal
+      # (bindingsAt reads enriched-context). The loop is KIND-GENERIC — every discovered kind's
+      # entities get their record; a kind without one stays field-less (`or { }`).
+      entityFields = compiled.entities.entityFields or { };
       instanceConfig = builtins.mapAttrs (
-        kind: insts:
-        if kind == "host" then
-          builtins.mapAttrs (
-            name: _:
-            {
-              class = hostClassName.${name} or null;
-              system = hostSystemName.${name} or null;
-              hostName = hostHostName.${name} or null;
-            }
-            // (hostEntityFields.${name} or { })
-          ) insts
-        else
-          builtins.mapAttrs (_: _: { }) insts
+        kind: insts: builtins.mapAttrs (name: _: (entityFields.${kind} or { }).${name} or { }) insts
       ) compiled.entities.instances;
       nixosInstantiate = mkNixosInstantiate {
         inherit (compiled.entities) systemFor instantiateFor hmModuleFor;

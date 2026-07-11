@@ -58,8 +58,9 @@
     }:
     { host, ... }:
     let
-      # `host.environment` (the harvest-stamped host field, ingest `harvestedHostFields`) defaulting to
-      # v1's schema default `"prod"` (nix-config schema/host.nix:174-178; pin 11866c16 host.nix).
+      # `host.environment` (the registry-stamped host field — the bridge-registry passthrough, ingest
+      # `entityFields`) defaulting to v1's schema default `"prod"` (nix-config schema/host.nix:174-178;
+      # pin 11866c16 host.nix).
       envName = host.environment or "prod";
       env =
         if envs ? ${envName} then

@@ -39,58 +39,29 @@ let
       inherit name;
     };
 
-  # ── the harvest-carried v1 host-config FIELD SET (board #59 — the delivery-depth settings rung) ────
-  # v1 binds the RESOLVED host config as the ctx entity (pin 11866c16 nix/lib/aspects/fx/
-  # assemble-pipes.nix:154), so corpus aspect class bodies read these fields off `host` BOTH at
-  # dispatch (policy predicates) and at the MODULE FIXPOINT (delivery depth — the class body inside
-  # the real nixosSystem). den-hoag entities are field-less; the shim stamps this set onto the host
-  # ENTRY (the class/system/hostName pattern, extended — flake-module.nix `instanceConfig`), sourced
-  # from the per-host schema-typed instance-eval HARVEST: the corpus's OWN kind module merges
-  # aspect-declared settings option DEFAULTS under host-authored values there (nix-config
-  # schema/host.nix:301-309 `settings` option, :149 settingsType via _settings-type.nix), so the
-  # harvest value IS v1's merged `host.settings` view — v1-faithful by construction.
+  # ── the ctx-entity REGISTRY STAMPS (the bridge-registry passthrough; the board-#59 hand census is
+  # DELETED) ───────────────────────────────────────────────────────────────────────────────────────
+  # v1 binds the RESOLVED entity config as the ctx entity (pin 11866c16 nix/lib/aspects/fx/
+  # assemble-pipes.nix:154), so corpus aspect bodies read entity fields off `host`/`cluster`/… BOTH
+  # at dispatch (policy predicates — pipes.nix:147,157,166 `host.settings…isHub or false`, ledger u6)
+  # and at the MODULE FIXPOINT (delivery depth — xfs-disk-longhorn.nix:19 `host.settings.disk…`).
+  # den-hoag entities are field-less; the shim stamps EVERY kind's entities from the BRIDGE-EVAL'D
+  # REGISTRY entries (`den._entityStamps`, bridge.nix): the fleet's registries — `den.hosts` via the
+  # shim-declared v1 hostsOption parity option (registry.nix; pin modules/options.nix:71), the custom
+  # kinds via the corpus's OWN `mkInstanceRegistry` declarations — already materialize the full
+  # merged view (options + defaults + methods + derive) at the module system's NATIVE priorities
+  # (authored 100 < mkDefault 1000 < base default 1500), so the stamp is a PASSTHROUGH minus the
+  # STRUCTURAL EXCLUSION RULE (registry.nix `stampTreeOf`: `raw`/`deferredModule`/`anything`-class
+  # option types — `instantiate`/`home-manager.module`, microvm.guests — never enter deepSeq'd
+  # resolution state; method lambdas and data ride, normal forms). KIND-GENERIC: zero kind names,
+  # zero field names — no census list (`host.facts` rides because its declared type is data, not
+  # because it is listed). No bridge ⇒ no stamps: an mkDen-direct fleet's entities carry
+  # class/system/hostName alone (the raw-authored census fallback died with the census; a direct
+  # fixture that needs field-bearing entities supplies `_entityStamps` as the bridge would).
   #
-  # SOURCE INVARIANT: HARVEST first (typed, defaults-merged) — NEVER the raw authored field where a
-  # harvest exists (raw would drop the aspect-declared defaults, e.g. xfs-disk-longhorn's mountPoint).
-  # The raw authored fallback serves only harvest-less paths (mkDen-direct fixtures; no bridge ⇒ no
-  # harvest — the same posture as instantiateFor). EXCLUDED from the stamp: the evaluator fields
-  # (`instantiate` / `home-manager.module`) STAY compile-side id_hash maps (instantiateFor et al.) —
-  # resolution state must never carry heavy nixpkgs closures (the deepSeq-state hazard).
-  #
-  # DUAL-SERVE: both read surfaces are the SAME entity entry, so one stamp closes both —
-  #   dispatch ctx (enriched-context): pipes.nix:147,157,166 `host.settings…isHub or false`
-  #     broadcast predicates (ledger u6, the silent soft-read half — CLOSED for hosts);
-  #   delivery binding (bindingsAt → the class-module `host` arg): the loud hard-read half.
-  #
-  # Fallback value = the field's no-kind-module shape: `{ }` for the attrset namespaces (settings /
-  # networking — soft `or`-reads degrade cleanly, matching v1's empty settingsType default, corpus
-  # host.nix:304), null for scalars/lists (a hard read on an undeclared field fails loud, as v1's
-  # missing option would).
-  #
-  # Corpus readers served (aspect class bodies at delivery depth + dispatch predicates):
-  #   settings     — disk/xfs-disk-longhorn.nix:19, disk/zfs-disk-single.nix:68, disk/btrfs-disko.nix:39,
-  #                  bgp.nix:23,34,400, k3s.nix:55-79,314, k3s/bootstrap.nix:31, prometheus.nix:13,
-  #                  cilium-bgp.nix:35-36, ollama.nix:39, impermanence/{zfs.nix:15,btrfs.nix:11},
-  #                  openssh.nix:60,68, containers.nix:119, thunderbolt-mesh-of.nix:53,79,
-  #                  linux-kernel.nix:30, syncthing/hub.nix:62 + the pipes.nix predicates (u6)
-  #   ipv4 / ipv6  — bgp.nix:22,35, k3s.nix:52-53,143-188, media-scratch.nix:15, prometheus.nix:17,
-  #                  ollama.nix:28, headscale.nix:145 (corpus-COMPUTED fields, host.nix:181-206 —
-  #                  readOnly, never authored: ONLY the harvest carries them)
-  #   environment  — alloy.nix:25, cilium-bgp.nix:50, haproxy.nix:26
-  #   networking   — networking.nix:25
-  #   secretPath   — tailscale/secrets.nix:7, network-initrd.nix:25
-  #   public_key   — hostsfile.nix:21
-  #   system-owner — sunshine.nix:10
-  harvestedHostFields = {
-    settings = { };
-    networking = { };
-    ipv4 = null;
-    ipv6 = null;
-    environment = null;
-    secretPath = null;
-    public_key = null;
-    system-owner = null;
-  };
+  # DUAL-SERVE (unchanged law): both read surfaces are the SAME entity entry, so one stamp closes
+  # both — the dispatch ctx (enriched-context) and the delivery binding (bindingsAt → the
+  # class-module `host` arg).
 
   # v1's `den.hosts` accepts TWO addressings, normalized by `preprocessHosts` (pin 11866c16
   # nix/lib/entities/host.nix:31-43 `hostsOption.apply` → nix/lib/entities/_types.nix:152-172) BEFORE
@@ -224,18 +195,7 @@ let
                 default = null;
                 description = "v1 host network hostName (base default `config.name`, pin 11866c16 entities/host.nix:63) — the hostname battery reads it (compat).";
               };
-            }
-            # The harvest-carried field set (board #59 — `harvestedHostFields` above): declared so the
-            # `instanceConfig` stamp (flake-module.nix) is legal on the strict host kind. Same raw+null
-            # shape as class/system/hostName, so entity identity stays name-derived (unperturbed).
-            // builtins.mapAttrs (
-              f: _fallback:
-              schema.mkOption {
-                type = schema.types.raw;
-                default = null;
-                description = "v1 host config field `${f}` — harvest-stamped onto the ctx entity (board #59; see harvestedHostFields).";
-              }
-            ) harvestedHostFields;
+            };
           };
         };
       kinds = builtins.attrNames withHostFields;
@@ -329,6 +289,15 @@ let
         ]
     ) deduped;
 
+  # A namespace is an instance registry iff it is a non-empty attrset of id_hash-bearing entries —
+  # the M1.5 discovery test, SHARED with the bridge's `_entityStamps` namespace scan (one definition:
+  # the two sides must classify identically, or a stamped namespace could miss its kind).
+  isInstanceRegistry =
+    v:
+    builtins.isAttrs v
+    && v != { }
+    && builtins.all (e: builtins.isAttrs e && e ? id_hash) (builtins.attrValues v);
+
   # `resolveClass classRegistry policy name` — a class-name STRING → its registration entry; the string
   # does NOT survive (C6). An unknown name aborts named (the deliver-adjacent §2.3 error, reused for the
   # class row here). Curried so `compile` hands `deliver` (Task 2) a registry-closed resolver.
@@ -342,7 +311,45 @@ let
     v1Decls:
     let
       v1Schema = v1Decls.schema or { };
-      schemaDecls = buildSchema v1Schema;
+      # ── the bridge-eval'd ctx-entity REGISTRY STAMPS (`den._entityStamps`, bridge.nix) ────────────
+      # Keyed by REGISTRY NAMESPACE (`hosts` for the shim-declared built-in host registry; a custom
+      # kind's marker-discovered instance key — `cluster` → `clusters`). Absent on mkDen-direct paths
+      # (no bridge ⇒ no stamps). Re-keyed by KIND here, the boundary that owns the namespace→kind map.
+      entityStamps = v1Decls._entityStamps or { };
+      stampsByKind = {
+        host = entityStamps.hosts or { };
+      }
+      // prelude.genAttrs customKinds (k: entityStamps.${instanceKeyMap.${k}} or { });
+      # The per-kind stamped FIELD-NAME set (uniform across a kind's entities — the bridge stamps every
+      # entity from ONE inclusion tree; union for safety): declared as raw+null kind options below so
+      # the instanceConfig stamp (flake-module.nix) is legal on the strict den-hoag kind. Same raw+null
+      # shape as the structural class/system/hostName options, so entity identity stays name-derived
+      # (unperturbed — the established precedent).
+      stampFieldNamesByKind = builtins.mapAttrs (
+        _: stamps: prelude.unique (prelude.concatMap builtins.attrNames (builtins.attrValues stamps))
+      ) stampsByKind;
+      schemaDecls = builtins.mapAttrs (
+        kind: decl:
+        let
+          fields = stampFieldNamesByKind.${kind} or [ ];
+        in
+        if fields == [ ] then
+          decl
+        else
+          decl
+          // {
+            options =
+              prelude.genAttrs fields (
+                f:
+                schema.mkOption {
+                  type = schema.types.raw;
+                  default = null;
+                  description = "v1 ${kind} config field `${f}` — registry-stamped onto the ctx entity (the bridge-registry passthrough; registry.nix stampTreeOf).";
+                }
+              )
+              // (decl.options or { });
+          }
+      ) (buildSchema v1Schema);
 
       flatHosts = flattenHosts (v1Decls.hosts or { });
       # Every (user, host) binding from standalone homes AND host-embedded users — the cell granularity.
@@ -381,12 +388,6 @@ let
       # DO hold option-bearing kind-values.
       instanceMatchesKind =
         kind: inst: (inst.id_hash or null) != null && schema.identityHashFor kind inst == inst.id_hash;
-      # A namespace is an instance registry iff it is a non-empty attrset of id_hash-bearing entries.
-      isInstanceRegistry =
-        v:
-        builtins.isAttrs v
-        && v != { }
-        && builtins.all (e: builtins.isAttrs e && e ? id_hash) (builtins.attrValues v);
       # Candidate registry namespaces: `den.*` keys outside the fixed concern surface holding an instance
       # registry (`_`-prefixed keys are den-internal, never a user surface).
       concernKeys = [
@@ -408,7 +409,10 @@ let
         && isInstanceRegistry (v1Decls.${k} or null)
       ) (builtins.attrNames v1Decls);
 
-      customKinds = builtins.filter (k: k != "host" && k != "user") (builtins.attrNames schemaDecls);
+      # Derived from the v1-DECLARED kind names (identical set: `schemaDecls` only adds the host/user
+      # built-ins), NOT from `schemaDecls` — schemaDecls now declares the stamp-field options, which
+      # depend on `instanceKeyMap` ← `customKinds`; deriving from v1Schema keeps that chain acyclic.
+      customKinds = builtins.filter (k: k != "host" && k != "user") (builtins.attrNames v1Schema);
       # kind → the registry namespace whose instances match it by the id_hash marker. A kind with no
       # matching namespace falls back to its own name (`den.<kind>`, the pre-M1.5 singular convention) so an
       # inline fixture keyed by the kind name still resolves.
@@ -497,26 +501,22 @@ let
       # instantiateFor (ship-gate M2, the per-entity instantiation grain, D7): v1's per-host
       # `host.instantiate` (nix-config schema/host.nix — `resolvedChannel.nixosSystem`, a
       # `{ modules; specialArgs; } -> system` EVALUATOR embedding that host's channel nixpkgs) keyed by
-      # host id_hash. TWO sources, authored-first: the AUTHORED field (`flatHosts.<h>.instantiate` — the
-      # `hosts` sub-option is `raw` (flake-module.nix), so a fixture's evaluator function rides through
-      # `flatHosts` untouched) or the SCHEMA-MATERIALIZED default from the bridge's per-host schema-typed
-      # instance eval (fork (i), `_hostHarvest` — instance-eval.nix): v1 materialized the corpus's
-      # `instantiate = mkDefault resolvedChannel.nixosSystem` (host.nix:325) by evaluating each host
-      # through the kind's instance submodule (pin 11866c16 nix/lib/entities/host.nix:53-57), and the
-      # harvest reproduces exactly that, folding v1's priorities (authored 100 < corpus mkDefault 1000 <
-      # base default 1500) — so both reads agree where a host authors one, and the authored-first chain
-      # keeps mkDen-direct paths (no bridge ⇒ no harvest) byte-identical. Like systemFor, the evaluator is
-      # a nixpkgs-BOUND function, so it stays a compile-time `id_hash -> evaluator` map — NEVER a field on
-      # the strict, field-less den-hoag entity (the C1 type-crossing dodge) — and is forced only at the
-      # terminal (the compat nixos wrapper crosses via it per host). Absent from both (no authored field,
-      # no schema default — the harvest's base default is null, the D7 "fall to the lower grains" slot) ->
-      # null, and the wrapper falls to the class-level terminal (the global `den.nixpkgs` grain, or the
-      # pure nixpkgs-free `collect`).
-      hostHarvest = v1Decls._hostHarvest or { };
+      # host id_hash. ONE source — the host entry itself: on the bridge path `v1Decls.hosts` IS the
+      # declared registry's APPLIED view (registry.nix mkHostsOption — v1's own instance eval, pin
+      # 11866c16 entities/host.nix:26-57), so `flatHosts.<h>.instantiate` is the MERGED value with the
+      # corpus's `instantiate = mkDefault resolvedChannel.nixosSystem` (host.nix:325) materialized at
+      # the module system's native priorities (authored 100 < mkDefault 1000 < base default 1500); on
+      # an mkDen-direct path it is the raw authored field alone, byte-identical to the pre-registry
+      # read (no bridge ⇒ no kind eval ⇒ no schema default — the D7 "fall to the lower grains" slot).
+      # The evaluator is a nixpkgs-BOUND function, so it stays a compile-time `id_hash -> evaluator`
+      # map — NEVER a field on the strict, field-less den-hoag entity (the C1 type-crossing dodge; the
+      # registry stamp EXCLUDES it structurally, `types.raw`) — and is forced only at the terminal
+      # (the compat nixos wrapper crosses via it per host). Absent -> null, and the wrapper falls to
+      # the class-level terminal (the global `den.nixpkgs` grain, or the pure nixpkgs-free `collect`).
       instantiateByHostId = builtins.listToAttrs (
         map (name: {
           name = registries.host.${name}.id_hash;
-          value = flatHosts.${name}.instantiate or ((hostHarvest.${name} or { }).instantiate or null);
+          value = flatHosts.${name}.instantiate or null;
         }) (builtins.attrNames flatHosts)
       );
       instantiateFor = host: instantiateByHostId.${host.id_hash} or null;
@@ -525,29 +525,25 @@ let
       # instantiateFor): v1's per-host `home-manager.module` (the home-manager NixOS module the hm
       # battery imports into the host's class-module so a HOST-scope aspect emitting `home-manager.*`
       # content typechecks — corpus agenixHostAspect `home-manager.sharedModules`, batteries/agenix.nix:87;
-      # v1 hm battery hostModule, pin home-env.nix:74-86). Keyed by host id_hash, HARVEST-FIRST (the
-      # channel-driven `resolvedChannel.home-manager-module.nixos` the corpus's kind module materialized
-      # under the instance eval, corpus host.nix:329-334 — the SAME `_hostHarvest` entries instantiateFor
-      # reads, no re-eval) with the raw-authored field (`flatHosts.<h>."home-manager".module`) as the
-      # harvest-less mkDen-direct fallback — the established source invariant (the harvest already folds the
-      # authored def at priority 100, so a present-harvest null is authored-null too; the raw arm serves only
-      # no-bridge paths, exactly like harvestedHostFields above). Like instantiateFor the module is a nixpkgs
-      # closure, so it rides a compile-side `id_hash -> module` map, NEVER a field on the strict den-hoag
-      # entity, forced only at the terminal (the compat nixos wrapper, flake-module.nix) — the C1
-      # type-crossing dodge / the deepSeq-state hazard the `home-manager.module`/`instantiate` exclusion
-      # documents (harvestedHostFields, ingest.nix:56-58).
+      # v1 hm battery hostModule, pin home-env.nix:74-86). Keyed by host id_hash, ONE source — the host
+      # entry (the instantiateFor posture): on the bridge path the registry entry's `home-manager.module`
+      # is the channel-resolved MERGED value (corpus host.nix:329-334 `mkDefault` under the registry's
+      # native priorities; the base entity declares both halves, registry.nix); on an mkDen-direct path
+      # it is the raw authored field alone. Like instantiateFor the module is a nixpkgs closure, so it
+      # rides a compile-side `id_hash -> module` map, NEVER a field on the strict den-hoag entity (the
+      # registry stamp EXCLUDES it structurally, `types.raw`), forced only at the terminal (the compat
+      # nixos wrapper, flake-module.nix).
       #
       # THE GATE (v1's enable, home-env.nix:44-48 `enable && osSupported && hostHasClass`), reproduced to
-      # the compat-OBSERVABLE surface:
+      # the compat-OBSERVABLE surface — BEHAVIOR-IDENTICAL to the harvest-era gate:
       #   - osSupported (nixos/darwin): carried by the wrapper being stamped on the nixos class ALONE
       #     (flake-module.nix; the darwin arm is class-B lookahead).
-      #   - the MODULE must exist: a host with no `home-manager.module` (harvest+raw both null — a
-      #     channel-less/hm-less host) → null → NO import (the "hm-less host" gated-null: no option declared,
-      #     drv unshifted).
-      #   - an EXPLICIT authored `home-manager.enable = false` opts out → null (v1's explicit disable, the one
-      #     piece of v1's enable the shim reads off the authored decl). CENSUS (corpus b0b20769): ZERO corpus
-      #     hosts set `home-manager.enable`, so this arm is corpus-inert — every corpus nixos host defaults
-      #     enabled.
+      #   - the MODULE must exist: a host with no `home-manager.module` (a channel-less/hm-less host) →
+      #     null → NO import (the "hm-less host" gated-null: no option declared, drv unshifted).
+      #   - an EXPLICIT `home-manager.enable = false` opts out → null (v1's explicit disable; the base
+      #     entity declares `enable` raw+null — registry.nix — so the def is registry-legal and only an
+      #     explicit def lands). CENSUS (corpus b0b20769): ZERO corpus hosts set `home-manager.enable`,
+      #     so this arm is corpus-inert — every corpus nixos host defaults enabled.
       # CEILING (documented, ledger R6): v1's `hostHasClass` (host-has-user-with-class — the host has ≥1
       # homeManager user) is UNREPRODUCIBLE here — the corpus binds users to hosts via the environment resolve
       # fan-out (fleet.nix env-to-hosts → resolve.to "user"), which the shim STUBS (board #49/#50), so the
@@ -563,56 +559,44 @@ let
         map (
           name:
           let
-            authoredHm = flatHosts.${name}."home-manager" or { };
-            harvestHm = (hostHarvest.${name} or { }).home-manager or { };
-            module = harvestHm.module or (authoredHm.module or null);
+            hm = flatHosts.${name}."home-manager" or { };
           in
           {
             name = registries.host.${name}.id_hash;
-            value = if (authoredHm.enable or null) == false then null else module;
+            value = if (hm.enable or null) == false then null else hm.module or null;
           }
         ) (builtins.attrNames flatHosts)
       );
       hmModuleFor = host: hmModuleByHostId.${host.id_hash} or null;
 
-      # Per-host OS class NAME keyed by host name — the value mkFleetModule stamps onto the den-hoag host
-      # entity's declared `class` field (§ os-class R3 gate). Derived from `host.class` else the system
-      # (`classOfHost`, matching v1's `host.nix` default) so the os-to-host route gates exactly as v1's
-      # `host ? class` does — a classless host is NOT inert (v1 derives), so the shim derives too.
-      hostClassName = builtins.mapAttrs (_: classOfHost) flatHosts;
-
-      # Per-host platform SYSTEM keyed by host name — the value mkFleetModule stamps onto the den-hoag host
-      # entity's declared `system` field, so the home-platform route gates read `ctx.host.system` exactly as
-      # v1 does (v1 binds the full host config as the ctx entity — pin 11866c16
-      # nix/lib/aspects/fx/assemble-pipes.nix:154 — so `host.system` is present there). The value is v1's
-      # `den.hosts.<system>.<name>` path key demoted to a field by `flattenHosts`; absent (a synthetic or
-      # system-less host) → null, so the route's `hasPrefix`/`hasSuffix` test is false, matching v1's default.
-      hostSystemName = builtins.mapAttrs (_: h: h.system or null) flatHosts;
-
-      # Per-host network hostName keyed by host name — the value mkFleetModule stamps onto the den-hoag host
-      # entity's declared `hostName` field, so the hostname battery's `${host.class}.networking.hostName =
-      # host.hostName` (batteries.nix, v1 modules/aspects/batteries/hostname.nix) reads the real per-host
-      # value exactly as v1 does. v1 declares `hostName = strOpt "Network hostname" config.name` as a
-      # BASE-entity option (pin 11866c16 nix/lib/entities/host.nix:63) defaulting to the instance name — the
-      # twin of `class`/`system`, NOT a corpus-schema field (nix-config modules/den/schema/host.nix sets no
-      # hostName), so it is a DIRECT stamp here, not a harvest read. An authored `host.hostName` overrides
-      # (v1 def priority); absent → the name. A synthetic host (no `class`) never reaches the battery's
-      # `host ? class`-gated `host.hostName` read, so its null stamp stays inert.
-      hostHostName = builtins.mapAttrs (name: h: h.hostName or name) flatHosts;
-
-      # The harvest-carried field set stamped onto the host ENTITY, per host (board #59 — see
-      # `harvestedHostFields` above for the law, the source invariant, and the corpus reader census).
-      # Read order per field: HARVEST (v1's merged, schema-typed view — the instance eval materialized
-      # aspect-declared settings defaults under the authored values) → the raw authored field
-      # (harvest-less mkDen-direct paths only) → the field's no-kind-module fallback. mkFleetModule
-      # stamps the whole record beside class/system/hostName, so both the dispatch ctx and the delivery
-      # binding (the SAME entity entry) carry it.
-      hostEntityFields = builtins.mapAttrs (
-        name: h:
-        builtins.mapAttrs (
-          f: fallback: (hostHarvest.${name} or { }).${f} or (h.${f} or fallback)
-        ) harvestedHostFields
-      ) flatHosts;
+      # ── entityFields — the per-KIND per-entity ctx-entity field record (the instanceConfig stamp
+      # source, flake-module.nix; replaces hostClassName/hostSystemName/hostHostName + the census
+      # hostEntityFields) ────────────────────────────────────────────────────────────────────────────
+      # host = the three STRUCTURAL fields (the R3/R6 route gates + battery reads; v1 binds the full
+      # host config as the ctx entity, pin 11866c16 assemble-pipes.nix:154):
+      #   class    — `host.class` else derived from system (`classOfHost`, v1 host.nix:65-67 — a
+      #              classless host is NOT inert, v1 derives);
+      #   system   — the `den.hosts.<system>.<name>` group key (demoted by flattenHosts / the registry's
+      #              base option, v1 host.nix:64); the home-platform routes gate on it;
+      #   hostName — v1's base-entity `strOpt "Network hostname" config.name` (pin entities/host.nix:63;
+      #              NOT a corpus-schema field) — the hostname battery reads it;
+      # PLUS the registry-passthrough stamp (`stampsByKind`, structural exclusion applied bridge-side).
+      # Every OTHER kind's entities carry their registry stamp alone (kind-generic; user has none —
+      # v1 declares no user registry, pin modules/options.nix:71-72). The stamp wins a name collision
+      # with the structural trio only where the registry actually stamped one — the trio's fields are
+      # raw-typed in the registry base (structurally excluded), so collisions are fixture-theoretical.
+      entityFields = {
+        host = builtins.mapAttrs (
+          name: h:
+          {
+            class = classOfHost h;
+            system = h.system or null;
+            hostName = h.hostName or name;
+          }
+          // (stampsByKind.host.${name} or { })
+        ) flatHosts;
+      }
+      // prelude.genAttrs customKinds (k: stampsByKind.${k});
 
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
@@ -642,19 +626,13 @@ let
         systemFor
         instantiateFor
         # hmModuleFor (R6): the per-host home-manager NixOS module (terminal-side twin of instantiateFor),
-        # harvest-first `home-manager.module` gated on module-presence + explicit `enable=false` opt-out.
+        # read off the host entry (registry-merged on the bridge path), gated on module-presence +
+        # explicit `enable=false` opt-out.
         hmModuleFor
-        # The full per-host harvest (fork (i), lazy — the ONE schema-typed instance eval per host).
-        # `instantiateFor`/`hmModuleFor` read it above; the LATER per-host grain (secretPathFor — corpus
-        # host.nix:319) reads the SAME entries, never a re-eval. Empty for mkDen-direct paths (no bridge ⇒
-        # no `_hostHarvest`).
-        hostHarvest
-        hostClassName
-        hostSystemName
-        hostHostName
-        # board #59: the harvest-carried per-host field record (settings/networking/ipv4/…) the
-        # instanceConfig entity stamp reads — the delivery-depth `host.settings.*` binding source.
-        hostEntityFields
+        # The per-KIND per-entity ctx-entity field record (structural trio + the registry-passthrough
+        # stamp) — the instanceConfig entity stamp reads it; the delivery-depth `host.settings.*`
+        # binding source and the u8-path-2 cluster/environment ctx-entity source, one mechanism.
+        entityFields
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;
@@ -675,6 +653,7 @@ in
     buildSchema
     buildRegistries
     buildMembership
+    isInstanceRegistry
     resolveClass
     aspectEntry
     classEntry

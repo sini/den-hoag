@@ -4,9 +4,11 @@
 # module"; imports = [ host.home-manager.module ]; }]`), so a HOST-scope aspect emitting `home-manager.*`
 # content typechecks (corpus agenixHostAspect `home-manager.sharedModules`, batteries/agenix.nix:87 — the
 # u9 re-probe frontier: "The option `home-manager' does not exist"). den-hoag can't reproduce the battery as
-# an aspect: the module is a nixpkgs closure, excluded from deepSeq'd resolution state (ingest.nix:56-58,
-# the `instantiate` invariant), so it rides the compile-side `hmModuleFor` id_hash map (twin of
-# instantiateFor) and is IMPORTED terminal-side (the compat nixos wrapper, flake-module.nix mkNixosInstantiate).
+# an aspect: the module is a nixpkgs closure, STRUCTURALLY EXCLUDED from deepSeq'd resolution state
+# (types.raw — registry.nix stampTreeOf, the `instantiate` invariant), so it rides the compile-side
+# `hmModuleFor` id_hash map (twin of instantiateFor), read off the host's REGISTRY entry (the
+# bridge-registry passthrough), and is IMPORTED terminal-side (the compat nixos wrapper, flake-module.nix
+# mkNixosInstantiate).
 #
 # THE GATE (ingest.nix `hmModuleByHostId`): MODULE-PRESENCE + an explicit authored `home-manager.enable =
 # false` opt-out. v1's `hostHasClass` (host-has-user-with-class — ≥1 hm user) is a DOCUMENTED CEILING: the
@@ -26,26 +28,36 @@ let
   forceThrows = e: !(builtins.tryEval (builtins.deepSeq e null)).success;
 
   # ── (A) the ingest grain ─────────────────────────────────────────────────────────────────────────
-  # value-identity golden: the harvested channel-resolved module (the `_hostHarvest.<h>.home-manager
-  # .module` the corpus's kind module materializes, host.nix:329-334) is what hmModuleFor returns.
-  compiledHarvest = denCompat.compile {
-    hosts.x86_64-linux.h1 = { };
-    _hostHarvest.h1.home-manager.module = {
+  # value-identity golden, REGISTRY-SOURCED (the harvest's successor — the bridge-registry
+  # passthrough): the channel-resolved module the corpus's kind module materializes (host.nix:329-334
+  # `home-manager.module = mkDefault …`) lands on the REGISTRY entry (registry.nix mkHostsOption —
+  # v1's own instance eval), and hmModuleFor reads that entry. Same golden VALUE as the harvest era.
+  hmKindModule = {
+    config.home-manager.module = nixpkgsLib.mkDefault {
       __hm = "chan";
     };
   };
+  hmHostsOpt = denCompat.registry.mkHostsOption {
+    lib = nixpkgsLib;
+    kindModule = hmKindModule;
+  };
+  compiledHarvest = denCompat.compile {
+    hosts = hmHostsOpt.apply { x86_64-linux.h1 = { }; };
+  };
   h1 = compiledHarvest.entities.registries.host.h1;
 
-  # harvest-first: a host authoring a raw `home-manager.module` AND carrying a harvest → the HARVEST wins
-  # (the harvest already folded the authored def at priority 100; the source invariant).
+  # PRIORITY (the harvest-first invariant's successor): an authored `home-manager.module` (definition
+  # priority 100) beats the kind module's mkDefault (1000) IN the registry merge — v1's native
+  # interplay. (The old harvest-first pin fixed the same behavior mechanically: the harvest folded the
+  # authored def at 100, so the authored value won THROUGH the harvest; a harvest diverging from the
+  # authored value was a fixture-only state. The registry makes the invariant native.)
   compiledBoth = denCompat.compile {
-    hosts.x86_64-linux.h2 = {
-      home-manager.module = {
-        __raw = true;
+    hosts = hmHostsOpt.apply {
+      x86_64-linux.h2 = {
+        home-manager.module = {
+          __raw = true;
+        };
       };
-    };
-    _hostHarvest.h2.home-manager.module = {
-      __hm = "chan";
     };
   };
   h2 = compiledBoth.entities.registries.host.h2;
@@ -171,18 +183,21 @@ let
 in
 {
   flake.tests.compat-hm-module = {
-    # (A1) value-identity golden — hmModuleFor == the harvested channel module (the instantiateFor twin).
+    # (A1) value-identity golden — hmModuleFor == the registry-materialized channel module (the
+    # instantiateFor twin; the SAME value the harvest-era golden pinned).
     test-value-identity-golden = {
       expr = compiledHarvest.entities.hmModuleFor h1;
       expected = {
         __hm = "chan";
       };
     };
-    # (A2) harvest-first source invariant — harvest wins over the raw authored field.
-    test-harvest-first = {
+    # (A2) native-priority source invariant — the authored def (100) beats the kind's mkDefault (1000)
+    # in the registry merge (v1's interplay; the harvest-first pin's behavioral successor — the
+    # harvest folded authored@100 too, so the authored value always won through it).
+    test-authored-beats-kind-default = {
       expr = compiledBoth.entities.hmModuleFor h2;
       expected = {
-        __hm = "chan";
+        __raw = true;
       };
     };
     # (A3) raw fallback — no harvest (mkDen-direct) reads the authored field.

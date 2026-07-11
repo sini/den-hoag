@@ -57,11 +57,12 @@ let
   # (`keyClassification.structuralKeysSet`), reproducing v1's literal set. Aliased into migrationLib's
   # `lib.aspects.fx.keyClassification` (flake.nix), replacing that one throwing stub.
   keyClassification = import ./key-classification.nix { };
-  # Fork (i) per-host schema-typed instance eval (ship-gate M2): the bridge's per-host harvest
-  # builder — v1's hostType instance submodule (pin 11866c16 nix/lib/entities/host.nix:53-105)
-  # reproduced with the CONSUMER's nixpkgs lib (an inert call argument; the file imports no
-  # nixpkgs). Consumed by the bridge (`den._hostHarvest`) + the compat-instance-eval unit suite.
-  instanceEval = import ./instance-eval.nix { };
+  # The BRIDGE-REGISTRY PASSTHROUGH (replaces the per-host instance-eval harvest): v1's built-in
+  # `options.den.hosts` registry (pin 11866c16 modules/options.nix:71 / entities/host.nix:26-105)
+  # reproduced with the CONSUMER's nixpkgs lib (an inert call argument; the file imports no nixpkgs),
+  # plus the STRUCTURAL EXCLUSION classifier + stamp builder the bridge's `_entityStamps` uses for
+  # EVERY discovered kind's registry. Consumed by the bridge + the compat-host-registry unit suite.
+  registry = import ./registry.nix { };
   # board #58 (Fork A): the post-fold `__provider` annotation walk (v1 annotateDeep, pin
   # types.nix:561-574) — applied by the bridge (corpus path) and the flake-module wiring (direct
   # mkDen path), each idempotently, so every navigated `den.aspects` value carries its provenance
@@ -141,8 +142,9 @@ in
     ;
   # The fx key-classification surface (#49-slice) — `{ structuralKeysSet; }`, aliased into migrationLib.
   inherit keyClassification;
-  # Fork (i) per-host schema-typed instance eval (ship-gate M2) — the bridge's harvest builder.
-  inherit instanceEval;
+  # The bridge-registry passthrough (ship-gate M2's successor architecture) — the v1 hosts-registry
+  # declaration + the structural-exclusion stamp machinery the bridge mounts.
+  inherit registry;
   # board #58 (Fork A) — the post-fold `__provider` annotation walk; the bridge applies it to the
   # merged corpus tree (both consumers: the `den` module arg + the fleet def).
   inherit (annotateLib) annotateAspects;
