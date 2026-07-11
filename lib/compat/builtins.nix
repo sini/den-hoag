@@ -80,5 +80,34 @@ in
       fleet = { };
       hm-host = { };
     };
+    # CLASS registration (ship-gate rung, CLASS-A-MINIMAL; R2 — the compat-side class-vocabulary registry).
+    # `flake-parts` is a v1 flake-level SCOPE class the corpus ROUTES INTO: the `devshell-to-flake-parts`
+    # policy emits `route { fromClass = "devshell"; intoClass = "flake-parts"; path = ["devshells" "default"];
+    # adaptArgs = …; }` (corpus modules/den/classes/devshell.nix:16), and that policy's empty formals make it
+    # fire at every scope, so `translateDelivery` calls `resolveBucket "deliver" "flake-parts"` — which, with
+    # `flake-parts` neither a den-hoag built-in class nor a v1-declared one, aborted `unknown class flake-parts`.
+    # Registered here through den-hoag's PUBLIC class registry — a bare `den.classes.flake-parts`, the general
+    # declared-classes surface (assembly §2.2; `entity.discoverClasses` seeds it into the fleet's registered set
+    # = built-ins ∪ declared) — the SAME compat-side mechanism the os-class battery registers `os` with
+    # (legacy/batteries/os-class.nix:44-50). Provisioned in THIS module (not a severable legacy desugar) because
+    # `flake-parts` is built-in flake-scope vocabulary always present, the peer of its schema-KIND registration
+    # above. A bare declared class: (a) enters ingest's `classRegistry` ⇒ `resolveBucket` resolves the route's
+    # `intoClass` (C6, the abort's fix); (b) admits `flake-parts` to `classifyKey`'s CLASS branch (an aspect
+    # content key routes as class content); (c) is never any scope's PRODUCING class (no host/user produces
+    # flake-parts) ⇒ grows NO phantom fold edge; (d) carries NO wrap/instantiate/share ⇒ an INERT, collect-only
+    # terminal with NO gen-flake crossing.
+    #
+    # LATENT OUTPUT (self-announcing, gate class F, board #51; ledger row B2 re-opened): NO flake-level output
+    # family is built this rung — the routed devshell content collects into the flake-parts bucket but
+    # materializes to no output, so `flake.devShells` stays EMPTY until the devShells output family lands.
+    #
+    # KIND∪CLASS COEXISTENCE (empirically verified pre-build): `flake-parts` is ALSO the schema KIND above.
+    # The two registrations live in DISJOINT config namespaces (`den.schema.*` vs `den.classes.*`) and function
+    # together — the `den.schema.flake-parts.includes` kind-include list still processes, and an aspect content
+    # key `flake-parts` routes to the CLASS branch (kinds are NOT consulted by `classifyKey`); pinned by
+    # `ci/tests/compat-flake-parts-class.nix`.
+    classes.flake-parts = {
+      description = "v1 flake-parts scope class — the devshell route target (corpus devshell.nix:16); a bare inert collect-only class (no terminal, no crossing), the LATENT devShells output family (gate class F, board #51).";
+    };
   };
 }
