@@ -42,16 +42,28 @@
   declare,
   errors,
 }:
-{
-  compile =
-    policies:
+let
+  # `compileWith sentinelFields policies` — compile with a CONFIGURABLE probe sentinel. `sentinelFields`
+  # merges onto the universal `{ id_hash; name }` stand-in, so a caller that KNOWS a policy body reads a
+  # coord FIELD on the sentinel (a consumer's corpus fact) can supply a TYPE-CORRECT NON-MATCHING value for it:
+  # the body then takes its value-conditional FALSE branch (→ expansion, the conservative branch) instead of
+  # hard-failing on a missing attribute. `compile` = the default `{ }` (the universal sentinel), byte-
+  # identical for every native caller. Core stays FIELD-AGNOSTIC (no den field names here); the CONSUMER
+  # supplies the fields it knows its own policy bodies read.
+  compileWith =
+    sentinelFields: policies:
     let
-      # A universal entry stand-in: passes requireEntry (has id_hash) so probing a policy that
-      # forwards ctx entries into constructors succeeds without touching any real registry.
+      # A universal entry stand-in: passes requireEntry (has id_hash) so probing a policy that forwards ctx
+      # entries into constructors succeeds without touching any real registry. `sentinelFields` enriches it
+      # with caller-supplied coord fields. CEILING: a field must be TYPE-CORRECT NON-MATCHING — a string
+      # field gets a string sentinel ("«probe»"), an attrset-typed field an empty-attrset sentinel, etc.
+      # (a string where an attrset is expected would just move the crash); and a policy reading an
+      # UN-ENRICHED field still hard-fails LOUDLY (self-announcing → extend the set).
       probeEntry = {
         id_hash = "«probe»";
         name = "«probe»";
-      };
+      }
+      // sentinelFields;
 
       # A policy value's gate + body. A record `{ __condition; fn }` declares its gate (a coord set in
       # the `functionArgs` shape); a bare function's gate is its `functionArgs`.
@@ -181,4 +193,10 @@
       # aborts (a value-conditional `pipe.from` breaks the ctx-independence contract).
       pipeOps = prelude.concatMap (r: r.__pipeOps) rules;
     };
+in
+{
+  # Default sentinel (the universal `{ id_hash; name }`) — byte-identical to the pre-configurable behavior
+  # for every existing caller (native fleets, the unit suites driving `internal.compilePolicies`).
+  compile = compileWith { };
+  inherit compileWith;
 }

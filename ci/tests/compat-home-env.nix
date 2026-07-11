@@ -61,6 +61,17 @@ let
     nixOnDroidHome.enable = true;
   };
 
+  # The compat's ENRICHED value-less probe sentinel (flake-module.nix `probeSentinelModule`): the universal
+  # `{ id_hash; name }` PLUS the compat-supplied non-matching coord fields `{ class; system }` (B2). This is
+  # what concern-policies fills required coords with in the compat path, so userDetectFn's bare `host.class`
+  # read sees a non-matching sentinel and gates inert instead of hard-failing.
+  enrichedSentinel = {
+    id_hash = "«probe»";
+    name = "«probe»";
+    class = "«probe»";
+    system = "«probe»";
+  };
+
   c = compiledWith (mk [ ]);
   hostPolNames = builtins.filter (n: builtins.match "__kindInclude__host__policy__.*" n != null) (
     builtins.attrNames c.policies
@@ -140,24 +151,19 @@ in
       };
     };
 
-    # ── (6b) USERDETECT SENTINEL PROOF (FIX-B residual, shim-owned): userDetectFn's `isOsSupported` is the
-    #    FIRST operand (no `isEnabled` short-circuit), so it IS forced at the value-less sentinel. `host.class
-    #    or null` → `elem null supportedOses` = false → gated-inert `[ ]`, no hard-fail; `user.classes` is
-    #    shielded by `&&` once isOsSupported is false. Both `host` and `user` are required coords (sentinel-
-    #    filled). ────────────────────────────────────────────────────────────────────────────────────────
+    # ── (6b) USERDETECT SENTINEL PROOF (byte-faithful, probe-safe VIA ENRICHMENT): userDetectFn's
+    #    `isOsSupported` is the FIRST operand (no `isEnabled` short-circuit), so it IS forced at the probe.
+    #    concern-policies now fills the sentinel with the compat's `probeSentinelFields` (class = "«probe»"),
+    #    so `elem "«probe»" supportedOses` = false → gated-inert `[ ]`, no per-site `or null` deviation. Called
+    #    here with the ENRICHED sentinel (what the compat probe supplies), `user.classes` short-circuited by
+    #    `&&`. ─────────────────────────────────────────────────────────────────────────────────────────────
     test-userdetect-sentinel-no-hard-fail = {
       expr =
         let
           r = builtins.tryEval (
             (mk [ ]).userDetect.policies."droidHm-user-detect" {
-              host = {
-                id_hash = "«probe»";
-                name = "«probe»";
-              };
-              user = {
-                id_hash = "«probe»";
-                name = "«probe»";
-              };
+              host = enrichedSentinel;
+              user = enrichedSentinel;
             }
           );
         in

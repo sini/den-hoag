@@ -10,6 +10,13 @@
 let
   declare = denHoag.declare;
   compile = denHoag.internal.compilePolicies;
+  # The CONFIGURABLE probe sentinel (B2): `compilePoliciesWith sentinelFields` merges the fields onto the
+  # value-less probe entry. The compat supplies {class, system} (flake-module.nix probeSentinelModule); this
+  # exercises the core mechanism directly with the same non-matching string sentinels.
+  compileEnriched = denHoag.internal.compilePoliciesWith {
+    class = "«probe»";
+    system = "«probe»";
+  };
 
   ent = k: {
     id_hash = k;
@@ -314,6 +321,98 @@ in
         ids = [ "foo" ];
         group = "resolution";
       };
+    };
+
+    # ── FIX-B part 2 (configurable probe sentinel — the FROZEN-corpus residual). The compat enriches the
+    #    probe entry with NON-MATCHING {class, system} sentinels so a corpus policy reading a bare coord FIELD
+    #    takes its value-conditional FALSE branch (→ expansion) rather than hard-failing. The five corpus
+    #    shapes, through the enriched core compile: ──────────────────────────────────────────────────────────
+    # (a) the three home-platform ROUTE shapes (host.system, value-conditional): sentinel system="«probe»" →
+    #     the OS-suffix test is false → `[]` → EXPANSION; each fires at its matching REAL host.
+    test-enriched-home-route-shapes = {
+      expr =
+        let
+          mk =
+            pat:
+            gated { host = false; } (
+              ctx: if builtins.match pat ctx.host.system != null then [ (declare.edge (ent "hm")) ] else [ ]
+            );
+          firesAt =
+            c: sys:
+            producedKinds (ruleBy c.policy "r#resolution") {
+              host = {
+                id_hash = "h";
+                name = "h";
+                system = sys;
+              };
+            };
+          cLinux = compileEnriched { r = mk ".*-linux"; };
+          cDarwin = compileEnriched { r = mk ".*-darwin"; };
+          cAarch = compileEnriched { r = mk "aarch64-.*"; };
+        in
+        {
+          linuxExpands = ids cLinux.policy;
+          linuxFires = firesAt cLinux "x86_64-linux";
+          darwinFires = firesAt cDarwin "aarch64-darwin";
+          aarchFires = firesAt cAarch "aarch64-linux";
+        };
+      expected = {
+        linuxExpands = [
+          "r#resolution"
+          "r#structural"
+        ];
+        linuxFires = [ "edge" ];
+        darwinFires = [ "edge" ];
+        aarchFires = [ "edge" ];
+      };
+    };
+    # (b) host-modules-capture (host.class as spec DATA, UNCONDITIONAL emit): SINGLE-group resolution; the fake
+    #     sentinel class is DISCARDED — dispatch re-runs produce with the REAL class at a real node.
+    test-enriched-instantiate-unconditional = {
+      expr =
+        let
+          c = compileEnriched {
+            hmc = gated { host = false; } (ctx: [
+              (declare.spawn {
+                instantiate = {
+                  class = ctx.host.class;
+                };
+              })
+            ]);
+          };
+          realDecl = builtins.head (
+            (builtins.head c.policy).produce "n" {
+              host = {
+                id_hash = "h";
+                name = "h";
+                class = "nixos";
+              };
+            }
+          );
+        in
+        {
+          singleGroup = ids c.policy;
+          realClass = realDecl.instantiate.class;
+        };
+      expected = {
+        singleGroup = [ "hmc" ];
+        realClass = "nixos";
+      };
+    };
+    # (c) drop-user-to-host-on-droid (host.class == "droid", value-conditional): sentinel class="«probe»" ≠
+    #     "droid" → `[]` → EXPANSION (no exclude at the probe; the droid-node fire stays the #50 abort).
+    test-enriched-exclude-value-conditional = {
+      expr =
+        ids
+          (compileEnriched {
+            drop = gated { host = false; } (
+              ctx: if ctx.host.class == "droid" then [ (declare.edge (ent "excl")) ] else [ ]
+            );
+          }).policy;
+      expected = [
+        "drop#resolution"
+        "drop#structural"
+      ];
     };
 
     # R3 — a policy declared in BOTH `den.policies` AND a `den.schema.<kind>.includes` reference keeps BOTH

@@ -181,18 +181,14 @@ let
       userDetectFn =
         { host, user, ... }:
         let
-          # PROBE-SAFE DEVIATION (sanctioned at the home-env rung, finding 1 — the `or null` we DROPPED from
-          # mkDetectHost, warranted HERE where it is actually needed). Unlike policyFn — whose mkDetectHost
-          # `isEnabled && …` short-circuits BEFORE `isOsSupported` reads host.class — userDetectFn's
-          # `isOsSupported` is the FIRST operand of `optionals (isOsSupported && hasClass)`, so it is FORCED at
-          # concern-policies' value-less probe, where `host` is the `{ id_hash; name }` sentinel (no `class`).
-          # `host.class or null` → `elem null supportedOses` = false → gated-inert at the probe, and
-          # OBSERVATIONALLY IDENTICAL on every real (user,host) node: ingest STAMPS host.class (classOfHost,
-          # v1 nix/lib/entities/host.nix:65-66 parity), so a real host always carries it and the `or null`
-          # never triggers. v1's original reads it bare (nix/lib/home-env.nix) — v1 never probes, so it is
-          # safe there. `user.classes` (hasClass) needs no guard: `&&` short-circuits it once isOsSupported is
-          # false at the probe.
-          isOsSupported = elem (host.class or null) supportedOses;
+          # BYTE-FAITHFUL to v1 (nix/lib/home-env.nix). userDetectFn's `isOsSupported` is the FIRST operand of
+          # `optionals (isOsSupported && hasClass)` (no `isEnabled` short-circuit, unlike policyFn), so it IS
+          # forced at concern-policies' value-less probe. Probe-safety is now the GENERAL configurable sentinel
+          # (B2, lib/compat/flake-module.nix `probeSentinelModule`): the probe entry carries a non-matching
+          # `class = "«probe»"`, so `elem "«probe»" supportedOses` = false → gated-inert, with NO per-site
+          # deviation; `user.classes` is then short-circuited by `&&`. (The earlier `host.class or null`
+          # deviation was warranted only until this general mechanism existed — reverted; enrichment subsumes it.)
+          isOsSupported = elem host.class supportedOses;
           hasClass = elem className user.classes;
         in
         optionals (isOsSupported && hasClass) (

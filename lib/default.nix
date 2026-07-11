@@ -350,6 +350,20 @@ let
         };
       };
 
+      # den.probeSentinelFields — the CONFIGURABLE probe sentinel (B2). concern-policies reads a policy's
+      # stratum by producing it against a value-less sentinel entry (`{ id_hash; name }`). A consumer whose
+      # policy bodies read a coord FIELD on that entry (a corpus fact the consumer knows) supplies the
+      # extra fields here as TYPE-CORRECT NON-MATCHING sentinels, so the body takes its value-conditional
+      # FALSE branch (→ expansion) instead of hard-failing. Native default `{ }` = the universal sentinel,
+      # byte-identical. Core stays field-agnostic; the field NAMES live consumer-side (composition-first).
+      probeSentinelDecl = {
+        options.den.probeSentinelFields = merge.mkOption {
+          type = merge.types.raw;
+          default = { };
+          description = "extra fields merged onto concern-policies' value-less probe sentinel (beyond `{ id_hash; name }`) so a policy body reading a coord field gets a type-correct non-matching sentinel, not a hard-fail (B2). Native default `{ }`.";
+        };
+      };
+
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
@@ -367,6 +381,7 @@ let
           nixpkgsDecl
           darwinDecl
           interpretDecl
+          probeSentinelDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -470,7 +485,8 @@ let
 
       # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
       # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
-      policiesRules = concernPolicies.compile ent.config.den.policies;
+      # `probeSentinelFields` (native default `{ }`) configures the value-less stratum probe's sentinel.
+      policiesRules = concernPolicies.compileWith ent.config.den.probeSentinelFields ent.config.den.policies;
 
       # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
       # plus the den-managed demand channel (§B) AND the collection-stratum pipe operators threaded
@@ -873,6 +889,7 @@ in
       ;
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
+    compilePoliciesWith = concernPolicies.compileWith;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     inherit (concernAspects) classifyKey facets;

@@ -273,6 +273,22 @@ let
   interpretModule = {
     config.den.interpret = legacy.forwards.interpret or { };
   };
+  # PROBE-SENTINEL ENRICHMENT (B2, the shim-side half of the configurable core sentinel). concern-policies
+  # reads a policy's stratum by producing it against a value-less sentinel `{ id_hash; name }`. Several FROZEN
+  # v1 corpus policies read a bare coord FIELD on that entry and would hard-fail: `host.system` (v1
+  # home-platform routes — `lib.hasSuffix "-linux" host.system`), `host.class` (colmena `host-modules-capture`
+  # `inherit (host) class`; nix-on-droid `drop-user-to-host-on-droid` `host.class == "droid"`). The FIELDS ARE
+  # A v1-CORPUS FACT, so they live HERE (the compat layer), not in field-agnostic core: the shim supplies
+  # TYPE-CORRECT NON-MATCHING string sentinels ("«probe»"), so each value-conditional body takes its FALSE
+  # branch → EXPANSION (the conservative branch, correct at real nodes), and an unconditional body (`host-
+  # modules-capture` → instantiate) emits its fixed stratum with the fake value DISCARDED after the probe.
+  # CEILING: a corpus policy reading an un-enriched field still hard-fails LOUDLY (self-announcing → add it).
+  probeSentinelModule = {
+    config.den.probeSentinelFields = {
+      class = "«probe»";
+      system = "«probe»";
+    };
+  };
   # `mkDenWith userModules { nixosTerminal ? collect; hoagModules ? [] }` — build the shim fleet with the
   # nixos terminal SEAM (the parity harness / a real ship supplies `crossNixos` for real NixOS systems) and
   # optional extra native den-hoag modules. `mkDen` = this at the default (collect, no extra modules) — the
@@ -287,6 +303,7 @@ let
       [
         (mkFleetModuleWith (compileFull (evalV1 userModules)) nixosTerminal)
         interpretModule
+        probeSentinelModule
       ]
       ++ hoagModules
     );
