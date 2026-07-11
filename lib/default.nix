@@ -630,6 +630,11 @@ let
         allAspects = ent.config.den.aspects;
         directIncludes = ent.config.den.include;
         inherit quirkDag classOfNode channelNames;
+        # The consumer's nixpkgs lib for pipeline-parametric `lib`-arg injection (collections.nix): the
+        # supplied `den.nixpkgs` flake's `.lib`, or null on the pure path (nixpkgs-free `collect`). Same
+        # inert-config seam the terminal crossing reads (`npkgs.lib.nixosSystem`, §2.10) — lib/** stays
+        # import-pure. A `lib`-demanding parametric emit rides unresolved when null (the named ceiling).
+        consumerLib = if npkgs == null then null else npkgs.lib or null;
         localDemandData = demandLib.localDemandData;
         fleet = theFleet;
         inherit

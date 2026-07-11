@@ -102,6 +102,9 @@ in
       quirkDag,
       classOfNode,
       channelNames,
+      # The consumer's nixpkgs lib (`den.nixpkgs.lib`), threaded to collections for pipeline-parametric
+      # `lib`-arg injection; null on the pure/nixpkgs-free path (§2.10 inert-config seam).
+      consumerLib ? null,
       localDemandData,
       fleet,
       lin,
@@ -113,7 +116,14 @@ in
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // (resolvedAspects { inherit allAspects directIncludes; })
-    // (collections { inherit quirkDag classOfNode channelNames; })
+    // (collections {
+      inherit
+        quirkDag
+        classOfNode
+        channelNames
+        consumerLib
+        ;
+    })
     // (classModules { inherit classNames classifyKey; })
     // {
       local-demand-data = localDemandData;
