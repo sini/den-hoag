@@ -19,6 +19,7 @@
   compile,
   ingest,
   annotate,
+  hasAspect,
   legacy,
 }:
 let
@@ -244,6 +245,14 @@ let
         inherit (denHoag.internal.terminal) crossVia;
         terminal = nixosTerminal;
       };
+      # THE PROJECTED hasAspect ENTITY SURFACE (v1 PR #602 semantics). The schema entity-kind set — the
+      # fleet's `den.schema` kind names (host/user/cluster/environment/…) — bounds the stamp: `mkEnrich`
+      # stamps a shared projected `hasAspect` onto every entity-kind binding at each node (v1's
+      # `overrideKinds`, schema.nix:77-79), reading the node's OWN resolved-aspects (the v2 dissolution).
+      # `secretsConfig`/`fleet`/channel bindings are NOT schema kinds ⇒ never stamped. The hook is A17-lazy
+      # (bindingsAt forces it without forcing resolved-aspects); it rides the shipped `den.enrichBindings`
+      # raw seam (lib/default.nix), so no den-hoag core edit — the terminal-binding twin of `den.interpret`.
+      entityKinds = prelude.genAttrs (builtins.attrNames compiled.entities.schema) (_: true);
     in
     {
       config.den = {
@@ -251,6 +260,7 @@ let
         aspects = compiled.aspects;
         policies = compiled.policies;
         quirks = compiled.channels;
+        enrichBindings = hasAspect.mkEnrich entityKinds;
         # Static entity-scoped includes (den-hoag `den.include`, §370 directAspects) — the R5
         # self-named-aspect seeds (spec §10) `addSelfIncludes` appended, node-local at each self-named
         # entity. Empty when the legacy self-provide module is severed (byte-identical no-op, Law C5).

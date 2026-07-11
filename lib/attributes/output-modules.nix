@@ -56,6 +56,14 @@
   # Native den-hoag constructs no synthesize/rewalk edge, so the default `{ }` is complete; an external consumer
   # supplies its external source interpreters here WITHOUT editing this file (spec §2.6, the A15 external-source seam).
   interpret ? { },
+  # The POST-RESOLUTION binding-enrichment hook (threaded through `den.enrichBindings`). A consumer may
+  # enrich a node's entity bindings AFTER resolution — the hook receives per-node
+  # `{ id; resolvedAspects; bindings }` and returns the enriched bindings. `resolvedAspects` is the node's
+  # attribute-7 THUNK (`result.get id "resolved-aspects"`); the hook MUST preserve laziness (A17): forcing
+  # `bindingsAt`/the systems spine must NOT force `resolvedAspects` — only a closure the hook stamps onto a
+  # binding (e.g. a projected `hasAspect`) may, when it is actually called. Native den-hoag supplies the
+  # identity default (`{ bindings, ... }: bindings`), so the native binding surface is byte-identical.
+  enrichBindings ? ({ bindings, ... }: bindings),
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;
@@ -273,9 +281,17 @@ let
   # policies/pipes.nix declares none for either), so local ≡ received for both.
   bindingsAt =
     id:
-    (result.get id "enriched-context")
-    // prelude.genAttrs channelNames (_: [ ])
-    // channelBindingsAt id;
+    # The consumer-supplied post-resolution enrichment (default = identity, native den-hoag untouched).
+    # `resolvedAspects` is passed UNFORCED (the attribute-7 thunk): forcing this binding set does not force
+    # it — only a stamped closure the hook actually calls does (A17 — the external binding-enrichment seam).
+    enrichBindings {
+      inherit id;
+      resolvedAspects = result.get id "resolved-aspects";
+      bindings =
+        (result.get id "enriched-context")
+        // prelude.genAttrs channelNames (_: [ ])
+        // channelBindingsAt id;
+    };
 
   memberClassName =
     id:

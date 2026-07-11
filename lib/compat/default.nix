@@ -70,6 +70,16 @@ let
     inherit prelude;
     builtinClassNames = builtins.attrNames denHoag.classes;
   };
+  # The projected hasAspect entity surface (v1 PR #602 semantics; the den-hoag dissolution). `stampProvider`
+  # is the SINGLE identity source compile.nix's include-grounding ALSO imports (path-cached ⇒ one definition,
+  # no duplication), so a `host.hasAspect den.aspects.<path>` ref keys IDENTICALLY to the resolved-aspects
+  # node it answers for (W2). `refKey`/`mkEnrich` bind the gen-aspects identity; the schema entity-kind set
+  # is bound per-fleet at the bridge (flake-module.nix `mkFleetModuleWith` → `den.enrichBindings`).
+  stampProviderLib = import ./stamp-provider.nix { inherit prelude; };
+  hasAspect = import ./has-aspect.nix {
+    inherit aspects;
+    inherit (stampProviderLib) stampProvider;
+  };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
     forwards = import ./legacy/forwards.nix (deps // { inherit errors; });
@@ -103,6 +113,7 @@ let
         schema
         compile
         ingest
+        hasAspect
         ;
       annotate = annotateLib.annotateAspects;
       legacy = legacyArg;
@@ -135,6 +146,11 @@ in
   # board #58 (Fork A) — the post-fold `__provider` annotation walk; the bridge applies it to the
   # merged corpus tree (both consumers: the `den` module arg + the fleet def).
   inherit (annotateLib) annotateAspects;
+  # The projected hasAspect entity surface (v1 PR #602). `stampProvider` is the single include-identity
+  # source (shared with compile.nix); `refKey` is the three-branch membership-key law; `mkEnrich` builds the
+  # `den.enrichBindings` hook (the bridge binds the schema entity-kind set). Exposed for the witness suite.
+  inherit (stampProviderLib) stampProvider;
+  inherit (hasAspect) refKey mkEnrich;
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
   inherit (flakeModuleWiring) mkNixosInstantiate;

@@ -350,6 +350,22 @@ let
         };
       };
 
+      # den.enrichBindings — the POST-RESOLUTION binding-enrichment seam (the terminal-binding twin of
+      # `den.interpret`). An external consumer may enrich a node's entity bindings AFTER resolution: the hook
+      # `{ id; resolvedAspects; bindings } -> bindings'` runs inside `bindingsAt` (output-modules.nix), so a
+      # binding a class module destructures (`host`/`user`/…) can carry a stamped closure (e.g. a projected
+      # membership accessor). THE LAZINESS LAW (A17): `resolvedAspects` is the node's attribute-7 THUNK — the
+      # hook must not force it at stamp time, only a closure it stamps (called later) may. Native den-hoag
+      # supplies the identity default, so the native binding surface is byte-identical; an external consumer
+      # sets this WITHOUT editing output-modules.nix. `raw` (an opaque function), forced only at a terminal.
+      enrichBindingsDecl = {
+        options.den.enrichBindings = merge.mkOption {
+          type = merge.types.raw;
+          default = { bindings, ... }: bindings;
+          description = "Post-resolution binding-enrichment hook `{ id; resolvedAspects; bindings } -> bindings'` run in `bindingsAt`; must preserve laziness (A17). Native default = identity.";
+        };
+      };
+
       # den.probeSentinelFields — the CONFIGURABLE probe sentinel (B2). concern-policies reads a policy's
       # stratum by producing it against a value-less sentinel entry (`{ id_hash; name }`). A consumer whose
       # policy bodies read a coord FIELD on that entry (a corpus fact the consumer knows) supplies the
@@ -381,6 +397,7 @@ let
           nixpkgsDecl
           darwinDecl
           interpretDecl
+          enrichBindingsDecl
           probeSentinelDecl
         ]
         ++ userModules;
@@ -667,6 +684,10 @@ let
           channelNames
           ;
         interpret = ent.config.den.interpret or { };
+        # The post-resolution binding-enrichment hook (native default = identity, byte-identical). A11-lazy:
+        # applied inside `bindingsAt`, so forcing the systems spine never forces it, and a hook that stamps a
+        # projected `hasAspect` never forces resolved-aspects until the closure is called (A17).
+        enrichBindings = ent.config.den.enrichBindings or ({ bindings, ... }: bindings);
       };
 
       # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,
