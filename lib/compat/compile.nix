@@ -1036,6 +1036,7 @@ builtins.seq surfaceTotalityOk {
       hostHarvest
       hostClassName
       hostSystemName
+      hostHostName
       ;
   };
   inherit aspects policies;

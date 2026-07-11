@@ -2,9 +2,11 @@
 # dispatch body reads `host.system`/`host.class` off it directly (nix-config classes/home-platform.nix:29 —
 # `lib.hasPrefix "aarch64-" host.system`, a HARD read with no `or` fallback). den-hoag entities are field-less,
 # so the shim must reproduce those STRUCTURAL fields on the entry: ingest.nix `buildSchema` declares them as
-# host-kind `options` and flake-module.nix `instanceConfig` stamps them from the `hostClassName`/`hostSystemName`
-# maps. C9 closed `class`; this closes `system` (the demoted `den.hosts.<system>.<name>` path key). The probe
-# sentinel already carries both (`probeSentinelModule` {class, system}); the gap was the REAL entry.
+# host-kind `options` and flake-module.nix `instanceConfig` stamps them from the `hostClassName`/`hostSystemName`/
+# `hostHostName` maps. C9 closed `class`; the `system` rung closed `system` (the demoted `den.hosts.<system>.<name>`
+# path key); this rung closes `hostName` (v1 base-entity option `strOpt "Network hostname" config.name`, pin
+# 11866c16 entities/host.nix:63 — the hostname battery reads it). The probe sentinel carries all three
+# (`probeSentinelModule` {class, system, hostName}); the gap was the REAL entry.
 #
 # This is the END-TO-END witness through the FULL `mkDen` path: a home-platform-SHAPED value-conditional route
 # (`hasPrefix "aarch64-" host.system`) fires at a real aarch64 host and is gated-empty at a real x86_64 host,
@@ -46,6 +48,13 @@ let
         config.den = {
           hosts.aarch64-linux.arm.class = "nixos";
           hosts.x86_64-linux.pc.class = "nixos";
+          # `named` authors an EXPLICIT `hostName` (≠ its instance name) — v1's `hostName = strOpt
+          # "Network hostname" config.name` (pin 11866c16 entities/host.nix:63) lets an author override the
+          # name default. The stamp (`hostHostName = h.hostName or name`) must carry the override to the ctx.
+          hosts.x86_64-linux.named = {
+            class = "nixos";
+            hostName = "custom-net";
+          };
           aspects.aarch64-marker = { };
           schema.host.includes = [ markPolicy ];
         };
@@ -115,35 +124,64 @@ in
       expected = false;
     };
 
-    # (b) — the newly stamped `system` (and pre-existing `class` + built-in `name`) are present on the REAL
-    #       aarch64 host ctx entity at dispatch, carrying their real values (not the probe sentinel).
+    # (b) — the stamped `system`/`hostName` (and pre-existing `class` + built-in `name`) are present on the
+    #       REAL aarch64 host ctx entity at dispatch, carrying their real values (not the probe sentinel).
+    #       `hostName` defaults to the instance name (v1 `strOpt "Network hostname" config.name`).
     test-arm-entity-fields = {
       expr =
         let
           h = ctxHostAt "host:arm";
         in
         {
-          inherit (h) system class name;
+          inherit (h)
+            system
+            class
+            name
+            hostName
+            ;
         };
       expected = {
         system = "aarch64-linux";
         class = "nixos";
         name = "arm";
+        hostName = "arm";
       };
     };
-    # (b) — the x86_64 host entry carries its own distinct `system` (a per-host field, not a fleet constant).
+    # (b) — the x86_64 host entry carries its own distinct `system` (a per-host field, not a fleet constant)
+    #       and its name-defaulted `hostName`.
     test-pc-entity-fields = {
       expr =
         let
           h = ctxHostAt "host:pc";
         in
         {
-          inherit (h) system class name;
+          inherit (h)
+            system
+            class
+            name
+            hostName
+            ;
         };
       expected = {
         system = "x86_64-linux";
         class = "nixos";
         name = "pc";
+        hostName = "pc";
+      };
+    };
+    # (b/override) — `named` authored `hostName = "custom-net"` ≠ its instance name; the stamp carries the
+    #       override to the ctx entity (v1 def-priority: authored beats the `config.name` base default).
+    test-named-hostName-override = {
+      expr =
+        let
+          h = ctxHostAt "host:named";
+        in
+        {
+          inherit (h) name hostName;
+        };
+      expected = {
+        name = "named";
+        hostName = "custom-net";
       };
     };
 

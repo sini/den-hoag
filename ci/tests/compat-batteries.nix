@@ -202,6 +202,42 @@ let
     in
     ns != [ ] && (builtins.head ns).content.name == "du-fired";
 
+  # ── (6b) hostname battery — REAL firing at a host node reading the STAMPED `host.hostName` (the field-
+  #    coverage rung; the twin of `class`/`system`). The ACTUAL `bat.hostname` (batteries.nix, v1
+  #    modules/aspects/batteries/hostname.nix) radiated via `den.default`; at a real host node its
+  #    `setHostname` — `{ host, ... }: … // optionalAttrs (host ? class) { ${host.class}.networking.hostName
+  #    = host.hostName; }` — reads `host.hostName` off the stamped ctx entity and emits the class config.
+  #    `axon` takes the `config.name` default (v1 `strOpt "Network hostname" config.name`); `gw` authors an
+  #    explicit override. This is the EXACT `host.hostName` read that hard-failed pre-stamp at the corpus,
+  #    inverted to a passing witness. Filter by the battery's returned `content.name` ("hostname/os"), so the
+  #    witness is robust to the resolved-aspects node-key path. ──────────────────────────────────────────
+  # The battery is radiated via `den.default` so the fleet BUILDS it: compiling/probing `setHostname`
+  # through the value-less sentinel (now carrying `hostName = "«probe»"`, flake-module.nix
+  # `probeSentinelModule`) proves the field addition keeps the compile clean (no `attribute 'hostName'
+  # missing` at the probe). The emitted VALUE is then read by applying the ACTUAL battery body to the REAL
+  # STAMPED ctx host entity (enriched-context.host) — the resolved-aspects node stores it as a compiled
+  # module, but the body applied to the real entity yields the clean `${host.class}.networking.hostName`.
+  hostnameFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          default.includes = [ bat.hostname ];
+          hosts.x86_64-linux.axon.class = "nixos";
+          hosts.x86_64-linux.gw = {
+            class = "nixos";
+            hostName = "gw-net";
+          };
+        };
+      }
+    ]).den;
+  setHostname = builtins.head bat.hostname.includes;
+  hostnameEmittedAt =
+    id:
+    let
+      ctxHost = (hostnameFleet.structural.eval.get id "enriched-context").host;
+    in
+    (setHostname { host = ctxHost; }).${ctxHost.class}.networking.hostName;
+
   # ── (7) unfree class-coord PIN (ledger row u1 / board #55) — a LOUD PIN of the latent-v1-divergence.
   #    unfree's `__fn` REQUIRES a `class` coord; den-hoag's enriched-context injects none (v1 binds
   #    class=entityCls per-class-resolution, fx/resolve.nix:181/bind.nix:41), so the shim-wrapped include
@@ -363,6 +399,19 @@ in
       expected = {
         resolves = true;
         fired = true;
+      };
+    };
+    # (6c) hostname battery fires at a real host node, reading the STAMPED `host.hostName`: `axon` emits its
+    #      name default, `gw` emits its authored override. The exact batteries.nix `host.hostName` read that
+    #      hard-failed pre-stamp, now a passing witness at a real host scope.
+    test-hostname-battery-fires = {
+      expr = {
+        defaulted = hostnameEmittedAt "host:axon";
+        overridden = hostnameEmittedAt "host:gw";
+      };
+      expected = {
+        defaulted = "axon";
+        overridden = "gw-net";
       };
     };
     # (7) unfree class-coord PIN — latent-v1-divergence (ledger u1 / board #55). The `__fn` REQUIRES a

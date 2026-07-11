@@ -165,6 +165,11 @@ let
               default = null;
               description = "v1 host platform system (the demoted `den.hosts.<system>` key) — the home-platform route gate reads it (compat).";
             };
+            options.hostName = schema.mkOption {
+              type = schema.types.raw;
+              default = null;
+              description = "v1 host network hostName (base default `config.name`, pin 11866c16 entities/host.nix:63) — the hostname battery reads it (compat).";
+            };
           };
         };
       kinds = builtins.attrNames withHostFields;
@@ -464,6 +469,17 @@ let
       # system-less host) → null, so the route's `hasPrefix`/`hasSuffix` test is false, matching v1's default.
       hostSystemName = builtins.mapAttrs (_: h: h.system or null) flatHosts;
 
+      # Per-host network hostName keyed by host name — the value mkFleetModule stamps onto the den-hoag host
+      # entity's declared `hostName` field, so the hostname battery's `${host.class}.networking.hostName =
+      # host.hostName` (batteries.nix, v1 modules/aspects/batteries/hostname.nix) reads the real per-host
+      # value exactly as v1 does. v1 declares `hostName = strOpt "Network hostname" config.name` as a
+      # BASE-entity option (pin 11866c16 nix/lib/entities/host.nix:63) defaulting to the instance name — the
+      # twin of `class`/`system`, NOT a corpus-schema field (nix-config modules/den/schema/host.nix sets no
+      # hostName), so it is a DIRECT stamp here, not a harvest read. An authored `host.hostName` overrides
+      # (v1 def priority); absent → the name. A synthetic host (no `class`) never reaches the battery's
+      # `host ? class`-gated `host.hostName` read, so its null stamp stays inert.
+      hostHostName = builtins.mapAttrs (name: h: h.hostName or name) flatHosts;
+
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });
       classRegistry = builtinClasses // prelude.genAttrs declaredClassNames classEntry;
@@ -498,6 +514,7 @@ let
         hostHarvest
         hostClassName
         hostSystemName
+        hostHostName
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;

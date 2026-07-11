@@ -153,22 +153,25 @@ let
   mkFleetModuleWith =
     compiled: nixosTerminal:
     let
-      # Instances cross FIELD-LESS (den-hoag entities carry no content), EXCEPT the host's `class` and
-      # `system` fields: v1's `host.class`/`host.system` are structural entity data the built-in os/user
-      # routes (R3/R6, `ctx.host.class`) and the home-platform routes (`ctx.host.system`) gate on, so the
-      # host kind declares them (ingest.nix `buildSchema`) and they are stamped here from the compile-side
-      # `hostClassName`/`hostSystemName` maps. v1 binds the FULL host config as the ctx entity, so those
-      # fields are present at real dispatch there; the shim reproduces them on the field-less entry (the
-      # probe sentinel already carries both — see flake-module `probeSentinelModule`). Every other kind's
-      # instances stay `{ }`.
+      # Instances cross FIELD-LESS (den-hoag entities carry no content), EXCEPT the host's `class`,
+      # `system` and `hostName` fields: v1's `host.class`/`host.system`/`host.hostName` are structural
+      # entity data the built-in os/user routes (R3/R6, `ctx.host.class`), the home-platform routes
+      # (`ctx.host.system`), and the hostname battery (`${host.class}.networking.hostName = host.hostName`)
+      # gate on / read, so the host kind declares them (ingest.nix `buildSchema`) and they are stamped here
+      # from the compile-side `hostClassName`/`hostSystemName`/`hostHostName` maps. v1 binds the FULL host
+      # config as the ctx entity, so those fields are present at real dispatch there; the shim reproduces
+      # them on the field-less entry (the probe sentinel carries all three — see flake-module
+      # `probeSentinelModule`). Every other kind's instances stay `{ }`.
       hostClassName = compiled.entities.hostClassName or { };
       hostSystemName = compiled.entities.hostSystemName or { };
+      hostHostName = compiled.entities.hostHostName or { };
       instanceConfig = builtins.mapAttrs (
         kind: insts:
         if kind == "host" then
           builtins.mapAttrs (name: _: {
             class = hostClassName.${name} or null;
             system = hostSystemName.${name} or null;
+            hostName = hostHostName.${name} or null;
           }) insts
         else
           builtins.mapAttrs (_: _: { }) insts
@@ -285,7 +288,9 @@ let
   # reads a policy's stratum by producing it against a value-less sentinel `{ id_hash; name }`. Several FROZEN
   # v1 corpus policies read a bare coord FIELD on that entry and would hard-fail: `host.system` (v1
   # home-platform routes — `lib.hasSuffix "-linux" host.system`), `host.class` (colmena `host-modules-capture`
-  # `inherit (host) class`; nix-on-droid `drop-user-to-host-on-droid` `host.class == "droid"`). The FIELDS ARE
+  # `inherit (host) class`; nix-on-droid `drop-user-to-host-on-droid` `host.class == "droid"`), `host.hostName`
+  # (the hostname battery `${host.class}.networking.hostName = host.hostName`, an unconditional read whose
+  # fake value is discarded after the probe, like `host-modules-capture`). The FIELDS ARE
   # A v1-CORPUS FACT, so they live HERE (the compat layer), not in field-agnostic core: the shim supplies
   # TYPE-CORRECT NON-MATCHING string sentinels ("«probe»"), so each value-conditional body takes its FALSE
   # branch → EXPANSION (the conservative branch, correct at real nodes), and an unconditional body (`host-
@@ -295,6 +300,7 @@ let
     config.den.probeSentinelFields = {
       class = "«probe»";
       system = "«probe»";
+      hostName = "«probe»";
     };
   };
   # `mkDenWith userModules { nixosTerminal ? collect; hoagModules ? [] }` — build the shim fleet with the
