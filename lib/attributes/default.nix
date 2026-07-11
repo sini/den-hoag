@@ -99,6 +99,9 @@ in
       linkTarget ? (_: null),
       allAspects ? { },
       directIncludes ? [ ],
+      # The post-inheritance resolution-ctx enrichment hook (native default = identity), threaded to
+      # resolved-aspects for the aspect-fn ctx enrichment (A17-lazy; see resolved-aspects.nix `ctx`).
+      enrichContext ? ({ bindings, ... }: bindings),
       quirkDag,
       classOfNode,
       channelNames,
@@ -115,7 +118,7 @@ in
       classifyKey,
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
-    // (resolvedAspects { inherit allAspects directIncludes; })
+    // (resolvedAspects { inherit allAspects directIncludes enrichContext; })
     // (collections {
       inherit
         quirkDag

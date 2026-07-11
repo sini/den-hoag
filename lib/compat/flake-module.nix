@@ -250,8 +250,12 @@ let
       # stamps a shared projected `hasAspect` onto every entity-kind binding at each node (v1's
       # `overrideKinds`, schema.nix:77-79), reading the node's OWN resolved-aspects (the v2 dissolution).
       # `secretsConfig`/`fleet`/channel bindings are NOT schema kinds ⇒ never stamped. The hook is A17-lazy
-      # (bindingsAt forces it without forcing resolved-aspects); it rides the shipped `den.enrichBindings`
-      # raw seam (lib/default.nix), so no den-hoag core edit — the terminal-binding twin of `den.interpret`.
+      # (the binding spine forces without forcing resolved-aspects); it rides the shipped `den.enrichBindings`
+      # (terminal, output-modules `bindingsAt`) AND `den.enrichContext` (resolution, resolved-aspects `ctx`)
+      # raw seams (lib/default.nix), so no den-hoag core edit. F2: ONE hook serves both depths — the terminal
+      # binding for a CONTENT-module formal (`nixos = { host, … }:` — networking.nix:341) and the resolution
+      # ctx for an ASPECT-FN formal (`agenixHostAspect = { host, … }:` — agenix.nix:31), the SAME `refKey`
+      # identity keyed against each node's OWN resolved-aspects.
       entityKinds = prelude.genAttrs (builtins.attrNames compiled.entities.schema) (_: true);
     in
     {
@@ -261,6 +265,10 @@ let
         policies = compiled.policies;
         quirks = compiled.channels;
         enrichBindings = hasAspect.mkEnrich entityKinds;
+        # The SAME hook at RESOLUTION depth — the aspect-fn ctx twin (F2: shared refKey identity, not a
+        # forked variant). Enriches the enriched-context a bare-fn kind-include receives so an aspect-fn's
+        # `host.hasAspect` (agenix.nix:31, resolution depth) resolves like a content-module's (networking.nix:341).
+        enrichContext = hasAspect.mkEnrich entityKinds;
         # Static entity-scoped includes (den-hoag `den.include`, §370 directAspects) — the R5
         # self-named-aspect seeds (spec §10) `addSelfIncludes` appended, node-local at each self-named
         # entity. Empty when the legacy self-provide module is severed (byte-identical no-op, Law C5).

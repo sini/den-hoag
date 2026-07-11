@@ -366,6 +366,26 @@ let
         };
       };
 
+      # den.enrichContext — the POST-INHERITANCE resolution-ctx enrichment seam (the aspect-fn twin of
+      # `den.enrichBindings`). An external consumer may enrich the resolution ctx a parametric aspect-fn
+      # receives: the hook `{ id; resolvedAspects; bindings } -> bindings'` runs on the enriched-context BEFORE
+      # it is handed to `forwardExpand` (resolved-aspects.nix), so a bare-fn kind-include destructuring an
+      # entity binding (`host`/`user`/…) can carry a stamped closure (e.g. a projected resolved-aspect
+      # accessor) at RESOLUTION depth, not only at the terminal. THE LAZINESS LAW (A17): `resolvedAspects` is
+      # the node's OWN attribute-7 value — the converged fix knot (resolved-aspects reads itself, kind=circular)
+      # — so the hook MUST NOT force it at stamp time. A closure it stamps may read it, but ONLY at a VALUE
+      # position forced AFTER convergence (the memoized knot); a KEY/structure-position read black-holes the
+      # circular attribute LOUD (`infinite recursion`). Native den-hoag supplies the identity default, so the
+      # resolution ctx is byte-identical; an external consumer sets this WITHOUT editing resolved-aspects.nix.
+      # `raw` (an opaque function), forced only during resolution.
+      enrichContextDecl = {
+        options.den.enrichContext = merge.mkOption {
+          type = merge.types.raw;
+          default = { bindings, ... }: bindings;
+          description = "Post-inheritance resolution-ctx enrichment hook `{ id; resolvedAspects; bindings } -> bindings'` applied to the aspect-fn ctx before forwardExpand; must keep resolvedAspects unforced at stamp (A17). Native default = identity.";
+        };
+      };
+
       # den.probeSentinelFields — the CONFIGURABLE probe sentinel (B2). concern-policies reads a policy's
       # stratum by producing it against a value-less sentinel entry (`{ id_hash; name }`). A consumer whose
       # policy bodies read a coord FIELD on that entry (a corpus fact the consumer knows) supplies the
@@ -398,6 +418,7 @@ let
           darwinDecl
           interpretDecl
           enrichBindingsDecl
+          enrichContextDecl
           probeSentinelDecl
         ]
         ++ userModules;
@@ -646,6 +667,10 @@ let
         inherit policiesRules fleetChildren linkTarget;
         allAspects = ent.config.den.aspects;
         directIncludes = ent.config.den.include;
+        # The post-inheritance resolution-ctx enrichment hook (native default = identity, byte-identical).
+        # A17-lazy: applied to the enriched-context before `forwardExpand`, so a stamped closure never forces
+        # the node's resolved-aspects until it is called at a value position after convergence.
+        enrichContext = ent.config.den.enrichContext or ({ bindings, ... }: bindings);
         inherit quirkDag classOfNode channelNames;
         # The consumer's nixpkgs lib for pipeline-parametric `lib`-arg injection (collections.nix): the
         # supplied `den.nixpkgs` flake's `.lib`, or null on the pure path (nixpkgs-free `collect`). Same

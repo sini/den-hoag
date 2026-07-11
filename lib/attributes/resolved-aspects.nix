@@ -23,6 +23,11 @@
 {
   allAspects ? { },
   directIncludes ? [ ],
+  # The post-inheritance resolution-ctx enrichment hook `{ id; resolvedAspects; bindings } -> bindings'`
+  # (native default = identity, byte-identical). Applied to the enriched-context ONCE per node, producing
+  # the ctx handed to `forwardExpand` (seed + fixpoint expansion). A17: it must keep `resolvedAspects`
+  # unforced at stamp — see the `ctx` binding in `compute` for the force-boundary law.
+  enrichContext ? ({ bindings, ... }: bindings),
 }:
 let
   keyOf = aspects.key;
@@ -224,7 +229,23 @@ in
     compute =
       self: id:
       let
-        ctx = self.get id "enriched-context";
+        # The aspect-fn resolution ctx: the enriched-context, run through the consumer's `enrichContext`
+        # hook (native default = identity). Applied ONCE for the whole resolve — both `forwardExpand` sites
+        # (the seed below and the fixpoint expansion) receive this same enriched ctx, so a parametric
+        # aspect-fn destructuring `host`/`user`/… sees the enrichment uniformly.
+        #
+        # THE CIRCULAR SELF-READ (sanctioned). `resolvedAspects` is `self.get id "resolved-aspects"` — THIS
+        # node's own attribute-7 value (declared in `readsAttrs`, kind=circular). It is passed UNFORCED: the
+        # hook must not force it at stamp (A17). A closure the hook stamps (e.g. a projected resolved-aspect
+        # accessor) reads it only at a VALUE position — forced at the terminal AFTER the circular fixpoint has
+        # converged, so it observes the memoized final set. A read at a KEY/STRUCTURE position (gating
+        # `includes` or a dynamic attr name) is forced by `forwardExpand` DURING resolution → the circular
+        # attribute black-holes LOUD (`infinite recursion`), the evaluator enforcing the includes-position ban.
+        ctx = enrichContext {
+          inherit id;
+          resolvedAspects = self.get id "resolved-aspects";
+          bindings = self.get id "enriched-context";
+        };
         resolutionActs = (self.get id "declarations").actions.resolution or [ ];
         ownEntry = (self.node id).decls.__entry or null;
 
