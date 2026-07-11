@@ -87,6 +87,19 @@ let
       ;
   };
 
+  # The STAGED ROOT-RESOLUTION pre-pass (design note 2026-07-11 §2/§3(ii), slice R1): the kind-ordered
+  # dispatch over ROOT nodes, run BEFORE the fleet product, that routes policy-emitted MEMBERSHIP into the
+  # fleet (the deferred Task 4) and folds RELATION-carried bindings into target roots' ctx. Pure gen-
+  # prelude + gen-dispatch wiring over the `declare` vocabulary; consumed per-mkDen below (`prePass`).
+  stagedResolution = import ./staged-resolution.nix {
+    inherit
+      prelude
+      dispatch
+      declare
+      errors
+      ;
+  };
+
   # The aspects concern — compiles `den.aspects` onto gen-aspects (the neededBy/guard/drop surface
   # + §2.2 key dispatch). This TOP-LEVEL instance is used ONLY for `internal.classifyKey` (which reads
   # `classNames`, never moduleArgs), so `kindNames = [ ]` here is inert — the eval-load-bearing instance is
@@ -425,7 +438,26 @@ let
         inherit denMeta;
       };
 
-      membershipTuples = ent.config.den.membership;
+      # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED tuples (Task 4, A5's
+      # promised law): a policy-emitted leaf-dim `member` at a membership-independent root now routes into
+      # the fleet. `prePass` also carries `relationBindings` (nodeId -> ctx additions from `relate`),
+      # injected into the target roots' decls (`scopeRoots`, below) so the main run's inherited-context
+      # threads them. THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` +
+      # `relationBindings = { }`, so `membershipTuples` and `scopeRoots` are byte-identical to the pre-R1
+      # values — a native fleet is unchanged. The pre-pass reads `baseScopeRoots` (un-injected) +
+      # `policiesRules` + `ent.meta` topology — none depend on `membershipTuples`/`theFleet`, so no cycle.
+      prePass = stagedResolution.runPrePass {
+        scopeRoots = baseScopeRoots;
+        rootKinds = rootScopeKinds;
+        parentOf = k: ent.meta.${k}.parent;
+        inherit (ent) registries;
+        # The resolve-family feed (concern-policies) — the structural-group rules that CAN emit
+        # member/relate (single-group probe DETECTED, or the `__resolveFamily` tag DECLARED). Dispatching
+        # only these keeps the pre-pass from running an arbitrary co-firing policy body at a root (which
+        # could hit an uncatchable missing-attribute read). Empty for a resolve-free fleet → pre-pass inert.
+        resolveRules = policiesRules.resolveFamily;
+      };
+      membershipTuples = ent.config.den.membership ++ prePass.tuples;
 
       # Product dims = the CELL COORDINATE kinds — the leaf cell kind and its containment ANCESTORS (the
       # parent chain root→leaf). A registered kind OUTSIDE that chain (a pure link/root kind like
@@ -477,10 +509,19 @@ let
       leafKind = if cellKinds == [ ] then null else builtins.head cellKinds;
       cellParentKind = if leafKind == null then null else ent.meta.${leafKind}.parent;
 
-      scopeRoots = buildRoots {
+      # The BASE root scope nodes (un-injected) — what the staged pre-pass reads (independent of
+      # `membershipTuples`/`theFleet`, so the pre-pass closes no cycle).
+      baseScopeRoots = buildRoots {
         inherit (ent) registries;
         roots = rootScopeKinds;
       };
+      # The main-run root scope nodes: base roots with each `relate`-carried binding folded onto its
+      # TARGET root's decls (the enriched-context/decls seam — the corpus's `resolve.to host { accessGroups }`
+      # binds into the host SCOPE's ctx; inherited-context threads it to the host's cells, attr 1). A fleet
+      # with no relations gives `relationBindings = { }`, so `scopeRoots` is byte-identical to base.
+      scopeRoots = builtins.mapAttrs (
+        id: node: node // { decls = node.decls // (prePass.relationBindings.${id} or { }); }
+      ) baseScopeRoots;
 
       # The `children` NTA's fleet arm: a host node spawns its cells; other nodes spawn none.
       fleetChildren =
@@ -942,6 +983,7 @@ in
       parseParent
       runResolve
       scopeAdapter
+      stagedResolution
       ;
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;

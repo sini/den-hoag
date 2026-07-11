@@ -30,6 +30,7 @@ let
     "fleet.nix"
     "build-roots.nix"
     "scope-adapter.nix"
+    "staged-resolution.nix"
     "declarations.nix"
     "concern-policies.nix"
     "concern-aspects.nix"

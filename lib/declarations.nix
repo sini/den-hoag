@@ -31,6 +31,7 @@ let
       "enrich"
       "emit"
       "member"
+      "relate"
     ];
     resolution = [
       "edge"
@@ -92,6 +93,42 @@ let
       );
     in
     builtins.seq forced (actions.member { coords = validated; });
+
+  # `relate { target, bindings ? { } }` — structural (RESOLVE-FAMILY): a source→existing-target
+  # RELATION carrying ctx bindings. The STAGED ROOT-RESOLUTION pre-pass (lib/staged-resolution.nix)
+  # folds `bindings` into the target node's ctx — for subsequent pre-pass phases AND the main run's
+  # inherited-context. `target` denotes an EXISTING entity node — an identity-law position (A2),
+  # entry-checked EAGERLY like `link`/`member`. THE LAW: a relation CARRIES ctx (it never re-creates or
+  # re-resolves the target); the B1 keyset honesty holds — the binding KEYS are declared by the emitting
+  # adapter (v1-spec knowledge of the emission shape), the VALUES arrive at pre-pass dispatch. The paired
+  # resolve-family verb beside `member` (leaf-dim membership); both are accepted at membership-independent
+  # roots only (A5). Design note 2026-07-11 §3(ii), slice R1.
+  relate =
+    {
+      target,
+      bindings ? { },
+    }:
+    let
+      t = requireEntry "relate.target" target;
+    in
+    builtins.seq t (
+      actions.relate {
+        inherit bindings;
+        target = t;
+      }
+    );
+
+  # Resolve-family kinds (design note 2026-07-11 §3(ii)): the declarations the STAGED ROOT-RESOLUTION
+  # pre-pass consumes — MEMBERSHIP tuples (`member`, leaf-dim coords) and RELATION-carried bindings
+  # (`relate`, source→existing-root). Both are accepted at membership-independent roots ONLY (A5); every
+  # OTHER kind is consumed by the main run. `isResolveFamily` is the double-fire discipline's kind
+  # predicate — its exactly-one-consumer split (the main run aborts LOUD on a resolve-family decl reaching
+  # a membership-derived node, never a silent drop; see attributes/structural.nix attr 4).
+  resolveFamilyKinds = [
+    "member"
+    "relate"
+  ];
+  isResolveFamily = a: builtins.elem (kindOf a) resolveFamilyKinds;
 
   # `configure { of, set }` — resolution: set values on a target entry.
   configure =
@@ -213,9 +250,12 @@ actions
     kindOf
     kindToStratum
     isSiteMarkData
+    isResolveFamily
+    resolveFamilyKinds
     importEdgesOf
     checkStratum
     member
+    relate
     configure
     edge
     drop

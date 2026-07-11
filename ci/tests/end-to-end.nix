@@ -167,6 +167,7 @@ let
     "build-roots.nix"
     "scope-adapter.nix"
     "declarations.nix"
+    "staged-resolution.nix"
     "concern-policies.nix"
     "concern-aspects.nix"
     "concern-quirks.nix"

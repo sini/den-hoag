@@ -179,21 +179,42 @@
             in
             if t == null then acc else acc // { ${t.kind} = self.get t.nodeId "enriched-context"; }
           ) { } (builtins.filter (a: declarations.kindOf a == "link") links);
+        result = dispatch.dispatch {
+          rules = applicablePolicy;
+          inherit id;
+          context = ctx0;
+          match = dispatch.fromFunctionMatch;
+          classify = declarations.stratumOf;
+          groupOrder = declarations.strata;
+          extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
+          combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
+        };
+        # DOUBLE-FIRE DISCIPLINE (design note 2026-07-11 §3(ii)) + A5. Resolve-family declarations
+        # {member, relate} are consumed by the STAGED ROOT-RESOLUTION pre-pass at membership-INDEPENDENT
+        # roots ONLY. A resolve policy fires in BOTH passes (a policy is `ctx: [decls]`), but at a root its
+        # member/relate were already routed by the pre-pass and the main run's structural consumers
+        # (attr 5/6) never read them — so at a membership-DERIVED node (a fleet cell, `parent != null`) a
+        # resolve-family emission has NO legitimate consumer: routing it here would be a silent second
+        # partition. Abort LOUD (naming the policy + scope) — never a silent drop. A resolve policy that
+        # should not over-fire at a descendant cell restricts its scope via `__firesAtKinds` (attr 2/4).
+        #
+        # THE GUARD IS PER-ELEMENT AND LAZY: the check rides each structural declaration and fires ONLY
+        # when that element is actually forced by a consumer (attr 6 `importEdgesOf`) — a cell that never
+        # consumes its structural stratum pays nothing. Eagerly scanning the group here would force every
+        # structural element at every cell, breaking the per-cell laziness the resolution stratum relies on
+        # (b2 demand-laziness) — so the guard maps the group instead of filtering it.
+        isMembershipDerived = (self.node id).parent != null;
+        guardResolveFamily =
+          a:
+          if declarations.isResolveFamily a then errors.memberAtCell (a.__policy or "«anonymous»") id else a;
+        guardedActions =
+          if isMembershipDerived && (result.actions ? structural) then
+            result.actions // { structural = map guardResolveFamily result.actions.structural; }
+          else
+            result.actions;
       in
       {
-        inherit
-          (dispatch.dispatch {
-            rules = applicablePolicy;
-            inherit id;
-            context = ctx0;
-            match = dispatch.fromFunctionMatch;
-            classify = declarations.stratumOf;
-            groupOrder = declarations.strata;
-            extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
-            combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
-          })
-          actions
-          ;
+        actions = guardedActions;
       };
   };
 

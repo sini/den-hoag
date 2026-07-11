@@ -176,6 +176,16 @@ let
       # compiled rule (the single-group rule OR each expansion sub-rule) and SURVIVES `strip` below, so the
       # structural-stratum reader can consult it. The core stamps nothing itself — a caller (e.g. an
       # include-arm compiler) supplies the kinds; this only carries the annotation through the compile.
+      # `__resolveFamily` (LAW, design note 2026-07-11 §3(ii)): the STAGED ROOT-RESOLUTION pre-pass is the
+      # SOLE consumer of resolve-family declarations {member, relate}, so it must dispatch ONLY policies
+      # that can emit them — dispatching an arbitrary co-firing policy body at a root risks an UNCATCHABLE
+      # eval error (a missing-attribute read of a field absent from the root ctx; `tryEval` cannot catch
+      # it). A rule is resolve-family iff (a) its VALUE-LESS probe already EMITTED a member/relate (a
+      # single-group resolve policy — DETECTED), or (b) the emitting adapter DECLARES it via
+      # `__resolveFamily = true` (the honest keyset principle — a VALUE-CONDITIONAL resolve policy, whose
+      # probe is empty, cannot be detected, so intent is declared). Only the STRUCTURAL sub-rule of an
+      # expansion carries it (member/relate are structural). A native/corpus fleet with NO resolve policy
+      # tags NONE → the pre-pass feed is empty → inert, byte-identical.
       mkRules =
         name: v:
         let
@@ -186,16 +196,33 @@ let
           # abort below, never be swallowed by the probe's tryEval as an empty result.
           probeActs = probeOf condition (stampProduce name base.produce);
           firesAt = prelude.optionalAttrs (v ? __firesAtKinds) { inherit (v) __firesAtKinds; };
+          explicitRF = v.__resolveFamily or false;
+          expanded = probeActs == [ ];
           baseRules =
-            if probeActs == [ ] then
+            if expanded then
               mkExpanded name condition base
             else
               # Non-empty probe → single-group. `checkStratum` enforces the one-stratum law on the observed
               # emission (B2); it runs OUTSIDE the probe's tryEval, so a mixed-stratum policy aborts loud
               # rather than silently expanding.
               builtins.seq (declare.checkStratum name probeActs) [ (mkSingle name condition base probeActs) ];
+          # DETECTED (single-group probe emitted a member/relate) OR DECLARED (the value-conditional tag);
+          # for an expansion policy only the structural sub-rule bears it (member/relate are structural).
+          rfOf =
+            r:
+            if expanded then
+              explicitRF && r.group == "structural"
+            else
+              explicitRF || prelude.any declare.isResolveFamily probeActs;
         in
-        map (r: r // firesAt) baseRules;
+        map (
+          r:
+          r
+          // firesAt
+          // {
+            __resolveFamily = rfOf r;
+          }
+        ) baseRules;
 
       rules = prelude.concatMap (name: mkRules name policies.${name}) (builtins.attrNames policies);
       strip =
@@ -203,11 +230,20 @@ let
         removeAttrs r [
           "__isEnrich"
           "__pipeOps"
+          "__resolveFamily"
         ];
     in
     {
       enrich = map strip (builtins.filter (r: r.__isEnrich) rules);
       policy = map strip (builtins.filter (r: !r.__isEnrich) rules);
+      # The STAGED ROOT-RESOLUTION pre-pass feed (design note 2026-07-11 §3(ii)): the structural-group
+      # rules that can emit resolve-family {member, relate} — detected (single-group probe) or declared
+      # (`__resolveFamily` tag, value-conditional). The pre-pass (lib/staged-resolution.nix) dispatches
+      # ONLY these at roots, so an arbitrary co-firing policy body is never run there. Empty for a fleet
+      # with no resolve policies (the corpus at R1) → the pre-pass is inert, the fleet byte-identical.
+      resolveFamily = map strip (
+        builtins.filter (r: (r.__resolveFamily or false) && r.group == "structural") rules
+      );
       # The fleet-wide pipe operator declarations (collection stratum) — den-hoag threads their
       # `derived` channels + routes into the ONE gen-pipe compose (default.nix `policyOps`). Only
       # single-group (probe-emitting) policies contribute (their `__pipeOps`): the derived-op DAG + the

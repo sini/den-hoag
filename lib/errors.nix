@@ -36,6 +36,15 @@ in
     policyName: scopeId:
     fail "member discipline (A5)" "policy `${policyName}` emitted `member` at membership-derived scope `${scopeId}`; member is accepted only at membership-independent nodes";
 
+  # Resolve-family relation target (design note 2026-07-11 §3(ii), slice R1): a `relate` whose target
+  # entry resolves to NO existing root scope node. A relation carries ctx INTO an existing membership-
+  # independent root (it never creates one), so an unknown/leaf target is a definition error — the leaf-
+  # dim membership case belongs to `member`, not `relate`. Names the policy + the target. Raised in the
+  # staged root-resolution pre-pass (lib/staged-resolution.nix).
+  relateNoTarget =
+    policyName: target:
+    fail "relation target (R1)" "policy `${policyName}` emitted `relate` to target `${render target}`, which resolves to no existing root scope node; a relation carries ctx into an existing membership-independent root (a leaf-dim target is a `member`, not a `relate`)";
+
   # B1 single-writer enrichment (A3): two enrich policies writing one context key abort at
   # definition time, naming both policies + the key. Fires on a same-pass collision AND a
   # cross-iteration one (the check runs over the converged enrich accumulation).
