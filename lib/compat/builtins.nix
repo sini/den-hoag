@@ -46,9 +46,29 @@
 {
   prelude,
   errors,
+  declare,
 }:
 let
   deliverLib = import ./deliver.nix { inherit prelude errors; };
+  # FLEET-CONTEXT ENRICHMENT (ship-gate rung) — binds `environment`/`secretsConfig`/`fleet` into every
+  # host-bearing node's enriched-context, the compat twin of v1's fleet.nix scope-inheritance fan-out
+  # (see fleet-context.nix for the law + v1 cites). Provisioned below as a config-dependent sub-module
+  # (`imports`), so it can read the bridge-ingested `config.den.environments` / `config.den.secretsConfig`.
+  fleetContext = import ./fleet-context.nix { inherit declare; };
+  # The provisioning module (config-dependent — reads the flake-parts `config.den` registries). Kept in
+  # `imports` (not the top-level `config` below) so `builtins.nix`'s static `config.den.{classes,schema,
+  # policies}` view stays a plain attrset for the unit suites that read it directly.
+  fleetContextEnrichModule =
+    { config, ... }:
+    {
+      # SINGLE WRITER of environment/secretsConfig/fleet (structural.nix:108-118): the corpus fleet.nix
+      # `to-fleet`/`env-to-hosts` fan-out that would ALSO bind them stays lazily inert (its `self`/
+      # `environment` gate coords are never bound by the stubbed resolve surface), so no collision.
+      config.den.policies.fleet-context-enrich = fleetContext.mkEnrichPolicy {
+        envs = config.den.environments or { };
+        secretsConfig = config.den.secretsConfig or { };
+      };
+    };
   # `user-to-host` — the os-user battery route (os-user.nix `userToHost` @ pin 11866c16), reconstructed
   # here VALUE-IDENTICALLY off the shared `deliver.nix` surface, NOT by importing the legacy battery (the
   # single-legacy-import-site invariant, compat-legacy-severed). For the corpus the desugar's `//` overwrite
@@ -87,6 +107,7 @@ let
     throw "den-compat builtin: `den.policies.${name}` is a v1 flake-OUTPUT policy (${v1src} @ pin 11866c16); its firing populates flake outputs (packages/devShells/flake-parts) — ship-gate class F/G, not the class-A nixosConfigurations arm (which crosses the nixos class terminal). Reproduce it with the class-F/G rows (needs the fleet-resolution surface, board #49/#50).";
 in
 {
+  imports = [ fleetContextEnrichModule ];
   config.den = {
     policies = {
       host-to-users = _ctx: [ ];

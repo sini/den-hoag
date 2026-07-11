@@ -26,6 +26,9 @@ let
   builtinsMod = import "${denHoagSrc}/lib/compat/builtins.nix" {
     prelude = { };
     errors = { };
+    # dummy `declare` — this suite reads only the static `config.den.classes` view; the fleet-context
+    # enrichment (which forces `declare`) rides `imports`, never touched here (stays unforced).
+    declare = { };
   };
 
   # A fleet reproducing the corpus emitter: the flake-parts KIND (isEntity) + a KIND-attached content-set

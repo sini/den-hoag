@@ -111,6 +111,9 @@
       builtinsModule = import ./lib/compat/builtins.nix {
         prelude = inputs.gen-prelude.lib;
         errors = import ./lib/compat/errors.nix { prelude = inputs.gen-prelude.lib; };
+        # den-hoag's declaration vocabulary — the fleet-context enrichment policy emits `declare.enrich`
+        # (there is no v1 vocabulary for enrich; v1's `resolve.to` binding is the stubbed fan-out).
+        declare = lib.declare;
       };
 
       # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
