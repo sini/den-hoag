@@ -132,6 +132,7 @@ let
     {
       systemFor,
       instantiateFor,
+      hmModuleFor,
       crossVia,
       terminal,
     }:
@@ -145,6 +146,33 @@ let
       hostEntry = bindings.host or null;
       sys = if hostEntry == null then null else systemFor hostEntry;
       sysModule = if sys == null then [ ] else [ { nixpkgs.hostPlatform.system = sys; } ];
+      # R6 (the home-manager host-module import, terminal-side). Import the host's home-manager NixOS
+      # module so a HOST-scope aspect emitting `home-manager.*` content typechecks (corpus agenixHostAspect
+      # `home-manager.sharedModules`, batteries/agenix.nix:87 — the u9 re-probe frontier). v1's hm battery
+      # imports it via its hostModule `${host.class}.imports = [{ key = "den:home-manager-host-module";
+      # imports = [ host.home-manager.module ]; }]` (pin home-env.nix:74-86); here we are ALREADY at the
+      # nixos terminal, so it joins hostModules directly (no `${host.class}` wrapper — that selects the class
+      # content in v1's fold, which the terminal already scoped). v1's EXACT `key` string dedups a re-import
+      # to a no-op. TERMINAL-SIDE, not an aspect: the module is a nixpkgs closure, excluded from deepSeq'd
+      # resolution state (ingest.nix:56-58 — the SAME invariant as `instantiate`), so it rides the
+      # compile-side `hmModuleFor` id_hash map, forced only here. `hmModuleFor` returns null for a
+      # gated/hm-less host (no module or explicit `enable=false`) → no import, drv unshifted (see ingest.nix
+      # `hmModuleByHostId` for the gate + the membership CEILING).
+      hmFor = if hostEntry == null then null else hmModuleFor hostEntry;
+      hmModule =
+        if hmFor == null then
+          [ ]
+        else
+          [
+            {
+              imports = [
+                {
+                  key = "den:home-manager-host-module";
+                  imports = [ hmFor ];
+                }
+              ];
+            }
+          ];
       # THREE-GRAIN INSTANTIATION (D7, ship-gate M2). The per-host `host.instantiate` (the per-ENTITY grain)
       # WINS over the class-level `terminal` — which the bridge already resolved from the lower grains (the
       # class N1 declaration / the global `den.nixpkgs` fallback / the pure `collect`). Present ⇒ cross via
@@ -155,7 +183,7 @@ let
       perHostEval = if hostEntry == null then null else instantiateFor hostEntry;
       effectiveTerminal = if perHostEval == null then terminal else crossVia perHostEval;
     in
-    effectiveTerminal (args // { hostModules = sysModule ++ hostModules; });
+    effectiveTerminal (args // { hostModules = sysModule ++ hmModule ++ hostModules; });
 
   # The pure bridge: `compile`'s output → a den-hoag `config.den.*` module. Instances become
   # `config.den.<kind>.<name>` FIELD-LESS — den-hoag entities carry no content (it comes from aspects),
@@ -212,7 +240,7 @@ let
           builtins.mapAttrs (_: _: { }) insts
       ) compiled.entities.instances;
       nixosInstantiate = mkNixosInstantiate {
-        inherit (compiled.entities) systemFor instantiateFor;
+        inherit (compiled.entities) systemFor instantiateFor hmModuleFor;
         inherit (denHoag.internal.terminal) crossVia;
         terminal = nixosTerminal;
       };

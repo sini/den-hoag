@@ -1211,8 +1211,11 @@ builtins.seq surfaceTotalityOk {
       contentClass
       systemFor
       instantiateFor
+      # R6: the per-host home-manager NixOS module grain (terminal-side twin of instantiateFor).
+      hmModuleFor
       # fork (i): the full per-host schema-typed harvest (lazy; `_hostHarvest` via the bridge) —
-      # `instantiateFor` reads its `.instantiate`; the later per-host grains read the SAME eval.
+      # `instantiateFor`/`hmModuleFor` read its `.instantiate`/`.home-manager.module`; the later per-host
+      # grain reads the SAME eval.
       hostHarvest
       hostClassName
       hostSystemName

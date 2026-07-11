@@ -521,6 +521,60 @@ let
       );
       instantiateFor = host: instantiateByHostId.${host.id_hash} or null;
 
+      # hmModuleFor (ship-gate R6, the home-manager host-module grain — the terminal-side twin of
+      # instantiateFor): v1's per-host `home-manager.module` (the home-manager NixOS module the hm
+      # battery imports into the host's class-module so a HOST-scope aspect emitting `home-manager.*`
+      # content typechecks — corpus agenixHostAspect `home-manager.sharedModules`, batteries/agenix.nix:87;
+      # v1 hm battery hostModule, pin home-env.nix:74-86). Keyed by host id_hash, HARVEST-FIRST (the
+      # channel-driven `resolvedChannel.home-manager-module.nixos` the corpus's kind module materialized
+      # under the instance eval, corpus host.nix:329-334 — the SAME `_hostHarvest` entries instantiateFor
+      # reads, no re-eval) with the raw-authored field (`flatHosts.<h>."home-manager".module`) as the
+      # harvest-less mkDen-direct fallback — the established source invariant (the harvest already folds the
+      # authored def at priority 100, so a present-harvest null is authored-null too; the raw arm serves only
+      # no-bridge paths, exactly like harvestedHostFields above). Like instantiateFor the module is a nixpkgs
+      # closure, so it rides a compile-side `id_hash -> module` map, NEVER a field on the strict den-hoag
+      # entity, forced only at the terminal (the compat nixos wrapper, flake-module.nix) — the C1
+      # type-crossing dodge / the deepSeq-state hazard the `home-manager.module`/`instantiate` exclusion
+      # documents (harvestedHostFields, ingest.nix:56-58).
+      #
+      # THE GATE (v1's enable, home-env.nix:44-48 `enable && osSupported && hostHasClass`), reproduced to
+      # the compat-OBSERVABLE surface:
+      #   - osSupported (nixos/darwin): carried by the wrapper being stamped on the nixos class ALONE
+      #     (flake-module.nix; the darwin arm is class-B lookahead).
+      #   - the MODULE must exist: a host with no `home-manager.module` (harvest+raw both null — a
+      #     channel-less/hm-less host) → null → NO import (the "hm-less host" gated-null: no option declared,
+      #     drv unshifted).
+      #   - an EXPLICIT authored `home-manager.enable = false` opts out → null (v1's explicit disable, the one
+      #     piece of v1's enable the shim reads off the authored decl). CENSUS (corpus b0b20769): ZERO corpus
+      #     hosts set `home-manager.enable`, so this arm is corpus-inert — every corpus nixos host defaults
+      #     enabled.
+      # CEILING (documented, ledger R6): v1's `hostHasClass` (host-has-user-with-class — the host has ≥1
+      # homeManager user) is UNREPRODUCIBLE here — the corpus binds users to hosts via the environment resolve
+      # fan-out (fleet.nix env-to-hosts → resolve.to "user"), which the shim STUBS (board #49/#50), so the
+      # compat membership (ingest `bindings` = den.homes ∪ host.users) is EMPTY for every corpus host; gating
+      # on it would suppress the import on EVERY corpus host and defeat the rung. So the compat gate is
+      # MODULE-PRESENCE + the explicit opt-out: the corpus channel sets `home-manager.module` IFF the host is a
+      # real nixos/darwin channel host, and every such host has ≥1 hm user in v1 (enable true), so
+      # module-presence ⟺ v1's enable ACROSS THE CORPUS. The lone divergence — a module-carrying host with zero
+      # hm users — is corpus-absent and self-announces (the imported hm module is inert without users, adding
+      # only an empty `home-manager` option, never a wrong artifact). When board #49 lands (real user fan-out ⇒
+      # non-empty compat membership), tighten this to the membership-aware gate.
+      hmModuleByHostId = builtins.listToAttrs (
+        map (
+          name:
+          let
+            authoredHm = flatHosts.${name}."home-manager" or { };
+            harvestHm = (hostHarvest.${name} or { }).home-manager or { };
+            module = harvestHm.module or (authoredHm.module or null);
+          in
+          {
+            name = registries.host.${name}.id_hash;
+            value = if (authoredHm.enable or null) == false then null else module;
+          }
+        ) (builtins.attrNames flatHosts)
+      );
+      hmModuleFor = host: hmModuleByHostId.${host.id_hash} or null;
+
       # Per-host OS class NAME keyed by host name — the value mkFleetModule stamps onto the den-hoag host
       # entity's declared `class` field (§ os-class R3 gate). Derived from `host.class` else the system
       # (`classOfHost`, matching v1's `host.nix` default) so the os-to-host route gates exactly as v1's
@@ -587,10 +641,13 @@ let
         contentClass
         systemFor
         instantiateFor
+        # hmModuleFor (R6): the per-host home-manager NixOS module (terminal-side twin of instantiateFor),
+        # harvest-first `home-manager.module` gated on module-presence + explicit `enable=false` opt-out.
+        hmModuleFor
         # The full per-host harvest (fork (i), lazy — the ONE schema-typed instance eval per host).
-        # `instantiateFor` reads it above; the LATER per-host grains (hmModuleFor `home-manager.module`,
-        # secretPathFor — corpus host.nix:319,329) read the SAME entries, never a re-eval. Empty for
-        # mkDen-direct paths (no bridge ⇒ no `_hostHarvest`).
+        # `instantiateFor`/`hmModuleFor` read it above; the LATER per-host grain (secretPathFor — corpus
+        # host.nix:319) reads the SAME entries, never a re-eval. Empty for mkDen-direct paths (no bridge ⇒
+        # no `_hostHarvest`).
         hostHarvest
         hostClassName
         hostSystemName

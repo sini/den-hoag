@@ -140,7 +140,7 @@ let
   # `instantiateFor axon → null` and the stub `terminal` is used unchanged (crossVia stays unexercised here —
   # the per-host grain has its own witness, compat-per-host-instantiate). Passed to satisfy the wrapper args.
   sysInstantiate = denCompat.mkNixosInstantiate {
-    inherit (sysCompiled.entities) systemFor instantiateFor;
+    inherit (sysCompiled.entities) systemFor instantiateFor hmModuleFor;
     inherit (denHoag.internal.terminal) crossVia;
     terminal = stubTerminal;
   };

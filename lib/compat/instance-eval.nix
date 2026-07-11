@@ -97,11 +97,17 @@ let
         # home-manager BATTERY's hostConf (pin nix/lib/home-env.nix:35-55 `hostOptions`, wired at
         # modules/aspects/batteries/home-manager.nix:28 `den.schema.host.imports = [ result.hostConf ]`);
         # the corpus overrides `.module` channel-driven (corpus host.nix:329-334). Only `module` is
-        # declared (the harvested grain): `enable`'s v1 default reads host.users' classes
-        # (home-env.nix:44-48), a fleet-membership read no shim grain consumes yet — it lands with
-        # the hm grain. Type raw, not v1's deferredModule (:50): raw holds the VALUE byte-identical
-        # (the C1 inert-data posture, like instantiate) for the future hmModuleFor grain; the
-        # deferredModule imports-wrap belongs to the CONSUMING module eval, not the harvest.
+        # declared (the harvested grain the hmModuleFor R6 grain reads). `enable` is DELIBERATELY NOT
+        # harvested: its v1 default is `host-has-user-with-class host className` (home-env.nix:44-48), a
+        # read of the host's RESOLVED users — which the harvest (authored attrs only) cannot see, and which
+        # the compat membership leaves EMPTY for corpus hosts (users bind via the stubbed env fan-out, board
+        # #49). So porting that default here would materialize `false` on every corpus host and suppress the
+        # hm import — defeating the rung. The hmModuleFor gate is therefore MODULE-PRESENCE + the explicit
+        # authored `home-manager.enable = false` opt-out (read off the raw decl, not this harvest), with the
+        # user-membership half a documented ceiling (ingest.nix `hmModuleByHostId`, ledger R6). Type raw,
+        # not v1's deferredModule (:50): raw holds the VALUE byte-identical (the C1 inert-data posture, like
+        # instantiate); the deferredModule imports-wrap belongs to the CONSUMING module eval (the compat
+        # nixos wrapper's keyed import, flake-module.nix), not the harvest.
         home-manager.module = mkOption {
           type = types.raw;
           default = null;
