@@ -399,6 +399,26 @@ let
         };
       };
 
+      # den.channelGather — the PER-NODE CHANNEL-AUGMENTATION seam (#62a). A consumer may augment the channel
+      # values bound to a node's class-module formals with contributions GATHERED from beyond the node's own
+      # emissions: the hook `{ id; result } -> { <channel> = [ contribution ]; }` runs inside `channelBindingsAt`
+      # (output-modules.nix), its result appended AFTER the node's local emissions per channel (F4: bound =
+      # local ++ gathered). The gathered records share local-collection-data's contribution shape
+      # (`.deferred`/`.value`/`.producer`) so they extract through the SAME deferred-thunk path (a gathered
+      # deferred value resolves at ITS OWN producing scope). THE LAZINESS LAW (A17): `result` is the eval passed
+      # opaquely; a supplier that walks descendants must stay lazy over the id spine (read children ids +
+      # exposing nodes' collection data, never force ALL descendants' resolved-aspects). Native den-hoag supplies
+      # the empty default (`_: { }`), so the augmentation is the identity path (`local ++ [ ]`) — byte-identical.
+      # An external consumer sets it = its gather supplier (e.g. the v1 expose-ascent twin, #62b). `raw` (an
+      # opaque function), forced only at a terminal.
+      channelGatherDecl = {
+        options.den.channelGather = merge.mkOption {
+          type = merge.types.raw;
+          default = _: { };
+          description = "Per-node channel-augmentation hook `{ id; result } -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; the gathered contributions are appended after the node's own emissions (F4: local ++ gathered); must stay lazy over the id spine (A17). Native default `_: { }` (identity path).";
+        };
+      };
+
       # den.probeSentinelFields — the CONFIGURABLE probe sentinel (B2). concern-policies reads a policy's
       # stratum by producing it against a value-less sentinel entry (`{ id_hash; name }`). A consumer whose
       # policy bodies read a coord FIELD on that entry (a corpus fact the consumer knows) supplies the
@@ -449,6 +469,7 @@ let
           interpretDecl
           enrichBindingsDecl
           enrichContextDecl
+          channelGatherDecl
           probeSentinelDecl
           resolveFamilyNamesDecl
         ]
@@ -831,6 +852,10 @@ let
         # applied inside `bindingsAt`, so forcing the systems spine never forces it, and a hook that stamps a
         # projected `hasAspect` never forces resolved-aspects until the closure is called (A17).
         enrichBindings = ent.config.den.enrichBindings or ({ bindings, ... }: bindings);
+        # The per-node channel-augmentation supplier (#62a; native default = the empty gather, so
+        # `channelBindingsAt` is byte-identical to its own-emissions form). An external consumer wires
+        # its gather supplier (the v1 expose-ascent twin, #62b).
+        channelGather = ent.config.den.channelGather or (_: { });
       };
 
       # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,

@@ -64,6 +64,19 @@
   # binding (e.g. a projected `hasAspect`) may, when it is actually called. Native den-hoag supplies the
   # identity default (`{ bindings, ... }: bindings`), so the native binding surface is byte-identical.
   enrichBindings ? ({ bindings, ... }: bindings),
+  # The named PER-NODE CHANNEL-AUGMENTATION seam (#62a, threaded through `den.channelGather`). A supplier
+  # augments the channel value bound to a class module's formals with contributions GATHERED from beyond the
+  # node's own emissions — `channelGather { id; result; } -> { <channel> = [ contribution ]; }`, appended
+  # AFTER the node's local emissions in `channelBindingsAt` (F4: bound = local ++ gathered). The gathered
+  # records carry local-collection-data's contribution shape (`.deferred`/`.value`/`.producer`), so they
+  # extract through the SAME `deferredToThunk` path (a gathered deferred contribution resolves at ITS OWN
+  # producing scope — resolve-at-producing, decision #27). Native den-hoag supplies the empty default
+  # (`_: { }`), so the augmentation is `local ++ [ ]` at every channel — the KNOWN CEILING (`bindingsAt`
+  # reads OWN emissions) unchanged, the binding surface byte-identical (the 810 identity tests are the proof).
+  # An external consumer wires its gather supplier here (e.g. the v1 expose-ascent twin, #62b). A17: `result`
+  # is the eval passed opaquely; a supplier that walks it must stay lazy over the id spine (never force all
+  # descendants' resolved-aspects).
+  channelGather ? (_: { }),
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;
@@ -247,17 +260,28 @@ let
   # the PRODUCING class's config when the terminal forces it. `__sourceScope` records the producing scope.
   deferredToThunk = c: bind.mkThunkFrom c.producer.scope c.fn;
 
-  # A member's own channel emissions, adapted to terminal bindings: a deferred emission becomes a
-  # gen-bind config-thunk (resolved at THIS member's producing config), a plain emission its value.
-  # gen-bind's wrapAll auto-detects the thunk list entries and resolves them at eval (the terminal).
+  # A single contribution → its terminal-binding value: a deferred emission becomes a gen-bind config-thunk
+  # (resolved at THAT contribution's producing config), a plain emission its value. gen-bind's wrapAll
+  # auto-detects the thunk list entries and resolves them at eval (the terminal). Used for BOTH the node's
+  # own emissions AND the gathered ones (#62a) — a gathered deferred contribution keeps its OWN producer
+  # scope, so it resolves where it was produced, not at the consuming node.
+  extractContribution = c: if c.deferred then deferredToThunk c else c.value;
+
+  # A member's channel bindings: its OWN emissions AUGMENTED by the per-node gather (#62a). Per channel the
+  # bound value is `local ++ gathered` (F4 — v1 `mkCombinedBase`'s `markedBase ++ markedExposed`,
+  # assemble-pipes.nix:935-948). The key set is TOTAL over both maps so a channel a node NEVER emits locally
+  # but RECEIVES by gather (`resolved-users` at a host — the ship-gate corpus shape) is present, not dropped
+  # by an own-emissions-only key set. Native default gather (`_: { }`) ⇒ `local ++ [ ]` at every own channel
+  # and no extra keys ⇒ byte-identical to the pre-seam `mapAttrs` over local alone.
   channelBindingsAt =
     id:
     let
       local = result.get id "local-collection-data";
+      gathered = channelGather { inherit id result; };
     in
-    builtins.mapAttrs (
-      _: contribs: map (c: if c.deferred then deferredToThunk c else c.value) contribs
-    ) local;
+    prelude.genAttrs (builtins.attrNames (local // gathered)) (
+      ch: map extractContribution ((local.${ch} or [ ]) ++ (gathered.${ch} or [ ]))
+    );
 
   # The binding set handed to a member's class modules: the node's entity bindings (host/user/env
   # entries + enrichments) plus the fleet's channel bindings.
