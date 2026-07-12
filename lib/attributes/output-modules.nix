@@ -111,6 +111,34 @@ let
   # UNFORCED, so presence stays A17-lazy exactly like `channelsOf` over quirks).
   isClassName = cn: classesByName ? ${cn};
   classModulesAt = id: result.get id "class-modules";
+
+  # ── #63 within-class subtree fold (design note §8, the #62c twin for class content) ─────────────────
+  # A node's within-class content assembly gathers the SAME class bucket from `[ id ] ++ scope.descendants
+  # result id` (own-first ++ lexicographic-DFS descendants — A12; v1 own-first, no dedup). This is v1's
+  # `defaultFoldEdges` NESTING fold (edges/default.nix, Corollary 1) rendered where a no-isolated-KIND
+  # corpus collapses the isolation-AWARE subtree to the blind descendants walk: `den.schema.user.parent =
+  # "host"` (options.nix:112) + `isolated` defaults false (options.nix:85-88; push-scope.nix:64) + the
+  # corpus marks no kind isolated, so a user scope nests non-isolated under its host and
+  # `collected(subtree, <class>) → (host, <class>)` gathers the descendant cells' class buckets —
+  # `define-user` emits nixos+darwin+homeManager class content into a home-manager-PRODUCING user cell
+  # (define-user.nix:25-42), and that nixos bucket (`users.users.<n>` + the user shell) rides here to the
+  # host's nixos assembly. Consumed at the class-content reads feeding the TERMINAL (`hostModules`/`deltaOf`/
+  # `contentIdsOf`) AND the default-fold edge (`classBucketsOf`/`contentsOf`); `projectionOf` STAYS own-scope
+  # (class-share's config-invariant core is untouched). Gated to the class in question (same-class buckets
+  # only), so cross-class content movement stays the explicit deliver/inject edge, never this fold.
+  #
+  # ISOLATION-MARK CEILING (§8 risk 2, the #62c twin's ceiling): the walk is BLIND — a future KIND marked
+  # `isolated` would need this gather to honor the isolation boundary v1's isolation-aware fold stops at
+  # (none is marked in this corpus; the same ceiling `scope.descendants`'s #62c consumer carries).
+  # A17: `class-modules` is a deferredModule list carried UNFORCED; `descendants` is the lazy id spine —
+  # this walks the bucket SPINE (list appends), never a module body. IDENTITY: a cell-less / descendant-less
+  # node ⇒ `[ id ]` ⇒ `(classModulesAt id).${class}` exactly (the 820 baseline is the proof — unchanged).
+  classSubtreeAt =
+    id: class:
+    prelude.concatMap (nid: (classModulesAt nid).${class} or [ ]) (
+      [ id ] ++ scope.descendants result id
+    );
+
   producingClassOf =
     id:
     let
@@ -122,7 +150,7 @@ let
     let
       cn = producingClassOf id;
     in
-    if cn != null && ((classModulesAt id).${cn} or [ ]) != [ ] then [ cn ] else [ ];
+    if cn != null && classSubtreeAt id cn != [ ] then [ cn ] else [ ];
 
   # Delivery declarations (an external consumer's `deliver`/`route`/`provide`, `declare.delivery`) dispatched at a
   # node → gen-edge records, rendered HERE where the firing scope (the node id) and the collected
@@ -220,7 +248,7 @@ let
             source = "seed";
             producer = null;
           };
-        }) ((classModulesAt id).${channel} or [ ])
+        }) (classSubtreeAt id channel)
       else
         map (c: {
           content = c.value;
@@ -337,10 +365,7 @@ let
   # The member (scope node) ids that carry NON-EMPTY content for a class — the class-major output map's
   # spine, and the class-share member set. Content-driven (a member with no content for `name` is absent).
   contentIdsOf =
-    name:
-    prelude.filter (
-      id: memberClassName id == name && ((result.get id "class-modules").${name} or [ ]) != [ ]
-    ) allNodeIds;
+    name: prelude.filter (id: memberClassName id == name && classSubtreeAt id name != [ ]) allNodeIds;
 
   # ── A10 class-share seam (share.core = true) ───────────────────────────────────────────────────────
   # The synthetic loc the shared class-invariant core occupies — `applyCoreFixed`'s sole-def leaf. A
@@ -385,7 +410,7 @@ let
     name: classCfg: id:
     [ freeformAbsorber ]
     ++ (bind.wrapAll {
-      modules = (result.get id "class-modules").${name} or [ ];
+      modules = classSubtreeAt id name;
       bindings = bindingsAt id;
       defaultMergeStrategy = classCfg.defaultMergeStrategy;
     }).modules;
@@ -429,7 +454,7 @@ let
           name = id; # the member (scope node) id keys the class-major output map
           value = classCfg.instantiate {
             name = id; # the terminal contract's `name` is the member id
-            hostModules = (result.get id "class-modules").${name} or [ ];
+            hostModules = classSubtreeAt id name;
             inherit classCfg;
             bindings = bindingsAt id;
           };

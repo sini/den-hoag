@@ -157,6 +157,11 @@ let
   # ── deferred resolve-at-producing-class (§27) ──────────────────────────────────────────────────────
   # dp emits a config-reading channel contribution AND consumes it in its per-class content. Included at
   # a host (nixos) and a user (home-manager), so each producing scope binds the emission to its class.
+  # The host inclusion is `blade` (a CELL-LESS host), NOT `axon`: post-#63 a host's nixos assembly folds
+  # its descendant cells' nixos buckets (the within-class subtree fold, classSubtreeAt), so had dp been at
+  # axon its `result = head ports` (a UNIQUE raw option) would collide with the alice cell's own dp.nixos
+  # `result` folded up — v1's non-isolated nesting fold rejects a raw option defined at both a host and its
+  # descendant identically. The §27 assertion is orthogonal to the fold, so it reads a clean nixos host.
   defMod =
     { config, ... }:
     {
@@ -177,7 +182,7 @@ let
       };
       config.den.include = [
         {
-          at = config.den.host.axon;
+          at = config.den.host.blade;
           aspects = [ config.den.aspects.dp ];
         }
         {
@@ -233,7 +238,7 @@ let
         )
       ];
     }).config.result;
-  nixosResult = evalMember denC.output.systems.nixos.${axonId} "nixos-cfg";
+  nixosResult = evalMember denC.output.systems.nixos.${bladeId} "nixos-cfg";
   hmResult = evalMember denC.output.systems.home-manager.${cellId} "hm-cfg";
 in
 {
