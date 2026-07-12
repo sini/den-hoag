@@ -151,6 +151,78 @@ let
     den:
     (builtins.tryEval (builtins.deepSeq (den.structural.eval.get "rack:r1" "declarations") true))
     .success;
+
+  # ── R2 TAG-PROPAGATION witnesses (blocker #2): the corpus wires its resolve policies via
+  #    `den.schema.<kind>.includes`, so compile keys them SYNTHETICALLY (`__kindInclude__<kind>__policy__<i>`)
+  #    and concern-policies' `name ∈ resolveFamilyNames` NEVER matches. compile.nix therefore stamps
+  #    `__resolveFamily` on an include policy whose SOURCE REF's v1 name is in the tag set — the ONLY path
+  #    for a kind-include resolve policy to reach the staged pre-pass's resolve-family feed. The synthetic
+  #    corpus-shape in miniature: a VALUE-CONDITIONAL member emitter wired onto rack via `rack.includes`.
+  mkKI =
+    policyName:
+    denCompat.compile {
+      schema = {
+        zone.parent = null;
+        rack.parent = "zone";
+        blade.parent = "rack";
+        rack.includes = [
+          {
+            __isPolicy = true; # the coerced `{ __isPolicy; name; fn }` shape a `den.policies.<name>` ref carries
+            name = policyName;
+            fn =
+              {
+                token ? null,
+                ...
+              }: # value-conditional (empty probe → expansion) — the corpus resolve idiom
+              if token != null then
+                [
+                  (R.to "blade" {
+                    blade = {
+                      name = "b1";
+                    };
+                  })
+                ]
+              else
+                [ ];
+          }
+        ];
+      };
+      policies = { };
+    };
+  # The compiled include policy (its synthetic key) + the pre-pass resolve-family feed it should reach.
+  kiPolicy = policyName: (mkKI policyName).policies."__kindInclude__rack__policy__0";
+  kiFeedIds =
+    policyName:
+    map (r: r.identity) (denHoag.internal.compilePolicies (mkKI policyName).policies).resolveFamily;
+
+  # The RUNTIME R2 posture for a synthetic-keyed include record (the shape compile emits): the loud guard
+  # names it at the main run when untagged, benign when the tag rides. Reuses `base` (the zone→rack relate
+  # seeds authToken) — the emitter keyed as compile would key a `rack.includes` policy.
+  enrollKIMod =
+    tag:
+    { config, ... }:
+    {
+      config.den.policies."__kindInclude__rack__policy__0" = {
+        __condition.rack = false;
+        __firesAtKinds = [ "rack" ];
+      }
+      // tag
+      // {
+        fn =
+          ctx:
+          if (ctx.authToken or null) != null then
+            [
+              (declare.member {
+                rack = ctx.rack;
+                blade = config.den.blade.b1;
+              })
+            ]
+          else
+            [ ];
+      };
+    };
+  untaggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { }) ])).den; # synthetic-keyed, untagged → loud
+  taggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { __resolveFamily = true; }) ])).den; # tagged → benign
 in
 {
   flake.tests.compat-resolve = {
@@ -299,6 +371,39 @@ in
     test-tagged-resolve-family-benign = {
       expr = forceRackDecls taggedDen;
       expected = true;
+    };
+
+    # ── (6) R2 TAG PROPAGATION through KIND-INCLUDE compilation (blocker #2). A resolve policy wired via
+    #    `den.schema.<kind>.includes` whose v1 name ∈ the tag set gets `__resolveFamily` stamped on its
+    #    synthetic-keyed compiled record → it reaches the pre-pass resolve-family feed. A name NOT in the
+    #    set gets NO stamp → absent from the feed (the synthetic key never matches the name-based check).
+    test-kindinclude-tag-propagation = {
+      expr = {
+        tagged = (kiPolicy "env-to-hosts").__resolveFamily or false; # v1 name ∈ resolveFamilyNames → stamped
+        untagged = (kiPolicy "local-noise").__resolveFamily or false; # v1 name ∉ set → no stamp
+        feedTagged = kiFeedIds "env-to-hosts"; # reaches the pre-pass resolve-family feed (structural sub-rule)
+        feedUntagged = kiFeedIds "local-noise"; # absent — synthetic key never matched by the name check
+      };
+      expected = {
+        tagged = true;
+        untagged = false;
+        feedTagged = [ "__kindInclude__rack__policy__0#structural" ];
+        feedUntagged = [ ];
+      };
+    };
+
+    # ── (7) The R2 loud-guard posture VERIFIED for the synthetic kind-include key: an untagged
+    #    synthetic-keyed member emitter at a root aborts LOUD (the guard names the synthetic key); the tag
+    #    makes it benign — the pre-pass routes it and the main run's double-fire is silent.
+    test-kindinclude-synthetic-key-guard = {
+      expr = {
+        untagged = forceRackDecls untaggedKIDen; # false — loud abort at the main run
+        tagged = forceRackDecls taggedKIDen; # true — tag → benign
+      };
+      expected = {
+        untagged = false;
+        tagged = true;
+      };
     };
   };
 }

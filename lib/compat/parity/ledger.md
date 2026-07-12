@@ -391,8 +391,7 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   `den.clusters.axon` but they never reached `ent.registries` (`registrySizes` env:0/cluster:0). ROOT CAUSE:
   ingest's custom-kind namespace→kind discovery (`instanceKeyMap` via `schema.identityHashFor`) is
   VALUE-reflecting — it recomputes an instance's id_hash from its primitive VALUES, so a kind carrying a
-  DERIVED/INTERNAL primitive (the corpus `cluster.sopsAgeRecipient`: a `readFile` string, `internal`, `nullOr
-  str`) makes the recompute OVER-include it (a string value is primitive) and MISS the carried id_hash (which
+  DERIVED/INTERNAL primitive (the corpus `cluster.sopsAgeRecipient`: a `readFile` string, `internal`, `nullOr str`) makes the recompute OVER-include it (a string value is primitive) and MISS the carried id_hash (which
   `mkIdentityModule` stamped EXCLUDING the internal field). The namespace then matched NO kind → `customInstances`
   → `registries.<kind>` EMPTY → no env/cluster ROOT NODES. (Not a loud abort: `clusters`/`environments`/`groups`
   are `_declaredKeys`-covered, so surface-totality passed regardless — the miss was silent.) THE GENERIC SOURCE:
@@ -405,8 +404,7 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   ingest's `discoverKeyFor` PREFERS the option-marker, falling back to the value-marker for mkDen-direct
   fixtures (no bridge ⇒ byte-identical). Everything downstream (`customInstances`/`buildRegistries` root nodes,
   `stampsByKind`/`entityFields` ctx stamps) then flows through the EXISTING path. VERIFIED (temporary `built.den`
-  debug over the corpus, since removed): `registryKinds = {clusters→cluster, environments→environment,
-  groups→group}` (each an unambiguous single hit); `registries` env:`[dev,prod]`/cluster:`[axon]`/group:35 now
+  debug over the corpus, since removed): `registryKinds = {clusters→cluster, environments→environment, groups→group}` (each an unambiguous single hit); `registries` env:`[dev,prod]`/cluster:`[axon]`/group:35 now
   POPULATE; `scopeRootTypes` now includes `environment`+`cluster`. The host/user/group arms are BYTE-UNCHANGED
   (host via the fixed `hosts` namespace; group's value-marker already hit; 786 baseline untouched).
 
@@ -430,3 +428,24 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   compilation — e.g. stamp `__resolveFamily` on a kind-include policy whose source ref's v1 name (the coerced
   `{ __isPolicy; name; fn }` carries it) ∈ `resolveFamilyNames`, so `concern-policies`' `v.__resolveFamily`
   catches it regardless of the synthetic attr name. Gates for THIS rung: CI 791/791, parity 71/71.
+
+- **RESOLVE-FAMILY TAG PROPAGATION through KIND-INCLUDE compilation (blocker #2) — SHIPPED
+  (`lib/compat/{compile,default,flake-module,resolve-family-names}.nix`), CI 791→793 (+2 witnesses
+  `ci/tests/compat-resolve.nix` §6/§7), parity 71/71.** THE FIX (as the prior bullet named it): compile.nix now
+  threads `resolveFamilyNames` (the SINGLE source `resolve-family-names.nix`, shared with flake-module's
+  `resolveFamilyModule`) into the KIND-INCLUDE (`perKind` `policyPolicies`) and DEFAULT-INCLUDE
+  (`defaultIncludePolicies`) policy arms, and stamps `__resolveFamily = true` on a compiled include policy whose
+  SOURCE REF's coerced `{ __isPolicy; name; fn }` v1 name ∈ the set — the match is at the REF, not the synthetic
+  `__kindInclude__<kind>__policy__<i>` attr name concern-policies would see. concern-policies' existing
+  `v.__resolveFamily` detection then routes it into the pre-pass's `policiesRules.resolveFamily` feed (its
+  structural sub-rule). The loud `resolveFamilyUntagged` guard stays the omission catch. Witnesses:
+  `test-kindinclude-tag-propagation` (v1 name ∈ set → stamped + reaches the feed as
+  `__kindInclude__rack__policy__0#structural`; name ∉ set → no stamp + absent from feed) +
+  `test-kindinclude-synthetic-key-guard` (untagged synthetic-keyed member emitter aborts LOUD at the main run;
+  the tag makes it benign). Zero corpus knowledge beyond the existing knob; native callers pass `[ ]`
+  (byte-identical). **ORACLE RE-PROBE #3 — the resolve CHAIN NOW FIRES; the gate MOVED to a THIRD, distinct
+  blocker in the host REGISTRY (NOT the resolve arm).** axon-01's re-probe no longer stalls on the empty feed:
+  `env-to-hosts` is now DISPATCHED via the staged pre-pass (trace: `staged-resolution.nix:130` `filter declare.isResolveFamily` → `actions.resolve-family` → `while calling 'env-to-hosts'`, fleet.nix:43). It walks
+  `den.hosts.<system>.<name>` and gates on `hostCfg.intoAttr != [ ]` (fleet.nix:69), throwing VERBATIM: \*"error:
+  The option `den.hosts.aarch64-darwin.patch.intoAttr' was accessed but has no value defined. Try setting the option."* — NO drvPath. DIAGNOSIS (next dead link, precise): the compat host registry (`lib/compat/registry.nix` `baseEntityModule`) DELIBERATELY OMITS the v1 host-entity `intoAttr` option (its own comment §35: *"aspect, description, users, intoAttr, mainModule … none is grain- or stamp-relevant, so none is declared"*). v1 declares it (`den`@ pin 11866c16`nix/lib/entities/host.nix:106-135`) with a CLASS-DERIVED default — `{ nixos = ["nixosConfigurations" name]; darwin = ["darwinConfigurations" name];
+  systemManager = [...]; }.${config.class}`(non-empty for nixos/darwin; THROWS for an unknown class). The darwin host`patch`(env`dev`, `hosts/patch.nix`) does NOT author `intoAttr`, so once `env-to-hosts`fires and reads it as a gate the compat registry has no value to give. The omission was INERT while the resolve arm never fired (the prior two blockers masked it); it is now the live gate. THE NEXT RUNG (registry, compat-only, NOT this rung): declare`intoAttr`in`registry.nix` `baseEntityModule`with v1's class-derived default (host.nix:119-134), so`hostCfg.intoAttr`reads a non-empty list for nixos/darwin hosts and the corpus's`intoAttr != [ ]\` gate resolves. Gates for THIS rung: CI 793/793, parity 71/71.

@@ -366,27 +366,14 @@ let
     };
   };
   # THE CORPUS RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2) — the SAME corpus-facts-as-config
-  # precedent as `probeSentinelModule`: a v1 corpus authors `resolve.to` policies with NO den-hoag
-  # `__resolveFamily` tag on the value, and every corpus resolve policy is VALUE-CONDITIONAL (it emits
-  # member/relate only once a ctx value — accessGroups, an env/host match — is present), so its value-less
-  # stratum probe emits nothing and it cannot be DETECTED. The shim therefore DECLARES the tag here, naming
-  # the corpus's resolve-emitting policies (census nix-config @ b0b20769, modules/den/policies/):
-  #   • env-users     (users.nix:115)   — resolve.to "user"        → member (host→users)
-  #   • env-to-hosts  (fleet.nix:70)    — resolve.to "host"        → relate (env→host, carries accessGroups)
-  #   • env-to-clusters (clusters.nix:30) — resolve.to "cluster"   → member (env→cluster)
-  #   • to-fleet      (fleet.nix:23)    — resolve.to "fleet"       → relate (flake→fleet)
-  #   • fleet-to-envs (fleet.nix:36)    — resolve.to "environment" → relate (fleet→env)
-  # These live COMPAT-side (the field/name is a v1-CORPUS FACT, not field-agnostic core). THE OMISSION CATCH:
-  # a resolve-emitting policy omitted here that fires member/relate at a root aborts LOUD (the R2
-  # `resolveFamilyUntagged` guard), so a forgotten name self-announces rather than silently dropping.
+  # precedent as `probeSentinelModule`. The names + census live in `resolve-family-names.nix` (the SINGLE
+  # source), imported ALSO by default.nix → compile.nix so the kind-include compilation can stamp
+  # `__resolveFamily` on a SYNTHETIC-keyed include policy whose SOURCE REF's v1 name is in this set (the
+  # `name ∈ resolveFamilyNames` match here only catches a resolve policy authored DIRECTLY under the KEY —
+  # a kind-include's key is synthetic). THE OMISSION CATCH: a resolve-emitting policy omitted from the set
+  # that fires member/relate at a root aborts LOUD (the R2 `resolveFamilyUntagged` guard).
   resolveFamilyModule = {
-    config.den.resolveFamilyNames = [
-      "env-users"
-      "env-to-hosts"
-      "env-to-clusters"
-      "to-fleet"
-      "fleet-to-envs"
-    ];
+    config.den.resolveFamilyNames = import ./resolve-family-names.nix;
   };
   # `mkDenWith userModules { nixosTerminal ? collect; hoagModules ? [] }` — build the shim fleet with the
   # nixos terminal SEAM (the parity harness / a real ship supplies `crossNixos` for real NixOS systems) and

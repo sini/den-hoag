@@ -16,8 +16,27 @@
   sentinels,
   aspects,
   builtinClasses,
+  # THE RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2, `den.resolveFamilyNames`) — threaded HERE
+  # so the KIND-INCLUDE / DEFAULT-INCLUDE policy arms can stamp `__resolveFamily = true` on a compiled
+  # include policy whose SOURCE REF's v1 name is in the set. A resolve policy wired via
+  # `den.schema.<kind>.includes` compiles to a SYNTHETIC key, so concern-policies' `name ∈ resolveFamilyNames`
+  # match never catches it (its key is not the v1 name) — the stamp is the ONLY path for the corpus's five
+  # kind-include resolve policies to reach the staged pre-pass's resolve-family feed. The names are a v1
+  # CORPUS FACT (the SINGLE source is compat/resolve-family-names.nix, shared with flake-module's
+  # `resolveFamilyModule`); native callers pass `[ ]` (the default), byte-identical. ZERO NEW corpus
+  # knowledge beyond the existing knob — compile matches the SAME set the knob carries.
+  resolveFamilyNames ? [ ],
 }:
 let
+  # Stamp `__resolveFamily = true` iff a policy REF's v1 name is in `resolveFamilyNames` — the R2 tag
+  # propagation through kind-include / default-include compilation. `ref.name` is the coerced
+  # `{ __isPolicy; name; fn }` record's v1 name (a `{ __denCanTake }` route ref carries none → null → no
+  # stamp). The match is at the REF, not the synthetic compiled attr name concern-policies would see.
+  resolveFamilyStamp =
+    ref:
+    prelude.optionalAttrs (builtins.elem (ref.name or null) resolveFamilyNames) {
+      __resolveFamily = true;
+    };
   # The §2.4 pipe stage vocabulary: `den.quirks.<name>` → a channel registration (`channelOf`) and the
   # `pipe.from name [stages]` policy effect → a collection-stratum `pipeOp` declaration (`compilePipe`).
   pipeLib = import ./pipe.nix { inherit prelude errors; };
@@ -904,7 +923,10 @@ let
             "host"
             "user"
           ];
-        };
+        }
+        # R2 tag propagation (default-include arm — corpus-zero, but parity-complete): a resolve policy
+        # riding `den.default.includes` would key synthetically too, so it needs the same source-ref stamp.
+        // resolveFamilyStamp ref;
     }) defaultPolicyRefs
   );
 
@@ -1114,7 +1136,12 @@ let
                 // {
                   __condition = kindCoord // base.__condition;
                   __firesAtKinds = [ kind ];
-                };
+                }
+                # R2 tag propagation: a SYNTHETIC-keyed include policy whose source ref is a corpus resolve
+                # policy (name ∈ resolveFamilyNames) carries the `__resolveFamily` tag concern-policies reads
+                # (`v.__resolveFamily`), so the pre-pass's resolve-family feed picks it up — its synthetic key
+                # never matches the name-based `name ∈ resolveFamilyNames` check.
+                // resolveFamilyStamp ref;
             }) policyRefs
           );
         in

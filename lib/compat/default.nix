@@ -46,6 +46,11 @@ let
     # den-hoag's built-in class set (`denHoag.classes` = nixos/darwin/home-manager/k8s-manifests) — the
     # `cnf.classes` `wrapFn` needs to route a v1 bare-fn include's class content (§339 wrap-ground).
     builtinClasses = builtins.attrNames denHoag.classes;
+    # THE R2 RESOLVE-FAMILY TAG SET (`den.resolveFamilyNames`) — the SINGLE source shared with
+    # flake-module's `resolveFamilyModule`, so the kind-include compilation stamps `__resolveFamily` on a
+    # synthetic-keyed include policy whose source ref is a corpus resolve policy (else the pre-pass feed is
+    # empty and the corpus resolve chain never fires).
+    resolveFamilyNames = import ./resolve-family-names.nix;
   };
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
