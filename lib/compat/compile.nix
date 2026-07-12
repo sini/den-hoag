@@ -660,6 +660,19 @@ let
     else if kind == "include" then
       if isEmittedContentSet effect.value then
         [ (declare.edge (mkEmittedAspect normalizeList ctx effect.value)) ]
+      else if builtins.isFunction effect.value then
+        # #73 — `policy.include <bare fn>` (v1 wrapBareFn: a bare-fn include is a PARAMETRIC ASPECT,
+        # normalize.nix:95-119 — the home-env battery's `classIncludes` include the per-host
+        # `hostModule` fn, home-env.nix). Ground it through the SAME normalizeList wrap the static
+        # include lists use (the kind-include bare-fn posture, row r); the edged record carries a
+        # name-derived id_hash (A2 — resolved-aspects uses the edge record DIRECTLY as content, the C1
+        # no-lookup posture, so no registry entry is needed; the positional wrap name keys dedup).
+        map (
+          w:
+          declare.edge (
+            w // { id_hash = builtins.hashString "sha256" "den-aspect:${w.name or "policy-include"}"; }
+          )
+        ) (normalizeList "policy-include" [ effect.value ])
       else
         [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "exclude" then
@@ -709,7 +722,23 @@ let
       # `includes` / `__shared`: corpus-UNEXERCISED (census nix-config @ b0b20769: only bare `resolve.to`),
       # so a NAMED abort (never silent) — implement faithfully when a corpus body first exercises them.
       let
-        tk = effect.__targetKind or null;
+        rawTk = effect.__targetKind or null;
+        # #73 — v1's TARGET-KIND INFERENCE for a kind-less `resolve`/`resolve.withIncludes` (pin 11866c16
+        # fx/policy/schema.nix:21-32 `resolveTargetKind`: the FIRST value key that is a schema entity
+        # kind). The corpus emitter: the home-env battery's policyFn (`resolve.withIncludes ([userForward]
+        # ++ schemaIncludes) { user = pair.user; }`, home-env.nix — live at droid hosts once #71 opened
+        # the droidHome gate). No kind-named value key ⇒ the named abort below stands (v1 falls to the
+        # emitting entityKind — a fan-out shape no corpus body reaches).
+        inferredTk = prelude.foldl' (
+          acc: k:
+          if acc != null then
+            acc
+          else if topo ? ${k} then
+            k
+          else
+            null
+        ) null (builtins.attrNames val);
+        tk = if rawTk != null then rawTk else inferredTk;
         shared = effect.__shared or false;
         includes = effect.includes or [ ];
         val = effect.value or { };
@@ -760,8 +789,14 @@ let
         errors.resolveNoTargetKind
       else if shared then
         errors.resolveShared tk
-      else if includes != [ ] then
-        errors.resolveWithIncludes tk
+      # #73 — `resolve.*.withIncludes`: the resolution routes EXACTLY like `resolve.to` (the member
+      # below); the riding `includes` are PARKED (the u4/u2 documented-latent posture, ledger u22). The
+      # corpus's ONLY emitter is the droid home arc (home-env policyFn: `[ userForward ] ++ hm-host
+      # schemaIncludes` at droid hosts) — class-B: `userForward` is the #49/#50 forward-battery NTA and
+      # its delivery target is the nix-on-droid HOME output family, which is den-hoag-ABSENT (the u4
+      # intoAttr posture) — so the parked content has NO reachable artifact either way. SELF-ANNOUNCING:
+      # the absent `nixOnDroidConfigurations` output (the u2/u4 announcement shape); a class-A fleet is
+      # untouched (its resolves carry `includes = [ ]`).
       else if !(topo ? ${tk}) then
         errors.resolveUnknownKind tk
       else if isLeafDim tk then

@@ -139,7 +139,14 @@
         den = {
           lib = migrationLib;
           aspects = { };
-          batteries.forward = stub "batteries.forward" "the forward-battery NTA surface (board #49) — not yet available";
+          # #73: the forward battery rides INERT (an empty aspect — v1's `forwardEach` returns
+          # `{ includes = map forwardItem each; }`, batteries/forward.nix/nix/lib/forward.nix at the pin;
+          # the inert twin carries no items). Its ONLY corpus consumer is the droid home arc (home-env
+          # userForward → the nix-on-droid HOME output family, den-hoag-ABSENT — the u4 intoAttr
+          # posture), so a translated forward would have NO reachable artifact either way; the absent
+          # `nixOnDroidConfigurations` output is the self-announcement (ledger u22, the u2/u4 shape).
+          # The REAL surface is the #49/#50 forward-battery NTA (arc-2 territory).
+          batteries.forward = _spec: { includes = [ ]; };
         };
       };
       migrationLib = lib // {

@@ -37,7 +37,12 @@ let
     dh:
     denCompat.compile {
       schema.host.includes = [ dh.battery ];
-      schema.user.includes = [ dh.userDetect ];
+      # the corpus topology (user nests under host — schema/topology.nix): #73's routed
+      # `resolve.withIncludes` classifies `user` as a LEAF, exactly the corpus shape.
+      schema.user = {
+        parent = "host";
+        includes = [ dh.userDetect ];
+      };
       hosts.h1 = {
         class = "nixos";
       };
@@ -56,6 +61,10 @@ let
     name = "slab";
     class = "droid";
     users.me = {
+      # the #71 registry instance-eval materializes name/userName on corpus users; this DIRECT fixture
+      # hands the resolved shape (the #73 routed member's leaf entity needs the identity fields).
+      name = "me";
+      userName = "me";
       classes = [ "homeManager" ];
     };
     nixOnDroidHome.enable = true;
@@ -118,12 +127,19 @@ in
       expected = 0;
     };
 
-    # ── (5) DROID GATE OPENS → NAMED STUB: at a droid host with a homeManager user + the option enabled,
-    #    the policyFn takes the droid path (resolve.withIncludes / batteries.forward) and reaches the
-    #    #49/#50 named stubs — self-announcing (throws), never a silent no-op. ────────────────────────────
-    test-droid-gate-opens-to-stub = {
-      expr = forceThrows (hostPol.fn { host = droidHost; });
-      expected = true;
+    # ── (5) DROID GATE OPENS → INERT EMISSIONS (#73): at a droid host with a homeManager user + the
+    #    option enabled, the policyFn takes the droid path and now EMITS crash-free — the forward battery
+    #    rides inert (an empty aspect; flake.nix — the parked droid-home latent, ledger u22) and
+    #    `resolve.withIncludes` routes at compile (compat-resolve). The stub-throw pin retired with #73. ──
+    test-droid-gate-opens-inert = {
+      expr = {
+        noThrow = !(forceThrows (hostPol.fn { host = droidHost; }));
+        emits = hostPol.fn { host = droidHost; } != [ ];
+      };
+      expected = {
+        noThrow = true;
+        emits = true;
+      };
     };
 
     # ── (6) FINDING-1 SENTINEL PROOF: the battery's policyFn at the EXACT concern-policies value-less

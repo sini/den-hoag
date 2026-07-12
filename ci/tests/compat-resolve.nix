@@ -413,6 +413,9 @@ in
             };
           }
         );
+        # #73: `withIncludes` now ROUTES like `resolve.to` (the riding includes are PARKED — the
+        # documented droid-home latent, ledger u22); the ABORT pin moved to the arms that stay
+        # unbuilt (bare-without-inferable-kind, shared, unknown kind).
         withIncludes = aborts (
           forceEffect "withInc" {
             zone = {
@@ -433,7 +436,7 @@ in
       expected = {
         bare = true;
         shared = true;
-        withIncludes = true;
+        withIncludes = false;
         unknownKind = true;
       };
     };

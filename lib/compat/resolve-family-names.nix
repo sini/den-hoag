@@ -33,4 +33,10 @@
   "env-to-clusters"
   "to-fleet"
   "fleet-to-envs"
+  # #73: the home-env battery's HOST-fired emitter (v1 nix/lib/home-env.nix `policies."host-to-${ctxName}-
+  # users"`; the corpus's droidHome instantiation, nix-on-droid.nix:61 `ctxName = "droidHm"`, registered
+  # via `den.schema.host.includes = [ droidHome.battery ]` :175) — emits `resolve.withIncludes { user }`
+  # at droid hosts (live once #71 materialized `host.users` classes). Kind-include-wired ⇒ the compile
+  # stamp is its only feed path (the synthetic-key posture above).
+  "host-to-droidHm-users"
 ]
