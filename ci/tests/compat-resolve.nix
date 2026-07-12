@@ -34,6 +34,21 @@ let
           };
         })
       ];
+      # LEAF target with a FULL resolved entity (the corpus's `resolve.to "user" { user = registry.<n>; }`
+      # shape: the target carries the registry entity's fields — the content-field rung). The member leaf
+      # coord must ride the WHOLE entity (so the cell's kind-includes + batteries read `blade.role`/etc.),
+      # with the canonical ingest id_hash OVERLAID and `_module` (a module-system internal) stripped.
+      enrollFull = { rack, ... }: [
+        (R.to "blade" {
+          blade = {
+            name = "b2";
+            role = "compute";
+            classes = [ "os" ];
+            settings.mem = 64;
+            _module.args = { };
+          };
+        })
+      ];
       # ROOT target → relation. Carries the NON-entity bindings ({ token }); the entity key names the target.
       grant = { zone, ... }: [
         (R.to "rack" {
@@ -70,6 +85,14 @@ let
   };
   memberDecl = builtins.head (
     compiledArm.policies.enroll.fn {
+      rack = {
+        id_hash = "rack-h";
+        name = "r1";
+      };
+    }
+  );
+  memberFullDecl = builtins.head (
+    compiledArm.policies.enrollFull.fn {
       rack = {
         id_hash = "rack-h";
         name = "r1";
@@ -297,6 +320,44 @@ in
           "blade"
           "rack"
         ];
+      };
+    };
+
+    # ── (2b) THE CONTENT-FIELD RUNG (user-delivery). A member leaf coord carries the FULL resolved entity —
+    #    the corpus's `resolve.to "user" { user = registry.<n>; }` makes the target its OWN instantiation
+    #    root, so the cell binding IS the registry entity (its `classes`/`role`/`settings`/… reach the cell's
+    #    kind-includes + batteries). The canonical ingest id_hash is OVERLAID (matches the factor node / pre-
+    #    pass index); `_module` (a module-system internal) is stripped. A minimal `{ id_hash; name }` coord
+    #    DROPPED every registry field, so a user-cell aspect-fn destructuring one threw `attribute '<f>' missing`
+    #    at resolved-aspects (the corpus's resolved-user-emitter reads `user.system.uid`/`user.identity.sshKeys`,
+    #    inputs'/user reads `user.classes`).
+    test-leaf-member-carries-full-entity = {
+      expr = {
+        action = memberFullDecl.__action;
+        # the canonical id_hash is overlaid (name-derived, ≠ any authored one)
+        leafId = memberFullDecl.coords.blade.id_hash == sha "blade|name=b2";
+        leafName = memberFullDecl.coords.blade.name;
+        # the FULL entity fields ride the coord (the content-field fix)
+        role = memberFullDecl.coords.blade.role or "MISSING";
+        classes = memberFullDecl.coords.blade.classes or "MISSING";
+        mem = memberFullDecl.coords.blade.settings.mem or "MISSING";
+        # `_module` is stripped (never part of an entity's identity/content)
+        moduleStripped = !(memberFullDecl.coords.blade ? _module);
+        # the parent coord is still the firing node's own entry
+        parentEntry = memberFullDecl.coords.rack;
+      };
+      expected = {
+        action = "member";
+        leafId = true;
+        leafName = "b2";
+        role = "compute";
+        classes = [ "os" ];
+        mem = 64;
+        moduleStripped = true;
+        parentEntry = {
+          id_hash = "rack-h";
+          name = "r1";
+        };
       };
     };
 

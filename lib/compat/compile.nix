@@ -639,12 +639,27 @@ let
           builtins.filter (p: p != null) (map parentOf (builtins.attrNames topo))
         );
         isLeafDim = k: (parentOf k != null) && !(builtins.elem k parentKinds);
-        # Identity-wrap a v1 target entity into the ingest entry (name-derived id_hash) — so the coord/
-        # target id_hash matches the registry factor node (fleet.nix factorOf) and the pre-pass rootNodeIndex.
+        # The canonical ingest identity for a v1 target entity (name-derived id_hash, ingest.nix:177) — so
+        # the coord/target id_hash matches the registry factor node (fleet.nix factorOf) and the pre-pass
+        # rootNodeIndex.
+        idHashOf = k: e: builtins.hashString "sha256" "${k}|name=${e.name}";
+        # A RELATE target is IDENTITY-ONLY (id_hash + name): a relation merely NAMES an existing target root
+        # (rootNodeIndex looks it up by id_hash); its payload rides `bindings`, never the target record.
         wrapEntry = k: e: {
-          id_hash = builtins.hashString "sha256" "${k}|name=${e.name}";
+          id_hash = idHashOf k e;
           inherit (e) name;
         };
+        # A MEMBER leaf coord carries the FULL resolved entity, with the canonical ingest id_hash OVERLAID.
+        # v1's `resolve.to <leaf> { <leaf> = entity; }` makes the target its OWN instantiation root, so the
+        # cell binding IS that entity — its `classes`/`userName`/`system`/`groups`/`identity`/`aspect`/`settings`
+        # reach the cell's kind-includes + batteries (the corpus's resolved-user-emitter reads
+        # `user.system.uid`/`user.identity.sshKeys`, inputs'/user reads `user.classes`, define-user reads
+        # `user.userName`). A minimal `{ id_hash; name }` coord DROPPED them, so every user-cell aspect-fn
+        # that destructured a registry field threw `attribute '<field>' missing` at resolved-aspects. `_module`
+        # (the module-system evaluation internal, never part of an entity's identity or content — the bridge's
+        # own registry stamps exclude it too, registry.nix stampOf) is stripped. Kind-generic: every leaf-dim
+        # member (user, cluster, …) carries its resolved entity verbatim.
+        wrapLeaf = k: e: builtins.removeAttrs e [ "_module" ] // { id_hash = idHashOf k e; };
       in
       if tk == null then
         errors.resolveNoTargetKind
@@ -661,7 +676,7 @@ let
         in
         [
           (declare.member {
-            ${tk} = wrapEntry tk val.${tk};
+            ${tk} = wrapLeaf tk val.${tk};
             ${pd} = ctx.${pd};
           })
         ]
