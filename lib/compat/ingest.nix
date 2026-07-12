@@ -269,6 +269,13 @@ let
       bindings,
       hostRegistry,
       userRegistry,
+      # #73 — the per-binding user FIELD source (`hostName: userName: fields`): a host-backed cell's
+      # `user` coord carries the #71 instance-evaled user value (classes/userName/… — read off the host
+      # entity's #70 raw stamp), so a cell-fired body's `user.classes` read (home-env userDetectFn,
+      # home-env.nix:203 — the corpus droidHm-user-detect at patch/slab's cells) resolves exactly as
+      # v1's resolved user ctx does. Identity stays the registry's (the entry overlays LAST). Default =
+      # field-less (the mkDen-direct ceiling, ledger u18 — unchanged).
+      userFieldsFor ? (_host: _user: { }),
     }:
     let
       deduped = builtins.attrValues (
@@ -296,7 +303,8 @@ let
           {
             coords = {
               host = hostEntry;
-              user = userEntry;
+              # fields first, registry identity last (id_hash/name authoritative — A2).
+              user = userFieldsFor b.host b.user // userEntry;
             };
           }
         ]
@@ -509,6 +517,14 @@ let
         inherit bindings;
         hostRegistry = registries.host or { };
         userRegistry = registries.user or { };
+        # #73: the applied (instance-evaled, #71) host.users value off the host entity's raw stamp
+        # (#70) — LAZY per field; `{ }` when un-stamped (mkDen-direct) or absent.
+        userFieldsFor =
+          hostName: userName:
+          builtins.removeAttrs (((entityFields.host.${hostName} or { }).users or { }).${userName} or { }) [
+            "_module"
+            "id_hash"
+          ];
       };
 
       # contentClass (§2.5): a host produces its own class (v1 `host.class`, `nixos`/`darwin`), a user
