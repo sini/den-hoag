@@ -34,8 +34,10 @@
 #
 # NO EFFECT RUNTIME: every body is field renames + attrset assembly + exactly one gen-edge call per
 # algorithm (edgesFor/toposort/project/materialize) — Law A1. Deps: prelude, scope (the descendants
-# id-spine walk for the #62c delivery-edge subtree), edge (the fold), bind (the config-thunk adaptation),
-# classShare (the A10 gen-class tier-2 build path).
+# id-spine walk for the #62c delivery-edge subtree AND the #66 terminal delivery gather), edge (the
+# fold), bind (the config-thunk adaptation), merge (the class-share freeform absorber), classShare (the
+# A10 gen-class tier-2 build path), errors (the #66 single-path guard — a same-class merge delivery that
+# would double with the fold aborts LOUD, never silently).
 {
   prelude,
   scope,
@@ -43,6 +45,7 @@
   bind,
   merge,
   classShare,
+  errors,
 }:
 {
   result,
@@ -188,16 +191,38 @@ let
   # crossing (the nixpkgs `evalModules` boundary, where `args` exist) — the C8 content-oracle path; here
   # the edge is the faithful TRACE (the C7.5 deliverable): it always renders, gated or not (v1 parity —
   # a guard gates content, never rule-firing, so the edge is present in both arms' traces).
+  # The delivery declarations present at a node (the resolution-stratum `delivery` actions). A delivery
+  # flagged `__dropped` is a DEFINED NO-OP — its target resolved to an absent/null class, so it renders no
+  # edge (a route emitted probe-safe by an emitter that gates value-conditionally, yet INERT at a firing
+  # scope whose target is absent). A native fleet emits none; every ordinary delivery has `__dropped`
+  # unset, so this filter is byte-identical for one. Shared by the edge renderer (`deliveryEdgesAt`) and
+  # the terminal gather (`deliveryModulesAt`) — one source of the firing-scope delivery set.
+  deliveriesAt =
+    id:
+    builtins.filter (a: (a.__action or null) == "delivery" && !(a.__dropped or false)) (
+      (result.get id "declarations").actions.resolution or [ ]
+    );
+
+  # The ROOT a delivery fired at node `id` targets. IDENTITY-DEFAULTED to the firing scope (`id`) — v1's
+  # route/forward appends into the target class bucket AT the firing scope (route.nix:632/:694). #53c
+  # extends this to honor `appendToParent` (the containment PARENT root, route.nix:372-377) for the
+  # cell-fired hm forward; until then every delivery targets its own firing node, so the edge set and the
+  # terminal gather both key on `id` — byte-identical to the pre-#66 renderer. Used by BOTH the edge
+  # renderer (the fold's target root) and the terminal gather (the "targets this root" filter), so the two
+  # stay in lockstep — the #66 single-path invariant depends on them agreeing.
+  deliveryTargetRootOf = id: _d: id;
+
+  # nest a module at an attr path — the fold's `place` (gen-edge core.setAttrByPath, materialize.nix:248):
+  # `[]` ⇒ the module verbatim (a merge places at the root), else wrap under the path. Pure attrset
+  # assembly (A1). den-hoag has no public re-export of gen-edge's core.setAttrByPath, so this is the local
+  # twin — the terminal gather must place delivery content EXACTLY where the fold's nest edge would.
+  nestAtPath =
+    path: value:
+    if path == [ ] then value else { ${builtins.head path} = nestAtPath (builtins.tail path) value; };
+
   deliveryEdgesAt =
     id:
     let
-      # A delivery flagged `__dropped` is a DEFINED NO-OP — its target resolved to an absent/null class, so
-      # it renders no edge (a route emitted probe-safe by an emitter that gates value-conditionally, yet
-      # INERT at a firing scope whose target is absent). A native fleet emits none; every ordinary delivery
-      # has `__dropped` unset, so this filter is byte-identical for one.
-      deliveries = builtins.filter (a: (a.__action or null) == "delivery" && !(a.__dropped or false)) (
-        (result.get id "declarations").actions.resolution or [ ]
-      );
       renderDelivery =
         d:
         edge.edge {
@@ -209,7 +234,7 @@ let
             members = [ id ] ++ scope.descendants result id;
           };
           target = edge.targets.root {
-            root = id;
+            root = deliveryTargetRootOf id d; # firing scope (identity); #53c honors appendToParent
             class = d.targetClass.name;
           };
           inherit (d) path mode;
@@ -217,7 +242,73 @@ let
           annotations = d.annotations or { };
         };
     in
-    map renderDelivery deliveries;
+    map renderDelivery (deliveriesAt id);
+
+  # ── #66 delivery→terminal unification (design note §9, the terminal dual of v1's post-route read) ────
+  # den-hoag's A15 fold unifies the content-mover with the trace onto ONE edge set (`edgesForRoot` feeds
+  # BOTH `outputFor` and `traceFor`), so ALL routed/forwarded content lives in the delivery-edge stream.
+  # But the TERMINAL crossing reads `classSubtreeAt` alone (same-class buckets), so the CROSS-class routed
+  # content (os→nixos `programs.zsh.enable`, home-manager→nixos `home-manager.users`) is present in
+  # `outputFor` yet ABSENT from the built drv. v1 SEPARATES the layers — routes `appendToClass` into the
+  # target class bucket, the terminal reads POST-route buckets, the trace is a DESCRIPTIVE parallel — so v1
+  # never double-counts; den-hoag CANNOT copy that (under the unified edge set the content would
+  # materialize TWICE in `outputFor`). Instead the terminal's INPUT widens to match the fold's OUTPUT.
+  #
+  # `deliveryModulesAt root class` = the CROSS-class delivery module content the A15 fold materializes at
+  # (root, class): every CLASS-source delivery TARGETING this root+class, its SOURCE-class bucket gathered
+  # across the delivery's `[ firing ] ++ descendants` subtree — the #62c source-members that already
+  # aggregate the descendant cells — placed at the delivery path (merge ⇒ direct, nest ⇒ setAttrByPath, the
+  # fold's `place`). Own-BUCKET per member (`classModulesAt`, not `classSubtreeAt`) so the subtree
+  # aggregates ONCE — the ADDITIVE realization (§9 risk 2: `classSubtreeAt ++` a delivery-only gather,
+  # never a wholesale `outputFor` read whose materialize-vs-raw-list shape would perturb the drv). The scan
+  # walks `[ root ] ++ descendants root` so a #53c cell-fired forward that `appendToParent`-targets this
+  # root is picked up (in #66 every delivery targets its own firing node, so only `root` itself contributes
+  # — the descendant scan is inert until #53c retargets a forward).
+  #
+  # SINGLE-PATH INVARIANT (§9): same-class (the fold) ⊥ cross-class (delivery). A MODULE provide
+  # (`module != null`) collects the TARGET class — its provided module rides the target scope's OWN class
+  # bucket (translateDelivery, `sourceClass == targetClass`; `classSubtreeAt` already reads it), so it
+  # contributes NOTHING NEW here (skip — re-adding would double). A same-class MERGE class-source
+  # (from == to == `class`, `mode == "merge"`) gathers the class bucket at the ROOT path exactly where
+  # `classSubtreeAt` already placed it ⇒ DOUBLE — the loud guard aborts (corpus emits none; a same-class
+  # NEST places at a DISTINCT path, v1-faithful, never a double, so it is allowed through). A17: the scan
+  # walks the delivery declaration set + the id spine + class-modules ATTRIBUTE presence, never module
+  # bodies. IDENTITY: a delivery-free root ⇒ `[ ]` at every class ⇒ terminal = `classSubtreeAt` exactly
+  # (the 840 baseline unchanged).
+  deliveryModulesAt =
+    root: class:
+    let
+      forNode =
+        n:
+        prelude.concatMap (
+          d:
+          if deliveryTargetRootOf n d != root || d.targetClass.name != class then
+            [ ]
+          else if d.module != null then
+            [ ] # module provide rides the target's OWN class bucket (classSubtreeAt reads it) — no re-add
+          else if d.sourceClass.name == class && d.mode == "merge" then
+            errors.sameClassMergeDelivery {
+              inherit class;
+              scope = n;
+              root = root;
+            }
+          else
+            let
+              srcClass = d.sourceClass.name;
+              members = [ n ] ++ scope.descendants result n;
+              srcMods = prelude.concatMap (nid: (classModulesAt nid).${srcClass} or [ ]) members;
+            in
+            if d.mode == "merge" then srcMods else map (m: nestAtPath d.path m) srcMods
+        ) (deliveriesAt n);
+    in
+    prelude.concatMap forNode ([ root ] ++ scope.descendants result root);
+
+  # The per-class TERMINAL assembly (the LAW, §9): the same-class subtree fold FIRST (`classSubtreeAt`,
+  # A12 base) then the routed cross-class delivery AFTER (`deliveryModulesAt`, v1's `appendToClass`
+  # appends). Consumed at the three terminal reads (`hostModules`/`deltaOf`/`contentIdsOf`); the fold
+  # accessor (`classBucketsOf`/`contentsOf`) STAYS `classSubtreeAt` — delivery reaches `outputFor` via the
+  # edges, so widening the fold read too would double there.
+  terminalModulesAt = id: class: classSubtreeAt id class ++ deliveryModulesAt id class;
 
   # gen-edge graph accessor (§2.3). Isolation makes every non-root scope node its OWN edge-root: a
   # user cell (home-manager) is a distinct root from its host (nixos), so a host's subtree collects only
@@ -369,8 +460,11 @@ let
 
   # The member (scope node) ids that carry NON-EMPTY content for a class — the class-major output map's
   # spine, and the class-share member set. Content-driven (a member with no content for `name` is absent).
+  # #66: content presence is the TERMINAL assembly (fold ++ delivery) — a member whose only class content
+  # arrives by a cross-class delivery still builds a system.
   contentIdsOf =
-    name: prelude.filter (id: memberClassName id == name && classSubtreeAt id name != [ ]) allNodeIds;
+    name:
+    prelude.filter (id: memberClassName id == name && terminalModulesAt id name != [ ]) allNodeIds;
 
   # ── A10 class-share seam (share.core = true) ───────────────────────────────────────────────────────
   # The synthetic loc the shared class-invariant core occupies — `applyCoreFixed`'s sole-def leaf. A
@@ -415,7 +509,7 @@ let
     name: classCfg: id:
     [ freeformAbsorber ]
     ++ (bind.wrapAll {
-      modules = classSubtreeAt id name;
+      modules = terminalModulesAt id name; # #66: fold ++ cross-class delivery (identity-defaulted)
       bindings = bindingsAt id;
       defaultMergeStrategy = classCfg.defaultMergeStrategy;
     }).modules;
@@ -459,7 +553,7 @@ let
           name = id; # the member (scope node) id keys the class-major output map
           value = classCfg.instantiate {
             name = id; # the terminal contract's `name` is the member id
-            hostModules = classSubtreeAt id name;
+            hostModules = terminalModulesAt id name; # #66: fold ++ cross-class delivery (identity-defaulted)
             inherit classCfg;
             bindings = bindingsAt id;
           };

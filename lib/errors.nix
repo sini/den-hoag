@@ -192,4 +192,18 @@ in
     }` (entity `${
       render (producer.entity or null)
     }`) is tagged class `${render tag}`; declare a `${render tag}` -> `${render consuming}` adapter on the quirk or consume at the producing class";
+
+  # §9 single-path invariant (#66): the terminal assembly is `classSubtreeAt ++ deliveryModulesAt`, and
+  # the same-class SUBTREE FOLD ⊥ the CROSS-class delivery. A same-class class-source MERGE delivery
+  # (from == to == the node's producing class, `mode == "merge"`) gathers the class bucket at the ROOT
+  # path exactly where the fold already placed it — its content would materialize TWICE at the terminal.
+  # The corpus emits none; this is the loud abort (never a silent double). A same-class NEST delivery
+  # places at a DISTINCT path (v1-faithful) and is allowed; a cross-class delivery is the intended case.
+  sameClassMergeDelivery =
+    {
+      class,
+      scope,
+      root,
+    }:
+    fail "delivery single-path (A15/§9)" "a same-class merge delivery (from `${render class}` to `${render class}`) fired at scope `${render scope}` targets the terminal of root `${render root}` at its own producing class — its content would double with the within-class subtree fold (classSubtreeAt); a same-class delivery must nest at a non-root path, or move a DIFFERENT class";
 }

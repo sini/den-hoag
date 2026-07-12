@@ -82,6 +82,7 @@ let
       bind
       merge
       classShare
+      errors
       ;
   };
 in
