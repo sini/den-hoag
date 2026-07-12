@@ -383,3 +383,50 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   #49-gated latent the u8 row records, sourced from `den.users.registry.<name>` when the chain materializes.
   Nothing in the settings surface (#49) changed. Likewise u1/#55 (unfree class-coord) is orthogonal — R2's
   resolve landing touches neither the per-class `class`-coord injection nor the ctx-coord survey.
+
+- **R3/ingest — NON-HOST REGISTRY INGEST (the marker-discovery for env/cluster). SHIPPED
+  (`lib/compat/{registry,ingest,bridge}.nix`), CI 786→791 (+5 witnesses `ci/tests/compat-registry-kind-marker.nix`),
+  parity 71/71.** THE GAP (corrects the R3-ORACLE-RE-PROBE entry above, which named this the NEXT rung — "the
+  marker-discovery / bridge-passthrough for those kinds"): the corpus DECLARES `den.environments.prod/dev` +
+  `den.clusters.axon` but they never reached `ent.registries` (`registrySizes` env:0/cluster:0). ROOT CAUSE:
+  ingest's custom-kind namespace→kind discovery (`instanceKeyMap` via `schema.identityHashFor`) is
+  VALUE-reflecting — it recomputes an instance's id_hash from its primitive VALUES, so a kind carrying a
+  DERIVED/INTERNAL primitive (the corpus `cluster.sopsAgeRecipient`: a `readFile` string, `internal`, `nullOr
+  str`) makes the recompute OVER-include it (a string value is primitive) and MISS the carried id_hash (which
+  `mkIdentityModule` stamped EXCLUDING the internal field). The namespace then matched NO kind → `customInstances`
+  → `registries.<kind>` EMPTY → no env/cluster ROOT NODES. (Not a loud abort: `clusters`/`environments`/`groups`
+  are `_declaredKeys`-covered, so surface-totality passed regardless — the miss was silent.) THE GENERIC SOURCE:
+  the DECLARED option surface carries what the value cannot — `internal`/`identity` flags. `registry.nix`
+  `registryKindOf` reflects the identity-key set `mkIdentityModule` hashed (a primitive-typed, non-`internal`,
+  `identity != false` option — `identityKeysOf`, mirroring gen-schema's `isPrimitive`) and recomputes via
+  gen-schema's OWN `hashIdentity` (no formula twin), gated on the carried id_hash (a wrong reflection ⇒ LOUD
+  null, never a misclassification). The bridge computes it per consumer namespace (`registryKinds`, over the
+  same `subOptionsOf` surface the stamps read) and rides it to ingest as the reserved `_registryKinds`;
+  ingest's `discoverKeyFor` PREFERS the option-marker, falling back to the value-marker for mkDen-direct
+  fixtures (no bridge ⇒ byte-identical). Everything downstream (`customInstances`/`buildRegistries` root nodes,
+  `stampsByKind`/`entityFields` ctx stamps) then flows through the EXISTING path. VERIFIED (temporary `built.den`
+  debug over the corpus, since removed): `registryKinds = {clusters→cluster, environments→environment,
+  groups→group}` (each an unambiguous single hit); `registries` env:`[dev,prod]`/cluster:`[axon]`/group:35 now
+  POPULATE; `scopeRootTypes` now includes `environment`+`cluster`. The host/user/group arms are BYTE-UNCHANGED
+  (host via the fixed `hosts` namespace; group's value-marker already hit; 786 baseline untouched).
+
+- **R3 ORACLE RE-PROBE #2 — env/cluster ROOT NODES now EXIST, but axon-01's gate STILL does not clear: a
+  SECOND, distinct blocker in the RESOLVE ARM (R2), NOT registry-ingest.** The re-probe throws the SAME
+  assertion (VERBATIM, byte-identical to HEAD): *"Failed assertions: - You should specify at least one authorized
+  key for initrd SSH - Neither the root account nor any wheel user has a password or SSH authorized key … -
+  users.users.nix-remote-build.shell is set to zsh, but programs.zsh.enable is not true"* — NO drvPath.
+  DIAGNOSIS (temporary pre-pass debug, since removed): with env roots present the staged pre-pass's resolve-family
+  FEED (`policiesRules.resolveFamily`) still holds ONLY 2 rules — the flake `to-fleet` + fleet `fleet-to-envs`,
+  which are DETECTED (their value-less probe always emits, so they tag rf WITHOUT a name), and which fire at
+  flake/fleet — kinds with NO registry ⇒ NO root nodes ⇒ they never fire. `env-to-hosts`/`env-users`/
+  `env-to-clusters` are VALUE-CONDITIONAL (probe empty ⇒ EXPANDED ⇒ their rf tag depends on
+  `name ∈ den.resolveFamilyNames`), but the corpus wires them via `den.schema.<kind>.includes`, and the
+  kind-include compiler (`compile.nix` perKind:1108) names them SYNTHETICALLY `__kindInclude__<kind>__policy__<i>`
+  — so the name-based `resolveFamilyNames` tag NEVER matches, they are absent from the feed, and env-to-hosts
+  never threads `accessGroups` to the host nodes (env-users then matches nothing). The 2 static cells
+  (`sini@patch`, `sini@slab`, from `host.users` ingest) are unchanged; NO NixOS host gains a user cell. This was
+  LATENT — masked by the R3/ingest gap (with no env roots the resolve arm was never corpus-exercised). THE NEXT
+  RUNG (resolve-arm, compat-only, NOT this rung): propagate the resolve-family tag through kind-include
+  compilation — e.g. stamp `__resolveFamily` on a kind-include policy whose source ref's v1 name (the coerced
+  `{ __isPolicy; name; fn }` carries it) ∈ `resolveFamilyNames`, so `concern-policies`' `v.__resolveFamily`
+  catches it regardless of the synthetic attr name. Gates for THIS rung: CI 791/791, parity 71/71.

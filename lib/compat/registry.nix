@@ -206,6 +206,72 @@ let
     tree: cfg:
     builtins.mapAttrs (n: v: if v == true then cfg.${n} or null else stampOf v (cfg.${n} or { })) tree;
 
+  # ── the OPTION-REFLECTING kind MARKER (the robust twin of ingest's value-reflecting id_hash
+  # discovery) ─────────────────────────────────────────────────────────────────────────────────────
+  # A consumer chooses a custom kind's registry KEY (`options.den.<key> = mkInstanceRegistry
+  # den.schema.<kind>`), so the shim must map that key back to its kind. ingest's `identityHashFor`
+  # marker reflects the INSTANCE VALUE's primitive fields — but a kind carrying a DERIVED/INTERNAL
+  # primitive (the corpus `cluster.sopsAgeRecipient`: a `readFile` string, `internal`, `nullOr str`)
+  # makes the value-reflection OVER-include it (a string value is primitive), so the recompute never
+  # matches the carried id_hash and the namespace matches NO kind → its registry never reaches the
+  # fleet (env/cluster root nodes absent → the staged env phase never runs). The DECLARED option
+  # surface carries what the value cannot: `internal`/`identity` flags. `identityKeysOf` reflects the
+  # SAME primitive-option set gen-schema's `mkIdentityModule` hashed when it stamped the carried
+  # id_hash — a primitive-typed (str/int/bool), non-internal, `identity != false` option, minus the
+  # `_`-internals and the `id_hash` identity field. Read FORCE-FREE (only `.type.name`/`.internal`/
+  # `.identity` records). nixpkgs names primitives `str`/`int`/`bool`, gen-merge `string`/`int`/`bool`
+  # — both accepted; the hash-equality gate in `registryKindOf` rejects any over/under-inclusion, so a
+  # wrong set is a LOUD miss (null), never a misclassification.
+  identityKeysOf =
+    opts:
+    builtins.filter (
+      n:
+      builtins.substring 0 1 n != "_"
+      && n != "id_hash"
+      && (opts.${n} ? type)
+      && builtins.elem (opts.${n}.type.name or "") [
+        "str"
+        "string"
+        "int"
+        "bool"
+      ]
+      && !(opts.${n}.internal or false)
+      && (opts.${n}.identity or true)
+    ) (builtins.attrNames opts);
+
+  # `registryKindOf { opts; instances; candidateKinds; hashIdentity; }` — the robust namespace→kind
+  # marker. Reflect the namespace's identity keys off its DECLARED option surface (`opts`, the
+  # consumer registry's own `type.getSubOptions` — the same surface `stampTreeOf` reads), recompute the
+  # first instance's content-address for each candidate kind through gen-schema's OWN `hashIdentity`
+  # (passed in — the SINGLE formula, no duplication), and match the carried `id_hash`. Returns the
+  # matching kind NAME, or null when no candidate reproduces the hash (an empty namespace, or a marker
+  # miss — the caller falls back to the value-reflecting discovery). `tryEval` guards a forcing throw
+  # in a primitive value; the equality gate keeps a false match at sha256-collision odds.
+  registryKindOf =
+    {
+      opts,
+      instances,
+      candidateKinds,
+      hashIdentity,
+    }:
+    let
+      entries = builtins.attrValues instances;
+    in
+    if entries == [ ] then
+      null
+    else
+      let
+        ikeys = identityKeysOf opts;
+        first = builtins.head entries;
+        carried = first.id_hash or null;
+        hits = builtins.filter (
+          k:
+          carried != null
+          && (builtins.tryEval (hashIdentity k ikeys (n: first.${n} or null) == carried)).value or false
+        ) candidateKinds;
+      in
+      if hits == [ ] then null else builtins.head hits;
+
   # The host registry's declared option surface, probe-eval'd ONCE per fleet (no authored config;
   # only `.options` is walked — option defaults and config are never forced). Feeds `stampTreeOf`:
   # the shim OWNS this registry's declaration, so its option records come from the same modules that
@@ -312,6 +378,8 @@ in
     excludedType
     stampTreeOf
     stampOf
+    identityKeysOf
+    registryKindOf
     hostInstanceOptions
     flattenRegistry
     mkHostsOption

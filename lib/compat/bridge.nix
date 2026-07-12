@@ -524,6 +524,31 @@ in
       // lib.genAttrs consumerRegistryKeys (
         k: stampRegistry (compat.registry.stampTreeOf (subOptionsOf k)) config.den.${k}
       );
+      # ROBUST namespace→kind for the consumer-declared registries — the OPTION-reflecting marker
+      # (registry.nix registryKindOf) the ingest re-keys `_entityStamps` by. ingest's value-reflecting
+      # id_hash discovery MISSES a namespace whose instances carry a derived/internal primitive (the
+      # corpus `cluster.sopsAgeRecipient`), so those registries never reached the fleet (env/cluster
+      # root nodes absent → the staged env phase never ran → env-users matched nothing → no user cells
+      # on nixos hosts). Reflected off the DECLARED option surface (`subOptionsOf` — the same surface
+      # the stamps read), recomputed through gen-schema's `hashIdentity`, gated on the carried id_hash.
+      # The candidate set is the v1-DECLARED kinds (minus the built-in host/user), zero kind literals.
+      # Rides to ingest as the reserved `_registryKinds` (like `_entityStamps`/`_declaredKeys`:
+      # `_`-exempt from surface-totality, skipped by ingest's discovery scan). A fleet with no consumer
+      # registry emits `{ }` — the value-reflecting discovery then rules, byte-identical to before.
+      customKindNames = builtins.filter (k: k != "host" && k != "user") (
+        builtins.attrNames (config.den.schema.__rawSchema or { })
+      );
+      registryKinds = lib.filterAttrs (_: v: v != null) (
+        lib.genAttrs consumerRegistryKeys (
+          k:
+          compat.registry.registryKindOf {
+            opts = subOptionsOf k;
+            instances = config.den.${k};
+            candidateKinds = customKindNames;
+            inherit (schema) hashIdentity;
+          }
+        )
+      );
       fleet = [
         {
           # `annotatedDen` (board #58): the fleet's `den.aspects` carries the post-fold `__provider`
@@ -538,6 +563,10 @@ in
               schema = config.den.schema.__rawSchema or { };
               _declaredKeys = declaredDenKeys;
               _entityStamps = entityStamps;
+              # The robust namespace→kind marker (registryKindOf) — ingest re-keys `_entityStamps` and
+              # builds the custom-kind registries by it, so a namespace whose instances carry a
+              # derived/internal primitive (cluster.sopsAgeRecipient) still reaches the fleet.
+              _registryKinds = registryKinds;
             };
         }
       ];

@@ -413,17 +413,36 @@ let
       # built-ins), NOT from `schemaDecls` — schemaDecls now declares the stamp-field options, which
       # depend on `instanceKeyMap` ← `customKinds`; deriving from v1Schema keeps that chain acyclic.
       customKinds = builtins.filter (k: k != "host" && k != "user") (builtins.attrNames v1Schema);
-      # kind → the registry namespace whose instances match it by the id_hash marker. A kind with no
-      # matching namespace falls back to its own name (`den.<kind>`, the pre-M1.5 singular convention) so an
-      # inline fixture keyed by the kind name still resolves.
+      # The bridge's ROBUST namespace→kind marker (`_registryKinds`, bridge.nix registryKindOf), keyed
+      # by namespace. Reflected off the DECLARED option surface (respecting internal/identity), so it
+      # resolves a namespace the value-reflecting `identityHashFor` below MISSES (a derived/internal
+      # primitive over-includes — cluster.sopsAgeRecipient). Absent on mkDen-direct fixtures (no bridge),
+      # where the value-reflecting discovery rules — byte-identical to before.
+      registryKinds = v1Decls._registryKinds or { };
+      # kind → the registry namespace whose instances match it. The bridge's option-reflecting marker
+      # WINS (robust against derived/internal primitives); else the value-reflecting id_hash marker; a
+      # kind with neither falls back to its own name (`den.<kind>`, the pre-M1.5 singular convention) so
+      # an inline fixture keyed by the kind name still resolves.
+      bridgeKeyFor =
+        kind:
+        let
+          hits = builtins.filter (n: registryKinds.${n} == kind) (builtins.attrNames registryKinds);
+        in
+        if hits == [ ] then null else builtins.head hits;
       discoverKeyFor =
         kind:
         let
+          bridged = bridgeKeyFor kind;
           hits = builtins.filter (
             n: instanceMatchesKind kind (builtins.head (builtins.attrValues v1Decls.${n}))
           ) candidateRegistryKeys;
         in
-        if hits == [ ] then kind else builtins.head hits;
+        if bridged != null then
+          bridged
+        else if hits == [ ] then
+          kind
+        else
+          builtins.head hits;
       instanceKeyMap = prelude.genAttrs customKinds discoverKeyFor;
       customInstances = prelude.genAttrs customKinds (k: v1Decls.${instanceKeyMap.${k}} or { });
       # The discovered registry keys — LEGITIMATE custom-kind instance namespaces (not typos), read by
