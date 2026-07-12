@@ -348,7 +348,26 @@ let
               members = collectedMembersOf n; # #74a — the same member set the edge render names
               srcMods = prelude.concatMap (nid: (classModulesAt nid).${srcClass} or [ ]) members;
             in
-            if d.mode == "merge" then srcMods else map (m: nestAtPath d.path m) srcMods
+            if d.mode == "merge" then
+              # merge-mode sources land TOP-LEVEL at the target terminal, whose deltaOf/instantiate
+              # wrapAll binds their channel/entity formals wholesale — no wrap here (byte-gate: the
+              # os→nixos path stays byte-identical).
+              srcMods
+            else
+              # NEST-mode sources (#74b) are placed UNDER a path, INVISIBLE to the terminal's wholesale
+              # wrapAll — their channel/entity formals would go unbound (the corpus's syncthing member
+              # hm module demands the `replicateHome` channel arg: `home-manager.users.<u>` cannot
+              # supply it — the re-probe abort). v1 evaluates EVERY forward-source module (root + own)
+              # in the target hm eval with the FIRING user scope's args (the complex forward's
+              # extraArgsFor threading, route.nix — member.nix reads its OWN emission, the F4 raw read),
+              # so the wrap binds with the FIRING node's bindings (`bindingsAt n` — the cell), the same
+              # gen-bind DI the terminal runs (deltaOf, r2 obligation 6). A formal-less (attrset)
+              # module passes through unwrapped — the #53c/#74a witness shapes byte-unchanged.
+              map (m: nestAtPath d.path m)
+                (bind.wrapAll {
+                  modules = srcMods;
+                  bindings = bindingsAt n;
+                }).modules
         ) (deliveriesAt n);
     in
     prelude.concatMap forNode ([ root ] ++ scope.descendants result root);
