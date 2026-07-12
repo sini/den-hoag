@@ -141,6 +141,29 @@ let
       ];
     };
 
+  # host→env BACK-EDGE — the mutual-containTo CYCLE half (paired with envToHost: env contains host
+  # contains env). A native fixture CAN author this (the compat arm cannot — its source coordinate
+  # strictly ascends the acyclic schema topology); the chain walk must abort NAMED
+  # (errors.containmentCycle), never hang. Record-form + `__firesAtKinds = ["host"]` keeps it off the
+  # user cell (which inherits the `host` coord); detected via the unconditional probe (no tag needed).
+  hostToEnvBack =
+    { config, ... }:
+    {
+      config.den.policies.host-to-env = {
+        __condition.host = false;
+        __firesAtKinds = [ "host" ];
+        fn = ctx: [
+          (declare.member {
+            coords = {
+              inherit (ctx) host;
+              env = config.den.env.prod;
+            };
+            containTo = "env";
+          })
+        ];
+      };
+    };
+
   base = [
     schema
     instances
@@ -174,6 +197,17 @@ let
   envNoContain = (denHoag.mkDen (base ++ [ envOnlyLayer ])).den;
   # (D) NO containment tuples, NO layers — the native identity path (containmentRelations = { }).
   native = (denHoag.mkDen base).den;
+  # (E) the CYCLE fleet — envToHost + the host→env back-edge (mutual containTo).
+  cyclic =
+    (denHoag.mkDen (
+      base
+      ++ [
+        envToHost
+        hostToEnvBack
+        envOnlyLayer
+      ]
+    )).den;
+  forceMem = den: (builtins.tryEval (builtins.deepSeq (rsOf den).app.value.mem true)).success;
 
   cellCoordDims = den: sortStr (builtins.attrNames (builtins.head den.cells));
 in
@@ -284,6 +318,21 @@ in
     test-native-no-env-slice = {
       expr = map (e: e.rendered) (rsOf native).app.provenance.mem;
       expected = [ "default" ];
+    };
+
+    # ── CYCLE GUARD (loud-error discipline): a mutual containTo (env contains host contains env) makes
+    #    the settings-chain ancestor walk revisit a path node — it aborts NAMED (errors.containmentCycle),
+    #    never hangs. Non-vacuous companion: the SAME fleet WITHOUT the back-edge (envWithContain) forces
+    #    the identical chain walk CLEAN — the abort is caused by the cycle, not the containment relation. ──
+    test-containment-cycle-aborts-loud = {
+      expr = {
+        cyclic = forceMem cyclic;
+        acyclicCompanion = forceMem envWithContain;
+      };
+      expected = {
+        cyclic = false;
+        acyclicCompanion = true;
+      };
     };
   };
 }

@@ -69,7 +69,7 @@ let
       if da != db then da < db else a < b
     ) rootKinds;
 
-  # entry.id_hash -> "kind:name" scope-node id, over the root kinds only (a `relate` target denotes an
+  # entry.id_hash -> "kind:name" scope-node id, over the root kinds only (a `containTo` target denotes an
   # existing ROOT node). The flat root id convention matches buildRoots (`"${kind}:${name}"`).
   rootNodeIndex =
     { registries, rootKinds }:

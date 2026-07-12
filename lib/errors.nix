@@ -56,6 +56,16 @@ in
     policyName: target:
     fail "containment target (§3c)" "policy `${policyName}` emitted a `containTo`-marked `member` to target `${render target}`, which resolves to no existing root scope node; a containment tuple carries ctx into an existing membership-independent root (a leaf-dim cell target leaves `containTo` null)";
 
+  # Containment-relation CYCLE (§3c-UNIFIED chain extension): the settings-chain ancestor walk
+  # (resolved-settings.nix `ancestorsOf`) revisited a node already on its path — a cyclic `containTo`
+  # topology (root A contains B contains A). Corpus-unreachable (a v1-surface adapter's source coordinate
+  # strictly ascends the acyclic schema topology), but a native fixture CAN author it — so abort LOUD
+  # naming the repeated node, never hang (the loud-error discipline). Forced when a contained node's
+  # settings resolve.
+  containmentCycle =
+    nodeId:
+    fail "containment cycle (§3c)" "the containment-relation ancestor chain revisits node `${nodeId}` — a cyclic `containTo` topology (A contains B contains A); containment relations must follow the acyclic kind topology";
+
   # B1 single-writer enrichment (A3): two enrich policies writing one context key abort at
   # definition time, naming both policies + the key. Fires on a same-pass collision AND a
   # cross-iteration one (the check runs over the converged enrich accumulation).

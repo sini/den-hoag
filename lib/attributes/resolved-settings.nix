@@ -101,17 +101,29 @@ let
       # so a multi-level chain (fleet→env→host) resolves least-specific first. Empty for a node with no
       # containment relation (the corpus's environment root, and every native fleet without a containTo
       # member) ⇒ the chain is byte-identical to the pre-§3c product chain.
+      # CYCLE GUARD (loud-error discipline): a VISITED set (the node ids on the current path) threads the
+      # recursion — a revisit is a cyclic `containTo` topology (A contains B contains A) and aborts NAMED
+      # (`errors.containmentCycle`) instead of hanging. Corpus-unreachable (a v1-surface adapter's source
+      # coordinate strictly ascends the acyclic schema topology); a native fixture can author it.
       ancNodeId =
         slice:
         let
           k = builtins.head (builtins.attrNames slice);
         in
         "${k}:${slice.${k}.name}";
-      ancestorsOf =
-        nid:
-        prelude.concatMap (anc: ancestorsOf (ancNodeId anc) ++ [ anc ]) (
-          containmentRelations.${nid} or [ ]
-        );
+      ancestorsOf' =
+        visited: nid:
+        prelude.concatMap (
+          anc:
+          let
+            aid = ancNodeId anc;
+          in
+          if visited ? ${aid} then
+            errors.containmentCycle aid
+          else
+            ancestorsOf' (visited // { ${aid} = true; }) aid ++ [ anc ]
+        ) (containmentRelations.${nid} or [ ]);
+      ancestorsOf = nid: ancestorsOf' { ${nid} = true; } nid;
 
       # A14 (projects facet) — `projectionLayersAt`: expand every projecting aspect into `via`-carrying
       # den-layer records at its attachment scopes, added to the scoped-override pool. resolved-settings

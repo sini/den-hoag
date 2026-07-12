@@ -371,7 +371,7 @@ let
   # `__resolveFamily` on a SYNTHETIC-keyed include policy whose SOURCE REF's v1 name is in this set (the
   # `name ∈ resolveFamilyNames` match here only catches a resolve policy authored DIRECTLY under the KEY —
   # a kind-include's key is synthetic). THE OMISSION CATCH: a resolve-emitting policy omitted from the set
-  # that fires member/relate at a root aborts LOUD (the R2 `resolveFamilyUntagged` guard).
+  # that fires a `member` at a root aborts LOUD (the R2 `resolveFamilyUntagged` guard).
   resolveFamilyModule = {
     config.den.resolveFamilyNames = import ./resolve-family-names.nix;
   };

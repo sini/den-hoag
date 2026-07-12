@@ -111,16 +111,16 @@ in
   # `resolve {}`, `resolve.shared.*` and `resolve.*.withIncludes` are v1-surface totality the constructor
   # reproduces faithfully, but the compat ARM has no corpus-verified translation for them yet. Each names
   # itself here (LOUD, never a silent drop) so the rung that first needs it greets a named blocker.
-  resolveNoTargetKind = fail "resolve arm (R2)" "a bare `resolve { … }` (no `__targetKind`) has no compat translation — the shim routes `resolve.to \"<kind>\" { … }` (leaf → member, root → relate). The corpus (b0b20769) never emits a bare resolve; supply an explicit target kind, or build the untargeted fan-out arm when a corpus body first needs it";
+  resolveNoTargetKind = fail "resolve arm (R2)" "a bare `resolve { … }` (no `__targetKind`) has no compat translation — the shim routes `resolve.to \"<kind>\" { … }` (cell kind → member, root kind → containment member). The corpus (b0b20769) never emits a bare resolve; supply an explicit target kind, or build the untargeted fan-out arm when a corpus body first needs it";
   resolveShared =
     kind:
-    fail "resolve arm (R2)" "`resolve.shared.to \"${kind}\" { … }` (non-isolated fan-out) has no compat translation — the corpus (b0b20769) uses only the isolated `resolve.to`. Build the shared-branch member/relate semantics when a corpus body first exercises it";
+    fail "resolve arm (R2)" "`resolve.shared.to \"${kind}\" { … }` (non-isolated fan-out) has no compat translation — the corpus (b0b20769) uses only the isolated `resolve.to`. Build the shared-branch member semantics when a corpus body first exercises it";
   resolveWithIncludes =
     kind:
     fail "resolve arm (R2)" "`resolve.*.withIncludes` targeting `${kind}` (a resolved node riding `includes` classes) has no compat translation — the corpus (b0b20769) emits `includes = [ ]` at every `resolve.to`. Build the includes-riding arm (the resolved cell's edged classes) when a corpus body first exercises it";
   resolveUnknownKind =
     kind:
-    fail "resolve arm (R2)" "`resolve.to \"${kind}\" { … }` names a kind absent from the ingested containment schema (`ing.schema`) — a resolve target must be a declared kind (a leaf dim → member, or a root kind → relate). Declare `den.schema.${kind}` (with its `parent`), or fix the target-kind spelling";
+    fail "resolve arm (R2)" "`resolve.to \"${kind}\" { … }` names a kind absent from the ingested containment schema (`ing.schema`) — a resolve target must be a declared kind (a cell kind → a member tuple, or a root kind → a containment member). Declare `den.schema.${kind}` (with its `parent`), or fix the target-kind spelling";
 
   # PARAMETRIC-ASPECT RESULT (R14, the bare-fn kind-include arm) — a bare-fn include (`den.schema.<kind>.
   # includes = [ ({ … }: <body>) ]`, or a nested bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose

@@ -37,8 +37,8 @@ _: {
   # `resolve` — v1's fleet-resolution / fan-out functor bag, REPRODUCED EXACTLY from the frozen pin
   # (den nix/lib/policy-effects.nix:128-171 @ sg0zid5qgicrs1fcxn11bxgsafv8kl2d-source). Each arm builds the
   # tagged `{ __policyEffect = "resolve"; … }` record `compile.nix` `translateEffect` (kind == "resolve")
-  # consumes: the `__targetKind`-dispatching arm turns a leaf-dim target into a `member` tuple and an
-  # existing-node target into a `relate` (user-delivery R2, design note 2026-07-11 §3(i)). Constructor SHAPE
+  # consumes: the `__targetKind`-dispatching arm turns a cell-kind target into a bare `member` tuple and a
+  # root-kind target into a CONTAINMENT `member` (`containTo` set — §3c-UNIFIED, `relate` dissolved). Constructor SHAPE
   # only — no semantic here (the pin's own comments: `resolve` creates a fan-out branch; `.shared` a non-
   # isolated one; `.to` names the target kind; `.withIncludes` rides classes with the resolved node).
   #   resolve.to "user" { user = e; } ⇒
