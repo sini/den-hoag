@@ -383,6 +383,12 @@ let
   resolveFamilyModule = {
     config.den.resolveFamilyNames = import ./resolve-family-names.nix;
   };
+  # The #72 exclude-family twin (`den.excludeFamilyNames`, single source exclude-family-names.nix): a
+  # value-conditional corpus excluder (drop-user-to-host-on-droid) probes empty, so the declared tag is
+  # its only path to the staged pre-pass's exclude feed; omission aborts LOUD (excludeFamilyUntagged).
+  excludeFamilyModule = {
+    config.den.excludeFamilyNames = import ./exclude-family-names.nix;
+  };
   # `mkDenWith userModules { nixosTerminal ? collect; hoagModules ? [] }` — build the shim fleet with the
   # nixos terminal SEAM (the parity harness / a real ship supplies `crossNixos` for real NixOS systems) and
   # optional extra native den-hoag modules. `mkDen` = this at the default (collect, no extra modules) — the
@@ -399,6 +405,7 @@ let
         interpretModule
         probeSentinelModule
         resolveFamilyModule
+        excludeFamilyModule
       ]
       ++ hoagModules
     );

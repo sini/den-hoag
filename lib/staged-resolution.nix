@@ -92,6 +92,10 @@ let
   #   • `containmentRelations` — a nodeId -> [ sourceSlice ] map (a `containTo`-marked `member`'s SOURCE
   #                              coordinate, the target root's containment ANCESTOR — the settings-chain
   #                              env slice, read by resolved-settings.nix).
+  #   • `suppressions`         — a nodeId -> [ policyName ] map (#72: the exclude family's `suppress`
+  #                              emissions at each root), injected onto the emitting root's decls as
+  #                              `__denSuppressedPolicies` (default.nix scopeRoots) so inherited-context
+  #                              delivers v1's scope+descendants suppression.
   #
   #   scopeRoots     = the BASE (un-injected) root scope nodes { id; type; parent; decls } (buildRoots).
   #   rootKinds      = the root scope kinds we FIRE at (default.nix `prePassRootKinds`).
@@ -112,6 +116,14 @@ let
       parentOf,
       registries,
       resolveRules,
+      # The EXCLUDE-FAMILY feed (#72, candidate A — ledger u21): the structural-group rules that can emit
+      # `suppress` (detected or `__excludeFamily`-declared). Dispatched at the SAME roots/phases/ctx as
+      # the resolve family, collecting per-root SUPPRESSION SETS — v1's `policy.exclude <policy>`
+      # constraint registration (pin 11866c16 fx/handlers/dispatch-policies.nix:15-33: name-keyed at the
+      # emitting scope, consulted scope+ancestors ⇒ descendants inherit, siblings isolated per #613).
+      # The caller injects each set onto its root's decls (`__denSuppressedPolicies`), so inherited-
+      # context delivers the v1 semantics. Default `[ ]` → `suppressions = { }` → byte-identical.
+      excludeRules ? [ ],
     }:
     let
       order = orderRootKinds { inherit rootKinds parentOf; };
@@ -130,23 +142,26 @@ let
       # attr 2/4 apply); the caller partitions CELL (`containTo == null`) vs CONTAINMENT (`containTo` set)
       # tuples. A value-conditional resolve policy taking its false branch simply emits nothing here (its
       # member arrives once its ctx value is present).
-      fireAt =
-        nodeKind: id: ctx:
+      fireFeedAt =
+        rules: keep: nodeKind: id: ctx:
         let
           applicable = builtins.filter (
             r: !(r ? __firesAtKinds) || builtins.elem nodeKind r.__firesAtKinds
-          ) resolveRules;
+          ) rules;
           acts =
             (dispatch.dispatch {
               rules = applicable;
               inherit id;
               context = ctx;
               match = dispatch.fromFunctionMatch;
-              classify = _: "resolve-family";
-              groupOrder = [ "resolve-family" ];
-            }).actions.resolve-family or [ ];
+              classify = _: "pre-pass";
+              groupOrder = [ "pre-pass" ];
+            }).actions.pre-pass or [ ];
         in
-        builtins.filter declare.isResolveFamily acts;
+        builtins.filter keep acts;
+      fireAt = fireFeedAt resolveRules declare.isResolveFamily;
+      # The exclude-family twin: fire the suppress emitters at the root, keep the `suppress` acts.
+      fireExcludeAt = fireFeedAt excludeRules declare.isSuppress;
 
       # Classify ONE `member` emission (design note §3c-UNIFIED). A BARE member (`containTo == null`) is a
       # CELL tuple → the fleet product. A `containTo`-marked member is a CONTAINMENT tuple → its `bindings`
@@ -215,8 +230,22 @@ let
           ];
           ctx = baseCtx // (st.relationBindings.${id} or { });
           acts = fireAt node.type id ctx;
+          # #72: collect this root's suppression set (the exclude family fired with the SAME ctx). A
+          # value-conditional excluder taking its false branch emits nothing here (the corpus's
+          # droid-gated route exclude suppresses only at droid-class roots).
+          suppressed = map (a: a.name) (fireExcludeAt node.type id ctx);
+          st' =
+            if suppressed == [ ] then
+              st
+            else
+              st
+              // {
+                suppressions = st.suppressions // {
+                  ${id} = (st.suppressions.${id} or [ ]) ++ suppressed;
+                };
+              };
         in
-        prelude.foldl' (acc: a: classify acc id a) st acts;
+        prelude.foldl' (acc: a: classify acc id a) st' acts;
 
       phase =
         st: kind:
@@ -229,6 +258,7 @@ let
       tuples = [ ];
       relationBindings = { };
       containmentRelations = { };
+      suppressions = { };
     } order;
 in
 {

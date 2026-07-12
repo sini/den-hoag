@@ -43,6 +43,13 @@ in
   # reviewer's SILENT-DROP edge: the tuple would simply vanish. Convert it to LOUD. (A feed policy
   # double-firing benignly at a root is ALLOWED — the pre-pass consumed its emission; only an UNTAGGED,
   # unconsumed one aborts.) Names the policy + the scope. Raised in attributes/structural.nix attr 4.
+  # UNTAGGED suppress emission (#72, the exclude family — the R2 untagged-guard twin). A `suppress`
+  # produced in the MAIN run by a policy NOT in the staged pre-pass's exclude-family feed was never
+  # dispatched there — the suppression would silently drop (a policy v1 excludes would keep firing).
+  excludeFamilyUntagged =
+    policyName: scopeId:
+    fail "exclude-family discipline (#72)" "policy `${policyName}` emitted a `suppress` declaration at scope `${scopeId}` in the main run, but it is NOT in the staged pre-pass's exclude-family feed — so the pre-pass never collected the suppression (a silent drop: the excluded policy would keep firing). Declare `__excludeFamily = true` on the policy (or add its name to the shim's `den.excludeFamilyNames`)";
+
   resolveFamilyUntagged =
     policyName: scopeId:
     fail "resolve-family discipline (R2)" "policy `${policyName}` emitted a resolve-family declaration (`member`) at membership-independent root `${scopeId}` in the main run, but it is NOT in the staged pre-pass's resolve-family feed — so the pre-pass never routed the emission (a silent drop). Declare `__resolveFamily = true` on the policy (or add its name to the shim's `den.resolveFamilyNames`) so the pre-pass consumes its member";

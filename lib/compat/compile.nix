@@ -26,6 +26,10 @@
   # `resolveFamilyModule`); native callers pass `[ ]` (the default), byte-identical. ZERO NEW corpus
   # knowledge beyond the existing knob — compile matches the SAME set the knob carries.
   resolveFamilyNames ? [ ],
+  # THE EXCLUDE-FAMILY TAG SET (#72, candidate A — `den.excludeFamilyNames`, the resolveFamilyNames
+  # twin; single source compat/exclude-family-names.nix). Same posture: the include-arm stamp is the
+  # only path for a corpus excluder wired through an include (its compiled key is synthetic).
+  excludeFamilyNames ? [ ],
 }:
 let
   # Stamp `__resolveFamily = true` iff a policy REF's v1 name is in `resolveFamilyNames` — the R2 tag
@@ -37,6 +41,31 @@ let
     prelude.optionalAttrs (builtins.elem (ref.name or null) resolveFamilyNames) {
       __resolveFamily = true;
     };
+  # The #72 twin — `__excludeFamily` for a `suppress`-emitting corpus excluder wired via an include.
+  excludeFamilyStamp =
+    ref:
+    prelude.optionalAttrs (builtins.elem (ref.name or null) excludeFamilyNames) {
+      __excludeFamily = true;
+    };
+  familyStamps = ref: resolveFamilyStamp ref // excludeFamilyStamp ref;
+
+  # #72 — THE SUPPRESSION GATE (v1 dispatch-policies.nix:15-33: dispatch filters `aspectPolicies` by
+  # name against the scoped exclude constraints). den-hoag rendering: the pre-pass's suppression sets
+  # ride the emitting root's decls as `__denSuppressedPolicies` (default.nix scopeRoots), inherited-
+  # context threads them to descendants, and every compiled rule whose v1 NAME is known consults the key
+  # before producing — a suppressed policy fires as `[ ]` at that scope subtree, exactly v1's filter.
+  # The v1 NAME (not the synthetic compiled key) is the match, so include-arm rules gate correctly.
+  # `null` name (an anonymous include fn) ⇒ ungateable ⇒ identity (v1's filter is name-keyed too).
+  gateSuppression =
+    v1Name: compiled:
+    if v1Name == null then
+      compiled
+    else
+      compiled
+      // {
+        fn =
+          ctx: if builtins.elem v1Name (ctx.__denSuppressedPolicies or [ ]) then [ ] else compiled.fn ctx;
+      };
   # The §2.4 pipe stage vocabulary: `den.quirks.<name>` → a channel registration (`channelOf`) and the
   # `pipe.from name [stages]` policy effect → a collection-stratum `pipeOp` declaration (`compilePipe`).
   pipeLib = import ./pipe.nix { inherit prelude errors; };
@@ -634,17 +663,29 @@ let
       else
         [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "exclude" then
-      # An aspect exclude prunes an aspect edge (`drop`). A POLICY exclude (`__denCanTake`/`__isPolicy`/
-      # function target) suppresses a policy's FIRING — a distinct mechanism (v1 `drop-user-to-host-on-droid`,
-      # nix-on-droid.nix, excludes the os-user `user-to-host` route), deferred to class-B/#50 with a named
-      # abort (never a misleading identity-law abort at `resolveAspectRef`).
+      # An aspect exclude prunes an aspect edge (`drop`). A POLICY exclude suppresses a policy's FIRING
+      # (#72, candidate A — v1 `drop-user-to-host-on-droid`, nix-on-droid.nix:98-104, excludes the
+      # os-user `user-to-host` route): a NAMED policy target (the bridge-coerced `{ __isPolicy; name;
+      # fn }` record — v1's own registry shape) compiles to `declare.suppress { name }`, consumed by the
+      # staged pre-pass's exclude family (v1 dispatch-policies.nix:15-33). A NAMELESS policy target (a
+      # bare fn / an uncoerced `__denCanTake` record — the name-keyed suppression has nothing to match)
+      # aborts NAMED (`excludeOfPolicyNameless`), never a misleading identity-law abort.
       let
         v = effect.value;
         isPolicyTarget =
           builtins.isFunction v
           || (builtins.isAttrs v && ((v.__denCanTake or null) != null || (v.__isPolicy or false)));
+        targetName = if builtins.isAttrs v then v.name or null else null;
       in
-      if isPolicyTarget then errors.excludeOfPolicy else [ (declare.drop (resolveAspectRef aspectRec v)) ]
+      if isPolicyTarget then
+        (
+          if targetName != null then
+            [ (declare.suppress { name = targetName; }) ]
+          else
+            errors.excludeOfPolicyNameless
+        )
+      else
+        [ (declare.drop (resolveAspectRef aspectRec v)) ]
     else if kind == "resolve" then
       # THE RESOLVE ARM (user-delivery, design note 2026-07-11 §3(i) + §3c-UNIFIED). v1 `resolve.to <kind>
       # { … }` → a den-hoag `member` (the UNIFIED resolve-family verb — `relate` DISSOLVED) the STAGED
@@ -883,9 +924,14 @@ let
     in
     {
       policies =
-        prelude.genAttrs policyNames (name: compilePolicy ing normalizeList aspectRec policies.${name})
+        # #72: every name-keyed compiled policy consults the suppression key before producing (the v1
+        # name IS the attr key here — user-to-host etc.), so a pre-pass-collected exclude suppresses it
+        # at the emitting scope + descendants.
+        prelude.genAttrs policyNames (
+          name: gateSuppression name (compilePolicy ing normalizeList aspectRec policies.${name})
+        )
         // prelude.genAttrs canTakeNames (
-          name: compileCanTake ing normalizeList aspectRec policies.${name}
+          name: gateSuppression name (compileCanTake ing normalizeList aspectRec policies.${name})
         );
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
@@ -993,7 +1039,7 @@ let
       name = "__default__policy__${toString i}";
       value =
         let
-          base = compilePolicy ing normalizeList aspectRec ref;
+          base = gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref);
         in
         base
         // {
@@ -1143,7 +1189,9 @@ let
       # `compilePolicy`'s own gate (the record fn's formals = v1's required-coord presence gate) — no
       # kind-coord union, no __firesAtKinds (see the grain header). R2 tag propagation for parity with
       # the sibling grains (corpus-zero here).
-      value = compilePolicy ing normalizeList aspectRec ref // resolveFamilyStamp ref;
+      value =
+        gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref)
+        // familyStamps ref;
     }) aspectIncludeRecords
   );
 
@@ -1347,18 +1395,18 @@ let
               name = "__kindInclude__${kind}__policy__${toString i}";
               value =
                 let
-                  base = compilePolicy ing normalizeList aspectRec ref;
+                  base = gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref);
                 in
                 base
                 // {
                   __condition = kindCoord // base.__condition;
                   __firesAtKinds = [ kind ];
                 }
-                # R2 tag propagation: a SYNTHETIC-keyed include policy whose source ref is a corpus resolve
-                # policy (name ∈ resolveFamilyNames) carries the `__resolveFamily` tag concern-policies reads
-                # (`v.__resolveFamily`), so the pre-pass's resolve-family feed picks it up — its synthetic key
-                # never matches the name-based `name ∈ resolveFamilyNames` check.
-                // resolveFamilyStamp ref;
+                # R2/#72 tag propagation: a SYNTHETIC-keyed include policy whose source ref is a corpus
+                # resolve/exclude policy (name ∈ the family sets) carries the `__resolveFamily`/
+                # `__excludeFamily` tag concern-policies reads — its synthetic key never matches the
+                # name-based check.
+                // familyStamps ref;
             }) policyRefs
           );
         in

@@ -45,7 +45,11 @@ in
   # the droid arm's user-route exclude, DEFERRED to class-B / board #50 (the nixOnDroid class). The class-A
   # `nixosConfigurations` arm never reaches it (the exclude is `host.class == "droid"`-gated). Named here so
   # the droid arm greets a self-announcing rung, never a misleading identity-law abort.
-  excludeOfPolicy = fail "exclude-of-policy (class-B, board #50)" "`policy.exclude` targets a POLICY record (`__denCanTake`/`__isPolicy`/function), not an aspect; suppressing a policy's firing is the droid arm's user-route exclude, not yet available (class-B / board #50)";
+  # #72 (candidate A): a NAMED policy target compiles to `declare.suppress` (the staged pre-pass's
+  # exclude family — the class-B stub RETIRED); a NAMELESS one (a bare fn / an uncoerced `__denCanTake`
+  # record) has nothing for v1's NAME-KEYED suppression to match (pin dispatch-policies.nix:15-33
+  # filters by registry name), so it stays a definition-time abort.
+  excludeOfPolicyNameless = fail "exclude-of-policy (#72)" "`policy.exclude` targets a NAMELESS policy value (a bare fn or an uncoerced `__denCanTake` record); v1's suppression is NAME-keyed (pin 11866c16 fx/handlers/dispatch-policies.nix:15-33), so the exclude cannot be routed — target the `den.policies.<name>` registry record (the coerced `{ __isPolicy; name; fn }` shape) or a `mkPolicy`-named record";
 
   # INLINE-ASPECT kind-include guards (ship-gate, home-env battery). An inline aspect in a
   # `den.schema.<kind>.includes` list (v1's `{ policies; includes }` battery shape, nix/lib/home-env.nix

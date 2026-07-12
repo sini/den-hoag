@@ -220,6 +220,19 @@
             }
           ) policiesRules.resolveFamily
         );
+        # The exclude-family feed's names (#72) — the SAME identity/suffix mapping over the exclude feed.
+        excludeFamilyPolicyNames = builtins.listToAttrs (
+          map (
+            r:
+            let
+              m = builtins.match "(.*)#structural" r.identity;
+            in
+            {
+              name = if m == null then r.identity else builtins.head m;
+              value = true;
+            }
+          ) (policiesRules.excludeFamily or [ ])
+        );
         #
         # THE GUARD IS PER-ELEMENT AND LAZY: the check rides each structural declaration and fires ONLY
         # when that element is actually forced by a consumer (attr 6 `importEdgesOf`) — a node that never
@@ -230,7 +243,21 @@
         isMembershipDerived = (self.node id).parent != null;
         guardResolveFamily =
           a:
-          if !(declarations.isResolveFamily a) then
+          if declarations.isSuppress a then
+            # #72 — the exclude-family twin of the R2 guard. A `suppress` from a FEED policy is the benign
+            # double-fire ANYWHERE (the pre-pass consumed the root emission; a cell firing of the same
+            # value-conditional excluder is redundant — the root's suppression already covers descendants
+            # via inherited-context, v1's scope+ancestors consult). CEILING (corpus-zero, P2-caught): a
+            # feed policy whose gate opens at a CELL but NOT at that cell's root would under-suppress —
+            # the corpus's one excluder gates on `host.class`, identical at the root and its cells. A
+            # NON-feed `suppress` was never pre-pass-dispatched → LOUD (the silent-drop conversion).
+            (
+              if excludeFamilyPolicyNames ? ${a.__policy or "«anonymous»"} then
+                a
+              else
+                errors.excludeFamilyUntagged (a.__policy or "«anonymous»") id
+            )
+          else if !(declarations.isResolveFamily a) then
             a
           else if isMembershipDerived then
             errors.memberAtCell (a.__policy or "«anonymous»") id

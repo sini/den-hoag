@@ -31,6 +31,7 @@ let
       "enrich"
       "emit"
       "member"
+      "suppress"
     ];
     resolution = [
       "edge"
@@ -132,6 +133,23 @@ let
     "member"
   ];
   isResolveFamily = a: builtins.elem (kindOf a) resolveFamilyKinds;
+
+  # `suppress { name }` — structural: a SCOPE-LOCAL POLICY-SUPPRESSION fact (#72, the exclude family —
+  # candidate A, ledger u21). Names a policy (the v1 registry name) whose rules must NOT fire at the
+  # declaring scope or its descendants — v1's `policy.exclude <policy>` constraint (pin 11866c16
+  # fx/handlers/dispatch-policies.nix:15-33: a name-keyed `type="exclude"` entry at the emitting scope,
+  # consulted scope+ancestors — sibling-isolated, #613). INERT DATA like every declaration: the STAGED
+  # pre-pass (staged-resolution.nix) is its exactly-one consumer (the resolve-family discipline's twin);
+  # the main run's guard (attributes/structural.nix) passes a feed policy's benign double-fire and
+  # aborts an untagged one LOUD. `name` is a plain string (a policy name, not an entity — no A2 entry
+  # check; a non-string aborts at construction).
+  suppress =
+    { name }:
+    if !(builtins.isString name) then
+      throw "den-hoag: declare.suppress: `name` must be a policy-name string, got ${builtins.typeOf name}"
+    else
+      actions.suppress { inherit name; };
+  isSuppress = a: kindOf a == "suppress";
 
   # `configure { of, set }` — resolution: set values on a target entry.
   configure =
@@ -254,6 +272,8 @@ actions
     kindToStratum
     isSiteMarkData
     isResolveFamily
+    suppress
+    isSuppress
     resolveFamilyKinds
     isMemberWrapper
     importEdgesOf

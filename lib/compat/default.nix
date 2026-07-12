@@ -51,6 +51,9 @@ let
     # synthetic-keyed include policy whose source ref is a corpus resolve policy (else the pre-pass feed is
     # empty and the corpus resolve chain never fires).
     resolveFamilyNames = import ./resolve-family-names.nix;
+    # THE #72 EXCLUDE-FAMILY TAG SET (`den.excludeFamilyNames`) — the twin knob's single source
+    # (exclude-family-names.nix), shared with flake-module's excludeFamilyModule.
+    excludeFamilyNames = import ./exclude-family-names.nix;
   };
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).

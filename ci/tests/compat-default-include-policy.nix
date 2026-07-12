@@ -34,9 +34,11 @@ let
   # The corpus record shape (the bridge coercion of `den.policies.drop-user-to-host-on-droid`):
   # value-conditional on `host.class`, exclude-of-POLICY on the droid branch, `[ ]` otherwise. The
   # value-less stratum probe sees the enriched sentinel (`class = "«probe»"` ≠ "droid") → false branch.
+  # #72: the record carries the CORPUS name (∈ exclude-family-names.nix), so the staged pre-pass's
+  # exclude family dispatches it with real ctx — the suppression ROUTES (the class-B stub retired).
   dropRec = {
     __isPolicy = true;
-    name = "drop-on-droid";
+    name = "drop-user-to-host-on-droid";
     fn =
       { host, ... }:
       if host.class == "droid" then
@@ -55,7 +57,7 @@ let
   # REMOVED, so it fires solely via the `__default__policy__<i>` arm — board #57, ledger u3).
   decls = {
     aspects.batteryish.nixos.marker = 1;
-    policies.drop-on-droid = dropRec;
+    policies.drop-user-to-host-on-droid = dropRec;
     default.includes = [
       { name = "batteryish"; }
       dropRec
@@ -160,23 +162,24 @@ in
         userHasDefault = true;
       };
     };
-    # (5) CLASS-B DEFERRAL PIN (negative): at the droid host the inline-only record fires via THIS arm
-    #     alone and its exclude-of-POLICY emission hits the named `excludeOfPolicy` abort — class-B /
-    #     board #50, explicitly not this rung (never a silent drop, never a §2.2 abort).
-    test-droid-exclude-still-aborts = {
+    # (5) #72 SUPERSEDES the class-B deferral pin: the record's exclude-of-POLICY emission now ROUTES
+    #     through the staged pre-pass's exclude family (its corpus name is in the compat tag set), so the
+    #     droid host RESOLVES crash-free — the suppression of `target-route` is consumed, never dropped
+    #     (the untagged case stays LOUD — compat-exclude-family.test-untagged-excluder-aborts).
+    test-droid-exclude-routes = {
       expr = raOkAt droidFleet "host:d1";
-      expected = false;
+      expected = true;
     };
-    # (6) PER-CELL LAZINESS: in a MIXED fleet the nixos cell resolves even though its droid SIBLING's
-    #     dispatch aborts — the corpus probe shape (`nixosConfigurations` never forces slab's droid cell).
+    # (6) the MIXED fleet: both cells resolve (#72 — the droid sibling no longer aborts; the nixos cell
+    #     was already lazy past it).
     test-nixos-cell-lazy-past-droid-sibling = {
       expr = {
         nixosOk = raOkAt mixedFleet "host:h1";
-        droidAborts = !(raOkAt mixedFleet "host:d1");
+        droidResolves = raOkAt mixedFleet "host:d1";
       };
       expected = {
         nixosOk = true;
-        droidAborts = true;
+        droidResolves = true;
       };
     };
   };

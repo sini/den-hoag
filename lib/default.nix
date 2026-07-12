@@ -449,6 +449,16 @@ let
           description = "policy names concern-policies stamps `__resolveFamily = true` on, so the staged pre-pass dispatches them (R2). The declared tag a value-conditional resolve policy needs. Native default `[ ]`.";
         };
       };
+      # den.excludeFamilyNames (#72, candidate A) — the resolveFamilyNames twin for `suppress` emitters:
+      # policy names whose rules join the staged pre-pass's EXCLUDE-FAMILY feed (a value-conditional
+      # excluder probes empty, so the declared tag is its only path). Native default `[ ]`.
+      excludeFamilyNamesDecl = {
+        options.den.excludeFamilyNames = merge.mkOption {
+          type = merge.types.raw;
+          default = [ ];
+          description = "policy names concern-policies stamps `__excludeFamily = true` on, so the staged pre-pass dispatches them for suppression collection (#72). Native default `[ ]`.";
+        };
+      };
 
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
@@ -472,6 +482,7 @@ let
           channelGatherDecl
           probeSentinelDecl
           resolveFamilyNamesDecl
+          excludeFamilyNamesDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -537,6 +548,10 @@ let
         # only these keeps the pre-pass from running an arbitrary co-firing policy body at a root (which
         # could hit an uncatchable missing-attribute read). Empty for a resolve-free fleet → pre-pass inert.
         resolveRules = policiesRules.resolveFamily;
+        # The EXCLUDE-FAMILY feed (#72, candidate A): dispatched at the same roots/ctx for `suppress`
+        # collection — v1's policy.exclude constraint registration (pin fx/handlers/dispatch-policies
+        # .nix:15-33), rendered as pre-pass suppression sets. Empty for an exclude-free fleet → inert.
+        excludeRules = policiesRules.excludeFamily;
       };
       membershipTuples = ent.config.den.membership ++ prePass.tuples;
 
@@ -606,8 +621,23 @@ let
       # TARGET root's decls (the enriched-context/decls seam — the corpus's `resolve.to host { accessGroups }`
       # binds into the host SCOPE's ctx; inherited-context threads it to the host's cells, attr 1). A fleet
       # with no relations gives `relationBindings = { }`, so `scopeRoots` is byte-identical to base.
+      # …AND (#72) each pre-pass SUPPRESSION set folded onto its emitting root's decls as the reserved
+      # `__denSuppressedPolicies` ctx key: inherited-context threads it to the root's DESCENDANTS (attr 1
+      # strips only __edges/__containment/__coords), matching v1's scope+ancestors constraint consult
+      # (dispatch-policies.nix:15-33) — sibling-isolated (#613) because only the emitting root's decls
+      # carry it. The compiled-rule GATES read it (the shim-side fn wrap, `gateSuppression`);
+      # it is never a module binding read (gen-bind binds destructured args only) and never traced.
       scopeRoots = builtins.mapAttrs (
-        id: node: node // { decls = node.decls // (prePass.relationBindings.${id} or { }); }
+        id: node:
+        node
+        // {
+          decls =
+            node.decls
+            // (prePass.relationBindings.${id} or { })
+            // prelude.optionalAttrs (prePass.suppressions ? ${id}) {
+              __denSuppressedPolicies = prePass.suppressions.${id};
+            };
+        }
       ) baseScopeRoots;
 
       # The `children` NTA's fleet arm: a node spawns the cells of every family whose parent kind it is;
@@ -660,6 +690,7 @@ let
       # `resolveFamilyNames` (native default `[ ]`, R2) stamps the resolve-family tag on the named policies.
       policiesRules =
         concernPolicies.compileWith ent.config.den.probeSentinelFields ent.config.den.resolveFamilyNames
+          ent.config.den.excludeFamilyNames
           ent.config.den.policies;
 
       # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
@@ -1097,8 +1128,8 @@ in
     compilePolicies = concernPolicies.compile;
     # The probe-sentinel convenience (`compilePoliciesWith sentinelFields policies`) keeps its 2-arg shape —
     # the resolve-family tag set defaults to `[ ]` here (the R2 knob is a fleet-level `den.resolveFamilyNames`
-    # option, not a unit-suite concern). `compileWith` is the full 3-arg form default.nix threads.
-    compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ];
+    # option, not a unit-suite concern). `compileWith` is the full 4-arg form default.nix threads.
+    compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ] [ ];
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     inherit (concernAspects) classifyKey facets;

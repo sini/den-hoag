@@ -60,8 +60,13 @@ let
   #     A name NOT supplied that DOES emit member/relate at a root is caught LOUD by the R2 untagged guard
   #     (attributes/structural.nix attr 4 `resolveFamilyUntagged`) — the omission catch, never a silent drop.
   # `compile` = the defaults `{ }` / `[ ]`, byte-identical for every native caller.
+  # `excludeFamilyNames` (#72, candidate A — the resolveFamilyNames twin): names whose compiled rules
+  # join the EXCLUDE-FAMILY feed the staged pre-pass dispatches for `suppress` collection; a
+  # value-conditional excluder (the corpus's droid-gated route exclude) probes empty, so the DECLARED
+  # tag is its only path. An omitted name that DOES emit `suppress` in the main run is caught LOUD
+  # (attributes/structural.nix `excludeFamilyUntagged`).
   compileWith =
-    sentinelFields: resolveFamilyNames: policies:
+    sentinelFields: resolveFamilyNames: excludeFamilyNames: policies:
     let
       # A universal entry stand-in: passes requireEntry (has id_hash) so probing a policy that forwards ctx
       # entries into constructors succeeds without touching any real registry. `sentinelFields` enriches it
@@ -206,6 +211,8 @@ let
           # `resolveFamilyNames` set (the shim's corpus tag set — a v1 body carries no den-hoag tag). Either
           # marks a value-conditional resolve policy the pre-pass must dispatch (member/relate cannot be probed).
           explicitRF = (v.__resolveFamily or false) || builtins.elem name resolveFamilyNames;
+          # DECLARED exclude-family (#72) — the R2 pattern's twin for `suppress` emitters.
+          explicitEF = (v.__excludeFamily or false) || builtins.elem name excludeFamilyNames;
           expanded = probeActs == [ ];
           baseRules =
             if expanded then
@@ -223,6 +230,14 @@ let
               explicitRF && r.group == "structural"
             else
               explicitRF || prelude.any declare.isResolveFamily probeActs;
+          # DETECTED (probe emitted a suppress) OR DECLARED — the exclude-family twin (`suppress` is a
+          # structural kind, so an expansion policy's structural sub-rule bears the tag).
+          efOf =
+            r:
+            if expanded then
+              explicitEF && r.group == "structural"
+            else
+              explicitEF || prelude.any declare.isSuppress probeActs;
         in
         map (
           r:
@@ -230,6 +245,7 @@ let
           // firesAt
           // {
             __resolveFamily = rfOf r;
+            __excludeFamily = efOf r;
           }
         ) baseRules;
 
@@ -240,6 +256,7 @@ let
           "__isEnrich"
           "__pipeOps"
           "__resolveFamily"
+          "__excludeFamily"
         ];
     in
     {
@@ -252,6 +269,12 @@ let
       # with no resolve policies (the corpus at R1) → the pre-pass is inert, the fleet byte-identical.
       resolveFamily = map strip (
         builtins.filter (r: (r.__resolveFamily or false) && r.group == "structural") rules
+      );
+      # The EXCLUDE-FAMILY feed (#72, candidate A): the structural-group rules that can emit `suppress`
+      # — detected (probe) or declared (`__excludeFamily` / `den.excludeFamilyNames`). The staged
+      # pre-pass dispatches ONLY these for suppression collection; empty for an exclude-free fleet.
+      excludeFamily = map strip (
+        builtins.filter (r: (r.__excludeFamily or false) && r.group == "structural") rules
       );
       # The fleet-wide pipe operator declarations (collection stratum) — den-hoag threads their
       # `derived` channels + routes into the ONE gen-pipe compose (default.nix `policyOps`). Only
@@ -268,6 +291,6 @@ in
   # Default sentinel (the universal `{ id_hash; name }`) + no resolve-family tags — byte-identical to the
   # pre-configurable behavior for every existing caller (native fleets, the unit suites driving
   # `internal.compilePolicies`); a native fleet's resolve-family policies are DETECTED, not tagged.
-  compile = compileWith { } [ ];
+  compile = compileWith { } [ ] [ ];
   inherit compileWith;
 }
