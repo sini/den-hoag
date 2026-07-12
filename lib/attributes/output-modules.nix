@@ -33,10 +33,12 @@
 # fleet ⇒ byte-identical to the pre-A11 fold (the append is `++ [ ]`).
 #
 # NO EFFECT RUNTIME: every body is field renames + attrset assembly + exactly one gen-edge call per
-# algorithm (edgesFor/toposort/project/materialize) — Law A1. Deps: prelude, edge (the fold),
-# bind (the config-thunk adaptation), classShare (the A10 gen-class tier-2 build path).
+# algorithm (edgesFor/toposort/project/materialize) — Law A1. Deps: prelude, scope (the descendants
+# id-spine walk for the #62c delivery-edge subtree), edge (the fold), bind (the config-thunk adaptation),
+# classShare (the A10 gen-class tier-2 build path).
 {
   prelude,
+  scope,
   edge,
   bind,
   merge,
@@ -132,8 +134,14 @@ let
   #
   # Source arm mirrors v1: a class source collects the `from` class at the firing scope; a MODULE source
   # (provide) collects the TARGET class (edges/provides.nix:121 — the provided module rides the target
-  # scope's own bucket). `members = [ id ]` is the own-scope collection (v1 simple-route default;
-  # collectSubtree is Task 5).
+  # scope's own bucket). SUBTREE COLLECTION (#62c, the flagged Task 5): `members = [ id ] ++ scope.descendants
+  # result id` — a host-fired forward/route edge gathers the firing scope's class content AND its descendant
+  # cells' (the home-manager.users half: a user cell's home-manager content, delivered at the host terminal).
+  # gen-edge isolates each cell as its own edge-root (`isolatedAt`), so this explicit member list is how the
+  # collected source reaches ACROSS those isolated roots — the members are named, not walked by the per-root
+  # subtree fold. `descendants` is the lazy id-spine walk (self-EXCLUDING; `[ id ] ++ descendants` = the
+  # subtree, self first — A17: ids only, never a descendant's forced content). A leaf-scope or childless
+  # firing node has an empty descendant set ⇒ `[ id ]`, byte-identical to the pre-#62c own-scope collection.
   #
   # GUARD / ADAPTARGS are EVAL-TIME transforms, NOT fold content-transforms (C7.5). v1 applies them at
   # module assembly: `guardModule` gates config via `optionalAttrs (guard args)` and `adaptArgs` rewrites
@@ -163,7 +171,9 @@ let
           source = edge.sources.collected {
             scope = id;
             class = (if d.module != null then d.targetClass else d.sourceClass).name;
-            members = [ id ];
+            # #62c — the firing scope PLUS its descendant cells (Task 5): the host-fired route gathers the
+            # user cells' class content (self first, lazy ids; empty descendant set ⇒ own-scope, unchanged).
+            members = [ id ] ++ scope.descendants result id;
           };
           target = edge.targets.root {
             root = id;

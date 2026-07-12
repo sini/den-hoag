@@ -77,6 +77,7 @@ let
   outputModules = import ./output-modules.nix {
     inherit
       prelude
+      scope
       edge
       bind
       merge
