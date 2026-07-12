@@ -191,6 +191,39 @@ in
               rawOptionsOf =
                 kindName:
                 lib.foldl' (acc: d: lib.recursiveUpdate acc ((d.${kindName} or { }).options or { })) { } schemaDefs;
+              # The kind-decls' raw SHORTHAND-CONFIG modules (#68, the hm-gate wire). gen-schema's own kind
+              # merge strips the COLLECTION keys and deferredModule-merges the REST of each def
+              # (entry-type.nix `strippedDefs`) — a kind-decl field that is neither a collection nor
+              # `imports`/`options` is SHORTHAND INSTANCE CONFIG. v1 semantics on the corpus: `den.schema
+              # .user.classes = mkDefault [ "homeManager" ]` (users.nix:103) becomes a `config.classes`
+              # DEFINITION in every user-kind instance eval — the corpus registry imports the kind value
+              # (users.nix:45 `imports = [ den.schema.user ]`) and that definition beats its own
+              # `default = [ "user" ]`, which is how v1's humans carry the homeManager class the hm
+              # battery gates on. The belt's rebuilt `__functor` carried only `imports`/`options` and
+              # DROPPED the shorthand config, so the shim's registry evaluated `classes = [ "user" ]` and
+              # the hm forward stayed dropped (ledger u18 Family A's second link). Reproduce gen-schema's
+              # strippedDefs: per def, the kind's value minus the collection keys (v1's collection set at
+              # the pin — modules/options.nix:73-89 includes/excludes/isEntity/isolated, plus gen-schema's
+              # built-ins methods/validators/parent) and minus the imports/options the belt already
+              # carries; each surviving non-empty rest is ONE shorthand config module (per-def, so a def's
+              # own mkDefault/mkForce priorities ride intact). Corpus census (b0b20769): exactly ONE such
+              # field fleet-wide (user.classes) — the wire is surgical.
+              schemaCollectionKeys = [
+                "includes"
+                "excludes"
+                "isEntity"
+                "isolated"
+                "methods"
+                "validators"
+                "parent"
+                "imports"
+                "options"
+              ];
+              rawConfigModulesOf =
+                kindName:
+                builtins.filter (m: m != { }) (
+                  map (d: builtins.removeAttrs (d.${kindName} or { }) schemaCollectionKeys) schemaDefs
+                );
               # BASE (both paths): re-add `isEntity`, which mkSchemaOption drops — it is part of den's schema
               # shape, NOT belt scaffolding, so it rides the SEVERED processed path too (same-contract). The
               # corpus's mkInstanceRegistry does not read it (e789c334 instance.nix), so retiring the seam keeps it.
@@ -224,6 +257,9 @@ in
                   __functor = _self: _args: {
                     imports =
                       rawImportsOf kindName
+                      # the kind-decls' shorthand-config modules (#68 — see rawConfigModulesOf): gen-schema's
+                      # own strippedDefs deferredModule half, dropped by the original belt rebuild.
+                      ++ rawConfigModulesOf kindName
                       ++ lib.optional (methods != { }) (schema._internal.mkMethodsModule kindName methods);
                     options = rawOptionsOf kindName;
                   };

@@ -361,6 +361,41 @@ let
         )
       ];
     }).config.flake;
+
+  # ── #68: the schema belt carries the kind-decls' SHORTHAND CONFIG (the hm gate). The corpus's
+  #    `den.schema.user.classes = mkDefault [ "homeManager" ]` (users.nix:103) must become a
+  #    `config.classes` DEFINITION when the corpus registry imports the kind value (users.nix:45
+  #    `imports = [ den.schema.user ]`), beating the registry option's own `default = [ "user" ]` —
+  #    gen-schema's strippedDefs semantics (entry-type.nix), dropped by the original belt rebuild
+  #    (bridge.nix `rawConfigModulesOf`). The witness imports the emitted kind value into a
+  #    registry-shaped instance eval exactly as the corpus does. ──
+  schemaShorthandDen =
+    (lib.evalModules {
+      modules = [
+        flakeStub
+        bridge
+        {
+          den.hosts.x86_64-linux.igloo = { };
+          den.schema.user.isEntity = true;
+          den.schema.user.classes = lib.mkDefault [ "homeManager" ];
+        }
+      ];
+    }).config.den;
+  registryInstanceClasses =
+    kindValue:
+    (lib.evalModules {
+      modules = [
+        {
+          freeformType = lib.types.lazyAttrsOf lib.types.raw;
+          imports = [ kindValue ]; # the corpus registryUserType shape (users.nix:41-46)
+          options.classes = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ "user" ]; # the corpus registry default the shorthand def must BEAT
+          };
+          config._module.args.user = { };
+        }
+      ];
+    }).config.classes;
 in
 {
   flake.tests.compat-bridge = {
@@ -618,6 +653,16 @@ in
         hostName = "igloo";
         ports = [ 7654 ];
       };
+    };
+
+    # ── #68: the schema belt's shorthand-config carry (the hm gate — see the fixture header above).
+    #    The kind-decl's `classes = mkDefault [ "homeManager" ]` rides the emitted kind value as a
+    #    config DEFINITION, so a corpus-shaped registry instance importing it evaluates
+    #    `classes = [ "homeManager" ]` — beating its own `default = [ "user" ]` (v1's gen-schema
+    #    strippedDefs semantics; the value the hm-user-detect gate reads). ──
+    test-schema-shorthand-config-rides-kind-value = {
+      expr = registryInstanceClasses schemaShorthandDen.schema.user;
+      expected = [ "homeManager" ];
     };
   };
 }
