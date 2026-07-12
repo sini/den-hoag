@@ -134,6 +134,17 @@ in
     kind:
     fail "resolve arm (R2)" "`resolve.to \"${kind}\" { … }` names a kind absent from the ingested containment schema (`ing.schema`) — a resolve target must be a declared kind (a cell kind → a member tuple, or a root kind → a containment member). Declare `den.schema.${kind}` (with its `parent`), or fix the target-kind spelling";
 
+  # ASPECT-INCLUDE POLICY-RECORD DIVERSION (#65, ledger u16) — a `{ __isPolicy }` record in an aspect
+  # `.includes` diverts to its compiled `__aspectInclude__<name>` rule (v1 children.nix:70-72
+  # register-aspect-policy parity; compile.nix `aspectIncludePolicies` + the `keepInclude` filter). A
+  # record reaching `normalizeList` that the static collection walk did NOT see (a runtime-CONSTRUCTED
+  # record from outside the walked `den.aspects`/`den.default.includes` trees — corpus-zero) has no
+  # compiled rule: stripping it would silently DROP a policy (banned), grounding it would abort on its
+  # `fn` key (misleading). Name it here instead.
+  unregisteredPolicyInclude =
+    name:
+    fail "aspect-include policy record (#65)" "a `{ __isPolicy }` include record `${name}` reached include-normalization without a compiled `__aspectInclude__` rule — it was not found by the static collection walk over `den.aspects`/`den.default.includes` (a runtime-constructed or out-of-tree record; a NAMELESS record is a v1 authoring error too — v1's register-aspect-policy requires `name`, children.nix:57). Author the record in the registry aspect tree it fires from, or extend the walk to its surface";
+
   # PARAMETRIC-ASPECT RESULT (R14, the bare-fn kind-include arm) — a bare-fn include (`den.schema.<kind>.
   # includes = [ ({ … }: <body>) ]`, or a nested bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose
   # `__fn` RESULT is type-dispatched exactly as v1 `mkParametricNext` (aspect.nix:53-93): an ATTRSET is aspect

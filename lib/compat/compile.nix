@@ -262,7 +262,7 @@ let
   # hmContext, and via den.default radiation hostname/inputs'/… ). We thread a per-position NAME PATH
   # (owning-aspect prefix + list index, recursively) so every wrap has a DISTINCT, traceable key.
   mkNormalize =
-    classNames: quirkNames:
+    classNames: quirkNames: divertedPolicyNames:
     let
       # den-hoag's built-in class set PLUS the fleet's declared classes (`den.classes`), enough to route a
       # battery fn's class content (nixos/darwin/home-manager/wsl/…) at class-A.
@@ -272,13 +272,43 @@ let
       # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
       # registry-side instance; see `groundRec` for why the include path needs its own split.
       isNested = mkIsNestedAspectKey classNames quirkNames;
+      # ── ASPECT-INCLUDE POLICY-RECORD DIVERSION (#65, ledger u16 — v1 children.nix:70-72 parity). ──
+      # v1 `processInclude`'s FIRST arm routes ANY `{ __isPolicy }` include to `register-aspect-policy`,
+      # never the aspect walk (pin 11866c16 aspect/children.nix:70-72) — at EVERY resolution path
+      # (registry record, emitted value, parametric result). The shim twin: a policy record in an aspect
+      # `.includes` is FILTERED out of the walk here (pre-#65 it fell to `groundRec` and its `fn` key
+      # aborted at §2.2 — the ledger-u15 frontier, corpus users/sini.nix:4 → the host-aspects battery) and
+      # fires via its compiled `__aspectInclude__<name>` rule instead (`aspectIncludePolicies` — collected
+      # by the STATIC walk over the SAME `den.aspects`/`den.default.includes` trees every arrival path
+      # re-reads; the walk seeds `divertedPolicyNames`). A record the walk did NOT collect (a
+      # runtime-CONSTRUCTED record reaching normalize from outside those trees — corpus-zero) aborts
+      # NAMED: stripping it would silently drop a policy (banned), grounding it would abort on `fn`
+      # (misleading). NAME-keyed like v1's own registry (`scopedAspectPolicies.${name}`,
+      # handlers/policy.nix:17; per-name fire dedup, dispatch.nix:54) — a nameless record is a v1
+      # authoring error there too (`inherit (p) name` throws) and aborts named here.
+      isPolicyRecord =
+        ref: builtins.isAttrs ref && ((ref.__isPolicy or false) || (ref.__denCanTake or null) != null);
+      keepInclude =
+        ref:
+        if !(isPolicyRecord ref) then
+          true
+        else if divertedPolicyNames ? ${ref.name or "<unnamed>"} then
+          false # diverted — compiled at the aspect-include grain, never aspect content
+        else
+          errors.unregisteredPolicyInclude (ref.name or "<unnamed>");
       # Normalize a `.includes` list, naming each element by its POSITION under `prefix` (distinct keys).
       # The name is built by CONCATENATION (`prefix + ":" + toString i`), NOT by interpolating two values
       # around a colon — that interpolation idiom is the shim's `kind:name` scope-string form, which the
       # compat-identity-boundary lint bans in the core by a blunt byte-match (this is an aspect-include
       # NAME, never a scope-string, but concatenation keeps the core lint-clean regardless).
+      # Policy records are filtered BEFORE positional naming — a record-free list keeps today's names
+      # byte-stable; a record-carrying list previously ABORTED at expansion, so its post-filter shift has
+      # no baseline to drift from.
       normalizeList =
-        prefix: refs: prelude.imap0 (i: ref: normalize (prefix + ":" + toString i) ref) refs;
+        prefix: refs:
+        prelude.imap0 (i: ref: normalize (prefix + ":" + toString i) ref) (
+          builtins.filter keepInclude refs
+        );
       # STATIC-INCLUDE IDENTITY (board #58 — the "<anon>"-collapse fix, the STATIC twin of the DISTINCT
       # WRAP NAMES fix above). That fix gave the FN arm per-position `meta.loc` keys; the static arm
       # stayed nameless, so every navigated static include keyed `"<anon>"` (gen-aspects `aspectPath`),
@@ -359,15 +389,18 @@ let
           aspects.wrapFn wrapCnf (ref.name or name) (callGated name ref.__fn)
         else if builtins.isAttrs ref && !(ref ? id_hash) then
           # A STATIC aspect attrset (inline content / a `{ name }` reference): GROUND its class keys and
-          # recurse its includes. A `{ __isPolicy; fn }` policy record must NEVER reach here — an include
-          # arm partitions it out at its own grain BEFORE normalize (a `den.schema.<kind>.includes` record
-          # via `isPolicyRef` → `kindIncludePolicies`; a `den.default.includes` record via
-          # `defaultPolicyRefs` → `defaultIncludePolicies`), mirroring v1 (children.nix:70-72:
-          # `processInclude`'s FIRST arm routes an `__isPolicy` include to `register-aspect-policy`, never
-          # the aspect walk). A record arriving HERE (nested in a NON-default aspect's `.includes`,
-          # corpus-zero) grounds to content whose `fn` key aborts at the §2.2 three-branch dispatch —
-          # self-announcing, never a silent drop. An id_hash-bearing entry is already a resolved record —
-          # pass it (and strings) through the `else`.
+          # recurse its includes. A `{ __isPolicy; fn }` policy record NEVER reaches here — every include
+          # arm diverts it at its own grain, mirroring v1 (children.nix:70-72: `processInclude`'s FIRST arm
+          # routes an `__isPolicy` include to `register-aspect-policy`, never the aspect walk): a
+          # `den.schema.<kind>.includes` record via `isPolicyRef` → `kindIncludePolicies`; a
+          # `den.default.includes` record via `defaultPolicyRefs` → `defaultIncludePolicies`; a record
+          # nested in a REGULAR aspect's `.includes` via `keepInclude` above (#65, ledger u16 — the
+          # `normalizeList` filter + the `aspectIncludePolicies` static walk; the old "corpus-zero" claim
+          # for this grain was FALSIFIED by corpus users/sini.nix:4 → the host-aspects battery, u15). A
+          # MALFORMED fn-bearing attrset that is NOT a policy record (no `__isPolicy`/`__denCanTake` —
+          # e.g. `{ name; fn; }`) still grounds here and its `fn` key aborts at the §2.2 three-branch
+          # dispatch — self-announcing, never a silent drop. An id_hash-bearing entry is already a
+          # resolved record — pass it (and strings) through the `else`.
           groundRec name (stampIdentity name ref)
         else
           ref;
@@ -891,7 +924,9 @@ let
   # key routes as CLASS content, not a nested aspect (Fork A). `v1Classes` is fleet-scoped, so this must
   # live in the function body (where the decls are), not at top level.
   allClassNames = builtinClasses ++ builtins.attrNames v1Classes;
-  normalizeList = mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { }));
+  normalizeList = mkNormalize allClassNames (builtins.attrNames (
+    v1Decls.quirks or { }
+  )) aspectIncludeDivertedNames;
   # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
   # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
   isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
@@ -973,6 +1008,137 @@ let
         # riding `den.default.includes` would key synthetically too, so it needs the same source-ref stamp.
         // resolveFamilyStamp ref;
     }) defaultPolicyRefs
+  );
+
+  # ── Aspect-include POLICY-RECORD arm, the REGULAR-ASPECT grain (#65, ledger u16 — v1 children.nix:70-72
+  # parity, the THIRD and last include grain). v1 routes a `{ __isPolicy }` include to
+  # `register-aspect-policy` at ANY walk depth (pin 11866c16 aspect/children.nix:70-72), registering it
+  # NAME-keyed at the walking scope (handlers/policy.nix:8-20 `scopedAspectPolicies.${name}`) and firing it
+  # there gated on the fn's REQUIRED formals (`resolveArgsSatisfied`, synthesize-policies.nix:7-16;
+  # per-name fire dedup, policy/dispatch.nix:54). The two grains above cover `den.schema.<kind>.includes`
+  # and TOP-LEVEL `den.default.includes` records; a record NESTED in a regular aspect's `.includes`
+  # (corpus: `den.aspects.sini.includes = [ den.batteries.host-aspects ]`, users/sini.nix:4 — the
+  # battery's `includes = [ { __isPolicy; name = "host-aspects-project"; fn; } ]`, the compat battery
+  # faithful to v1 batteries/host-aspects.nix) previously fell to `groundRec` and aborted §2.2 on `fn`
+  # (ledger u15).
+  #
+  # THE WALK: a STATIC collection over the surfaces every arrival path re-reads — the `den.aspects`
+  # registry trees (the translateAspect path AND the dispatch-emitted path, which re-reads the SAME
+  # annotated tree off `_module.args.den`, ledger r) and the `__default` non-policy includes. Per value:
+  # its `.includes` list elements (a policy record collects; an attrset recurses — the battery nesting)
+  # and its nested/namespace attrset children (the annotate-walk guard: non-`__`, non-structural,
+  # non-class, non-quirk — `den.aspects.<host>.<user>` sub-aspects, `core.systemd` namespace nodes).
+  # SEEN-set on element NAMES breaks reference cycles (a.includes=[b], b.includes=[a] — v1's own walk
+  # dedups by identity.key the same way); the final per-NAME dedup mirrors v1's name-keyed registry (two
+  # DISTINCT same-named records at different aspects would collapse — v1 registers both at their
+  # respective scopes; corpus-one-record, a named ceiling). FORCING: attrset WHNF + includes list spines
+  # of authored static data — the same grain annotate/translateAspect already force; never a fn call or
+  # module body.
+  #
+  # THE RULES: each record compiles via the SAME `compilePolicy` as the sibling grains, named
+  # `__aspectInclude__<name>` (the reserved `__` namespace — collision-free vs user policies, and
+  # name-stable because the collection dedups by name). Gate = `compilePolicy`'s own
+  # `__condition = functionArgs (innerFn record)` — v1's `resolveArgsSatisfied` REQUIRED-formals presence
+  # gate verbatim (host-aspects-project's `{ host, user, ... }` fires at (user,host) cells). NO
+  # `__firesAtKinds`: the attachment scope set of a regular aspect is DYNAMIC (the corpus attaches
+  # `sini` via the dispatch-emitted user-aspect-auto-include), so no static kind confinement exists —
+  # the formals gate is the confinement. CEILING vs v1 (documented, P2-checked): v1 fires ONLY at scopes
+  # whose walk REGISTERED the record (aspect-attachment-local); the shim rule fires at EVERY
+  # formals-satisfying node (e.g. all user cells, not just the including user's). For the corpus's one
+  # record the over-fire emits `policy.spawn { classes }` → `declare.spawn` — childless-inert
+  # (fleetChildren is membership-driven, structural.nix children; the u4 parked-spawn posture), so the
+  # delta is P2-invisible; a future content-emitting record at this grain re-opens the scope-local
+  # question (board #57's general mechanism).
+  aspectIncludeRecords =
+    let
+      classSet = prelude.genAttrs allClassNames (_: true);
+      quirkSet = prelude.genAttrs (builtins.attrNames (v1Decls.quirks or { })) (_: true);
+      walkableChild =
+        v: k:
+        !(prelude.hasPrefix "__" k)
+        && !(v1StructuralKeysSet ? ${k})
+        && !(classSet ? ${v1ClassKeyMap.${k} or k})
+        && !(quirkSet ? ${k})
+        && builtins.isAttrs v.${k};
+      # seen-set identity: the value's `name`, else its `__provider` path (the annotate walk stamps every
+      # navigated registry value — top-level and nested — so a nameless registry aspect still cycle-breaks;
+      # an inline anonymous literal has neither and terminates by structure, finite authored data).
+      idOf =
+        v:
+        if (v.name or null) != null then
+          v.name
+        else if builtins.isList (v.__provider or null) then
+          "provider:" + builtins.concatStringsSep "." v.__provider
+        else
+          null;
+      go =
+        acc: v:
+        if !(builtins.isAttrs v) then
+          acc
+        else if idOf v != null && acc.seen ? ${idOf v} then
+          acc
+        else
+          let
+            seen' = if idOf v == null then acc.seen else acc.seen // { ${idOf v} = true; };
+            incs =
+              let
+                i = v.includes or null;
+              in
+              if builtins.isList i then i else [ ];
+            afterIncs = prelude.foldl' (
+              a: x:
+              if isPolicyRef x then
+                a
+                // {
+                  recs = a.recs ++ [ x ];
+                }
+              else
+                go a x
+            ) (acc // { seen = seen'; }) incs;
+          in
+          prelude.foldl' (a: k: go a v.${k}) afterIncs (
+            builtins.filter (walkableChild v) (builtins.attrNames v)
+          );
+      walked = prelude.foldl' go {
+        recs = [ ];
+        seen = { };
+      } (builtins.attrValues v1Aspects ++ [ defaultNonPolicyDecl ]);
+      # per-NAME dedup (first occurrence wins — deterministic: attrNames order + list order), v1's
+      # name-keyed registry posture. A nameless record never collects (it aborts named at the
+      # normalizeList filter — v1's own `inherit (p) name` would throw there too).
+      dedup =
+        prelude.foldl'
+          (
+            a: r:
+            let
+              n = r.name or null;
+            in
+            if n == null || a.seen ? ${n} then
+              a
+            else
+              {
+                recs = a.recs ++ [ r ];
+                seen = a.seen // {
+                  ${n} = true;
+                };
+              }
+          )
+          {
+            recs = [ ];
+            seen = { };
+          }
+          walked.recs;
+    in
+    dedup.recs;
+  aspectIncludeDivertedNames = prelude.genAttrs (map (r: r.name) aspectIncludeRecords) (_: true);
+  aspectIncludePolicies = builtins.listToAttrs (
+    map (ref: {
+      name = "__aspectInclude__${ref.name}";
+      # `compilePolicy`'s own gate (the record fn's formals = v1's required-coord presence gate) — no
+      # kind-coord union, no __firesAtKinds (see the grain header). R2 tag propagation for parity with
+      # the sibling grains (corpus-zero here).
+      value = compilePolicy ing normalizeList aspectRec ref // resolveFamilyStamp ref;
+    }) aspectIncludeRecords
   );
 
   defaultAspects =
@@ -1221,8 +1387,10 @@ let
   # its `__kindInclude__<kind>__policy__<i>` / `__default__policy__<i>` arm ALONE, which `__firesAtKinds`
   # confines to owner-kind nodes (Part 2). INVARIANT: an include-referenced policy fires via EXACTLY its
   # include arms. The removal set covers every arm-creating path — `expandRefs` (which hoists inline-aspect
-  # `.includes`) over every kind's raw includes, plus the default includes — via the SAME `isPolicyRef`
-  # filter each arm builder uses, so the arm set and the removal set coincide. A policy `.name` is its
+  # `.includes`) over every kind's raw includes, plus the default includes, plus the aspect-include records
+  # (`aspectIncludeRecords`, the #65 regular-aspect grain — a `den.policies` record nested in a regular
+  # aspect's `.includes` fires via its `__aspectInclude__<name>` arm alone, corpus-zero) — via the SAME
+  # `isPolicyRef` filter each arm builder uses, so the arm set and the removal set coincide. A policy `.name` is its
   # `den.policies` KEY (the bridge coercion, policy-type.nix); a reference-only inline record (no
   # `den.policies.<name>`) yields a name `removeAttrs` no-ops on. The SHIM-SYNTHETIC globals (builtins.nix:
   # fleet-context-enrich, user-to-host, host-to-users) are NOT include-referenced, so they SURVIVE as
@@ -1241,12 +1409,15 @@ let
         kind: builtins.filter isPolicyRef (expandRefs ing.kindIncludes.${kind})
       ) (builtins.attrNames ing.kindIncludes);
     in
-    builtins.filter (n: n != null) (map (r: r.name or null) (kindPolicyRefs ++ defaultPolicyRefs));
+    builtins.filter (n: n != null) (
+      map (r: r.name or null) (kindPolicyRefs ++ defaultPolicyRefs ++ aspectIncludeRecords)
+    );
   policies =
     (builtins.removeAttrs compiledPolicies.policies includeReferencedNames)
     // defaultPolicy
     // kindIncludePolicies
-    // defaultIncludePolicies;
+    // defaultIncludePolicies
+    // aspectIncludePolicies;
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
   # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys
