@@ -333,13 +333,47 @@ let
         host = entityStamps.hosts or { };
       }
       // prelude.genAttrs customKinds (k: entityStamps.${instanceKeyMap.${k}} or { });
+      # ── #70: the RAW-FIELD side channel (`den._entityRawStamps`, bridge.nix) — the stamp-EXCLUDED
+      # fields (raw/deferredModule/anything-class — instantiate, home-manager.module, microvm.guests),
+      # carried LAZILY onto the ctx entity. The structural exclusion's reason STANDS (those values must
+      # never enter deepSeq'd resolution state — registry.nix), and the safe stamp is UNCHANGED; but v1
+      # binds the FULL merged host config as the ctx entity (pin assemble-pipes.nix:154), so corpus
+      # policy/channel bodies READ these fields (`host.microvm.guests`, microvm-guests.nix:38-59 — the
+      # u19 frontier: the U9.2 cross-host gather forces sibling emissions, v1-faithfully). The overlay
+      # is one un-forced thunk per field (stampOf's per-field lazy read, bridge-side), forced ONLY when
+      # a body reads the field — the resolution spine never walks it. ──────────────────────────────────
+      rawEntityStamps = v1Decls._entityRawStamps or { };
+      rawStampsByKind = {
+        host = rawEntityStamps.hosts or { };
+      }
+      // prelude.genAttrs customKinds (k: rawEntityStamps.${instanceKeyMap.${k}} or { });
+      # Lazy deep-union of a safe stamp with its raw twin. The two trees' LEAF sets are disjoint by
+      # construction (a field is an option in exactly one tree — registry.nix mkStampTree), so only
+      # GROUPS collide (the corpus `microvm`: safe passthrough/sharedNixStore + raw guests) — the
+      # `a ? k` branch therefore only ever recurses group-into-group (cheap WHNF attrsets built over
+      # the static trees), never forcing a leaf thunk (a raw leaf under a fresh key is taken AS-IS,
+      # short-circuited before any isAttrs force).
+      deepUnionStamps =
+        a: b:
+        a
+        // builtins.mapAttrs (
+          k: v: if a ? ${k} && builtins.isAttrs v then deepUnionStamps a.${k} v else v
+        ) b;
+      withRawStamp =
+        kind: name: base:
+        deepUnionStamps base ((rawStampsByKind.${kind} or { }).${name} or { });
       # The per-kind stamped FIELD-NAME set (uniform across a kind's entities — the bridge stamps every
       # entity from ONE inclusion tree; union for safety): declared as raw+null kind options below so
       # the instanceConfig stamp (flake-module.nix) is legal on the strict den-hoag kind. Same raw+null
       # shape as the structural class/system/hostName options, so entity identity stays name-derived
       # (unperturbed — the established precedent).
       stampFieldNamesByKind = builtins.mapAttrs (
-        _: stamps: prelude.unique (prelude.concatMap builtins.attrNames (builtins.attrValues stamps))
+        kind: stamps:
+        prelude.unique (
+          prelude.concatMap builtins.attrNames (
+            builtins.attrValues stamps ++ builtins.attrValues (rawStampsByKind.${kind} or { })
+          )
+        )
       ) stampsByKind;
       schemaDecls = builtins.mapAttrs (
         kind: decl:
@@ -620,15 +654,19 @@ let
       entityFields = {
         host = builtins.mapAttrs (
           name: h:
-          {
-            class = classOfHost h;
-            system = h.system or null;
-            hostName = h.hostName or name;
-          }
-          // (stampsByKind.host.${name} or { })
+          withRawStamp "host" name (
+            {
+              class = classOfHost h;
+              system = h.system or null;
+              hostName = h.hostName or name;
+            }
+            // (stampsByKind.host.${name} or { })
+          )
         ) flatHosts;
       }
-      // prelude.genAttrs customKinds (k: stampsByKind.${k});
+      // prelude.genAttrs customKinds (
+        k: builtins.mapAttrs (name: st: withRawStamp k name st) stampsByKind.${k}
+      );
 
       # The class registry `resolveClass` closes over: den-hoag's built-ins ∪ every v1-declared class.
       declaredClassNames = builtins.attrNames (v1Decls.classes or { });

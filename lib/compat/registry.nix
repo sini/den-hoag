@@ -197,8 +197,15 @@ let
   # (`_module`) at every level, and the gen-schema IDENTITY pair `name`/`id_hash` at the TOP level —
   # the den-hoag registry OWNS entity identity (its mkInstanceRegistry declares both on every
   # instance), so identity is never stamped (an identity convention, not a field census).
-  stampTreeOf =
-    options:
+  # `mkStampTree keepLeaf` — the shared walk; `keepLeaf` decides which OPTION leaves ride. Two
+  # instances: the deepSeq-safe stamp (`stampTreeOf`, leaves NOT excludedType — the original law,
+  # unchanged) and its RAW DUAL (`rawStampTreeOf`, #70 — EXACTLY the excluded leaves). A name is
+  # either an option (a leaf, in exactly ONE tree) or a group (walked by both), so the two trees'
+  # LEAF sets are disjoint by construction and only GROUPS can collide (the corpus `microvm`: safe
+  # children passthrough/sharedNixStore, raw child guests) — the property ingest's lazy deep-union
+  # overlay relies on (ingest.nix `deepUnionStamps`).
+  mkStampTree =
+    keepLeaf: options:
     let
       isOption = v: builtins.isAttrs v && (v._type or null) == "option";
       walk =
@@ -213,7 +220,7 @@ let
               v = opts.${n};
             in
             if isOption v then
-              (if excludedType (v.type or { }) then { } else { ${n} = true; })
+              (if keepLeaf v then { ${n} = true; } else { })
             else if builtins.isAttrs v then
               (
                 let
@@ -227,6 +234,20 @@ let
         builtins.foldl' (acc: n: acc // classify n) { } names;
     in
     walk true options;
+
+  stampTreeOf = mkStampTree (v: !excludedType (v.type or { }));
+
+  # The RAW-FIELD tree (#70, ledger u19's next-link): exactly the leaves `stampTreeOf` EXCLUDES.
+  # The exclusion's reason STANDS — raw/deferredModule/anything-class values must never enter
+  # deepSeq'd resolution state (the original rationale above) — but v1 binds the FULL merged host
+  # config as the ctx entity (pin 11866c16 assemble-pipes.nix:154), so corpus policy/channel bodies
+  # READ these fields (`host.microvm.guests`, microvm-guests.nix:38-59 — the u19 frontier: the U9.2
+  # cross-host gather forces sibling emissions, v1-faithfully). They therefore ride a SEPARATE
+  # side channel (`_entityRawStamps`, bridge.nix — the instantiateFor/hmModuleFor compile-side
+  # side-map grain, generalized) and are overlaid LAZILY onto the ctx entity at ingest
+  # (`entityFields`): one un-forced thunk per field (`stampOf`'s read is already per-field lazy),
+  # forced ONLY when a body reads the field — never by the resolution spine.
+  rawStampTreeOf = mkStampTree (v: excludedType (v.type or { }));
 
   # The stamped ctx-entity record for ONE registry entry: the entry's MERGED config values at the
   # inclusion tree's leaves, read LAZILY (one thunk per field — nothing is forced here, and the
@@ -407,6 +428,7 @@ in
     baseEntityModule
     excludedType
     stampTreeOf
+    rawStampTreeOf
     stampOf
     identityKeysOf
     registryKindOf

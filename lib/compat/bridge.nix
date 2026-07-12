@@ -530,12 +530,19 @@ in
       # stamps base-only (every base option is raw → excluded → an EMPTY host stamp) — byte-identical
       # to the field-less pre-registry entities.
       hostKindModule = (config.den.schema or { }).host or { };
-      hostStampTree = compat.registry.stampTreeOf (
-        compat.registry.hostInstanceOptions {
-          inherit lib;
-          kindModule = hostKindModule;
-        }
-      );
+      hostInstanceOpts = compat.registry.hostInstanceOptions {
+        inherit lib;
+        kindModule = hostKindModule;
+      };
+      hostStampTree = compat.registry.stampTreeOf hostInstanceOpts;
+      # #70 (ledger u19 next-link): the RAW-FIELD dual tree — exactly the leaves the structural
+      # exclusion drops from the deepSeq-safe stamp (registry.nix rawStampTreeOf; the exclusion's
+      # reason stands, the safe stamp is UNCHANGED). v1 binds the FULL merged host config as the ctx
+      # entity (pin assemble-pipes.nix:154), so these fields must be VISIBLE to policy/channel bodies
+      # (`host.microvm.guests`, the u19 frontier) — they ride the separate `_entityRawStamps` side
+      # channel (the instantiateFor/hmModuleFor side-map grain, generalized) and are overlaid LAZILY
+      # onto the ctx entity at ingest (one un-forced thunk per field — forced only when a body reads).
+      hostRawStampTree = compat.registry.rawStampTreeOf hostInstanceOpts;
       hostEntries = compat.registry.flattenRegistry (config.den.hosts or { });
       denSubOptions = (options.den.type.getSubOptions or (_: { })) [ ];
       consumerRegistryKeys = builtins.filter (
@@ -559,6 +566,14 @@ in
       }
       // lib.genAttrs consumerRegistryKeys (
         k: stampRegistry (compat.registry.stampTreeOf (subOptionsOf k)) config.den.${k}
+      );
+      # #70: the raw-field twin — the SAME registries read through the raw dual tree (stampOf's read
+      # is per-field lazy, so the excluded values stay un-forced here exactly as in the safe stamp).
+      rawEntityStamps = {
+        hosts = stampRegistry hostRawStampTree hostEntries;
+      }
+      // lib.genAttrs consumerRegistryKeys (
+        k: stampRegistry (compat.registry.rawStampTreeOf (subOptionsOf k)) config.den.${k}
       );
       # ROBUST namespace→kind for the consumer-declared registries — the OPTION-reflecting marker
       # (registry.nix registryKindOf) the ingest re-keys `_entityStamps` by. ingest's value-reflecting
@@ -599,6 +614,8 @@ in
               schema = config.den.schema.__rawSchema or { };
               _declaredKeys = declaredDenKeys;
               _entityStamps = entityStamps;
+              # #70: the raw-field side channel (`_`-exempt from surface-totality like _entityStamps).
+              _entityRawStamps = rawEntityStamps;
               # The robust namespace→kind marker (registryKindOf) — ingest re-keys `_entityStamps` and
               # builds the custom-kind registries by it, so a namespace whose instances carry a
               # derived/internal primitive (cluster.sopsAgeRecipient) still reaches the fleet.
