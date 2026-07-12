@@ -56,6 +56,25 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
 
 ## Notes
 
+- **RE-OPENER (catalog v73 review, #66/#53c): the latent CROSS-MECHANISM delivery double.** Two
+  same-source-class deliveries can land ONE descendant cell's bucket TWICE at one root's terminal — a
+  HOST-fired delivery whose #62c subtree members carry the cell's bucket PLUS a CELL-fired
+  `appendToParent` delivery of the same source class targeting the same root. The §9 single-path guard
+  catches only the same-class MERGE-at-root case (`errors.sameClassMergeDelivery`); this cross-mechanism
+  pair is out of the ratified guard's scope and corpus-INERT (the corpus emits no such pair; the hm
+  forward is the sole appendToParent delivery and no host-fired home-manager-source delivery exists).
+  P2-caught if ever exercised — a fixture surfacing it re-opens the guard's widening.
+
+- **RECORD CORRECTION (catalog v73 review, #66/#53c close-calls): the "gen-scope reachability
+  artifact" was NOT a gen-scope limitation.** The #66-session probe failures ("node 'host:igloo' not
+  reachable from roots") that motivated the darwin→os/quirk-channel witness pivots were a
+  FIXTURE-AUTHORING footgun: `{ den.hosts = …; } // { den.policies = …; }` — nested-attrpath sugar
+  builds ONE `den` key per literal, so the shallow `//` CLOBBERS the whole fleet (no hosts ⇒ the node
+  set empties ⇒ any node read reports unreachable). Probe-verified post-#70: the identical host-fired
+  `darwin → nixos` delivery fixture, written as one literal, resolves and lands `delivered` at the
+  terminal. No gen-scope issue exists; the committed test comments' fixture-choice rationales
+  (ambient-route fidelity, cell-vs-host rooting isolation) stand on their own.
+
 - **L1/L2 are HANDLED, not open** — the harness normalizes for them (F1 entity names, F2 non-entity map),
   so they do not appear in the live diff. They are recorded because the "entity scopes without
   translation" assumption in the plan was empirically false; the normalization is load-bearing.

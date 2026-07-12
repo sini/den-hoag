@@ -270,16 +270,21 @@ let
   # never double-counts; den-hoag CANNOT copy that (under the unified edge set the content would
   # materialize TWICE in `outputFor`). Instead the terminal's INPUT widens to match the fold's OUTPUT.
   #
-  # `deliveryModulesAt root class` = the CROSS-class delivery module content the A15 fold materializes at
-  # (root, class): every CLASS-source delivery TARGETING this root+class, its SOURCE-class bucket gathered
-  # across the delivery's `[ firing ] ++ descendants` subtree — the #62c source-members that already
-  # aggregate the descendant cells — placed at the delivery path (merge ⇒ direct, nest ⇒ setAttrByPath, the
-  # fold's `place`). Own-BUCKET per member (`classModulesAt`, not `classSubtreeAt`) so the subtree
-  # aggregates ONCE — the ADDITIVE realization (§9 risk 2: `classSubtreeAt ++` a delivery-only gather,
-  # never a wholesale `outputFor` read whose materialize-vs-raw-list shape would perturb the drv). The scan
-  # walks `[ root ] ++ descendants root` so a #53c cell-fired delivery that `appendToParent`-targets this
-  # root is picked up (LIVE since #53c: `deliveryTargetRootOf` resolves the parent target; a delivery
-  # without the flag targets its own firing node, so only `root` itself contributes for those).
+  # `deliveryModulesAt root class` = the CROSS-class delivery module content delivered at (root, class):
+  # every CLASS-source delivery TARGETING this root+class, its SOURCE-class bucket gathered across the
+  # delivery's `[ firing ] ++ descendants` subtree — the #62c source-members that already aggregate the
+  # descendant cells — placed at the delivery path (merge ⇒ direct, nest ⇒ setAttrByPath, the fold's
+  # `place`). Own-BUCKET per member (`classModulesAt`, not `classSubtreeAt`) so the subtree aggregates
+  # ONCE — the ADDITIVE realization (§9 risk 2: `classSubtreeAt ++` a delivery-only gather, never a
+  # wholesale `outputFor` read whose materialize-vs-raw-list shape would perturb the drv). NB (catalog
+  # v73 review): this is the CORRECTED single-count, not a mirror of the fold's output — in the general
+  # host-fired-delivery-with-cell-carried-content case, `outputFor`'s collected union reads each #62c
+  # member's bucket through the members list and can LATENTLY double a descendant's content where this
+  # gather counts it once (corpus-vacuous; outputFor is not a shipped artifact surface — P1 traces are
+  # identity-level and P2 hashes the terminal, which reads THIS gather). The scan walks `[ root ] ++
+  # descendants root` so a #53c cell-fired delivery that `appendToParent`-targets this root is picked up
+  # (LIVE since #53c: `deliveryTargetRootOf` resolves the parent target; a delivery without the flag
+  # targets its own firing node, so only `root` itself contributes for those).
   #
   # SINGLE-PATH INVARIANT (§9): same-class (the fold) ⊥ cross-class (delivery). A MODULE provide
   # (`module != null`) collects the TARGET class — its provided module rides the target scope's OWN class
