@@ -71,10 +71,16 @@ let
   # board #58 (Fork A): the post-fold `__provider` annotation walk (v1 annotateDeep, pin
   # types.nix:561-574) — applied by the bridge (corpus path) and the flake-module wiring (direct
   # mkDen path), each idempotently, so every navigated `den.aspects` value carries its provenance
-  # path and compile's `stampProvider` can recover v1's include identity.
+  # path and compile's `stampProvider` can recover v1's include identity. `batteryClassNames` (#67,
+  # ledger u17): the legacy batteries' registered classes (os/user) are excluded like the built-ins —
+  # v1's guard reads the REGISTERED `den.classes` (types.nix:540), which on a v1 fleet always carries
+  # the battery classes; the shim's walk runs pre-desugar, so the static `registersClasses` names are
+  # baked here instead (no ordering cycle — battery-module data, not fleet config; lazy let, cycle-free:
+  # `legacy` never references `annotateLib`).
   annotateLib = import ./annotate.nix {
     inherit prelude;
     builtinClassNames = builtins.attrNames denHoag.classes;
+    batteryClassNames = legacy.defaults.registeredClasses;
   };
   # The projected hasAspect entity surface (v1 PR #602 semantics; the den-hoag dissolution). `stampProvider`
   # is the SINGLE identity source compile.nix's include-grounding ALSO imports (path-cached ⇒ one definition,

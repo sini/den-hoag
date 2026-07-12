@@ -35,6 +35,19 @@
   # den-hoag's built-in output class names (`denHoag.classes` attrNames) — baked at wiring time so
   # every call site excludes the same built-in class keys without re-threading them.
   builtinClassNames,
+  # The LEGACY-BATTERY-registered class names (`legacy.defaults.registeredClasses` — os/user), baked at
+  # wiring time like the built-ins (ledger u17, task #67). v1's exclusion guard reads the fleet's
+  # REGISTERED `den.classes` (pin 11866c16 nix/lib/aspects/types.nix:540 `classReg = den.classes or { }`,
+  # consumed by `annotatedMerged`'s `!(classReg ? ${k})`, :559-574), and on a v1 fleet the battery
+  # modules are ALWAYS imported (flakeModule `listFilesRecursive`), so `os`/`user` are registered before
+  # any annotation runs. The shim's walk runs on the PRE-desugar surface (bridge.nix `annotatedDen` /
+  # flake-module.nix `annotatedView`), where the battery desugar (`desugarLegacy` → legacy/defaults.nix)
+  # has not yet added them to `den.classes` — so without this bake, a battery-class BODY
+  # (`os = { programs.zsh.enable = true; }`) was `__provider`-stamped, and the stamp reached the real
+  # nixpkgs terminal once #66 routed the delivered os content there (`The option __provider does not
+  # exist`, ledger u17). NO ORDERING CYCLE: the names are STATIC battery-module data
+  # (`registersClasses`), never fleet config — derivable at annotation time.
+  batteryClassNames ? [ ],
 }:
 let
   structuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
@@ -47,14 +60,17 @@ let
 in
 {
   # `annotateAspects { classNames; quirkNames } tree` — classNames/quirkNames are the FLEET's declared
-  # `den.classes` / `den.quirks` key names (built-ins + both v1 spellings are baked above).
+  # `den.classes` / `den.quirks` key names (built-ins + battery-registered + both v1 spellings are
+  # baked above).
   annotateAspects =
     {
       classNames ? [ ],
       quirkNames ? [ ],
     }:
     let
-      classSet = prelude.genAttrs (builtinClassNames ++ v1ClassKeySpellings ++ classNames) (_: true);
+      classSet = prelude.genAttrs (
+        builtinClassNames ++ batteryClassNames ++ v1ClassKeySpellings ++ classNames
+      ) (_: true);
       quirkSet = prelude.genAttrs quirkNames (_: true);
       walk =
         prefix: tree:
