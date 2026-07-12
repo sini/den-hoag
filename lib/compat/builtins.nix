@@ -92,6 +92,38 @@ let
         })
       ];
   };
+  # `hm-user-detect` — the v1-AMBIENT home-manager battery's USER-SCOPE emitter (#68, ledger u18 Family
+  # A; the FULL v1 census + semantics in legacy/batteries/home-manager.nix — reconstructed here
+  # VALUE-IDENTICALLY like userToHost, the single-legacy-import-site invariant). v1 userDetectFn
+  # (home-env.nix) gates `isOsSupported && hasClass` and includes the userForward (a TIER-1 static
+  # forward: homeManager → host.class at [home-manager users <userName>], home-manager.nix:12-24);
+  # probe-safe via the intoClass value-gate (null ⇒ __dropped — the os-class posture), parent-targeted
+  # via #53c appendToParent (the ratified trace-target ceiling, u18). `user.userName or user.name` = v1's
+  # userName default (entities/host.nix:156 `userName = strOpt … config.name`).
+  hmUserDetect = {
+    __denCanTake = "user-host";
+    fn =
+      { user, host, ... }:
+      let
+        isOsSupported = builtins.elem (host.class or null) [
+          "nixos"
+          "darwin"
+        ];
+        hasClass = builtins.elem "homeManager" (user.classes or [ ]);
+      in
+      [
+        (deliverLib.route {
+          fromClass = "homeManager";
+          intoClass = if isOsSupported && hasClass then host.class else null;
+          intoPath = [
+            "home-manager"
+            "users"
+            (user.userName or user.name)
+          ];
+          __extra.appendToParent = true;
+        })
+      ];
+  };
   # A v1 flake-OUTPUT built-in the class-A arm does not reproduce: exists for the ingest attr access, throws
   # a named, class-F/G-routed message when fired at a real flake-system node. GATED by v1's OWN formals
   # (`{ system, ... }:`, verbatim from the pin — flake-parts.nix:9-10, flake.nix:53-54, flake.nix:67-68), so
@@ -112,6 +144,7 @@ in
     policies = {
       host-to-users = _ctx: [ ];
       user-to-host = userToHost;
+      hm-user-detect = hmUserDetect;
       system-to-os-outputs = outputStub "system-to-os-outputs" "modules/policies/flake.nix:53";
       system-to-hm-outputs = outputStub "system-to-hm-outputs" "modules/policies/flake.nix:67";
       system-to-flake-parts = outputStub "system-to-flake-parts" "modules/policies/flake-parts.nix:9";

@@ -25,6 +25,10 @@ let
   batteries = {
     os-class = import ./batteries/os-class.nix deps;
     os-user = import ./batteries/os-user.nix deps;
+    # #68 (ledger u18 Family A): the v1-AMBIENT home-manager battery's user-scope emitter — the hm
+    # userForward (see batteries/home-manager.nix header for the four-part v1 census; only the emitter
+    # needed porting). registersClasses = [ ] (homeManager grounds to the built-in home-manager class).
+    home-manager = import ./batteries/home-manager.nix deps;
   };
   batteryList = builtins.attrValues batteries;
   # Compose the battery desugars left-to-right: each is a pure v1 → v1 transform ADDING its bucket +
