@@ -153,8 +153,81 @@ in
     # together — the `den.schema.flake-parts.includes` kind-include list still processes, and an aspect content
     # key `flake-parts` routes to the CLASS branch (kinds are NOT consulted by `classifyKey`); pinned by
     # `ci/tests/compat-flake-parts-class.nix`.
-    classes.flake-parts = {
-      description = "v1 flake-parts scope class — the devshell route target (corpus devshell.nix:16); a bare inert collect-only class (no terminal, no crossing), the LATENT devShells output family (gate class F, board #51).";
+    #
+    # THE FULL v1 BUILT-IN CLASS SET (u15 — the u14 register). den v1's flakeModule imports EVERY
+    # `modules/**.nix` (`nix/flakeModule.nix:3` — `listFilesRecursive`, no `/_`), so every built-in module
+    # that DECLARES a `den.classes.<name>` is ALWAYS registered on a v1 fleet — regardless of whether the
+    # corpus produces content for that class. den-hoag's registered set is the kind-generic core `classNames`
+    # (nixos/darwin/home-manager/k8s-manifests, lib/default.nix:59) ∪ the corpus's DECLARED `den.classes`
+    # (entity.discoverClasses — droid/microvm/homeLinux/…) ∪ the os/user legacy-desugar classes
+    # (legacy/batteries/{os-class,os-user}.nix) ∪ THESE shim-provisioned built-ins. The v1 built-ins the core
+    # + desugars do NOT already carry are registered HERE — a bare declared class each (the flake-parts
+    # recipe), so a §2.2 `classifyKey` abort on a v1 built-in class name (the u14 `wsl` blocker) NEVER recurs.
+    # A bare declared class: (a) enters ingest's `classRegistry` ⇒ `resolveBucket` resolves it; (b) admits the
+    # name to `classifyKey`'s CLASS branch (an aspect content key routes as class content, not an abort); (c)
+    # is never any scope's PRODUCING class (no host/user produces it) ⇒ grows NO phantom fold edge; (d) carries
+    # NO wrap/instantiate/share ⇒ an INERT collect-only terminal, NO gen-flake crossing. Registration only
+    # unblocks CLASSIFICATION — a corpus with NO producing member ⇒ NO output entry (the corpus-relative INERT
+    # posture, ledger B15/q). v1-SPEC facts (the built-in class LIST is one) belong COMPAT-side; the
+    # kind-generic core `classNames` stays UNTOUCHED (the KIND-GENERIC law). Written as LITERALS (no
+    # `prelude.genAttrs`) so `config.den.classes` forces without `prelude` — the dummy-args unit read in
+    # `ci/tests/{compat-flake-parts-class,compat-builtin-classes}.nix` stays valid.
+    classes = {
+      # v1 flake-level SCOPE class — the devshell route target (corpus devshell.nix:16); the LATENT devShells
+      # output family (gate class F, board #51; ledger row B2). ALSO the schema KIND above (coexistence pinned
+      # by ci/tests/compat-flake-parts-class.nix).
+      flake-parts = {
+        description = "v1 flake-parts scope class — the devshell route target (corpus devshell.nix:16); a bare inert collect-only class (no terminal, no crossing), the LATENT devShells output family (gate class F, board #51).";
+      };
+
+      # ── v1 BATTERY convenience/forwarding classes (always-imported battery modules @ pin 11866c16). Each
+      # forwards to the host OS in v1 (no terminal of its own), so a bare inert registration matches its v1
+      # nature exactly — with no producing member the emitted content is DEAD (dropped), as under v1. ──
+      #
+      # `wsl` (modules/aspects/batteries/wsl.nix:50) — THE u14 BLOCKER. The compat `primary-user` battery
+      # (lib/compat/batteries.nix:140) emits `wsl.defaultUser` alongside its assertion-clearing
+      # `nixos.users.users.<n>` account content; `wsl` was neither a core class nor corpus-declared, so once
+      # the #63 fold FORCED the user cells' class-modules, `classifyKey` aborted on the `wsl` key BEFORE the
+      # nixos content could classify. v1 routes wsl content to the host via `wsl-to-host` ONLY when a host sets
+      # `wsl.enable` (wsl.nix:73-82 — `lib.optional ((host.wsl or {}).enable or false)`); NO corpus host does,
+      # so the `wsl.defaultUser` emission is DEAD in v1 too (never routes). This registration unblocks the
+      # SIBLING nixos content's classification; the wsl terminal stays output-less (no wsl-producing member),
+      # so NO wsl route policies are ported — inert classification only.
+      wsl = {
+        description = "v1 WSL support class forwarding to host OS (batteries/wsl.nix:50); bare inert — no corpus host enables wsl, so primary-user's wsl.defaultUser is dead content (as under v1); registration unblocks the sibling nixos classification only.";
+      };
+      # `maid` (batteries/maid.nix:36) + `hjem` (batteries/hjem.nix:34): v1 user-environment classes forwarding
+      # to the host OS. Corpus-unexercised (no aspect emits them), so inert; registered for built-in
+      # completeness so the §2.2 abort class never recurs on a v1 built-in.
+      maid = {
+        description = "v1 nix-maid user-environment class (batteries/maid.nix:36); bare inert, corpus-unexercised.";
+      };
+      hjem = {
+        description = "v1 Hjem user-environment class (batteries/hjem.nix:34); bare inert, corpus-unexercised.";
+      };
+
+      # ── v1 FLAKE SYSTEM OUTPUT classes (modules/policies/flake.nix:12-16 `systemOutputs`, registered
+      # flake.nix:41-46: "Register system output names as classes so aspect keys dispatch correctly"). These are
+      # flake-SCOPE output classes. The corpus routes its flake-scope content through the `flake-parts`/`devshell`
+      # classes (devshell.nix), NEVER a bare `packages`/`devShells`/… top-level aspect key (verified corpus-wide),
+      # so they are inert here. Registered bare so a flake-parts-modules aspect key matching a v1 output name
+      # CLASSIFIES (CLASS branch) exactly as under v1, never aborts. A producing member would be the flake-OUTPUT
+      # family rung (gate class F/G, board #51 — the flake-parts devShells twin); corpus-absent ⇒ latent. ──
+      packages = {
+        description = "v1 flake `packages` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+      };
+      apps = {
+        description = "v1 flake `apps` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+      };
+      checks = {
+        description = "v1 flake `checks` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+      };
+      devShells = {
+        description = "v1 flake `devShells` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised (the corpus routes devshell content through the flake-parts class, not this key).";
+      };
+      legacyPackages = {
+        description = "v1 flake `legacyPackages` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+      };
     };
   };
 }
