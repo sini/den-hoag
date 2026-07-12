@@ -145,6 +145,17 @@ let
           # user scope bind the same ancestor args (e.g. `environment`) they
           # would at the host scope — no manual chainCtx threading needed.
           fromAspect = _: den.lib.resolveEntity "user" { inherit host user; };
+          # #53c (§9 item 3, ratified) — the CELL-FIRED emitter (userDetectFn) fires this forward AT the
+          # (user,host) cell, and den-hoag isolates every cell as its own edge-root: without a parent
+          # target the delivered content lands in the cell's OWN root and never reaches the host
+          # terminal (v1's non-isolated nesting fold carried it there; cell isolation removes that).
+          # `appendToParent` (v1's route property, pin fx/edges/route.nix:364/:370-377) makes the forward
+          # target the containment PARENT root — the host — where the #66 terminal law consumes it. THE
+          # RATIFIED CEILING (accepted-and-ledgered): the resulting edge targets the HOST where v1's
+          # synthesize edge targets the CELL — a TRACE-only divergence, drvPath-invisible. Harmless for
+          # the host-fired policyFn emitter's resolves (a parentless firing root falls back to the firing
+          # scope itself — v1's `or sid`, route.nix:375).
+          appendToParent = true;
         };
 
       # Includes shared by both host-scope and user-scope detection.

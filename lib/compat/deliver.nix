@@ -72,15 +72,22 @@ let
           target = to; # a class name; resolved to a registration in compile (C6)
           path = at;
           mode = finalModeOf mode at;
+          # Parent-targeting is shim-internal (v1 policy-effects.nix:60: "`appendToParent` is NOT
+          # accepted here"): the `deliver` SURFACE never takes it (strict formals reject it), so the
+          # descriptor field defaults false — only `route`'s `__extra` (the v1 route-internal mechanism
+          # channel, policy-effects.nix:194) overlays it (#53c).
+          appendToParent = false;
           inherit guard adaptArgs;
         }
     );
 
   # `route` — PERMANENT user-API sugar over `deliver`. `intoPath`/`path` → `at` (both present aborts
   # named, §2.3 routePathConflict); `reinstantiate = true` → `mode = "verbatim"` (the ONLY mode→flag
-  # translation). `__extra` (route-internal mechanism fields — collectSubtree/adapterKey/appendToParent)
-  # is ACCEPTED but not part of the `deliver` surface; its consumers are the legacy `forwards` module
-  # (Task 5), so here it rides through inert (the core route delivers the simple case).
+  # translation). `__extra` (route-internal mechanism fields — collectSubtree/adapterKey/appendToParent):
+  # `appendToParent` is LIVE (#53c — v1 route.nix:364 reads it off the route value; the descriptor
+  # carries it to `translateDelivery` → `deliveryTargetRootOf`, which resolves the containment-parent
+  # target); the remaining fields (collectSubtree/adapterKey) ride through inert — their consumers are
+  # the legacy `forwards` module (Task 5).
   route =
     {
       fromClass,
@@ -101,6 +108,9 @@ let
         at = if intoPath != null then intoPath else (if path != null then path else [ ]);
         mode = if reinstantiate then "verbatim" else "merge";
         inherit guard adaptArgs;
+      }
+      // {
+        appendToParent = __extra.appendToParent or false;
       };
 
   # `provide` — PERMANENT user-API sugar over a MODULE-source `deliver`: `class` → `to`, `module` →

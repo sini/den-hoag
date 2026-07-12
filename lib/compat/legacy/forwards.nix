@@ -82,13 +82,19 @@ let
       ++ staticIntoPathOf spec
     ));
 
-  # ── tier-1: a static forward → a plain `deliver` (collected source, reroute-shaped) ─────────────────
+  # ── tier-1: a static forward → a plain `deliver` (collected source, reroute-shaped). The spec's
+  #    `appendToParent` rides onto the descriptor (#53c) — v1's routeEdge reads it off ANY spec (pin
+  #    fx/edges/route.nix:803 `appendToParent = spec.appendToParent or false`); the deliver SURFACE
+  #    never takes it (policy-effects.nix:60), so it overlays post-construction like route's `__extra`. ──
   tier1 =
     spec:
     deliverLib.deliver {
       from = spec.fromClass;
       to = spec.intoClass;
       at = staticIntoPathOf spec;
+    }
+    // {
+      appendToParent = spec.appendToParent or false;
     };
 
   # ── complex: an INERT gen-edge `synthesize` SOURCE RECORD (Law C2 relaxation — record construction,

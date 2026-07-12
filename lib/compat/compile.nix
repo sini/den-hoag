@@ -81,6 +81,9 @@ let
       annotations =
         prelude.optionalAttrs (d.adaptArgs != null) { adaptArgs = true; }
         // prelude.optionalAttrs (d.guard != null) { guard = true; }
+        # v1 annotates the parent-targeting flag on the edge (routeEdge baseAnnotations, pin
+        # fx/edges/route.nix:813 `optionalAttrs appendToParent { appendToParent = true; }`).
+        // prelude.optionalAttrs (d.appendToParent or false) { appendToParent = true; }
         // prelude.optionalAttrs isModule { mergeHalf = "default-fold"; };
     in
     declare.delivery {
@@ -97,6 +100,9 @@ let
           ing.resolveBucket "deliver" (groundClassName d.sourceClass);
       targetClass = toEntry;
       module = d.moduleSource;
+      # #53c — the parent-targeting flag (v1 route.nix:364 `route.appendToParent or false`);
+      # `deliveryTargetRootOf` (output-modules.nix) resolves the containment-parent target from it.
+      appendToParent = d.appendToParent or false;
       inherit (d)
         path
         mode

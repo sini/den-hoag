@@ -204,13 +204,29 @@ let
     );
 
   # The ROOT a delivery fired at node `id` targets. IDENTITY-DEFAULTED to the firing scope (`id`) — v1's
-  # route/forward appends into the target class bucket AT the firing scope (route.nix:632/:694). #53c
-  # extends this to honor `appendToParent` (the containment PARENT root, route.nix:372-377) for the
-  # cell-fired hm forward; until then every delivery targets its own firing node, so the edge set and the
-  # terminal gather both key on `id` — byte-identical to the pre-#66 renderer. Used by BOTH the edge
-  # renderer (the fold's target root) and the terminal gather (the "targets this root" filter), so the two
-  # stay in lockstep — the #66 single-path invariant depends on them agreeing.
-  deliveryTargetRootOf = id: _d: id;
+  # route/forward appends into the target class bucket AT the firing scope. #53c (§9 item 3): a delivery
+  # declaring `appendToParent` targets the containment PARENT root — v1's route property (pin 11866c16
+  # nix/lib/aspects/fx/edges/route.nix:364 `appendToParent = route.appendToParent or false`, target
+  # resolution :370-377 `appendScopeIdOf`), rendered here as the first-class parent-targeting edge
+  # gen-edge's derivation already gathers ("a child scope may declare an edge targeting the parent root
+  # — the first-class form of v1 appendToParent", derive.nix:67-69). PARENTLESS semantics = v1's:
+  # `scopeParent.${sid} or sid` (route.nix:375 and :804) FALLS BACK to the firing scope itself — a
+  # defined no-op, never an abort — so a parentless root declaring appendToParent targets itself (the
+  # ordinary self-targeted delivery; witnessed). THE RATIFIED TRACE-TARGET CEILING (§9 #53c,
+  # accepted-and-ledgered): the parent-target makes the den-hoag edge target the PARENT root where v1's
+  # cell-fired synthesize edge targets the CELL — a TRACE-only divergence, drvPath-invisible (the
+  # delivered content byte-matches), P1-unexercised; fixture-surfaced re-opener. Used by BOTH the edge
+  # renderer (the fold's target root) and the terminal gather (the "targets this root" filter), so the
+  # two stay in lockstep — the #66 single-path invariant depends on them agreeing.
+  deliveryTargetRootOf =
+    id: d:
+    if d.appendToParent or false then
+      let
+        p = (result.node id).parent;
+      in
+      if p == null then id else p
+    else
+      id;
 
   # nest a module at an attr path — the fold's `place` (gen-edge core.setAttrByPath, materialize.nix:248):
   # `[]` ⇒ the module verbatim (a merge places at the root), else wrap under the path. Pure attrset
@@ -234,7 +250,7 @@ let
             members = [ id ] ++ scope.descendants result id;
           };
           target = edge.targets.root {
-            root = deliveryTargetRootOf id d; # firing scope (identity); #53c honors appendToParent
+            root = deliveryTargetRootOf id d; # firing scope; the parent root under appendToParent (#53c)
             class = d.targetClass.name;
           };
           inherit (d) path mode;
@@ -261,9 +277,9 @@ let
   # fold's `place`). Own-BUCKET per member (`classModulesAt`, not `classSubtreeAt`) so the subtree
   # aggregates ONCE — the ADDITIVE realization (§9 risk 2: `classSubtreeAt ++` a delivery-only gather,
   # never a wholesale `outputFor` read whose materialize-vs-raw-list shape would perturb the drv). The scan
-  # walks `[ root ] ++ descendants root` so a #53c cell-fired forward that `appendToParent`-targets this
-  # root is picked up (in #66 every delivery targets its own firing node, so only `root` itself contributes
-  # — the descendant scan is inert until #53c retargets a forward).
+  # walks `[ root ] ++ descendants root` so a #53c cell-fired delivery that `appendToParent`-targets this
+  # root is picked up (LIVE since #53c: `deliveryTargetRootOf` resolves the parent target; a delivery
+  # without the flag targets its own firing node, so only `root` itself contributes for those).
   #
   # SINGLE-PATH INVARIANT (§9): same-class (the fold) ⊥ cross-class (delivery). A MODULE provide
   # (`module != null`) collects the TARGET class — its provided module rides the target scope's OWN class
