@@ -325,9 +325,32 @@ let
   # walks the delivery declaration set + the id spine + class-modules ATTRIBUTE presence, never module
   # bodies. IDENTITY: a delivery-free root ⇒ `[ ]` at every class ⇒ terminal = `classSubtreeAt` exactly
   # (the 840 baseline unchanged).
-  deliveryModulesAt =
-    root: class:
+  # #75a (design §11, C1 — ratified): THE SOURCE-SIDE CHAIN READ, the source dual of #66's terminal
+  # read. A delivery's collected source, per member m and source class C, is
+  # `(classModulesAt m).C ++ deliveryModulesAt m C` — the cross-class delivery output already targeted
+  # at (m, C) SPLICES into the source, reusing this very gather as the chain link (the corpus chain:
+  # the home-platform route {homeLinux → homeManager} fires at the user cell, home-platform.nix:38-42,
+  # and the hm userForward's source then reads the routed LOCALE content — v1's appendToClass appends
+  # at the firing scope and getCollectedSource reads the POST-route bucket; here no bucket is ever
+  # touched — the M2 terminal-only posture: deliveryEdgesAt/outputFor/trace UNCHANGED, outputFor stays
+  # composition-incomplete by design (P2 hashes the terminal, which reads this gather)). SINGLE-PATH: a
+  # chained source class (homeManager) has NO terminal ⇒ its routed content is consumed once, by the
+  # forward source alone. A12: base-then-routed (v1's append order; order owner-waived, u24).
+  # TERMINATION: the read descends strictly along fromClass edges over the class-target DAG (acyclic on
+  # the corpus — the §11 census); a (scope, class) revisit ON THE RECURSION PATH aborts LOUD
+  # (errors.deliveryChainCycle — the containmentCycle precedent; v1's own complex-forward topoSort
+  # throws on a cycle, route.nix:496). The seen-set is PATH-LOCAL (threaded down, not global), so a DAG
+  # diamond — two deliveries legitimately sourcing one (scope, class) on separate branches — never
+  # false-aborts. IDENTITY: no cross-class delivery into C ⇒ `++ [ ]` ⇒ byte-identical (the 904/71
+  # baseline).
+  deliveryModulesAt = deliveryModulesChain { };
+  deliveryModulesChain =
+    seen: root: class:
     let
+      key = "${root}|${class}";
+      seen' = seen // {
+        ${key} = true;
+      };
       forNode =
         n:
         prelude.concatMap (
@@ -346,7 +369,18 @@ let
             let
               srcClass = d.sourceClass.name;
               members = collectedMembersOf n; # #74a — the same member set the edge render names
-              srcMods = prelude.concatMap (nid: (classModulesAt nid).${srcClass} or [ ]) members;
+              # #75a — base-then-routed per member: the member's OWN bucket, then the delivery output
+              # already targeted at (member, srcClass) — the chain link (path-local seen-set threaded).
+              # CROSS-class only: a same-class NEST delivery (from == to, distinct path — the #66
+              # allowance) sources its own target class, so a chain link would SELF-loop by
+              # construction (chain(root, class) re-entered from within itself ⇒ the cycle guard);
+              # its source stays the pre-#75a base-only read (the pinned witness surface,
+              # test-same-class-nest-delivery-allowed).
+              srcMods = prelude.concatMap (
+                nid:
+                ((classModulesAt nid).${srcClass} or [ ])
+                ++ (if srcClass == class then [ ] else deliveryModulesChain seen' nid srcClass)
+              ) members;
             in
             if d.mode == "merge" then
               # merge-mode sources land TOP-LEVEL at the target terminal, whose deltaOf/instantiate
@@ -370,7 +404,13 @@ let
                 }).modules
         ) (deliveriesAt n);
     in
-    prelude.concatMap forNode ([ root ] ++ scope.descendants result root);
+    if seen ? ${key} then
+      errors.deliveryChainCycle {
+        scope = root;
+        inherit class;
+      }
+    else
+      prelude.concatMap forNode ([ root ] ++ scope.descendants result root);
 
   # The per-class TERMINAL assembly (the LAW, §9): the same-class subtree fold FIRST (`classSubtreeAt`,
   # A12 base) then the routed cross-class delivery AFTER (`deliveryModulesAt`, v1's `appendToClass`

@@ -200,6 +200,18 @@ in
       render (producer.entity or null)
     }`) is tagged class `${render tag}`; declare a `${render tag}` -> `${render consuming}` adapter on the quirk or consume at the producing class";
 
+  # §11 chain termination (#75a): the delivery source's chain read descends along fromClass edges over
+  # the class-target graph; a (scope, class) REVISIT on the recursion path is a delivery CYCLE (class A
+  # routed into B while B is routed into A at one scope) — unresolvable, aborts LOUD naming both
+  # coordinates. v1's own complex-forward topoSort throws on a route cycle (pin 11866c16
+  # fx/edges/route.nix:496); this is the chain-read twin of that guard (and of `containmentCycle`).
+  deliveryChainCycle =
+    {
+      scope,
+      class,
+    }:
+    fail "delivery chain (§11)" "the delivery source chain re-visits class `${render class}` at scope `${render scope}` — a delivery CYCLE (each class's source routes through the other); v1's route topoSort equally rejects it (route.nix:496). Break the cycle: one of the deliveries must source a class that is not itself delivery-fed at this scope";
+
   # §9 single-path invariant (#66): the terminal assembly is `classSubtreeAt ++ deliveryModulesAt`, and
   # the same-class SUBTREE FOLD ⊥ the CROSS-class delivery. A same-class class-source MERGE delivery
   # (from == to == the node's producing class, `mode == "merge"`) gathers the class bucket at the ROOT
