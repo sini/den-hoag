@@ -265,11 +265,31 @@ let
           || quirkSet ? ${sk}
           || (classSet ? ${v1ClassKeyMap.${sk} or sk} && looksLikeClassContent val.${sk})
         );
+      # #74 (the u22-family fix): the PARENT candidate exclusion follows V1'S AUTHORED registry, not the
+      # grounded set. v1's `isClassKey k = classRegistry ? k` reads den.classes AS DECLARED (pin
+      # key-classification.nix:101 — the hm battery registers camelCase `homeManager`,
+      # modules/aspects/batteries/home-manager.nix:33), so the kebab key `home-manager` is NOT a v1
+      # class key — it is a nested-aspect CANDIDATE, and the corpus's `core.users.home-manager` aspect
+      # (roles/default.nix:16 — an aspect NAMED like the grounded class, carrying os/nixos/darwin
+      # sub-keys) classifies NESTED (stripped from `core.users`, activated via its explicit include).
+      # The shim's grounded classSet carries BOTH spellings, so the kebab key was wrongly class-excluded
+      # and the WHOLE record landed in the host's home-manager bucket — inert until #74a delivered that
+      # bucket per-user (`home-manager.users.<u>.darwin` does not exist — the re-probe abort). A
+      # grounded-ONLY spelling (a v1ClassKeyMap VALUE that is not also a v1 authored name) is therefore
+      # candidate-ELIGIBLE; its content still decides (a plain-content `home-manager` key has no
+      # recognized sub-keys ⇒ NOT nested ⇒ class content — the native den-hoag shape unchanged).
+      # CEILING (corpus-zero, documented): an authored camelCase `homeManager` key is grounded to kebab
+      # BEFORE this test, so a camel-authored key with nested-shaped content would ALSO classify nested
+      # where v1 calls it class content — v1's behavior for that shape delivers os/nixos records into
+      # the hm bucket (the exact explosion this fix removes), so the shim's treatment is strictly saner.
+      v1GroundedOnlySpellings = builtins.filter (v: !(v1ClassKeyMap ? ${v})) (
+        builtins.attrValues v1ClassKeyMap
+      );
       isCandidate =
         k:
         !(v1StructuralKeysSet ? ${k})
         && !(builtins.elem k hoagOnlyFacets)
-        && !(classSet ? ${k})
+        && (!(classSet ? ${k}) || builtins.elem k v1GroundedOnlySpellings)
         && !(quirkSet ? ${k})
         && builtins.substring 0 2 k != "__";
     in
