@@ -131,8 +131,13 @@ let
   # `isolated` would need this gather to honor the isolation boundary v1's isolation-aware fold stops at
   # (none is marked in this corpus; the same ceiling `scope.descendants`'s #62c consumer carries).
   # A17: `class-modules` is a deferredModule list carried UNFORCED; `descendants` is the lazy id spine —
-  # this walks the bucket SPINE (list appends), never a module body. IDENTITY: a cell-less / descendant-less
-  # node ⇒ `[ id ]` ⇒ `(classModulesAt id).${class}` exactly (the 820 baseline is the proof — unchanged).
+  # this walks the bucket SPINE (list appends), never a module body. FORCING HONESTY: the gather DOES newly
+  # force each descendant's `class-modules` ATTRIBUTE — i.e. the §2.2 key CLASSIFICATION of every content
+  # key on the descendant's resolved aspects (the mechanism that surfaced the ledger-u14 `wsl` abort: cells
+  # whose class-modules were previously never read now classify at the host's assembly) — while the module
+  # BODIES inside each bucket stay unforced (the A17 claim above is about bodies, and stays true). IDENTITY:
+  # a cell-less / descendant-less node ⇒ `[ id ]` ⇒ `(classModulesAt id).${class}` exactly (the 820 baseline
+  # is the proof — unchanged).
   classSubtreeAt =
     id: class:
     prelude.concatMap (nid: (classModulesAt nid).${class} or [ ]) (

@@ -206,8 +206,21 @@ let
         in
         if p == null || builtins.elem p kinds then true else errors.unknownParentKind kind p;
       _checked = builtins.all checkParent kinds;
+      # §8 ISOLATION CEILING GUARD (LOUD, #63 review note): v1 declares an `isolated` collection flag on
+      # every schema kind (pin 11866c16 modules/options.nix:85-88, default false — NOTHING sets it at the
+      # pin or in the corpus; the one v1 reader is the scope walk's boundary stamp, handlers/
+      # push-scope.nix:64). den-hoag's #63 within-class subtree fold (`classSubtreeAt`) and the #62c
+      # delivery-edge subtree members are BLIND `scope.descendants` walks — an isolated kind would need
+      # them to STOP at the boundary v1's isolation-aware fold honors, else a descendant's class content
+      # silently over-gathers into the ancestor's assembly (a WRONG drv, not a crash — the worst failure
+      # mode). Until an isolation-aware walk lands, refuse LOUD at ingestion. Read off the RAW v1 schema
+      # (`v1Schema`, not `withHostFields` — buildSchema keeps only `parent`, so the flag is only visible
+      # here).
+      checkIsolated =
+        kind: if v1Schema.${kind}.isolated or false then errors.isolatedKindUnsupported kind else true;
+      _isolatedChecked = builtins.all checkIsolated (builtins.attrNames v1Schema);
     in
-    builtins.seq _checked withHostFields;
+    builtins.seq _checked (builtins.seq _isolatedChecked withHostFields);
 
   # Kind-attached includes (`den.schema.<kind>.includes = [ <aspect> ]`) → `{ <kind> = [ <aspectName> ]; }`,
   # the raw material `compile` turns into fire-at-kind policies (an aspect radiated to every instance of

@@ -85,6 +85,18 @@ in
     kind: parent:
     fail "schema" "kind `${kind}` names parent `${parent}`, which is not a declared kind (known kinds are `den.schema.<kind>` + the built-in `host`/`user`)";
 
+  # A v1 `den.schema.<kind>` sets `isolated = true` (the v1 collection flag, pin 11866c16
+  # modules/options.nix:85-88 — default false; NOTHING sets it at the pin or in the corpus). den-hoag's
+  # #63 within-class subtree fold (`classSubtreeAt`, output-modules.nix) and the #62c delivery-edge
+  # subtree members are BLIND `scope.descendants` walks — the §8-risk-2 ceiling: an isolated kind would
+  # need those gathers to STOP at the isolation boundary v1's isolation-aware fold honors
+  # (push-scope.nix:64), and a blind walk would silently OVER-GATHER a descendant's class content across
+  # it into the ancestor's assembly (a wrong drv, not a crash). Until an isolation-aware walk lands, an
+  # ingested isolated kind refuses LOUD at ingestion — never a silent mis-fold.
+  isolatedKindUnsupported =
+    kind:
+    fail "schema (§8 isolation ceiling)" "kind `${kind}` sets `isolated = true` — den-hoag's subtree gathers (#63 classSubtreeAt, #62c delivery members) are blind descendants walks that would silently over-gather class content across the isolation boundary v1 stops at (pin 11866c16 options.nix:85-88; push-scope.nix:64). Unset `isolated`, or build the isolation-aware walk (the §8 risk-2 ceiling) first";
+
   # A v1 `pipe.from` names a stage the shim does not compile: it handles the §2.4 stage vocabulary
   # (filter/transform/fold/for + to/as + append/expose/broadcast/collect/collectAll/withProvenance).
   # Anything else names itself here rather than compiling to a silent no-op (pipe.nix `stageOp`).
