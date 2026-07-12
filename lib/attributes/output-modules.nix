@@ -236,6 +236,33 @@ let
     path: value:
     if path == [ ] then value else { ${builtins.head path} = nestAtPath (builtins.tail path) value; };
 
+  # ── #74a (design §10, candidate D — ratified): a delivery's COLLECTED MEMBERS = the firing node's
+  # ANCESTOR CHAIN (outermost first) ++ itself ++ its descendants. THE v1 MECHANISM (pin 11866c16
+  # nix/lib/aspects/fx/edges/route.nix:556-568 `getCollectedSource`): a cell-fired forward reads
+  # `rootModules = perScope[rootScopeId][class] ++ ownModules = perScope[cell][class]` — the ROOT
+  # scope's bucket FIRST, then the firing scope's own. That is how the corpus's HOST-attached
+  # homeManager content (apps.shell.zsh + persist-home-collector, roles/default.nix:29/:27 — the
+  # persistHome mounts ride the SAME bucket, §10 item 5) reaches EVERY user's home-manager.users.<u>.
+  # gen-scope `ancestors` (queries.nix:13-28) is the audited co-located dual of `descendants` — no new
+  # primitive; it walks NEAREST-first, reversed here to v1's outermost-first order (A12: ancestors
+  # first — rootModules ++ ownModules). IDENTITY-DEFAULTED: a ROOT-fired delivery has ancestors = [ ]
+  # ⇒ `[ id ] ++ descendants` exactly (the pre-#74 members; the 896/71 baseline unchanged).
+  # MULTI-LEVEL-CONTAINMENT CEILING (§10 risk 1, accepted-and-ledgered): v1 reads the rootScopeId
+  # bucket ONLY — a deeper chain's INTERMEDIATE ancestors are v1-unread; this generic chain includes
+  # them (corpus-inert: a cell's only ancestor is its host). SINGLE-PATH: the ancestor bucket has no
+  # terminal of its own at the source class (the nixos host's homeManager bucket builds nothing), so it
+  # is consumed once per delivery — disjoint from classSubtreeAt (same-class) and the #66 gather's
+  # cross-class law. A17: the lazy id spine (ancestors/descendants are id walks; buckets force at the
+  # gather only). filterRootModules (v1 route.nix:539-551 — the den.default-shared restriction when
+  # fromClass is ctx-owned) is CORPUS-INERT (v1 ships the full host zsh bucket) and NOT built (§10
+  # item 4) — LOUD RE-OPENER: a future cell-fired forward whose fromClass is ctx-owned would
+  # over-deliver vs v1 (P2-caught; the ledger u23 note).
+  collectedMembersOf =
+    n:
+    prelude.foldl' (acc: a: [ a ] ++ acc) [ ] (scope.ancestors result n)
+    ++ [ n ]
+    ++ scope.descendants result n;
+
   deliveryEdgesAt =
     id:
     let
@@ -245,9 +272,11 @@ let
           source = edge.sources.collected {
             scope = id;
             class = (if d.module != null then d.targetClass else d.sourceClass).name;
-            # #62c — the firing scope PLUS its descendant cells (Task 5): the host-fired route gathers the
-            # user cells' class content (self first, lazy ids; empty descendant set ⇒ own-scope, unchanged).
-            members = [ id ] ++ scope.descendants result id;
+            # #62c + #74a — the firing scope's ANCESTOR CHAIN (v1's rootModules, outermost first) PLUS
+            # itself PLUS its descendant cells (Task 5): a host-fired route gathers the user cells'
+            # class content; a cell-fired forward gathers its HOST's bucket first (§10). Root-fired ⇒
+            # ancestors = [ ] ⇒ the pre-#74 members exactly.
+            members = collectedMembersOf id;
           };
           target = edge.targets.root {
             root = deliveryTargetRootOf id d; # firing scope; the parent root under appendToParent (#53c)
@@ -316,7 +345,7 @@ let
           else
             let
               srcClass = d.sourceClass.name;
-              members = [ n ] ++ scope.descendants result n;
+              members = collectedMembersOf n; # #74a — the same member set the edge render names
               srcMods = prelude.concatMap (nid: (classModulesAt nid).${srcClass} or [ ]) members;
             in
             if d.mode == "merge" then srcMods else map (m: nestAtPath d.path m) srcMods
