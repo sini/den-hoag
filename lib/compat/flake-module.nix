@@ -20,6 +20,7 @@
   ingest,
   annotate,
   hasAspect,
+  exposeGather,
   legacy,
 }:
 let
@@ -250,6 +251,11 @@ let
         # forked variant). Enriches the enriched-context a bare-fn kind-include receives so an aspect-fn's
         # `host.hasAspect` (agenix.nix:31, resolution depth) resolves like a content-module's (networking.nix:341).
         enrichContext = hasAspect.mkEnrich entityKinds;
+        # The v1 `pipe.expose` ASCENT twin (#62b) — fills the core #62a channel-augmentation seam with den
+        # v1's cross-scope gather (`collectAllExposed`), so a channel a node consumes but never emits
+        # locally (`resolved-users` at a nixos host, exposed up by its home-manager user cells) carries the
+        # descendant cells' contributions at the terminal binding. Gated-transitive to match v1 exactly.
+        channelGather = exposeGather.gather;
         # Static entity-scoped includes (den-hoag `den.include`, §370 directAspects) — the R5
         # self-named-aspect seeds (spec §10) `addSelfIncludes` appended, node-local at each self-named
         # entity. Empty when the legacy self-provide module is severed (byte-identical no-op, Law C5).

@@ -110,6 +110,10 @@ let
   # compile sentinel); `mkWiring { inherit (legacy) provides; }` = a single-legacy combination. The
   # compile core, sentinels, and errors are SHARED across every wiring — only `desugarLegacy` (hence
   # `compileFull` / `mkDen`) differs. The severability suite (compat-legacy-severed) drives all four.
+  # The v1 `pipe.expose` ASCENT twin (#62b) — the `den.channelGather` supplier that fills the core #62a
+  # channel-augmentation seam with den v1's cross-scope gather (`collectAllExposed`). Imported here so the
+  # witness suite reaches the gather algorithm directly (`gatheredAt`), and passed into the wiring.
+  exposeGatherLib = import ./expose-gather.nix { inherit prelude; };
   mkWiring =
     legacyArg:
     import ./flake-module.nix {
@@ -122,6 +126,7 @@ let
         hasAspect
         ;
       annotate = annotateLib.annotateAspects;
+      exposeGather = exposeGatherLib;
       legacy = legacyArg;
     };
   flakeModuleWiring = mkWiring legacy;
@@ -150,6 +155,9 @@ in
     ;
   # The fx key-classification surface (#49-slice) — `{ structuralKeysSet; }`, aliased into migrationLib.
   inherit keyClassification;
+  # The v1 `pipe.expose` ascent twin (#62b) — the `den.channelGather` supplier + its gated-transitive
+  # gather algorithm (`gatheredAt`), exposed for the witness suite's depth-semantics unit tests.
+  exposeGather = exposeGatherLib;
   # The bridge-registry passthrough (ship-gate M2's successor architecture) — the v1 hosts-registry
   # declaration + the structural-exclusion stamp machinery the bridge mounts.
   inherit registry;
