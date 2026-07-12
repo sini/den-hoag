@@ -104,6 +104,22 @@ in
     kind:
     fail "pipe stage (C3)" "unknown v1 pipe stage `${kind}` — the shim compiles §2.4 (filter/transform/fold/for, to/as, append/expose/broadcast/collect/collectAll/withProvenance)";
 
+  # THE F6 CEILING (catalog v33, ruled): a CONFIG-DEPENDENT (config/osConfig-demanding, deferred)
+  # channel emission gathered by a CROSS-SCOPE collect/collectAll. den-hoag resolves a deferred
+  # contribution at ITS producing scope's terminal (decision #27) — for a COLLECTED contribution the
+  # producer is a DIFFERENT root (a sibling host), so resolving it at the consuming terminal would force
+  # the producer host's config from inside the consumer's eval: the cross-host config fixpoint v33
+  # explicitly rules OUT ("no cross-host config-fixpoint machinery"). Corpus-zero (every corpus
+  # collect-channel emit is pipeline-parametric or plain — resolved at the emitting node by U9.1), so
+  # this refuses LOUD, never a silently wrong or diverging value.
+  collectedConfigThunk =
+    {
+      channel,
+      producer,
+      consumer,
+    }:
+    fail "collect (U9.2 F6 ceiling)" "channel `${channel}`: a config-dependent (deferred) emission at `${producer}` was gathered by a cross-scope collect at `${consumer}` — resolving it would force the producer's config from the consumer's eval (the cross-host config fixpoint catalog v33 rules out). Make the emission pipeline-parametric (binding-surface args) or plain";
+
   # A name declared as BOTH a class (`den.classes.<name>`) and a quirk channel (`den.quirks.<name>`):
   # den-hoag's `resolveBucket` unions classes ∪ channels, so an overlapping name is ambiguous at
   # dispatch. Named at definition time — the key-overlap check §2.4 preserves from v1.
