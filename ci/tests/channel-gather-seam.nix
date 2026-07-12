@@ -85,9 +85,10 @@ in
   flake.tests.channel-gather-seam = {
     # (1) local ++ gathered: the node's own `ch` emission FIRST, the gathered value appended after it.
     test-augment-appends-gathered-after-local = {
+      # #74b: the bound value list is FLAT (v1 flattenAndExtract — a LIST emission spreads).
       expr = (bindingsOf withGather).ch;
       expected = [
-        [ "own" ]
+        "own"
         "gathered"
       ];
     };
@@ -104,7 +105,7 @@ in
         recv = (bindingsOf identity).recv;
       };
       expected = {
-        ch = [ [ "own" ] ];
+        ch = [ "own" ]; # flat (v1 flattenAndExtract, #74b)
         recv = [ ];
       };
     };

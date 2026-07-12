@@ -159,14 +159,15 @@ in
         h1 = (bindingsOf fleet "nixos" "host:h1").mesh;
         h2 = (bindingsOf fleet "nixos" "host:h2").mesh;
       };
+      # #74b: flat values (v1 flattenAndExtract).
       expected = {
         h1 = [
-          [ "mesh-h1" ]
-          [ "mesh-h2" ]
+          "mesh-h1"
+          "mesh-h2"
         ];
         h2 = [
-          [ "mesh-h2" ]
-          [ "mesh-h1" ]
+          "mesh-h2"
+          "mesh-h1"
         ];
       };
     };
@@ -174,13 +175,16 @@ in
     #    exists) yet NO cell value reaches a host's mesh binding (own kind `user` ⇒ extraEntityKinds).
     test-collect-entity-gate-cells-emit-but-rejected = {
       expr = {
+        # #74b: the cell's binding = its OWN emission ++ the INHERITED host value (received-collections'
+        # neron self→parent order — v1's child-scope pipe inheritance), flat.
         cellEmits = (bindingsOf fleet "home-manager" "user:tuxA@host:h1").mesh;
-        h1HasNoCellValue = builtins.any (
-          v: builtins.elem "mesh-cell-tuxA" (if builtins.isList v then v else [ ])
-        ) ((bindingsOf fleet "nixos" "host:h1").mesh);
+        h1HasNoCellValue = builtins.elem "mesh-cell-tuxA" ((bindingsOf fleet "nixos" "host:h1").mesh);
       };
       expected = {
-        cellEmits = [ [ "mesh-cell-tuxA" ] ];
+        cellEmits = [
+          "mesh-cell-tuxA"
+          "mesh-h1"
+        ];
         h1HasNoCellValue = false;
       };
     };
@@ -196,23 +200,23 @@ in
     test-collect-cell-siblings-only = {
       expr = (bindingsOf fleet "home-manager" "user:tuxA@host:h1").umesh;
       expected = [
-        [ "umesh-tuxA" ]
-        [ "umesh-tuxB" ]
+        "umesh-tuxA"
+        "umesh-tuxB"
       ];
     };
     test-collectall-cell-fleet-wide = {
       expr = (bindingsOf fleetAll "home-manager" "user:tuxA@host:h1").umesh;
       expected = [
-        [ "umesh-tuxA" ]
-        [ "umesh-tuxB" ]
-        [ "umesh-tuxC" ]
+        "umesh-tuxA"
+        "umesh-tuxB"
+        "umesh-tuxC"
       ];
     };
 
     # (3) a channel with NO collect mark binds own emissions alone — the gather adds no key/values.
     test-no-mark-channel-unaffected = {
       expr = (bindingsOf fleet "nixos" "host:h1").plain;
-      expected = [ [ "plain-h1" ] ];
+      expected = [ "plain-h1" ]; # flat (#74b)
     };
 
     # (4) the F6 LOUD ceiling: a config-dependent (deferred) emission on a collected channel aborts at

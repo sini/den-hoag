@@ -470,20 +470,33 @@ let
   # scope, so it resolves where it was produced, not at the consuming node.
   extractContribution = c: if c.deferred then deferredToThunk c else c.value;
 
-  # A member's channel bindings: its OWN emissions AUGMENTED by the per-node gather (#62a). Per channel the
-  # bound value is `local ++ gathered` (F4 — v1 `mkCombinedBase`'s `markedBase ++ markedExposed`,
-  # assemble-pipes.nix:935-948). The key set is TOTAL over both maps so a channel a node NEVER emits locally
-  # but RECEIVES by gather (`resolved-users` at a host — the ship-gate corpus shape) is present, not dropped
-  # by an own-emissions-only key set. Native default gather (`_: { }`) ⇒ `local ++ [ ]` at every own channel
-  # and no extra keys ⇒ byte-identical to the pre-seam `mapAttrs` over local alone.
+  # A member's channel bindings: the channel value VISIBLE AT THIS POSITION (attribute 11,
+  # `received-collections` — the neron self→imports→parent fold, so a cell INHERITS its ancestors'
+  # contributions exactly as a v1 child scope reads its parent's pipe value; a ROOT has no parent, so
+  # received ≡ local there — the pre-#74 host surface byte-identical) AUGMENTED by the per-node gather
+  # (#62a). Per channel the bound value is `received ++ gathered` (F4 — v1 `mkCombinedBase`'s
+  # `markedBase ++ markedExposed`, assemble-pipes.nix:935-948). #74b: this closed the u9 KNOWN CEILING
+  # (the old own-emissions read) — the corpus's persist-home-collector, DELIVERED per-user by #74a,
+  # destructures `persistHome`/`cacheHome` whose emissions live at the HOST (apps/shell/zsh.nix:126) —
+  # v1's user-scope pipe ctx carries them by inheritance. The VALUE LIST is FLAT (v1
+  # `flattenAndExtract`, assemble-pipes.nix — a LIST emission spreads into elements; an attrset/deferred
+  # emission is one element), so a corpus consumer's `concatMap (e: e.directories) persistHome` reads
+  # v1's shape. The key set is TOTAL over both maps (`resolved-users` at a host — the ship-gate shape).
   channelBindingsAt =
     id:
     let
-      local = result.get id "local-collection-data";
+      received' = received id;
+      local = builtins.mapAttrs (_: out: out.contributions or [ ]) received';
       gathered = channelGather { inherit id result; };
+      flatten =
+        c:
+        let
+          v = extractContribution c;
+        in
+        if builtins.isList v then v else [ v ];
     in
     prelude.genAttrs (builtins.attrNames (local // gathered)) (
-      ch: map extractContribution ((local.${ch} or [ ]) ++ (gathered.${ch} or [ ]))
+      ch: prelude.concatMap flatten ((local.${ch} or [ ]) ++ (gathered.${ch} or [ ]))
     );
 
   # The binding set handed to a member's class modules: the node's entity bindings (host/user/env

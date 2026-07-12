@@ -142,13 +142,12 @@ in
     #     the sibling's emission (forced by the gather) resolved against the raw-stamped entity. One
     #     contribution per emitting node (each an emitted LIST value), own-first then the sibling's.
     test-raw-field-readable-at-sibling-gather = {
+      # #74b: flat values (v1 flattenAndExtract).
       expr = (bindingsOf fleet "host:h1").guests;
       expected = [
-        [ "g-h1" ]
-        [
-          "g-h2a"
-          "g-h2b"
-        ]
+        "g-h1"
+        "g-h2a"
+        "g-h2b"
       ];
     };
     # …and the mixed `mv` group merged both trees' children (safe `shared` beside raw `guests`).
@@ -196,7 +195,7 @@ in
       expected = {
         spine = true;
         gathered = true;
-        plain = [ [ "role-consumer" ] ];
+        plain = [ "role-consumer" ]; # flat (#74b)
         safeRead = "consumer";
         poisonedRead = false;
       };
