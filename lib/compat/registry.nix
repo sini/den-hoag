@@ -32,9 +32,10 @@ let
   # The BASE ENTITY MODULE — v1's hostType instance option surface (pin 11866c16
   # nix/lib/entities/host.nix:53-105), reproduced for exactly the options the corpus kind module
   # reads/writes plus the grain-relevant ones. Everything else v1 declares there (aspect,
-  # description, users, intoAttr, mainModule, __resolveResult, __pathSetByScope) reads den v1
-  # RUNTIME machinery the shim replaces wholesale — none is grain- or stamp-relevant, so none is
-  # declared; an authored def for one rides the freeform, inert. `system` is the two-level GROUP KEY
+  # description, mainModule, __resolveResult, __pathSetByScope) reads den v1 RUNTIME machinery the
+  # shim replaces wholesale — none is grain- or stamp-relevant, so none is declared; an authored def
+  # for one rides the freeform, inert. (`intoAttr` IS declared below — the corpus gates on it,
+  # fleet.nix:69.) `system` is the two-level GROUP KEY
   # (v1 :64 `strOpt "platform system" system` — the systemType submodule's `name`), null on the
   # option-classification probe.
   baseEntityModule =
@@ -106,6 +107,35 @@ let
           type = types.raw;
           default = null;
           description = "per-host OS-configuration evaluator (v1 entities/host.nix:81-105; base default = the lower grains here)";
+        };
+        # v1 :106-135 — `intoAttr`, the flake attr PATH where this configuration's named result lands
+        # (`flake.<intoAttr>.<name>`), CLASS-DERIVED verbatim: nixos ⇒ ["nixosConfigurations" name],
+        # darwin ⇒ ["darwinConfigurations" name], systemManager ⇒ ["systemConfigs" name]; an unknown
+        # class THROWS on the `.${config.class}` select — v1's posture, KEPT. Declared (unlike the
+        # runtime-machinery fields the header lists) because the corpus GATES `env-to-hosts` on
+        # `hostCfg.intoAttr != [ ]` (nix-config policies/fleet.nix:69) — a live read once the resolve
+        # arm fires; the omission stalled the corpus re-probe here (blocker #3). `listOf str` is
+        # DATA-shaped, so it RIDES the ctx-entity stamp (v1 hosts carry it, harmless data); an authored
+        # def wins natively (def priority 100 > this base option default 1500).
+        intoAttr = mkOption {
+          type = types.listOf types.str;
+          default =
+            {
+              nixos = [
+                "nixosConfigurations"
+                config.name
+              ];
+              darwin = [
+                "darwinConfigurations"
+                config.name
+              ];
+              systemManager = [
+                "systemConfigs"
+                config.name
+              ];
+            }
+            .${config.class};
+          description = "flake attr path for the named result (v1 entities/host.nix:106-135; class-derived: flake.<intoAttr>.<name>)";
         };
         # v1's `host.home-manager.{enable,module}` — declared NOT by the base entity but by the
         # home-manager BATTERY's hostConf (pin nix/lib/home-env.nix:35-55 `hostOptions`, wired at

@@ -449,3 +449,28 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   `den.hosts.<system>.<name>` and gates on `hostCfg.intoAttr != [ ]` (fleet.nix:69), throwing VERBATIM: \*"error:
   The option `den.hosts.aarch64-darwin.patch.intoAttr' was accessed but has no value defined. Try setting the option."* — NO drvPath. DIAGNOSIS (next dead link, precise): the compat host registry (`lib/compat/registry.nix` `baseEntityModule`) DELIBERATELY OMITS the v1 host-entity `intoAttr` option (its own comment §35: *"aspect, description, users, intoAttr, mainModule … none is grain- or stamp-relevant, so none is declared"*). v1 declares it (`den`@ pin 11866c16`nix/lib/entities/host.nix:106-135`) with a CLASS-DERIVED default — `{ nixos = ["nixosConfigurations" name]; darwin = ["darwinConfigurations" name];
   systemManager = [...]; }.${config.class}`(non-empty for nixos/darwin; THROWS for an unknown class). The darwin host`patch`(env`dev`, `hosts/patch.nix`) does NOT author `intoAttr`, so once `env-to-hosts`fires and reads it as a gate the compat registry has no value to give. The omission was INERT while the resolve arm never fired (the prior two blockers masked it); it is now the live gate. THE NEXT RUNG (registry, compat-only, NOT this rung): declare`intoAttr`in`registry.nix` `baseEntityModule`with v1's class-derived default (host.nix:119-134), so`hostCfg.intoAttr`reads a non-empty list for nixos/darwin hosts and the corpus's`intoAttr != [ ]\` gate resolves. Gates for THIS rung: CI 793/793, parity 71/71.
+
+- **v1 `intoAttr` HOST OPTION declared on the compat base entity (blocker #3) — SHIPPED
+  (`lib/compat/registry.nix` `baseEntityModule`), CI 793→795 (+2 witnesses `ci/tests/compat-host-registry.nix`
+  `test-intoAttr-class-derived` / `test-intoAttr-authored-override`), parity 71/71.** THE FIX (as the prior bullet
+  named it): the base entity now declares `intoAttr` VERBATIM from v1 (pin 11866c16 `entities/host.nix:106-135`) —
+  `listOf str`, CLASS-DERIVED default `{ nixos = ["nixosConfigurations" config.name]; darwin = ["darwinConfigurations" config.name]; systemManager = ["systemConfigs" config.name]; }.${config.class}`
+  (non-empty for nixos/darwin; an unknown class THROWS on the `.${config.class}` select — v1's posture, KEPT).
+  `listOf str` is DATA-shaped → it RIDES the ctx-entity stamp (harmless; v1 hosts carry it; nothing downstream
+  chokes — the stamp/`entityFields` consumers read PARTIAL field sets, and CI stays green). Witnesses: a nixos host
+  reads `["nixosConfigurations" <name>]`, a darwin host the darwin pair, a FLAT host its name-defaulted pair, an
+  authored def (priority 100) beats the base default (1500), and the corpus gate shape `intoAttr != [ ]` passes for
+  BOTH classes. **ORACLE RE-PROBE #4 — the intoAttr gate CLEARS; `env-to-hosts` dispatches PAST `hostCfg.intoAttr != [ ]` and resolution COMPLETES; the barrier MOVES to THE ASSERTION GATE — the axon-01 NixOS toplevel's OWN
+  `Failed assertions` (initrd SSH authorized keys / neither root nor a wheel user has an SSH key|password /
+  `users.users.nix-remote-build.shell` is zsh but `programs.zsh.enable` is not true) — NO drvPath.** The V1 baseline
+  (no override, corpus-locked den) produces the oracle drv EXACTLY
+  (`q1vk4s3z8r593mf5sg39pwqaijys7d2p-nixos-system-axon-01-26.11.20260616.567a49d.drv`), so the assertions are a REAL
+  COMPAT CONTENT-DELIVERY gap, not an eval-env artifact. DIAGNOSIS (next dead link, precise — targeted evals that
+  read delivered config, NOT the failing toplevel): compat's axon-01 `config.users.users` carries ONLY the
+  system/service accounts (acme, frr, nix-remote-build, nixbld\*, root, sshd, …) and `config.programs.zsh.enable = false`; the V1 baseline carries the SAME system users PLUS the HUMAN user cells `dvicory`/`pol`/`sini`/`theutz`/
+  `vic` and `programs.zsh.enable = true`. So `env-to-hosts` now fires cleanly, but the `env-users → member → user-cell → users.users` CONTENT link does NOT cross the resolved HUMAN user cells (their accounts + SSH
+  authorized keys + the user-driven `programs.zsh.enable` / initrd-SSH content) into the host toplevel — exactly the
+  assertions' three subjects. THE NEXT RUNG (user-cell-content delivery, NOT this rung): cross the resolved human
+  user cells' content onto the host's `users.users.<name>` + the user-driven host settings, so root/wheel gain SSH
+  auth, `programs.zsh.enable` turns true, and the initrd SSH keys populate — then the toplevel assertions clear and
+  the drvPath materializes for the oracle diff. Gates for THIS rung: CI 795/795, parity 71/71.

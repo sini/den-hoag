@@ -151,6 +151,12 @@ let
       master.channel = "nixpkgs-master";
       # authored evaluator — priority 100 beats the corpus mkDefault (1000), natively.
       authored.instantiate = authoredEval;
+      # authored `intoAttr` — a def (priority 100) beats the base class-derived default (1500), so
+      # the flake-attr path is author-chosen (v1 entities/host.nix:106-135 override interplay).
+      authored.intoAttr = [
+        "customConfigurations"
+        "authored"
+      ];
     };
     # darwin host — v1's class-from-system derivation (entities/host.nix:65-67) selects the
     # darwinSystem branch (host.nix:326). TWO-LEVEL group key rides as the `system` option default.
@@ -299,6 +305,43 @@ in
         flattyGrouped = true;
       };
     };
+    # v1's `intoAttr` (entities/host.nix:106-135) — the flake attr PATH for the named result,
+    # CLASS-DERIVED: a nixos host reads `["nixosConfigurations" name]`, a darwin host
+    # `["darwinConfigurations" name]`. Both are NON-EMPTY, so the corpus's `intoAttr != [ ]` gate
+    # (nix-config policies/fleet.nix:69) passes for either class — the blocker-#3 rung this closes.
+    test-intoAttr-class-derived = {
+      expr = {
+        nixos = registry.chan.intoAttr;
+        darwin = registry.mac.intoAttr;
+        flatNixos = registry.flatty.intoAttr;
+        gatePasses = registry.chan.intoAttr != [ ] && registry.mac.intoAttr != [ ];
+      };
+      expected = {
+        nixos = [
+          "nixosConfigurations"
+          "chan"
+        ];
+        darwin = [
+          "darwinConfigurations"
+          "mac"
+        ];
+        flatNixos = [
+          "nixosConfigurations"
+          "flatty"
+        ];
+        gatePasses = true;
+      };
+    };
+    # authored `intoAttr` (def priority 100) BEATS the class-derived base default (1500) — v1's
+    # native override interplay, nothing hand-rolled.
+    test-intoAttr-authored-override = {
+      expr = registry.authored.intoAttr;
+      expected = [
+        "customConfigurations"
+        "authored"
+      ];
+    };
+
     # the darwin branch of the corpus default (host.nix:326) selects darwinSystem — materialized,
     # though inert until the class-B arm stamps the wrapper on the darwin class.
     test-darwin-branch-materializes = {
