@@ -5,7 +5,7 @@
 # (`resolved-users` at a nixos host, exposed up by its home-manager user cells — the ship-gate corpus
 # shape) carries the descendant cells' contributions at the terminal binding.
 #
-# THE v1 SEMANTICS (faithfully matched — the depth question the build had to settle). `collectAllExposed`
+# THE v1 DEPTH SEMANTICS (matched — the depth question the build had to settle). `collectAllExposed`
 # is bottom-up and GATED-TRANSITIVE, NOT a flat subtree gather: `processTree` folds children first, then a
 # scope pushes to its parent ONLY IF it has an expose stage for the pipe, and what it pushes is
 # `combinedBase = resolvedBase ++ exposedValues` — its OWN local emits PLUS what its children already
@@ -14,7 +14,18 @@
 # (`allExposed.${intermediate}` holds it, but it is never pushed further). A blind `descendants`-gather at
 # every consumer would OVER-DELIVER here (a grandparent whose child does not re-expose would wrongly
 # receive the grandchild's value — e.g. a fleet root receiving user-cell exposes). The gated recursion
-# below is v1-exact; gen-scope `descendants` is deliberately NOT used (it is unguarded).
+# below reproduces that depth gating; gen-scope `descendants` is deliberately NOT used (it is unguarded).
+# Two v1 shapes are NOT reproduced — the named scoped ceilings below (multi-policy doubling, deriving
+# stages), neither corpus-exercised, neither silent.
+#
+# MULTI-POLICY DOUBLING CEILING (scoped, corpus-unexercised): v1 does NOT dedup across DISTINCT expose
+# policies on one channel — `dedupEffectsByPolicy` keys by `${pipeName}/${policyName}`
+# (assemble-pipes.nix:679-697, applied :729), so TWO different policies exposing the SAME channel at one scope make v1
+# push `combinedBase` TWICE (the values double at the parent). This twin dedups by CHANNEL
+# (`exposeChannelsAt`'s `prelude.unique`) — one push per channel however many policies expose it. The
+# corpus's sole expose pipe (`expose-resolved-users`) is one policy on one channel, so the shapes agree
+# there; a future corpus exposing one channel from several policies would surface the difference as a P2
+# byte-compare divergence (extra copies on the v1 arm) — never silent.
 #
 # A scope CONSUMES its exposed pool via `mkCombinedBase = markedBase ++ markedExposed` (:935-948) — own
 # emissions first, exposed second — which is exactly what the #62a seam does (`local ++ gathered`), so
@@ -46,7 +57,8 @@ let
   # The channels a node RE-EXPOSES: the `channel` of each expose SITE-MARK it carries — a compiled
   # `pipe.from <channel> [ pipe.expose ]` (lib/compat/pipe.nix `stageOp` "expose" ⇒ a bare-channel `pipeOp`
   # whose `marks` hold `{ __pipeMark = "expose"; }`), read off the node's collection-stratum declarations
-  # (`declarations.actions.collection`). Deduped (a channel exposed by several policies ascends once).
+  # (`declarations.actions.collection`). Deduped by CHANNEL — a channel exposed by several policies ascends
+  # once (the multi-policy doubling ceiling above; v1 would push once PER POLICY).
   collectionDeclsAt = result: nid: (result.get nid "declarations").actions.collection or [ ];
   exposeChannelsAt =
     result: nid:
@@ -77,6 +89,9 @@ let
   # What node `cid` PUSHES to its parent — the gated-transitive bubble. For each channel `cid` re-exposes:
   # its own local emits ++ what its children exposed to it (`combinedBase = resolvedBase ++ exposedValues`).
   # A channel `cid` does NOT re-expose is absent from the result (its descendants' data traps at `cid`).
+  # TERMINATION INVARIANT: no visited-set guard (unlike gen-scope `descendants`) — the recursion descends
+  # the containment TREE (`children` derives from single-parent containment; a cyclic containTo topology
+  # aborts LOUD via `errors.containmentCycle` before any gather), so the children walk cannot revisit.
   exposedUpBy =
     result: cid:
     let
