@@ -456,17 +456,57 @@ let
         inherit denMeta;
       };
 
+      # ── CELL-KIND CLASSIFICATION (membership-derived, design note 2026-07-11 §3b, user-delivery R3-core) ──
+      # THE GAP this rung closes: core formerly picked ONE `leafKind = head cellKinds`, where `cellKinds`
+      # was every childless-with-a-parent kind — so a topology with TWO such kinds (the corpus's
+      # cluster←environment AND user←host) selected `cluster` alphabetically, `user` never became a product
+      # dimension, and user cells never materialized. The product already supports several dim families
+      # (fleet.nix `byDims` groups tuples by coord signature); only the ROOT/CELL classification held the
+      # single-leaf constraint. THE LAW: a kind is a CELL kind iff a membership tuple (static ∪ pre-pass-
+      # derived) targets it as a COORDINATE — read from the tuple DIM SIGNATURES (coord attr NAMES) alone,
+      # never the coord VALUES (so no new fixpoint). Every other kind is a ROOT.
+      allKinds = builtins.attrNames ent.meta;
+      parentKinds = prelude.unique (
+        builtins.filter (p: p != null) (map (k: ent.meta.${k}.parent) allKinds)
+      );
+      # CANDIDATE cell kinds — the topology LEAVES (childless: nothing nests under them) that HAVE a parent
+      # (a cell materializes UNDER its parent). STRUCTURAL — reads only `ent.meta` (the discovered
+      # containment topology), NEVER membership — which is precisely what breaks the cycle below. A
+      # childless PARENTLESS kind (a standalone link/root kind — the r2 acceptance fixture's `cluster`,
+      # `parent = null`) is NOT a candidate: it can never be a cell.
+      candidateKinds = builtins.filter (
+        k: !(builtins.elem k parentKinds) && ent.meta.${k}.parent != null
+      ) allKinds;
+      # NON-candidate kinds are ROOTS regardless of the membership-derived verdict (the parent-chain kinds
+      # + standalone roots). They carry every resolve-family policy the corpus includes (its five are all
+      # flake/fleet/environment/host includes — `den.resolveFamilyNames`), and their root set is membership-
+      # INDEPENDENT.
+      nonCandidateKinds = builtins.filter (k: !(builtins.elem k candidateKinds)) allKinds;
+
+      # THE STAGING THAT BREAKS THE CYCLE (design note §3b). Naive "cellKinds ← tuples ← pre-pass ← roots ←
+      # cellKinds" is circular. Instead the pre-pass reads a root set fixed BEFORE classification
+      # (`prePassScopeRoots`, over the STRUCTURAL non-candidates), derives the membership tuples, and the
+      # classification reads those tuples' DIM SIGNATURES afterward. IDENTITY: for every fleet whose
+      # candidates are ALL targeted (each native/synthetic fixture) `nonCandidateKinds == rootScopeKinds`,
+      # so this pre-pass input is BYTE-IDENTICAL to the pre-R3 one (`baseScopeRoots` over `rootScopeKinds`);
+      # only a multi-candidate topology with an UNtargeted candidate (the corpus's `cluster`) differs, and
+      # only in the MAIN-run classification (the pre-pass never sees the difference).
+      prePassRootKinds = nonCandidateKinds;
+      prePassScopeRoots = buildRoots {
+        inherit (ent) registries;
+        roots = prePassRootKinds;
+      };
       # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED tuples (Task 4, A5's
-      # promised law): a policy-emitted leaf-dim `member` at a membership-independent root now routes into
-      # the fleet. `prePass` also carries `relationBindings` (nodeId -> ctx additions from `relate`),
-      # injected into the target roots' decls (`scopeRoots`, below) so the main run's inherited-context
-      # threads them. THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` +
-      # `relationBindings = { }`, so `membershipTuples` and `scopeRoots` are byte-identical to the pre-R1
-      # values — a native fleet is unchanged. The pre-pass reads `baseScopeRoots` (un-injected) +
-      # `policiesRules` + `ent.meta` topology — none depend on `membershipTuples`/`theFleet`, so no cycle.
+      # promised law): a policy-emitted leaf-dim `member` at a membership-independent root routes into the
+      # fleet. `prePass` also carries `relationBindings` (nodeId -> ctx additions from `relate`), injected
+      # into the target roots' decls (`scopeRoots`, below) so the main run's inherited-context threads them.
+      # THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` + `relationBindings =
+      # { }`, so `membershipTuples`/`scopeRoots` are byte-identical to the pre-R1 values. The pre-pass reads
+      # `prePassScopeRoots` (structural, un-injected) + `policiesRules` + `ent.meta` topology — none depend
+      # on `membershipTuples`/`theFleet`/the classification, so no cycle.
       prePass = stagedResolution.runPrePass {
-        scopeRoots = baseScopeRoots;
-        rootKinds = rootScopeKinds;
+        scopeRoots = prePassScopeRoots;
+        rootKinds = prePassRootKinds;
         parentOf = k: ent.meta.${k}.parent;
         inherit (ent) registries;
         # The resolve-family feed (concern-policies) — the structural-group rules that CAN emit
@@ -477,58 +517,64 @@ let
       };
       membershipTuples = ent.config.den.membership ++ prePass.tuples;
 
-      # Product dims = the CELL COORDINATE kinds — the leaf cell kind and its containment ANCESTORS (the
-      # parent chain root→leaf). A registered kind OUTSIDE that chain (a pure link/root kind like
-      # `cluster`: `parent = null`, nothing nests under it) is a scope root but NOT a fleet axis — making
-      # it a gen-product factor would attach its sole instance to every cell, since an unconstrained
-      # factor multiplies through gen-product's natural join (membership.nix Strategy 3). Excluding it
-      # keeps cells clean while the kind stays a first-class scope root (`rootScopeKinds`, below).
-      #
-      # For a fleet whose every kind lies on the leaf's containment chain (env←host←user) this is the
-      # prior all-kinds set — a no-op (canonical name-sorted; den.linearization takes over the dim ORDER
-      # in Task 6). The leaf kind must be a dimension even when it has no instances yet (`cellChildrenFor`
-      # reads the leaf coordinate off the sliced product), so the rule is chain-membership, not tuple-
-      # reference. A cell-free fleet (no leaf kind) keeps all registered kinds as dims (degenerate product).
-      containmentKinds =
-        let
-          chainOf =
-            k:
-            [ k ]
-            ++ (
-              let
-                p = ent.meta.${k}.parent;
-              in
-              if p == null then [ ] else chainOf p
-            );
-        in
-        if leafKind == null then builtins.attrNames ent.registries else chainOf leafKind;
-      dimKinds = prelude.sort (a: b: a < b) (
-        builtins.filter (k: builtins.elem k containmentKinds) (builtins.attrNames ent.registries)
+      # The DIM SIGNATURES of the membership tuples — the kinds any tuple names as a coordinate. Both the
+      # cell-kind verdict (which candidates are targeted) and the product dims read this ONE set (byDims,
+      # fleet.nix:66, groups the SAME signatures into per-family relations). Coord NAMES only — no values.
+      tupleDimKinds = prelude.unique (
+        prelude.concatMap (t: builtins.attrNames t.coords) membershipTuples
       );
+
+      # THE CLASSIFICATION: a CANDIDATE targeted by some tuple is a CELL kind; an untargeted candidate is
+      # an ordinary ROOT. The corpus's `cluster` (childless under environment, but NO tuple names it — its
+      # k8s content is read off the cluster ROOT entity) stays a root; `user` (named by the `{ host; user }`
+      # tuples) becomes the leaf, exactly where membership says so — with zero kind-name literals.
+      # EDGE (corpus-zero, documented loud): a resolve-family policy included ON a candidate kind would
+      # dispatch NOWHERE — the pre-pass runs over non-candidates. The main-run guard (attributes/
+      # structural.nix) still catches a resolve-family emission at a TARGETED candidate's cell
+      # (`memberAtCell`) and an UNtagged/undetected one at any root (`resolveFamilyUntagged`); the ONLY
+      # unguarded sliver is a FEED policy (in `den.resolveFamilyNames`) firing at an UNtargeted-candidate
+      # root — it would double-fire benignly yet route nothing. Unreachable for the corpus: its five feed
+      # policies are all flake/fleet/environment/host includes, never a cluster/user include.
+      cellKinds = builtins.filter (k: builtins.elem k tupleDimKinds) candidateKinds;
+      rootScopeKinds = builtins.filter (k: !(builtins.elem k cellKinds)) allKinds;
+
+      # Cell FAMILIES — one `{ leafDim; parentDim }` per cell kind (per-family cells; byDims-grouped in the
+      # product). No `head cellKinds` single-leaf pick: `fleetChildren` spawns EVERY family's cells under
+      # its parent kind. The corpus yields ONE family (user×host); the zone/rack/blade fixture another. A
+      # topology with several DISJOINT-chain cell families simultaneously is the deferred native #49 arc —
+      # the single gen-product would natural-join disjoint signatures (fleet.nix `byDims` → conjunctive
+      # relations), a cross-product out of R3-core scope (no corpus/fixture exercises it).
+      cellFamilies = map (leaf: {
+        leafDim = leaf;
+        parentDim = ent.meta.${leaf}.parent;
+      }) cellKinds;
+
+      # Product dims = the CELL COORDINATE kinds — the membership tuples' DIM SIGNATURES (the byDims
+      # families' axes), NOT the leaf's full containment CHAIN. A chain ancestor bound by a RELATION rather
+      # than a membership tuple (the corpus's environment→host edge, carried as ctx via `resolve.to host`)
+      # is a scope ROOT, never a product axis — forcing it in as a dim with an empty registry would ZERO
+      # the product (the corpus's environment/cluster registries are empty in the ship-gate eval). Every
+      # cell kind is targeted by definition, so each leaf IS in a signature; each family's tuples also carry
+      # the parent coordinate, so `cellChildrenFor`'s parent-slice has its dim. A cell-free fleet (no
+      # membership) keeps ALL registered kinds as dims (the degenerate product), unchanged. den.linearization
+      # takes over the dim ORDER (§2.7); the canonical order here is name-sorted.
+      dimKinds =
+        let
+          basis = if tupleDimKinds == [ ] then builtins.attrNames ent.registries else tupleDimKinds;
+        in
+        prelude.sort (a: b: a < b) (
+          builtins.filter (k: builtins.elem k basis) (builtins.attrNames ent.registries)
+        );
 
       theFleet = fleet.mkFleet {
         inherit (ent) registries;
         inherit dimKinds membershipTuples;
       };
 
-      # Scope-tree partition (r2 containment skeleton): a CELL kind is a topology leaf that
-      # has a parent (its instances materialize under that parent as `children`); every other
-      # kind's instances are flat scope roots. A leaf with no parent (a standalone kind) stays
-      # a root. Task 2's fixture has one cell kind (`user`); multi-cell-kind generalization is
-      # deferred to the spawn-declaration wiring (Task 3).
-      allKinds = builtins.attrNames ent.meta;
-      parentKinds = prelude.unique (
-        builtins.filter (p: p != null) (map (k: ent.meta.${k}.parent) allKinds)
-      );
-      cellKinds = builtins.filter (
-        k: !(builtins.elem k parentKinds) && ent.meta.${k}.parent != null
-      ) allKinds;
-      rootScopeKinds = builtins.filter (k: !(builtins.elem k cellKinds)) allKinds;
-      leafKind = if cellKinds == [ ] then null else builtins.head cellKinds;
-      cellParentKind = if leafKind == null then null else ent.meta.${leafKind}.parent;
-
-      # The BASE root scope nodes (un-injected) — what the staged pre-pass reads (independent of
-      # `membershipTuples`/`theFleet`, so the pre-pass closes no cycle).
+      # The BASE root scope nodes (un-injected) — the MAIN run's roots, over the membership-derived
+      # `rootScopeKinds` (non-candidates ∪ UNtargeted candidates, e.g. the corpus's cluster). Distinct from
+      # `prePassScopeRoots` (non-candidates only): an untargeted candidate is a root the main run reads but
+      # the pre-pass did NOT (no resolve-family policy fires there — see the classification edge note).
       baseScopeRoots = buildRoots {
         inherit (ent) registries;
         roots = rootScopeKinds;
@@ -541,22 +587,27 @@ let
         id: node: node // { decls = node.decls // (prePass.relationBindings.${id} or { }); }
       ) baseScopeRoots;
 
-      # The `children` NTA's fleet arm: a host node spawns its cells; other nodes spawn none.
+      # The `children` NTA's fleet arm: a node spawns the cells of every family whose parent kind it is;
+      # every other node spawns none. Folded over ALL cell families (no single-leaf assumption).
       fleetChildren =
         self: id:
         let
           node = self.node id;
         in
-        if cellParentKind != null && node.type == cellParentKind then
-          fleet.cellChildrenFor {
-            fleet = theFleet;
-            parentDim = cellParentKind;
-            hostEntry = node.decls.__entry;
-            hostNodeId = id;
-            leafDim = leafKind;
-          }
-        else
-          { };
+        prelude.foldl' (
+          acc: fam:
+          if node.type == fam.parentDim then
+            acc
+            // fleet.cellChildrenFor {
+              fleet = theFleet;
+              parentDim = fam.parentDim;
+              hostEntry = node.decls.__entry;
+              hostNodeId = id;
+              leafDim = fam.leafDim;
+            }
+          else
+            acc
+        ) { } cellFamilies;
 
       # Resolve a `link` target entry to the scope node whose enriched-context feeds §B3
       # linked-context. Root-kind targets map to their flat root id `"${kind}:${name}"`; the

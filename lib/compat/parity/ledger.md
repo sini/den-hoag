@@ -338,6 +338,45 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   to MULTIPLE cell kinds (each cell kind its own product sub-family) so `user` and `cluster` cells coexist —
   then the corpus user chain materializes and R3's drv byte-compare becomes reachable.
 
+- **R3/core — MEMBERSHIP-DERIVED CELL-KIND CLASSIFICATION (multi-candidate topologies). SHIPPED
+  (`lib/default.nix`), CI 786/786 (+9 witnesses `ci/tests/cell-classification.nix`), parity 71/71.** THE LAW:
+  a kind is a CELL kind iff a membership tuple (static `den.membership` ∪ pre-pass-derived) targets it as a
+  COORDINATE — read from the tuple DIM SIGNATURES (coord attr NAMES) only, never coord VALUES; every other
+  kind (incl. a childless candidate nothing targets — the corpus's `cluster`) is a ROOT. Replaces the
+  single-leaf `leafKind = head cellKinds`. THE CYCLE-BREAKING STAGING (verified sound): (1) CANDIDATE kinds =
+  childless-with-a-parent — STRUCTURAL, reads only `ent.meta`, no membership; (2) the pre-pass runs over the
+  NON-candidates (`prePassScopeRoots` — a root set fixed BEFORE classification, so the tuples it derives feed
+  the classification with no fixpoint); (3) candidates targeted by any tuple = cells, untargeted = roots.
+  For every fleet whose candidates are all targeted `nonCandidateKinds == rootScopeKinds`, so the pre-pass
+  input is BYTE-IDENTICAL to pre-R3 (CI proves it — the 777 baseline is untouched). `dimKinds` is now the
+  membership tuples' DIM SIGNATURES (byDims families' axes), NOT `chainOf leafKind`: a chain ancestor bound by
+  a RELATION not a membership tuple (the corpus's environment→host, via `resolve.to host`) is a ROOT, never a
+  product axis — forcing it in as an empty-registry dim would zero the product. `fleetChildren`/`cellFamilies`
+  are per-family (no `head`); several DISJOINT-chain cell families simultaneously remain the native #49 arc
+  (one gen-product natural-joins disjoint signatures — no corpus/fixture exercises it). EDGE (corpus-zero,
+  documented loud): a resolve-family policy included ON a candidate kind dispatches nowhere — the corpus's
+  five feed policies (`den.resolveFamilyNames`) are all flake/fleet/environment/host includes.
+
+- **R3 ORACLE RE-PROBE — the classification is FIXED, but axon-01's gate does NOT clear: a DOWNSTREAM R2/
+  ingest blocker (empty environment/cluster registries), NOT the classification.** Ground truth (temporary
+  `built.den` debug over the corpus, since removed): at HEAD `leafKind=cluster`, `dimKinds=[cluster,environment]`,
+  **`cellCount=0`** (empty product — the `environment`/`cluster` registries are EMPTY, so the product is
+  vacuous, not the "attribute 'host' missing" throw the earlier hypothesis guessed). AFTER R3/core:
+  `cellKinds=[user]`, `cellFamilies=["user<-host"]`, `dimKinds=[host,user]`, **`cellCount=0→2`** — the two
+  STATIC user cells `sini@patch`, `sini@slab` now materialize (`cluster` correctly stays a root). BUT those
+  two hosts are `aarch64-darwin` workstations carrying embedded `home-manager.users` (the static membership
+  source); every NixOS host (`axon-01`/`axon-02`/`axon-03`, bitstream, blade, cortex, uplink) has NO user
+  membership — `prePassCount=0` because `registrySizes` shows `environment:0, cluster:0, fleet:0` (the corpus
+  DECLARES `den.environments.prod/dev` and `den.clusters.axon`, but they never reach `ent.registries`), so the
+  env→host→user derivation chain (env-to-hosts
+  → env-users) never fires. axon-01 therefore keeps its user membership empty and the re-probe throws the SAME
+  assertion (VERBATIM, byte-identical to HEAD): *"Failed assertions: - You should specify at least one authorized
+  key for initrd SSH - Neither the root account nor any wheel user has a password or SSH authorized key … -
+  users.users.nix-remote-build.shell is set to zsh, but programs.zsh.enable is not true"* — NO drvPath. The
+  drv byte-compare stays BLOCKED, but the blocker has MOVED: R3/core is complete + witnessed; the NEXT rung is
+  R2/ingest (why the corpus's environment/cluster/fleet instance registries are empty — the marker-discovery /
+  bridge-passthrough for those kinds, NOT R3 territory), which the ship-gate re-probe now isolates.
+
 - **u8 / user.settings — UNCHANGED by R2 (still #49-gated latent).** R2 does not change the u8 disposition:
   corpus users still do NOT deliver as ctx entities (their cells do not materialize under the multi-cell-kind
   gap above), so `user.settings.<path>` reads (gpg.nix / bitwarden.nix / git.nix `or`-guarded) stay the
