@@ -331,6 +331,12 @@ in
                   }
                 else if builtins.isAttrs raw && (raw.__isPolicy or false) then
                   raw // { inherit name; }
+                else if builtins.isAttrs raw && raw ? __denCanTake then
+                  # #72: a canTake ROUTE record keeps its shape (compileCanTake reads the marker + fn off
+                  # the VALUE — the extra field is inert there) but gains its registry NAME, so a
+                  # `policy.exclude den.policies.<route>` emission carries the name v1's suppression keys
+                  # on (policyRegistryType names EVERY registry value, policy-type.nix:15-24).
+                  raw // { name = raw.name or name; }
                 else
                   raw
               ) merged;
