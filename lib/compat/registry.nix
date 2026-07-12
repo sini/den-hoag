@@ -39,10 +39,57 @@ let
   # (v1 :64 `strOpt "platform system" system` — the systemType submodule's `name`), null on the
   # option-classification probe.
   baseEntityModule =
-    lib: system:
+    lib: system: userKindModule:
     { name, config, ... }:
     let
       inherit (lib) mkOption types;
+      # #71 (the u20 next-link) — v1's `userType host` twin (pin 11866c16 entities/host.nix:145-177):
+      # each host-embedded user evaluates through the USER kind instance submodule (`mkInstanceType
+      # den.schema.user { strict = false; … }`), so the v1 instance DEFAULTS materialize — `userName`
+      # (default `config.name`, :156), `classes` (default `[ "user" ]`, :157-162 — the corpus kind's
+      # shorthand `classes = mkDefault [ "homeManager" ]` def, carried by the #68 belt, beats it
+      # exactly as under v1), `host` (:169-172), plus the kind's own options/imports. `aspect`
+      # (:163-168, `lookupAspect den config`) is NOT declared — v1 runtime machinery (the header
+      # posture); an authored aspect rides the freeform. `_module.args.user`/`.host` are v1's
+      # ctx-module injections (resolvedCtxModule "user"; :154).
+      userInstanceOf =
+        uname: authored:
+        (lib.evalModules {
+          modules = [
+            (
+              { config, ... }:
+              {
+                freeformType = types.lazyAttrsOf types.raw; # v1 userType strict = false
+                config._module.args.user = config;
+                config._module.args.host = hostSelf;
+                options = {
+                  name = mkOption {
+                    type = types.str;
+                    default = uname;
+                  };
+                  userName = mkOption {
+                    type = types.str;
+                    default = config.name;
+                  };
+                  classes = mkOption {
+                    type = types.listOf types.str;
+                    default = [ "user" ];
+                  };
+                  host = mkOption {
+                    type = types.raw;
+                    default = hostSelf;
+                  };
+                };
+              }
+            )
+            userKindModule
+            {
+              _file = "<host.users.${uname}>";
+              config = authored;
+            }
+          ];
+        }).config;
+      hostSelf = config;
     in
     {
       # v1 hostType is strict = false (pin :56): unknown authored keys (aspect content, …) absorb as
@@ -92,7 +139,14 @@ let
         users = mkOption {
           type = types.lazyAttrsOf types.raw;
           default = { };
-          description = "host-embedded user accounts (v1 entities/host.nix:75-80; raw-held, board #49)";
+          # #71: the v1 userType twin runs as the option APPLY over the raw-held merged value — the
+          # option TYPE stays `lazyAttrsOf raw`, so the field remains structurally EXCLUDED from the
+          # safe stamp and rides the #70 lazy raw side channel unchanged; the instance evaluation is
+          # per-entry, forced only when a body reads a user (the u20 frontier: home-env.nix:47
+          # `host-has-user-with-class` maps `.classes` over `attrValues host.users`).
+          apply =
+            us: builtins.mapAttrs (uname: u: if builtins.isAttrs u then userInstanceOf uname u else u) us;
+          description = "host-embedded user accounts (v1 entities/host.nix:75-80 `attrsOf (userType config)` — the #71 instance-eval apply; raw-held on the #70 side channel)";
         };
         # v1 :81-105 — `instantiate`, type raw (:96), base default = den v1's OWN flake inputs by
         # class (:98-104, `inputs.nixpkgs.lib.nixosSystem` / `inputs.darwin.lib.darwinSystem`) at
@@ -328,10 +382,14 @@ let
   # the shim OWNS this registry's declaration, so its option records come from the same modules that
   # stamp entries; a consumer-declared registry's twin is `type.getSubOptions`, read at the bridge.
   hostInstanceOptions =
-    { lib, kindModule }:
+    {
+      lib,
+      kindModule,
+      userKindModule ? { },
+    }:
     (lib.evalModules {
       modules = [
-        (baseEntityModule lib null)
+        (baseEntityModule lib null userKindModule)
         kindModule
         { config._module.args.name = "«den-compat-probe»"; }
       ];
@@ -350,7 +408,11 @@ let
   # module); `{ }` for a fleet with no host kind declaration (base-only registry — every schema
   # default null, the grains absent, byte-identical to the pre-registry bridge).
   mkHostsOption =
-    { lib, kindModule }:
+    {
+      lib,
+      kindModule,
+      userKindModule ? { },
+    }:
     let
       inherit (lib) types;
       # v1's deepMergeAttrs (pin _types.nix:29-34): recursive merge without forcing leaf values —
@@ -395,7 +457,7 @@ let
         types.submoduleWith {
           shorthandOnlyDefinesConfig = true;
           modules = [
-            (baseEntityModule lib system)
+            (baseEntityModule lib system userKindModule)
             kindModule
           ];
         };

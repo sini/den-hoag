@@ -470,6 +470,9 @@ in
         options.hosts = compat.registry.mkHostsOption {
           inherit lib;
           kindModule = (denConfig.schema or { }).host or { };
+          # #71: each host-embedded user evaluates through v1's userType twin (the user kind's emitted
+          # value — the same lazily-read processed schema as `kindModule`; no fixpoint, same reasoning).
+          userKindModule = (denConfig.schema or { }).user or { };
         };
       }
     );
@@ -530,8 +533,12 @@ in
       # stamps base-only (every base option is raw → excluded → an EMPTY host stamp) — byte-identical
       # to the field-less pre-registry entities.
       hostKindModule = (config.den.schema or { }).host or { };
+      # #71 — the USER kind's emitted value (the belt __functor module, post-#68 carrying the corpus's
+      # shorthand `classes = mkDefault [ "homeManager" ]` def) threads into the host registry so each
+      # host-embedded user evaluates through v1's userType twin (registry.nix baseEntityModule).
+      userKindModule = (config.den.schema or { }).user or { };
       hostInstanceOpts = compat.registry.hostInstanceOptions {
-        inherit lib;
+        inherit lib userKindModule;
         kindModule = hostKindModule;
       };
       hostStampTree = compat.registry.stampTreeOf hostInstanceOpts;
