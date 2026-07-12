@@ -2,9 +2,9 @@
 # SYNTHETIC CUSTOM KINDS (the genericity pin — ZERO env/host/user names, zero corpus/v1 vocabulary): a
 # three-level containment topology `zone <- rack <- blade` (blade the leaf/cell kind). The pass:
 #
-#   • routes a policy-emitted leaf-dim MEMBERSHIP into the fleet (the deferred Task 4 — A5's promised law);
-#   • folds a RELATION's bindings (source zone -> existing rack) into the target's ctx, visible to a
-#     LATER-phase policy (the rack phase reads `authToken`) AND to the main run's node ctx;
+#   • routes a policy-emitted CELL membership into the fleet (the deferred Task 4 — A5's promised law);
+#   • folds a CONTAINMENT tuple's bindings (source zone -> existing rack, `containTo = "rack"`) into the
+#     target's ctx, visible to a LATER-phase policy (the rack phase reads `authToken`) AND the main run;
 #   • derives the phase order from the DISCOVERED topology (zone before rack — never a hardcoded list);
 #   • holds the DOUBLE-FIRE / A5 discipline: a resolve-family emission at a membership-DERIVED node aborts
 #     LOUD (never a silent drop);
@@ -95,18 +95,23 @@ let
     };
 
   # ── the RESOLUTION policies (the two-phase corpus shape, synthetic) ──────────────────────────────────
-  # zone phase: relate to an EXISTING rack, carrying `authToken` (a relation-carried binding). Fires at
-  # zone roots only (the `zone` coord is absent at rack roots and — being a stripped `__coords` entry — at
-  # blade cells). Single-group structural (the probe emits a relate).
+  # zone phase: a CONTAINMENT member to an EXISTING rack (§3c-UNIFIED, `relate` dissolved), carrying
+  # `authToken` (a tuple-carried binding) + recording zone as rack's containment ancestor. Fires at zone
+  # roots only (the `zone` coord is absent at rack roots and — being a stripped `__coords` entry — at blade
+  # cells). Single-group structural (the probe emits a `member`). `containTo = "rack"` marks the target coord.
   zoneRelateMod =
     { config, ... }:
     {
       config.den.policies.grant-token =
         { zone, ... }:
         [
-          (declare.relate {
-            target = config.den.rack.r1;
+          (declare.member {
+            coords = {
+              inherit zone;
+              rack = config.den.rack.r1;
+            };
             bindings.authToken = "tok-${zone.name}";
+            containTo = "rack";
           })
         ];
     };
@@ -183,21 +188,25 @@ let
           })
         ];
     };
-  relateAtCellMod =
+  containAtCellMod =
     { config, ... }:
     {
-      config.den.policies.bad-relate =
+      config.den.policies.bad-contain =
         { blade, ... }:
         [
-          (declare.relate {
-            target = config.den.rack.r1;
+          (declare.member {
+            coords = {
+              inherit blade;
+              rack = config.den.rack.r1;
+            };
             bindings.x = 1;
+            containTo = "rack";
           })
         ];
     };
   abortFleet = baseFleet ++ [ rackBladeStatic ];
   memberAtCellDen = (denHoag.mkDen (abortFleet ++ [ memberAtCellMod ])).den;
-  relateAtCellDen = (denHoag.mkDen (abortFleet ++ [ relateAtCellMod ])).den;
+  containAtCellDen = (denHoag.mkDen (abortFleet ++ [ containAtCellMod ])).den;
   forceCellDecls =
     den:
     (builtins.tryEval (builtins.deepSeq (den.structural.eval.get cellId "declarations") true)).success;
@@ -261,9 +270,11 @@ in
       expected = true;
     };
 
-    # ── NATIVE BYTE-IDENTITY: the policy-routed fleet is byte-identical to the static-membership fleet at
-    #    the cell set AND the delivered content — the routing == a static declaration, and a fleet with no
-    #    resolution emissions is unchanged by the pre-pass (the identity path). ────────────────────────────
+    # ── NATIVE BYTE-IDENTITY: the policy-routed fleet matches the static-membership fleet at the cell set
+    #    AND the delivered content — the routing == a static declaration for those, and a fleet with no
+    #    resolution emissions is unchanged by the pre-pass (the identity path). (The containment member DOES
+    #    add zone as rack's settings-chain ancestor, a §3c difference the static tuple lacks — not asserted
+    #    here; cells + resolved-aspect content are what this pins.) ─────────────────────────────────────────
     test-routed-fleet-identical-to-static = {
       expr = {
         cells = cellsOf viaPolicy == cellsOf staticEquiv;
@@ -285,13 +296,14 @@ in
     };
 
     # ── DOUBLE-FIRE / A5 DISCIPLINE: a resolve-family emission at the membership-DERIVED blade cell aborts
-    #    LOUD (errors.memberAtCell) — never silently dropped. Both resolve-family kinds are guarded. ─────
+    #    LOUD (errors.memberAtCell) — never silently dropped. Both a CELL member and a CONTAINMENT member
+    #    (the unified `member`) are guarded. ──────────────────────────────────────────────────────────────
     test-member-at-cell-aborts = {
       expr = forceCellDecls memberAtCellDen;
       expected = false;
     };
-    test-relate-at-cell-aborts = {
-      expr = forceCellDecls relateAtCellDen;
+    test-containment-member-at-cell-aborts = {
+      expr = forceCellDecls containAtCellDen;
       expected = false;
     };
     # non-vacuous: the SAME base fleet WITHOUT the over-firing policy forces the cell's declarations clean

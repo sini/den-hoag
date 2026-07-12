@@ -36,25 +36,25 @@ in
     policyName: scopeId:
     fail "member discipline (A5)" "policy `${policyName}` emitted `member` at membership-derived scope `${scopeId}`; member is accepted only at membership-independent nodes";
 
-  # UNTAGGED resolve-family emission (design note 2026-07-11 §3(ii), slice R2 REQUIREMENT 1). A `member`/
-  # `relate` produced in the MAIN run at a membership-INDEPENDENT root by a policy that is NOT in the
-  # resolve-family feed — so the STAGED ROOT-RESOLUTION pre-pass never dispatched it and never consumed the
-  # emission, and the main run's structural consumers (attr 5/6) never read member/relate at a root either.
-  # That is the R1 reviewer's SILENT-DROP edge: the tuple/relation would simply vanish. Convert it to LOUD.
-  # (A feed policy double-firing benignly at a root is ALLOWED — the pre-pass consumed its emission; only an
-  # UNTAGGED, unconsumed one aborts.) Names the policy + the scope. Raised in attributes/structural.nix attr 4.
+  # UNTAGGED resolve-family emission (design note 2026-07-11 §3(ii), slice R2 REQUIREMENT 1). A `member`
+  # produced in the MAIN run at a membership-INDEPENDENT root by a policy that is NOT in the resolve-family
+  # feed — so the STAGED ROOT-RESOLUTION pre-pass never dispatched it and never consumed the emission, and
+  # the main run's structural consumers (attr 5/6) never read `member` at a root either. That is the R1
+  # reviewer's SILENT-DROP edge: the tuple would simply vanish. Convert it to LOUD. (A feed policy
+  # double-firing benignly at a root is ALLOWED — the pre-pass consumed its emission; only an UNTAGGED,
+  # unconsumed one aborts.) Names the policy + the scope. Raised in attributes/structural.nix attr 4.
   resolveFamilyUntagged =
     policyName: scopeId:
-    fail "resolve-family discipline (R2)" "policy `${policyName}` emitted a resolve-family declaration (`member`/`relate`) at membership-independent root `${scopeId}` in the main run, but it is NOT in the staged pre-pass's resolve-family feed — so the pre-pass never routed the emission (a silent drop). Declare `__resolveFamily = true` on the policy (or add its name to the shim's `den.resolveFamilyNames`) so the pre-pass consumes its member/relate";
+    fail "resolve-family discipline (R2)" "policy `${policyName}` emitted a resolve-family declaration (`member`) at membership-independent root `${scopeId}` in the main run, but it is NOT in the staged pre-pass's resolve-family feed — so the pre-pass never routed the emission (a silent drop). Declare `__resolveFamily = true` on the policy (or add its name to the shim's `den.resolveFamilyNames`) so the pre-pass consumes its member";
 
-  # Resolve-family relation target (design note 2026-07-11 §3(ii), slice R1): a `relate` whose target
-  # entry resolves to NO existing root scope node. A relation carries ctx INTO an existing membership-
-  # independent root (it never creates one), so an unknown/leaf target is a definition error — the leaf-
-  # dim membership case belongs to `member`, not `relate`. Names the policy + the target. Raised in the
-  # staged root-resolution pre-pass (lib/staged-resolution.nix).
-  relateNoTarget =
+  # Containment-tuple target (design note 2026-07-11 §3c-UNIFIED): a `containTo`-marked `member` whose
+  # target coordinate resolves to NO existing root scope node. A containment tuple carries ctx bindings +
+  # a containment ancestor INTO an existing membership-independent root (it never creates one), so an
+  # unknown target is a definition error — the leaf-dim cell case leaves `containTo` null. Names the policy
+  # + the target. Raised in the staged root-resolution pre-pass (lib/staged-resolution.nix).
+  containTargetMissing =
     policyName: target:
-    fail "relation target (R1)" "policy `${policyName}` emitted `relate` to target `${render target}`, which resolves to no existing root scope node; a relation carries ctx into an existing membership-independent root (a leaf-dim target is a `member`, not a `relate`)";
+    fail "containment target (§3c)" "policy `${policyName}` emitted a `containTo`-marked `member` to target `${render target}`, which resolves to no existing root scope node; a containment tuple carries ctx into an existing membership-independent root (a leaf-dim cell target leaves `containTo` null)";
 
   # B1 single-writer enrichment (A3): two enrich policies writing one context key abort at
   # definition time, naming both policies + the key. Fires on a same-pass collision AND a

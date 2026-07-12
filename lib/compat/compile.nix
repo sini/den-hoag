@@ -607,22 +607,25 @@ let
       in
       if isPolicyTarget then errors.excludeOfPolicy else [ (declare.drop (resolveAspectRef aspectRec v)) ]
     else if kind == "resolve" then
-      # THE RESOLVE ARM (user-delivery R2, design note 2026-07-11 §3(i)). v1 `resolve.to <kind> { … }` →
-      # a den-hoag RESOLVE-FAMILY declaration the STAGED ROOT-RESOLUTION pre-pass consumes. Dispatch on
-      # `__targetKind` against the DISCOVERED containment topology (`ing.schema` — zero kind literals):
-      #   • a product LEAF dim (a CELL kind: has a parent, nothing nests under it) → a MEMBER tuple with
-      #     coords { <leaf> = the identity-wrapped target entity; <parentDim> = the FIRING node's own entry
-      #     (`ctx.<parentDim>`) }. The leaf entity is wrapped to the ingest identity (sha256
-      #     "<kind>|name=<name>", ingest.nix:177) so its id_hash matches the registry factor node / the pre-
-      #     pass rootNodeIndex; `via = { policy; scope }` is threaded by the pre-pass off the `__policy` stamp
-      #     (staged-resolution.nix), so the constructor need only build coords (A5). Corpus: env-users'
-      #     `resolve.to "user" { user; }` → member { user; host }.
-      #   • an EXISTING-node kind (a ROOT kind — host/cluster/environment/fleet) → a RELATION to that target
-      #     root carrying the NON-ENTITY bindings. THE HONEST-KEYSET ADAPTER (B1): the declared binding keyset
-      #     = the emission's non-entity keys (`value` minus the entity key); the entity key under
-      #     `value.<targetKind>` (identity-wrapped) identifies the target root. The pre-pass folds the
-      #     bindings into the target root's ctx. Corpus: env-to-hosts' `resolve.to "host" { host; accessGroups; }`
-      #     → relate to host:<name> carrying { accessGroups } (→ the host scope's ctx, read by env-users).
+      # THE RESOLVE ARM (user-delivery, design note 2026-07-11 §3(i) + §3c-UNIFIED). v1 `resolve.to <kind>
+      # { … }` → a den-hoag `member` (the UNIFIED resolve-family verb — `relate` DISSOLVED) the STAGED
+      # ROOT-RESOLUTION pre-pass consumes. Dispatch on `__targetKind` against the DISCOVERED containment
+      # topology (`ing.schema`) + the NODE-CLASS LAW (`ing.registries` — zero kind literals):
+      #   • a CELL kind (childless-with-parent AND registry-LESS — v1 has no `user` registry) → a BARE
+      #     `member` with coords { <leaf> = the identity-wrapped target entity; <parentDim> = the FIRING
+      #     node's own entry (`ctx.<parentDim>`) }. The leaf entity is wrapped to the ingest identity
+      #     (sha256 "<kind>|name=<name>", ingest.nix:177) so its id_hash matches the registry factor node /
+      #     the pre-pass index; `via` is threaded by the pre-pass off `__policy` (A5). Corpus: env-users'
+      #     `resolve.to "user" { user; }` → member { user; host } → a user cell.
+      #   • a ROOT kind (REGISTRY-BACKED — host/cluster/environment) → a CONTAINMENT `member` (`containTo`
+      #     set). coords { <target> = the identity-wrapped existing root; <parentDim> = the firing node's
+      #     own entry }; `bindings` = the emission's NON-ENTITY keyset (the honest B1 keyset — `value` minus
+      #     the entity key); `containTo = <target>`. The pre-pass folds `bindings` into the target root's
+      #     ctx AND records the firing-node coordinate as the root's containment ANCESTOR (the settings-chain
+      #     env slice) — NEVER a product cell (this is what stops `cluster` cross-joining the user family).
+      #     Corpus: env-to-hosts' `resolve.to "host" { host; accessGroups; }` → containment member to
+      #     host:<name> carrying { accessGroups } + the environment ancestor; env-to-clusters' `resolve.to
+      #     "cluster" { cluster; }` → containment member to cluster:<name> + the environment ancestor.
       # `includes` / `__shared`: corpus-UNEXERCISED (census nix-config @ b0b20769: only bare `resolve.to`),
       # so a NAMED abort (never silent) — implement faithfully when a corpus body first exercises them.
       let
@@ -630,21 +633,33 @@ let
         shared = effect.__shared or false;
         includes = effect.includes or [ ];
         val = effect.value or { };
-        # Containment topology, discovered from the ingested schema (no kind literals): a cell/leaf kind
-        # has a parent AND is nothing's parent; every other kind is a root — the SAME partition den-hoag's
-        # `cellKinds`/`rootScopeKinds` (default.nix) computes, reproduced here from `ing.schema`.
+        # Containment topology, discovered from the ingested schema (no kind literals).
         topo = ing.schema;
         parentOf = k: (topo.${k} or { }).parent or null;
         parentKinds = prelude.unique (
           builtins.filter (p: p != null) (map parentOf (builtins.attrNames topo))
         );
-        isLeafDim = k: (parentOf k != null) && !(builtins.elem k parentKinds);
+        # THE NODE-CLASS LAW (§3c-UNIFIED): the target's existence SOURCE decides. A kind with an
+        # INDEPENDENTLY-DECLARED, NON-EMPTY instance registry — a discovered `mkInstanceRegistry` custom
+        # kind (`ing.instanceKeyMap`, e.g. `den.clusters`/`den.environments`) that actually carries entries
+        # — is a ROOT → a CONTAINMENT tuple. A kind whose entities arrive ONLY via MEMBERSHIP (`user` — v1
+        # declares no user KIND registry; its ingest entries are DERIVED from `den.homes`/`host.users`
+        # bindings, NEVER an independent registry) is a CELL → a bare membership tuple. TWO signals, both
+        # necessary: (a) registry PROVENANCE — `user` may carry a NON-EMPTY membership-derived registry yet
+        # is still a cell, so emptiness alone misfires; `instanceKeyMap` membership (an independently-declared
+        # registry) excludes it. (b) NON-EMPTINESS — a declared-but-instance-less custom leaf kind (a synthetic
+        # `blade` schema with no instances) is a cell whose coord is a fabricated target entity, so it must
+        # NOT classify as a root. Together they keep `cluster` (its own populated `den.clusters` registry,
+        # childless under environment) a root — never a cross-joining cell — while `user` and an empty custom
+        # leaf stay cells. `host`/`environment` never reach this test (parent kinds, excluded above).
+        registryBacked = k: (ing.instanceKeyMap ? ${k}) && (ing.registries.${k} or { }) != { };
+        isLeafDim = k: (parentOf k != null) && !(builtins.elem k parentKinds) && !(registryBacked k);
         # The canonical ingest identity for a v1 target entity (name-derived id_hash, ingest.nix:177) — so
         # the coord/target id_hash matches the registry factor node (fleet.nix factorOf) and the pre-pass
-        # rootNodeIndex.
+        # index.
         idHashOf = k: e: builtins.hashString "sha256" "${k}|name=${e.name}";
-        # A RELATE target is IDENTITY-ONLY (id_hash + name): a relation merely NAMES an existing target root
-        # (rootNodeIndex looks it up by id_hash); its payload rides `bindings`, never the target record.
+        # A CONTAINMENT target is IDENTITY-ONLY (id_hash + name): the tuple merely NAMES an existing target
+        # root (the pre-pass index looks it up by id_hash); its payload rides `bindings`, never the record.
         wrapEntry = k: e: {
           id_hash = idHashOf k e;
           inherit (e) name;
@@ -670,7 +685,8 @@ let
       else if !(topo ? ${tk}) then
         errors.resolveUnknownKind tk
       else if isLeafDim tk then
-        # LEAF-dim target → a membership tuple placing the resolved entity under the firing node.
+        # CELL target (registry-less leaf) → a bare membership tuple placing the resolved entity under the
+        # firing node (coords = { leaf = the full resolved entity; parent = the firing node's own entry }).
         let
           pd = parentOf tk;
         in
@@ -681,11 +697,25 @@ let
           })
         ]
       else
-        # ROOT-kind target → a relation carrying the non-entity bindings into the target root's ctx.
+        # ROOT target (registry-backed OR a parent-kind root) → a CONTAINMENT tuple (§3c-UNIFIED, `relate`
+        # dissolved): coords = { target = the identity-wrapped existing root; source = the firing node's own
+        # entry }; `bindings` = the emission's NON-entity keyset; `containTo` names the target coord. The
+        # pre-pass folds the bindings into the target root's ctx AND records the source coordinate as the
+        # root's containment ancestor (the settings-chain env slice) — never a product cell. A PARENTLESS
+        # root target (a top-level root — no firing-scope coordinate) carries only the target coord: bindings
+        # ride, no ancestor (the pre-pass skips an empty source slice).
+        let
+          pd = parentOf tk;
+          sourceCoord = if pd == null then { } else { ${pd} = ctx.${pd}; };
+        in
         [
-          (declare.relate {
-            target = wrapEntry tk val.${tk};
+          (declare.member {
+            coords = {
+              ${tk} = wrapEntry tk val.${tk};
+            }
+            // sourceCoord;
             bindings = builtins.removeAttrs val [ tk ];
+            containTo = tk;
           })
         ]
     else if kind == "spawn" then

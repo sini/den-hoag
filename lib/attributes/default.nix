@@ -114,6 +114,9 @@ in
       settingsLayers ? [ ],
       dimKinds,
       projectors ? [ ],
+      # The staged pre-pass's containment relations (nodeId -> [ ancestor slice ]) — the settings-chain
+      # env slice (§3c-UNIFIED). Default `{ }` ⇒ no env slice (byte-identical to the pre-§3c chain).
+      containmentRelations ? { },
       classNames,
       classifyKey,
     }:
@@ -139,6 +142,7 @@ in
         dimKinds
         allAspects
         projectors
+        containmentRelations
         ;
     });
 

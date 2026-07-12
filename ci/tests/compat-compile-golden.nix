@@ -42,9 +42,9 @@ let
   attachDecls = compiled.policies.attachSystem.fn { };
   edgeDecl = builtins.head attachDecls;
 
-  # The rest of the C1 policy vocabulary (include is above): exclude → drop, resolve.to <root> → relate
-  # (R2, the `__targetKind` arm: an existing-node target carries its non-entity bindings; a leaf target
-  # would be a member), a
+  # The rest of the C1 policy vocabulary (include is above): exclude → drop, resolve.to <root> → a
+  # CONTAINMENT member (§3c-UNIFIED: an existing-node target carries its non-entity bindings under
+  # `containTo`; a registry-less leaf target would be a bare cell member), a
   # `for`-wrapped policy (v1 emits an `__isPolicy` record whose `fn` gates on ctx) → its inner edge,
   # and a `when`-over-inline-aspect (v1 emits a conditional-aspect record) → a den-hoag conditional
   # ASPECT, not a policy (its guard reads the path set, A9.1 — v1 lifts it to avoid the resolved cycle).
@@ -63,7 +63,7 @@ let
       {
         __policyEffect = "resolve";
         __shared = false;
-        __targetKind = "host"; # a root kind (host ∈ parentKinds) → a relation to host:h1
+        __targetKind = "host"; # a root kind (host ∈ parentKinds) → a containment member to host:h1
         value = {
           host = {
             name = "h1";
@@ -268,16 +268,20 @@ in
       expr = vExclude.__action;
       expected = "drop";
     };
-    # R2: `resolve.to <root-kind>` → a `relate` carrying the emission's NON-entity bindings (the honest
-    # keyset — `value` minus the entity key) into the target root's ctx.
-    test-resolve-to-becomes-relate = {
+    # §3c-UNIFIED: `resolve.to <root-kind>` → a CONTAINMENT `member` (`relate` dissolved) carrying the
+    # emission's NON-entity bindings (the honest keyset — `value` minus the entity key) into the target
+    # root's ctx; `containTo` names the target coord. host is a top-level root here (no `parent`), so the
+    # tuple carries only the target coord — bindings ride, no ancestor.
+    test-resolve-to-becomes-containment-member = {
       expr = {
         action = vResolve.__action;
-        target = vResolve.target.id_hash == builtins.hashString "sha256" "host|name=h1";
+        containTo = vResolve.containTo;
+        target = vResolve.coords.host.id_hash == builtins.hashString "sha256" "host|name=h1";
         bindings = vResolve.bindings;
       };
       expected = {
-        action = "relate";
+        action = "member";
+        containTo = "host";
         target = true;
         bindings = {
           extra = 1;

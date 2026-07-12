@@ -31,7 +31,6 @@ let
       "enrich"
       "emit"
       "member"
-      "relate"
     ];
     resolution = [
       "edge"
@@ -82,51 +81,55 @@ let
   # A2 identity law: an entry-typed position takes a registry entry (id_hash), never a string.
   requireEntry = api: v: if builtins.isAttrs v && v ? id_hash then v else errors.identityLaw api v;
 
-  # `member coords` — structural membership tuple. Each coordinate is entry-checked EAGERLY
-  # (seq the validated values before returning) so a string dim aborts at construction.
+  # `member` — the structural membership tuple, the SOLE resolve-family verb (design note 2026-07-11
+  # §3c-UNIFIED — TUPLE-CARRIED BINDINGS: `relate` DISSOLVED into `member`). Two call shapes:
+  #   • BARE coords — `member { <dim> = <entry>; … }` — a CELL tuple (`bindings = { }`, `containTo = null`),
+  #     the native/fixture form (a cell materialises under the product).
+  #   • WRAPPED — `member { coords = { … }; bindings ? { }; containTo ? null }` — the tuple that carries
+  #     ctx `bindings` and (when `containTo != null`) marks a CONTAINMENT tuple: the STAGED ROOT-RESOLUTION
+  #     pre-pass folds `bindings` into the target root's ctx AND records the source coordinate as that
+  #     root's containment ancestor (the env→host / env→cluster edge — the settings-chain env slice), NEVER
+  #     a product cell. `containTo` names the coord kind that is the EXISTING ROOT target (`coords.<containTo>`
+  #     is its identity entry; `coords` minus it is the source slice). The COMPAT `resolve.to` arm sets
+  #     `containTo` for a registry-backed (root) target and leaves it null for a registry-less (cell) target
+  #     — the node-class law (compile.nix); a native fixture sets it explicitly.
+  # The WRAPPED shape is detected structurally (an attrset holding `coords` whose OWN keys are all reserved
+  # {coords,bindings,containTo}); every other attrset is bare coords. A fleet kind named `coords`/`bindings`/
+  # `containTo` is the only ambiguity — none exist (kinds are host/user/env/…). Each coordinate is
+  # entry-checked EAGERLY (A2) so a string dim aborts at construction. Both shapes accepted at membership-
+  # independent roots ONLY (A5).
+  isMemberWrapper =
+    a:
+    builtins.isAttrs a
+    && a ? coords
+    && builtins.all (k: k == "coords" || k == "bindings" || k == "containTo") (builtins.attrNames a);
   member =
-    coords:
+    arg:
     let
-      validated = builtins.mapAttrs (dim: e: requireEntry "member.coords.${dim}" e) coords;
+      wrapped = isMemberWrapper arg;
+      rawCoords = if wrapped then arg.coords else arg;
+      bindings = if wrapped then arg.bindings or { } else { };
+      containTo = if wrapped then arg.containTo or null else null;
+      validated = builtins.mapAttrs (dim: e: requireEntry "member.coords.${dim}" e) rawCoords;
       forced = prelude.foldl' (acc: k: builtins.seq validated.${k} acc) null (
         builtins.attrNames validated
       );
     in
-    builtins.seq forced (actions.member { coords = validated; });
-
-  # `relate { target, bindings ? { } }` — structural (RESOLVE-FAMILY): a source→existing-target
-  # RELATION carrying ctx bindings. The STAGED ROOT-RESOLUTION pre-pass (lib/staged-resolution.nix)
-  # folds `bindings` into the target node's ctx — for subsequent pre-pass phases AND the main run's
-  # inherited-context. `target` denotes an EXISTING entity node — an identity-law position (A2),
-  # entry-checked EAGERLY like `link`/`member`. THE LAW: a relation CARRIES ctx (it never re-creates or
-  # re-resolves the target); the B1 keyset honesty holds — the binding KEYS are declared by the emitting
-  # adapter (v1-spec knowledge of the emission shape), the VALUES arrive at pre-pass dispatch. The paired
-  # resolve-family verb beside `member` (leaf-dim membership); both are accepted at membership-independent
-  # roots only (A5). Design note 2026-07-11 §3(ii), slice R1.
-  relate =
-    {
-      target,
-      bindings ? { },
-    }:
-    let
-      t = requireEntry "relate.target" target;
-    in
-    builtins.seq t (
-      actions.relate {
-        inherit bindings;
-        target = t;
+    builtins.seq forced (
+      actions.member {
+        coords = validated;
+        inherit bindings containTo;
       }
     );
 
-  # Resolve-family kinds (design note 2026-07-11 §3(ii)): the declarations the STAGED ROOT-RESOLUTION
-  # pre-pass consumes — MEMBERSHIP tuples (`member`, leaf-dim coords) and RELATION-carried bindings
-  # (`relate`, source→existing-root). Both are accepted at membership-independent roots ONLY (A5); every
-  # OTHER kind is consumed by the main run. `isResolveFamily` is the double-fire discipline's kind
-  # predicate — its exactly-one-consumer split (the main run aborts LOUD on a resolve-family decl reaching
-  # a membership-derived node, never a silent drop; see attributes/structural.nix attr 4).
+  # Resolve-family kinds (design note 2026-07-11 §3c-UNIFIED): the declarations the STAGED ROOT-RESOLUTION
+  # pre-pass consumes — the UNIFIED `member` tuple (a CELL tuple, or a `containTo`-marked CONTAINMENT tuple
+  # carrying bindings). Accepted at membership-independent roots ONLY (A5); every OTHER kind is consumed by
+  # the main run. `isResolveFamily` is the double-fire discipline's kind predicate — its exactly-one-consumer
+  # split (the main run aborts LOUD on a resolve-family decl reaching a membership-derived node, never a
+  # silent drop; see attributes/structural.nix attr 4). `relate` retired — one verb, one classifier.
   resolveFamilyKinds = [
     "member"
-    "relate"
   ];
   isResolveFamily = a: builtins.elem (kindOf a) resolveFamilyKinds;
 
@@ -252,10 +255,10 @@ actions
     isSiteMarkData
     isResolveFamily
     resolveFamilyKinds
+    isMemberWrapper
     importEdgesOf
     checkStratum
     member
-    relate
     configure
     edge
     drop

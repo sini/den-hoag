@@ -496,10 +496,12 @@ let
         inherit (ent) registries;
         roots = prePassRootKinds;
       };
-      # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED tuples (Task 4, A5's
-      # promised law): a policy-emitted leaf-dim `member` at a membership-independent root routes into the
-      # fleet. `prePass` also carries `relationBindings` (nodeId -> ctx additions from `relate`), injected
-      # into the target roots' decls (`scopeRoots`, below) so the main run's inherited-context threads them.
+      # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED CELL tuples (Task 4, A5's
+      # promised law): a policy-emitted bare `member` at a membership-independent root routes into the
+      # fleet. `prePass` also carries `relationBindings` (nodeId -> ctx additions from a `containTo`-marked
+      # member), injected into the target roots' decls (`scopeRoots`, below) so the main run's inherited-
+      # context threads them, AND `containmentRelations` (nodeId -> [ ancestor slice ]), threaded to
+      # resolved-settings for the settings-chain env slice (§3c-UNIFIED, byte-neutral when unset).
       # THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` + `relationBindings =
       # { }`, so `membershipTuples`/`scopeRoots` are byte-identical to the pre-R1 values. The pre-pass reads
       # `prePassScopeRoots` (structural, un-injected) + `policiesRules` + `ent.meta` topology — none depend
@@ -792,6 +794,9 @@ let
         consumerLib = if npkgs == null then null else npkgs.lib or null;
         localDemandData = demandLib.localDemandData;
         fleet = theFleet;
+        # The staged pre-pass's containment relations (nodeId -> [ ancestor slice ]) — the settings-chain
+        # env slice (§3c-UNIFIED). Empty for a fleet with no `containTo`-marked members → byte-identical.
+        inherit (prePass) containmentRelations;
         inherit
           lin
           settingsLayers
@@ -880,10 +885,16 @@ let
       };
 
       # Scoped settings overrides (§2.6) compiled to internal den-layer records (validated: `of` an
-      # aspect entry, `at` dims ∈ product). resolved-settings folds them per (cell, aspect) by §2.7.
+      # aspect entry, `at` dims ∈ the settings-dim set). resolved-settings folds them per (cell, aspect)
+      # by §2.7. The settings-dim set is the product dims UNION the root scope kinds (§3c-UNIFIED): a
+      # containment-relation ancestor (env → the settings-chain env slice) is a ROOT, not a product dim,
+      # so an env-/cluster-level layer (`at = { env = <e>; }`) must validate against the root kinds too —
+      # else the owner's default→env→host→user cascade could not attach a layer to its env slice. Widening
+      # (never narrowing) the allowed set: a real typo dim (not a kind at all) still aborts named.
+      settingsDims = prelude.unique (dimKinds ++ rootScopeKinds);
       settingsLayers = settingsLib.compileLayers {
         layers = ent.config.den.settings.layers or [ ];
-        productDims = dimKinds;
+        productDims = settingsDims;
       };
 
       # Projecting aspects (§2.9 / A14, the `projects` facet): each aspect declaring a non-empty

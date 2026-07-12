@@ -3,14 +3,15 @@
 # a v1 `resolve.to <kind> { … }` compiles to a den-hoag resolve-family declaration the STAGED
 # ROOT-RESOLUTION pre-pass (slice R1) then routes —
 #
-#   • a product LEAF dim (a cell kind) → a MEMBER tuple (identity-wrapped entity under the firing node);
-#   • an EXISTING-node kind (a root) → a RELATION carrying the non-entity bindings into the target root;
+#   • a CELL kind (registry-less leaf) → a bare MEMBER tuple (identity-wrapped entity under the firing node);
+#   • a ROOT kind → a CONTAINMENT member (`containTo` set) carrying the non-entity bindings + the source
+#     coordinate as the target root's ancestor (§3c-UNIFIED, `relate` dissolved);
 #   • the corpus-UNEXERCISED arms (bare resolve / shared / withIncludes) → a NAMED abort (never silent);
 #   • REQUIREMENT 1: a resolve-family emission at a root by a NON-feed policy aborts LOUD (untagged guard).
 #
-# The arm witnesses discriminate leaf-vs-root from the DISCOVERED schema (`ing.schema`), zero kind literals,
-# over a SYNTHETIC topology `zone <- rack <- blade` (blade the leaf; rack a parent-kind root) — the
-# genericity pin (no env/host/user names in the arm proofs).
+# The arm witnesses discriminate cell-vs-root from the DISCOVERED schema (`ing.schema`) + the node-class law
+# (`ing.registries`), zero kind literals, over a SYNTHETIC topology `zone <- rack <- blade` (blade the leaf;
+# rack a parent-kind root) — the genericity pin (no env/host/user names in the arm proofs).
 { denCompat, denHoag, ... }:
 let
   inherit (denHoag) declare;
@@ -49,7 +50,8 @@ let
           };
         })
       ];
-      # ROOT target → relation. Carries the NON-entity bindings ({ token }); the entity key names the target.
+      # ROOT target → CONTAINMENT member. Carries the NON-entity bindings ({ token }); `containTo = "rack"`
+      # names the target coord; the source coord is the firing node's own entry.
       grant = { zone, ... }: [
         (R.to "rack" {
           rack = {
@@ -99,7 +101,7 @@ let
       };
     }
   );
-  relateDecl = builtins.head (
+  containDecl = builtins.head (
     compiledArm.policies.grant.fn {
       zone = {
         id_hash = "zone-h";
@@ -110,10 +112,10 @@ let
   forceEffect = name: ctx: builtins.deepSeq (compiledArm.policies.${name}.fn ctx) true;
 
   # ── REQUIREMENT 1 witness: the untagged-loud guard (native mkDen, `zone <- rack <- blade`) ─────────────
-  # A zone RELATE carries `authToken` into rack:r1 (detected → auto-tagged → the pre-pass routes it); a rack
-  # value-conditional MEMBER policy reads it and emits at rack:r1 (a membership-INDEPENDENT root). The main
-  # run's structural consumers never read member at a root, and the pre-pass only routes a FEED policy's
-  # emission — so an UNTAGGED emitter would silently drop. R2 REQUIREMENT 1 aborts it LOUD.
+  # A zone CONTAINMENT member carries `authToken` into rack:r1 (detected → auto-tagged → the pre-pass routes
+  # it); a rack value-conditional CELL-member policy reads it and emits at rack:r1 (a membership-INDEPENDENT
+  # root). The main run's structural consumers never read member at a root, and the pre-pass only routes a
+  # FEED policy's emission — so an UNTAGGED emitter would silently drop. R2 REQUIREMENT 1 aborts it LOUD.
   base = [
     {
       config.den.schema = {
@@ -136,9 +138,13 @@ let
         config.den.policies.grant =
           { zone, ... }:
           [
-            (declare.relate {
-              target = config.den.rack.r1;
+            (declare.member {
+              coords = {
+                inherit zone;
+                rack = config.den.rack.r1;
+              };
               bindings.authToken = "tok";
+              containTo = "rack";
             })
           ];
       }
@@ -361,18 +367,27 @@ in
       };
     };
 
-    # ── (3) ROOT target → RELATE (identity-wrapped target id; bindings = the emission's NON-entity keyset).
-    test-root-target-to-relate = {
+    # ── (3) ROOT target → CONTAINMENT member (§3c-UNIFIED, `relate` dissolved): coords = { target =
+    #    identity-wrapped root; source = the firing node's own entry }; `containTo` names the target coord;
+    #    bindings = the emission's NON-entity keyset (the honest B1 keyset — `value` minus the entity key).
+    test-root-target-to-containment-member = {
       expr = {
-        action = relateDecl.__action;
-        targetId = relateDecl.target.id_hash;
-        targetConvention = relateDecl.target.id_hash == sha "rack|name=r1";
-        bindings = relateDecl.bindings; # the honest keyset: `value` minus the entity key
+        action = containDecl.__action;
+        containTo = containDecl.containTo;
+        targetId = containDecl.coords.rack.id_hash;
+        targetConvention = containDecl.coords.rack.id_hash == sha "rack|name=r1";
+        sourceEntry = containDecl.coords.zone; # the firing node's own entry, verbatim from ctx
+        bindings = containDecl.bindings;
       };
       expected = {
-        action = "relate";
+        action = "member";
+        containTo = "rack";
         targetId = sha "rack|name=r1";
         targetConvention = true;
+        sourceEntry = {
+          id_hash = "zone-h";
+          name = "z1";
+        };
         bindings = {
           token = "t";
         };

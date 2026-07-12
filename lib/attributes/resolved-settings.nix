@@ -24,7 +24,8 @@
 # Deps: prelude (folds/filters), resolve (attr), product (containmentChain), settings (resolveAll),
 # settingsLib (schema/layer compilation), errors (absentAspectSetting). Instance args: fleet (the
 # restricted gen-product), lin (the linearization record), settingsLayers (compiled den-layer
-# records), dimKinds (product dimension names, for the full-cell test).
+# records), dimKinds (product dimension names, for the full-cell test), containmentRelations (the
+# staged pre-pass's env→host / env→cluster ancestor slices — the §3c-UNIFIED chain extension).
 {
   prelude,
   resolve,
@@ -87,8 +88,31 @@ let
       dimKinds,
       allAspects ? { },
       projectors ? [ ],
+      # §3c-UNIFIED chain extension: the staged pre-pass's containment relations (nodeId -> [ source slice ]).
+      # A `containTo`-marked member recorded the target root's SOURCE coordinate (the env→host / env→cluster
+      # edge); it is NOT a product dimension, so gen-product's `containmentChain` (over the product dims)
+      # cannot produce its slice — den-hoag PREPENDS it here, after the empty slice, giving the settings fold
+      # default < env < host < user (the owner's cascade). Default `{ }` ⇒ no env slice, byte-identical.
+      containmentRelations ? { },
     }:
     let
+      # Transitive containment-relation ancestors of a node (least→most specific `fixed` coord-sets). Each
+      # ancestor slice is single-kind ({ <kind> = entry }); its own node id ("kind:name") is walked FIRST,
+      # so a multi-level chain (fleet→env→host) resolves least-specific first. Empty for a node with no
+      # containment relation (the corpus's environment root, and every native fleet without a containTo
+      # member) ⇒ the chain is byte-identical to the pre-§3c product chain.
+      ancNodeId =
+        slice:
+        let
+          k = builtins.head (builtins.attrNames slice);
+        in
+        "${k}:${slice.${k}.name}";
+      ancestorsOf =
+        nid:
+        prelude.concatMap (anc: ancestorsOf (ancNodeId anc) ++ [ anc ]) (
+          containmentRelations.${nid} or [ ]
+        );
+
       # A14 (projects facet) — `projectionLayersAt`: expand every projecting aspect into `via`-carrying
       # den-layer records at its attachment scopes, added to the scoped-override pool. resolved-settings
       # then folds them exactly like a hand-written `via` layer — projection (via != null) sorts
@@ -134,7 +158,7 @@ let
             # containmentChain needs a full cell; a flat root fixes ≤1 dim, whose only subsets
             # (∅ ⊂ own-slice) are ⊆-comparable and need no linearization tie-break.
             isFullCell = builtins.length (builtins.attrNames coords) == builtins.length dimKinds;
-            chain =
+            baseChain =
               if isFullCell then
                 map (e: e.fixed) (product.containmentChain fleet coords lin)
               else
@@ -142,6 +166,13 @@ let
                   { }
                   coords
                 ];
+            # §3c-UNIFIED chain extension: prepend the containment-relation ancestor slices (env→host /
+            # env→cluster) AFTER the empty slice, so the fold order is default < env < host < user (the
+            # owner's cascade). A cell inherits its parent root's ancestors (`node.parent`); a root reads
+            # its own (`id`). `baseChain` always leads with the empty slice, so [ ∅ ] ++ ancestors ++ tail
+            # keeps every product slice in its original relative order (byte-neutral when ancestors = [ ]).
+            ancSlices = if node.parent == null then ancestorsOf id else ancestorsOf node.parent;
+            chain = [ (builtins.head baseChain) ] ++ ancSlices ++ (builtins.tail baseChain);
 
             present = self.get id "resolved-aspects";
             resolutionActs = (self.get id "declarations").actions.resolution or [ ];

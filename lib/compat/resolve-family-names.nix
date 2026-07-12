@@ -12,17 +12,20 @@
 #     WITHOUT this stamp the pre-pass feed is empty and the corpus resolve chain never fires.
 #
 # A v1 corpus authors `resolve.to` policies with NO den-hoag `__resolveFamily` tag on the value, and every
-# corpus resolve policy is VALUE-CONDITIONAL (it emits member/relate only once a ctx value — accessGroups,
+# corpus resolve policy is VALUE-CONDITIONAL (it emits a `member` only once a ctx value — accessGroups,
 # an env/host match — is present), so its value-less stratum probe emits nothing and it cannot be DETECTED.
-# The shim therefore DECLARES the tag here, naming the corpus's resolve-emitting policies (census
+# The shim therefore DECLARES the tag here, naming the corpus's resolve-emitting policies (§3c-UNIFIED —
+# every one compiles to a `member`, `relate` dissolved: a registry-LESS cell target → a bare cell tuple; a
+# registry-BACKED root target → a `containTo` CONTAINMENT tuple carrying bindings + a containment ancestor)
+# (census
 # nix-config @ b0b20769, modules/den/policies/):
-#   • env-users       (users.nix:107)     — resolve.to "user"        → member (host→users)
-#   • env-to-hosts    (fleet.nix:42)      — resolve.to "host"        → relate (env→host, carries accessGroups)
-#   • env-to-clusters (clusters.nix:22)   — resolve.to "cluster"     → member (env→cluster)
-#   • to-fleet        (fleet.nix:23)      — resolve.to "fleet"       → relate (flake→fleet)
-#   • fleet-to-envs   (fleet.nix:36)      — resolve.to "environment" → relate (fleet→env)
+#   • env-users       (users.nix:107)     — resolve.to "user"        → CELL member (host→user cell)
+#   • env-to-hosts    (fleet.nix:42)      — resolve.to "host"        → CONTAINMENT member (env→host, accessGroups)
+#   • env-to-clusters (clusters.nix:22)   — resolve.to "cluster"     → CONTAINMENT member (env→cluster; NO cross-join)
+#   • to-fleet        (fleet.nix:23)      — resolve.to "fleet"       → CONTAINMENT member (flake→fleet)
+#   • fleet-to-envs   (fleet.nix:36)      — resolve.to "environment" → CONTAINMENT member (fleet→env)
 # These live COMPAT-side (the field/name is a v1-CORPUS FACT, not field-agnostic core). THE OMISSION CATCH:
-# a resolve-emitting policy omitted here that fires member/relate at a root aborts LOUD (the R2
+# a resolve-emitting policy omitted here that fires a `member` at a root aborts LOUD (the R2
 # `resolveFamilyUntagged` guard), so a forgotten name self-announces rather than silently dropping.
 [
   "env-users"
