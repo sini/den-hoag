@@ -14,7 +14,10 @@
 #   (3) SINGLE-PATH once-only — the routed content appears EXACTLY once in the host terminal's nested
 #       per-user module set;
 #   (4) a delivery CYCLE aborts NAMED (errors.deliveryChainCycle; v1 topoSort route.nix:496) — with the
-#       non-vacuous clean companion (the same fixture minus one leg terminates).
+#       non-vacuous clean companion (the same fixture minus one leg terminates);
+#   (5) a DAG DIAMOND never false-aborts (the path-local seen-set): two deliveries source ONE
+#       (scope, class) on separate branches reconverging at the terminal — the shared node is entered
+#       once per branch (a GLOBAL seen-set would abort the second entry), its content once per branch.
 { denCompat, ... }:
 let
   inherit (denCompat) route;
@@ -143,6 +146,58 @@ let
         };
       }
     ];
+  # ── (5): the DIAMOND. Two deliveries — `cs → cx → nixos` and `cs → cy → nixos` — both source the
+  #    same (igloo, cs) on SEPARATE branches, reconverging at the terminal. The chain read enters
+  #    `deliveryModulesChain igloo cs` twice, once per branch; each carries its OWN seen' (the parent's
+  #    {igloo|nixos} extended by igloo|cx resp. igloo|cy — never each other's), so neither sees
+  #    igloo|cs and neither false-aborts. A GLOBAL seen-set would record igloo|cs on the first branch
+  #    and abort the second. The `cs` content ("s") therefore lands ONCE PER BRANCH (multiplicity 2). ──
+  diamond = denCompat.mkDen [
+    {
+      den = {
+        hosts.x86_64-linux.igloo.class = "nixos";
+        classes.cs = { };
+        classes.cx = { };
+        classes.cy = { };
+        aspects.hostc.nixos.tag = "nixos-host";
+        aspects.seeds = {
+          cs.tag = "s";
+          cx.tag = "x";
+          cy.tag = "y";
+        };
+        schema.host.includes = [
+          "hostc"
+          "seeds"
+        ];
+        policies = {
+          x-to-term = _ctx: [
+            (route {
+              fromClass = "cx";
+              intoClass = "nixos";
+            })
+          ];
+          y-to-term = _ctx: [
+            (route {
+              fromClass = "cy";
+              intoClass = "nixos";
+            })
+          ];
+          s-to-x = _ctx: [
+            (route {
+              fromClass = "cs";
+              intoClass = "cx";
+            })
+          ];
+          s-to-y = _ctx: [
+            (route {
+              fromClass = "cs";
+              intoClass = "cy";
+            })
+          ];
+        };
+      };
+    }
+  ];
   ok = e: (builtins.tryEval (builtins.deepSeq e true)).success;
   termOf = f: f.den.output.systems.nixos.${igloo}.modules or [ ];
 in
@@ -182,6 +237,18 @@ in
         okEval = true;
         hasChained = true;
       };
+    };
+    # (5) the diamond evaluates without a false-abort — the shared (igloo, cs) is entered on two
+    #     separate branches, each with a path-local seen-set.
+    test-diamond-no-false-abort = {
+      expr = ok (termOf diamond);
+      expected = true;
+    };
+    # (5) the shared source's content lands ONCE PER BRANCH (cs → cx and cs → cy) — multiplicity 2,
+    #     the affirmative dual of no-false-abort (both branches read it, neither is dropped).
+    test-diamond-shared-multiplicity = {
+      expr = builtins.length (builtins.filter (t: t == "s") (builtins.concatMap tags (termOf diamond)));
+      expected = 2;
     };
   };
 }
