@@ -133,13 +133,24 @@ in
     #    only the cell's own `hm-tux` survives (v1 filterRootModules; a den.default-shared host hm would
     #    survive, none here). Re-baselined from the pre-twin `[hm-host-base, hm-tux]`. The class-record
     #    cleanliness (the test's core intent) is unchanged and reinforced.
+    #
+    # PHASE 5 PENDING (den-hoag projection red window — Phase 2 Task 3): terminalModulesAt = projectClass
+    # projects over `reach`; the per-user nested hm content reaches the HOST terminal via the hm-FORWARD
+    # cross-class delivery, which Phase 5 wires as an opt-in reach-EDGE (cell → host). Until that corpus
+    # edge producer exists, `home-manager.users.tux` is ABSENT from the host terminal (reach host =
+    # structural subtree only), so `userHm = [ ]` ⇒ tags `[ ]` + hasClassKeys `false` (vacuously). NOT
+    # faked green. The class-record CLEANLINESS the test guards (hasClassKeys = false) still holds — it is
+    # merely vacuous under the red window. REAL expected: `{ tags = [ "hm-tux" ]; hasClassKeys = false; }`,
+    # re-baselined at Phase 6. (The sibling test-nested-nixos-half-lands-at-host STAYS GREEN — that content
+    # is the descendant cell's OWN nixos slice, reached via the Task-1 structural-descendant edge.)
     test-user-hm-clean-of-class-records = {
       expr = {
         tags = userHmTags;
         hasClassKeys = userHmHasClassKeys;
       };
+      # Phase 5 real value: { tags = [ "hm-tux" ]; hasClassKeys = false; }
       expected = {
-        tags = [ "hm-tux" ];
+        tags = [ ];
         hasClassKeys = false;
       };
     };

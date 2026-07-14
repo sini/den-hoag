@@ -66,6 +66,21 @@ let
           }
         ];
 
+  # §2.2 TOTALITY at the projection terminal (ruling 2026-07-14). Classify EVERY non-`_` content key of an
+  # aspect via `classifyKey` — a `facet`/`class`/`channel` key passes, a genuinely UNREGISTERED key (a typo
+  # like `nixxos`) ABORTS NAMED (`errors.unknownAspectKey`, the identical message `classContentOf` raises).
+  # `projectClass` forces this per REACHED aspect before returning its projected-class slice, so a typo'd key
+  # on a reachable aspect can NEVER silently vanish on the drv path (`classSliceOf class` alone classifies
+  # ONLY the projected class key — the totality hole this closes; spec §2.2/§5 silent-content-loss). Returns
+  # `null` (forced for the abort side-effect only); the classify-all logic is `classContentOf`'s, shared.
+  assertKeysRegistered =
+    aspect:
+    let
+      content = aspect.content;
+      keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
+    in
+    prelude.foldl' (acc: k: builtins.seq (classifyKey content.name k) acc) null keys;
+
   # One resolved aspect's class-bucket contributions: iterate its content keys (skipping the module
   # system's own `_`-prefixed keys), and collect each `class` key's slice (via `classSliceOf` — THE ONE
   # extraction). A `channel`/`facet` key contributes `[ ]`; an unregistered key aborts inside `classifyKey`
@@ -109,11 +124,11 @@ let
     };
 in
 {
-  # THE ONE per-aspect class-slice extraction, exported for `projectClass` (output-modules Task 2). It is
-  # NOT an equation record — the assembly (attributes/default.nix) selects `class-modules` into the equations
-  # map and threads `classSliceOf` to `mkOutputModules` separately (a bare function would break gen-resolve's
-  # two-stratum equation classification if spread into the map).
-  inherit classSliceOf;
+  # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, exported for `projectClass`
+  # (output-modules Task 2/3). NEITHER is an equation record — the assembly (attributes/default.nix) selects
+  # `class-modules` into the equations map and threads these to `mkOutputModules` separately (a bare function
+  # would break gen-resolve's two-stratum equation classification if spread into the map).
+  inherit classSliceOf assertKeysRegistered;
 
   class-modules = resolve.attr {
     name = "class-modules";

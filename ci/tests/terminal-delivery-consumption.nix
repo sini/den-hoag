@@ -116,32 +116,26 @@ let
 in
 {
   flake.tests.terminal-delivery-consumption = {
-    # (1) the host-rooted os→nixos delivery (the ambient corpus route) lands its source bucket in the
-    #     nixos TERMINAL — the drv the byte-compare oracle hashes — AFTER the host's own nixos content
-    #     (base ++ routed, A12). Pre-#66 the terminal read `classSubtreeAt` alone and `os-delivered` was
-    #     absent from the built drv (present only in `outputFor`) — the exact corpus zsh-assertion cause.
-    test-host-rooted-delivery-lands-at-terminal = {
-      expr = termTags withOs igloo "nixos";
-      expected = [
-        "nixos-host" # classSubtreeAt (base, self)
-        "os-delivered" # deliveryModulesAt (the ambient os→nixos route, appended)
-      ];
-    };
+    # ── RETIRED (den-hoag projection, Phase 2 Task 3 — terminalModulesAt = projectClass) ──────────────
+    # test-host-rooted-delivery-lands-at-terminal (the #66 os→nixos delivery CONTENT at the terminal) and
+    # test-same-class-merge-delivery-aborts (the `errors.sameClassMergeDelivery` guard that lived in the
+    # deleted `deliveryModulesChain` terminal gather) both tested the DELETED emission terminal read. The
+    # terminal is now `projectClass id class` over `reach`; cross-class delivery (os→nixos) becomes a
+    # positive reach-edge (the Phase-4 forwards/routes transform layer emits it, Phase-5 wires the corpus
+    # producer), and the same-class-merge double it guarded against cannot arise (projection folds each
+    # class slice once via single-visit — no fold+delivery double to guard). Projection-level class-slice
+    # semantics are witnessed in ci/tests/projection.nix. The IDENTITY + still-LIVE edge-render witnesses
+    # below (delivery-free-terminal-is-fold-only, same-class-nest-allowed, the cell-fired-edge trace trio)
+    # are KEPT — they exercise projection identity + the live `deliveryEdgesAt` renderer.
 
-    # (2) delivery-free identity companion: with no `os` content the ambient route gathers an EMPTY
-    #     bucket, so the terminal is `classSubtreeAt` exactly (byte-identical to the pre-#66 own read).
+    # (2) delivery-free identity companion: with no `os` content the terminal is the own subtree exactly —
+    #     now byte-identical under projection (reach = structural subtree when no edge producer fires).
     test-delivery-free-terminal-is-fold-only = {
       expr = termTags noOs igloo "nixos";
       expected = [ "nixos-host" ];
     };
 
-    # (3) single-path invariant: a same-class MERGE delivery (from==to==nixos, at=[]) would double with
-    #     the fold ⇒ the terminal aborts LOUD (never a silent double).
-    test-same-class-merge-delivery-aborts = {
-      expr = ok sameClassMerge.den.output.systems.nixos;
-      expected = false;
-    };
-    # …and the non-vacuous companion: a same-class NEST delivery (at=["p"]) places at a DISTINCT path,
+    # …a same-class NEST delivery (at=["p"]) places at a DISTINCT path,
     #     so it is ALLOWED — the guard is the merge-at-root case specifically, not any same-class delivery.
     test-same-class-nest-delivery-allowed = {
       expr = ok sameClassNest.den.output.systems.nixos;

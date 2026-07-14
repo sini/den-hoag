@@ -89,6 +89,11 @@
   # ALWAYS supplied by den-hoag's assembly (the class-modules extraction is the single source); the default is
   # a defensive identity for a caller that constructs `mkOutputModules` standalone without the extraction.
   classSliceOf ? (_: _: [ ]),
+  # §2.2 TOTALITY assertion (Task 3, `class-modules.nix assertKeysRegistered`). Forces classification of every
+  # non-`_` content key of a REACHED aspect (abort NAMED on a genuinely unregistered typo key); `projectClass`
+  # runs it per reached aspect so a typo cannot silently vanish on the drv path (spec §2.2 ruling 2026-07-14).
+  # Native default is the no-op identity (standalone callers without the extraction skip the totality check).
+  assertKeysRegistered ? (_: null),
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;
@@ -473,17 +478,40 @@ let
   # (`[ id ] ++ scope.descendants`, Task 1) and `projectClass id class == classSubtreeAt id class`
   # byte-identically — projection reproduces the fold on own-content BEFORE it replaces the emission (Task 3).
   # `reach` single-visit-dedups by A-IDENT key, so an aspect reachable twice contributes its slice ONCE.
-  # UNCONSUMED here (additive) — `terminalModulesAt` still folds `classSubtreeAt ++ deliveryModulesAt`.
+  # CONSUMED by `terminalModulesAt` (Task 3, below) — projection is now the terminal's content source.
+  # §2.2 TOTALITY (ruling 2026-07-14): each reached aspect's non-`_` keys are ALL classified
+  # (`assertKeysRegistered`, forced via `seq`) before its projected-class slice is taken — a genuinely
+  # unregistered typo key on a REACHABLE aspect aborts NAMED (never silently vanishes on the drv path,
+  # the §5 content-loss failure that `classSliceOf class` alone — classifying only the projected key —
+  # would let through). Totality covers reached content (edges/descendants), not just the own node.
   projectClass =
     id: class:
-    prelude.concatMap (n: map (e: e.module) (classSliceOf n class)) (result.get id "reach");
+    prelude.concatMap (
+      n: builtins.seq (assertKeysRegistered n) (map (e: e.module) (classSliceOf n class))
+    ) (result.get id "reach");
 
-  # The per-class TERMINAL assembly (the LAW, §9): the same-class subtree fold FIRST (`classSubtreeAt`,
-  # A12 base) then the routed cross-class delivery AFTER (`deliveryModulesAt`, v1's `appendToClass`
-  # appends). Consumed at the three terminal reads (`hostModules`/`deltaOf`/`contentIdsOf`); the fold
-  # accessor (`classBucketsOf`/`contentsOf`) STAYS `classSubtreeAt` — delivery reaches `outputFor` via the
-  # edges, so widening the fold read too would double there.
-  terminalModulesAt = id: class: classSubtreeAt id class ++ deliveryModulesAt id class;
+  # The per-class TERMINAL assembly (spec §3/§4, Phase 2 Task 3 — THE PIVOT). Projection over `reach`
+  # REPLACES the v1 emission model: `terminalModulesAt id class = projectClass id class` (the class-`C`
+  # slice of every aspect in `reach id`, canonical merge_ord). This subsumes BOTH halves of the old
+  # `classSubtreeAt id class ++ deliveryModulesAt id class`:
+  #   • the same-class subtree fold (`classSubtreeAt`) → reach's STRUCTURAL-DESCENDANT component (Task 1;
+  #     the anchor proved projectClass == classSubtreeAt byte-identically on own+descendant content), and
+  #   • the cross-class delivery emission (`deliveryModulesAt`/`collectedMembersOf`) → reach's positive
+  #     EDGES (opt-in reach-edge + framework default edge, class-scoped F9).
+  # Consumed at the three terminal reads (`hostModules`/`deltaOf`/`contentIdsOf`). `classSubtreeAt`/
+  # `deliveryModulesAt`/`deliveryModulesChain` are now DEAD for the terminal (Phase 3 deletes them);
+  # `collectedMembersOf` STAYS LIVE (the edge renderer `deliveryEdgesAt` still calls it for the trace).
+  #
+  # THE RED WINDOW (spec §Phase-2 scope, INTENTIONAL — documented, not silent): the corpus has NO
+  # reach-edge / reach-suppress / default-edge PRODUCERS until Phase 5 (corpus migration wires host-aspects
+  # → opt-in edge + the framework default edge). So on the real fleet `reach` = the STRUCTURAL SUBTREE ONLY
+  # — the emission half (baseline home content + host-aspects cross-class delivery) is MISSING until Phase 5,
+  # and full-fleet byte/functional validation is Phase 6. Projection is therefore validated SYNTHETICALLY
+  # here (ci/tests/projection.nix injects the edges via defaultEdgeTargets/mkStub — the complete-reach
+  # semantics witnesses: spicetify-once, intel-both, define-user nixos@host+hm@cell). The fleet golden
+  # suites that lose the emission content are MARKED PENDING (`# Phase 5: needs corpus edge producers`),
+  # never faked green.
+  terminalModulesAt = id: class: projectClass id class;
 
   # gen-edge graph accessor (§2.3). Isolation makes every non-root scope node its OWN edge-root: a
   # user cell (home-manager) is a distinct root from its host (nixos), so a host's subtree collects only
@@ -697,7 +725,7 @@ let
     name: classCfg: id:
     [ freeformAbsorber ]
     ++ (bind.wrapAll {
-      modules = terminalModulesAt id name; # #66: fold ++ cross-class delivery (identity-defaulted)
+      modules = terminalModulesAt id name; # projectClass over reach (Phase 2 Task 3)
       bindings = bindingsAt id;
       defaultMergeStrategy = classCfg.defaultMergeStrategy;
     }).modules;
@@ -741,7 +769,7 @@ let
           name = id; # the member (scope node) id keys the class-major output map
           value = classCfg.instantiate {
             name = id; # the terminal contract's `name` is the member id
-            hostModules = terminalModulesAt id name; # #66: fold ++ cross-class delivery (identity-defaulted)
+            hostModules = terminalModulesAt id name; # projectClass over reach (Phase 2 Task 3)
             inherit classCfg;
             bindings = bindingsAt id;
           };
@@ -757,9 +785,9 @@ in
     traceFor
     systems
     deferredToThunk
-    # Phase 2 Task 2: the class-slice projection over `reach` + the `classSubtreeAt` down-fold it subsumes,
-    # exposed so the ANCHOR witness (`projectClass id class == classSubtreeAt id class` on a no-edge node)
-    # compares them on a real fleet. UNCONSUMED by the terminal yet (Task 3 wires `terminalModulesAt`).
+    # Phase 2 Task 2/3: the class-slice projection over `reach` (now the terminal's content source via
+    # `terminalModulesAt = projectClass`) + the `classSubtreeAt` down-fold it subsumes, both exposed so the
+    # ANCHOR witness (`projectClass id class == classSubtreeAt id class` on a no-edge node) compares them.
     projectClass
     classSubtreeAt
     ;

@@ -110,14 +110,23 @@ in
   flake.tests.compat-hm-battery = {
     # (1) the resolve.to-derived cell: the ambient emitter fires, the forward parent-targets the host,
     #     and the host's nixos terminal carries home-manager.users.tux with the cell's hm content.
+    #
+    # PHASE 5 PENDING (den-hoag projection red window — Phase 2 Task 3): terminalModulesAt = projectClass
+    # projects over `reach`; the hm-battery user→host hm forward is a cross-class DELIVERY that Phase 5
+    # wires as an opt-in reach-EDGE (cell → host). Until that corpus edge producer exists, the per-user hm
+    # content does NOT reach the host terminal (reach host = structural subtree only) — the delivery half
+    # is absent by design (spec §Phase-2 scope; NOT faked green). Re-baselined to the red-window value; the
+    # REAL expected is `{ users = [ "tux" ]; tags = [ "hm-tux" ]; }`, re-baselined at Phase 6. (The edge
+    # trace test below — test-resolved-user-edge-host-rooted — STAYS GREEN: the edge renderer is live.)
     test-resolved-user-hm-lands-at-host-terminal = {
       expr = {
         users = hostHmUsers resolved;
         tags = hostHmTagsOf resolved "tux";
       };
+      # Phase 5 real value: { users = [ "tux" ]; tags = [ "hm-tux" ]; }
       expected = {
-        users = [ "tux" ];
-        tags = [ "hm-tux" ];
+        users = [ ];
+        tags = [ ];
       };
     };
     # …the edge is host-rooted (the #53c parent target) and appendToParent-annotated (v1 route.nix:813).

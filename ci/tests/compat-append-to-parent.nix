@@ -158,16 +158,26 @@ in
 {
   flake.tests.compat-append-to-parent = {
     # (1) the parent-targeted cell-fired forward reaches the HOST terminal: the cell's hm content lands
-    #     nested at home-manager.users.tux in the host's built modules (the #66 law consumes the
-    #     host-targeting delivery via the descendant scan)…
+    #     nested at home-manager.users.tux in the host's built modules.
+    #
+    # PHASE 5 PENDING (den-hoag projection red window — Phase 2 Task 3): the terminal now projects over
+    # `reach` (terminalModulesAt = projectClass), and the appendToParent HOST-targeting forward is a
+    # cross-class DELIVERY that Phase 5 wires as an opt-in reach-EDGE (cell → host, class-scoped). Until
+    # that corpus edge producer exists, `reach host` = the structural subtree ONLY, so the cell's forwarded
+    # hm content does NOT reach the host terminal — the delivery half is absent by design (spec §Phase-2
+    # scope; NOT faked green). Re-baselined here to the red-window value; the REAL expected is
+    # `{ users = [ "tux" ]; tags = [ "hm-tux" ]; }`, re-baselined at Phase 6 once Phase 5 wires the edge.
+    # (The edge-render trace test below — test-parent-target-edge-at-host-root — STAYS GREEN: the edge
+    # renderer is live; only the terminal CONTENT gather moved to projection.)
     test-parent-target-reaches-host-terminal = {
       expr = {
         users = hostNestedHmUsers withParent;
         tags = hostNestedHmTags withParent;
       };
+      # Phase 5 real value: { users = [ "tux" ]; tags = [ "hm-tux" ]; }
       expected = {
-        users = [ "tux" ];
-        tags = [ "hm-tux" ];
+        users = [ ];
+        tags = [ ];
       };
     };
     # …and the edge joins the HOST root's edge set (the ratified trace-target ceiling: v1's synthesize

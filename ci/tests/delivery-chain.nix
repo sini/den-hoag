@@ -202,53 +202,16 @@ let
   termOf = f: f.den.output.systems.nixos.${igloo}.modules or [ ];
 in
 {
-  flake.tests.delivery-chain = {
-    # (1) the chain: the routed `hl` content rides the forward into the host terminal's per-user set,
-    #     AFTER the cell's own hm content (base-then-routed, v1's append order).
-    test-chain-delivers-through-forward = {
-      expr = userHmTags chained;
-      expected = [
-        "hm-tux"
-        "hl-tux"
-      ];
-    };
-    # (2) identity: without the route only the direct hm content arrives (`++ [ ]`).
-    test-delivery-free-identity = {
-      expr = userHmTags plain;
-      expected = [ "hm-tux" ];
-    };
-    # (3) single-path once-only: the routed content appears EXACTLY once.
-    test-chain-once-only = {
-      expr = builtins.length (builtins.filter (t: t == "hl-tux") (userHmTags chained));
-      expected = 1;
-    };
-    # (4) a cycle aborts NAMED; the acyclic companion (one leg removed) terminates and carries the
-    #     chained content (ca ← cb at the terminal).
-    test-cycle-aborts-named = {
-      expr = ok (termOf (mkCycle true));
-      expected = false;
-    };
-    test-acyclic-companion-terminates = {
-      expr = {
-        okEval = ok (termOf (mkCycle false));
-        hasChained = builtins.elem "b" (builtins.concatMap tags (termOf (mkCycle false)));
-      };
-      expected = {
-        okEval = true;
-        hasChained = true;
-      };
-    };
-    # (5) the diamond evaluates without a false-abort — the shared (igloo, cs) is entered on two
-    #     separate branches, each with a path-local seen-set.
-    test-diamond-no-false-abort = {
-      expr = ok (termOf diamond);
-      expected = true;
-    };
-    # (5) the shared source's content lands ONCE PER BRANCH (cs → cx and cs → cy) — multiplicity 2,
-    #     the affirmative dual of no-false-abort (both branches read it, neither is dropped).
-    test-diamond-shared-multiplicity = {
-      expr = builtins.length (builtins.filter (t: t == "s") (builtins.concatMap tags (termOf diamond)));
-      expected = 2;
-    };
-  };
+  # ── RETIRED (den-hoag projection, Phase 2 Task 3 — terminalModulesAt = projectClass) ────────────────
+  # Every witness here tested the #75a DELIVERY-CHAIN terminal read (`deliveryModulesChain`/
+  # `deliveryModulesAt`, output-modules.nix): a route's collected source spliced the cross-class delivery
+  # output the TERMINAL gathered at (m, C). The projection pivot REPLACES that emission model — the terminal
+  # is now `projectClass id class` over `reach` (positive edges + the structural-descendant subtree), so the
+  # delivery-chain terminal gather is DEAD (Phase 3 deletes `deliveryModulesChain`/`deliveryModulesAt`).
+  # The chain semantics these pinned (routed content once-only, base-then-routed order, cycle-aborts,
+  # DAG-diamond multiplicity) are subsumed by the reach EDGE closure + single-visit/merge_ord laws,
+  # witnessed at the projection level in `ci/tests/projection.nix` (the reach + projectClass witnesses) and
+  # `ci/tests/reach-graph.nix` (edge transitivity, per-scope single-visit, canonical order). The corpus
+  # route→forward producer that fed this chain is re-wired as an opt-in reach-edge at Phase 5.
+  flake.tests.delivery-chain = { };
 }

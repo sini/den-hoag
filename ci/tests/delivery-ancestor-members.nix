@@ -197,27 +197,21 @@ let
 in
 {
   flake.tests.delivery-ancestor-members = {
-    # (1) R-ROOT-FILTER own-drop: the host's SCOPE-OWN hm (hm-host-zsh/hm-host-persist, via
-    #     schema.host.includes) is dropped from the cell's gather (the cell owns home-manager, the host is
-    #     a proper ancestor) — only the cell's own content survives. Re-baselined from the pre-twin
-    #     over-delivery `[hm-host-zsh, hm-host-persist, hm-tuxA]` (ledger u23(b)); v1 filterRootModules
-    #     keeps only den.default-shared root modules — none here (all host-own) — so `[hm-tuxA]`.
-    test-ancestor-bucket-host-first = {
-      expr = userHmTags fleet "tuxA";
-      expected = [ "hm-tuxA" ];
-    };
-    # (2) no sibling cross-bleed: each user gets ONLY its own content — the host-own hm filtered from
-    #     both, and tuxA never sees tuxB's cell content.
-    test-no-sibling-cross-bleed = {
-      expr = {
-        tuxB = userHmTags fleet "tuxB";
-        aHasNoB = builtins.elem "hm-tuxB" (userHmTags fleet "tuxA");
-      };
-      expected = {
-        tuxB = [ "hm-tuxB" ];
-        aHasNoB = false;
-      };
-    };
+    # ── RETIRED (den-hoag projection, Phase 2 Task 3 — terminalModulesAt = projectClass) ──────────────
+    # test-ancestor-bucket-host-first / test-no-sibling-cross-bleed (below: test-shared-survives-own-drops /
+    # test-root-filter-clears-double) tested the #74a ANCESTOR-MEMBER terminal gather + the R-ROOT-FILTER
+    # twin (`collectedMembersOf` at the TERMINAL, `filterRootModules`, output-modules.nix): a cell-fired
+    # forward gathered the ancestor (host) bucket, restricted to den.default-shared. The projection pivot
+    # REPLACES that emission model — the terminal is `projectClass id class` over `reach`. No-sibling-
+    # cross-bleed + the spicetify double (root-filter-clears-double) are now GRAPH properties: distinct cells
+    # run distinct per-scope reach traversals (no cross-bleed) and single-visit dedups own+edge to one node
+    # (the double dissolves) — witnessed at `ci/tests/projection.nix` (per-scope reach, spicetify-once) and
+    # `ci/tests/reach-graph.nix` (per-scope both-present, own∩edge single-visit). The shared-vs-own
+    # filterRootModules distinction is DELETED (spec §1 Corollary: "no shared/own marker"); baseline becomes
+    # an ordinary framework default edge (Phase 5). The two witnesses BELOW that read the EDGE-render/trace
+    # (test-cell-edge-members-ancestors-first — `collectedMembersOf` via the LIVE `deliveryEdgesAt`) and the
+    # delivery-free IDENTITY (test-delivery-free-identity) are KEPT — they exercise still-live code.
+
     # (3) the cell-fired edges' members are [host, cell] (ancestors-first) — the trace pin; and the
     #     delivery-free fleet renders NO hm edge at the host root.
     test-cell-edge-members-ancestors-first = {
@@ -245,35 +239,9 @@ in
         edges = [ ];
       };
     };
-    # (5) SHARED SURVIVES / OWN DROPS: a den.default-shared host hm (`hm-shared`) rides into the cell
-    #     gather; a schema.host.includes host-own hm (`hm-own-host`) is dropped. Both arms of the twin.
-    test-shared-survives-own-drops = {
-      expr =
-        let
-          g = userHmTags sharedMk "tuxA";
-        in
-        {
-          sharedPresent = builtins.elem "hm-shared" g;
-          ownHostDropped = !(builtins.elem "hm-own-host" g);
-          cellOwnPresent = builtins.elem "hm-tuxA" g;
-        };
-      expected = {
-        sharedPresent = true;
-        ownHostDropped = true;
-        cellOwnPresent = true;
-      };
-    };
-    # (6) R-ROOT-FILTER clears the double (the spicetify witness): `dup` (own at host + user) is declared
-    #     ONCE at the cell terminal — the host ANCESTOR copy is dropped (own, cell owns home-manager), the
-    #     cell's own copy stays, then its acct. RED before A2: `[dup, dup, hm-tuxA]` (doubled).
-    test-root-filter-clears-double = {
-      expr = builtins.concatMap (
-        m: if builtins.isAttrs m && m ? home-manager then tags (m.home-manager.users.tuxA or { }) else [ ]
-      ) (dupMk.den.output.systems.nixos.${igloo}.modules or [ ]);
-      expected = [
-        "dup"
-        "hm-tuxA"
-      ];
-    };
+    # (5) test-shared-survives-own-drops + (6) test-root-filter-clears-double: RETIRED — see the retirement
+    #     note above. The shared/own filterRootModules distinction is DELETED under projection (spec §1
+    #     Corollary), and the spicetify double dissolves as a single-visit graph property (witnessed at
+    #     ci/tests/projection.nix + reach-graph.nix). Phase 3 deletes the emission machinery these read.
   };
 }

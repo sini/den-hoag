@@ -187,16 +187,22 @@ in
   # applies it once at the top level (like the narrow accessor).
   mkOutputModules = outputModules;
 
-  # THE ONE per-aspect class-slice extraction (Task 2), built per-mkDen with the DISCOVERED `classifyKey`
-  # and threaded to `mkOutputModules` as the `classSliceOf` instance arg (so `projectClass` and the
-  # `class-modules` buckets share exactly one extraction). `classNames` is inert for the slice (it reads
-  # only `classifyKey` + `prelude`), passed to satisfy the class-modules instance signature.
+  # THE ONE per-aspect class-slice extraction + §2.2 totality assertion (Task 2/3), built per-mkDen with the
+  # DISCOVERED `classifyKey` and threaded to `mkOutputModules` (so `projectClass` and the `class-modules`
+  # buckets share exactly one extraction, and `projectClass` enforces the unregistered-key totality abort
+  # over every reached aspect). `classNames` is inert for both (they read only `classifyKey` + `prelude`),
+  # passed to satisfy the class-modules instance signature.
   mkClassSlice =
     {
       classNames,
       classifyKey,
     }:
-    (classModules { inherit classNames classifyKey; }).classSliceOf;
+    let
+      cm = classModules { inherit classNames classifyKey; };
+    in
+    {
+      inherit (cm) classSliceOf assertKeysRegistered;
+    };
 
   # Expose the structural builder for the suite's minimal-scenario scaffolding (b2 builds
   # structural equations over hand-built roots/rules).

@@ -1,11 +1,12 @@
-# Phase 2 Task 2 (den-hoag class-projection over the resolved-aspect graph, spec §1/§3) — projectClass.
+# Phase 2 Task 2/3 (den-hoag class-projection over the resolved-aspect graph, spec §1/§3) — projectClass.
 #
 # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
 # reach's canonical order (own-subtree → descendant cells → default edges → opt-in edges), each slice via
-# `classSliceOf` (THE ONE extraction the `class-modules` buckets also use). It is UNCONSUMED here (additive)
-# — `terminalModulesAt` still folds `classSubtreeAt ++ deliveryModulesAt` (Task 3 wires it).
+# `classSliceOf` (THE ONE extraction the `class-modules` buckets also use). Task 3 CONSUMED it:
+# `terminalModulesAt = projectClass` — projection is now the terminal's content source (the emission model,
+# `classSubtreeAt ++ deliveryModulesAt`, is dead; Phase 3 deletes it).
 #
-# TWO witness planes:
+# THREE witness planes:
 #   • THE ANCHOR (real fleet, the subsume proof): for a node with NO reach edges, `reach id` = its OWN scope
 #     subtree (`[id] ++ scope.descendants`, Task 1), so `projectClass id class == classSubtreeAt id class`
 #     byte-identically — projection reproduces the fold (incl. the descendant down-fold Task 1 subsumed)
@@ -25,24 +26,82 @@
   ...
 }:
 let
-  inherit (denHoag.internal) prelude resolve classifyKey;
+  inherit (denHoag.internal)
+    prelude
+    resolve
+    classifyKey
+    scope
+    aspects
+    select
+    ;
 
   # THE ONE per-aspect class-slice extraction, built with the base `classifyKey` (nixos/darwin/
   # home-manager/k8s-manifests) — the same function the assembly threads to `projectClass`.
   classSliceOf =
-    (import "${denHoagSrc}/lib/attributes/class-modules.nix" {
-      inherit prelude resolve;
-    } { classNames = [ ]; inherit classifyKey; }).classSliceOf;
+    (import "${denHoagSrc}/lib/attributes/class-modules.nix"
+      {
+        inherit prelude resolve;
+      }
+      {
+        classNames = [ ];
+        inherit classifyKey;
+      }
+    ).classSliceOf;
 
   # projectClass replicated over a STUB reach list (byte-identical to output-modules.nix's body — a pure
   # class-slice fold over `reach id`). `reachList` stands in for `result.get id "reach"`.
-  projectOver = reachList: class: prelude.concatMap (n: map (e: e.module) (classSliceOf n class)) reachList;
+  projectOver =
+    reachList: class: prelude.concatMap (n: map (e: e.module) (classSliceOf n class)) reachList;
 
   # A synthetic resolved-aspect node `{ key; content; __denShared }` (the reach node shape).
   mkNode = key: content: {
     inherit key content;
     __denShared = false;
   };
+
+  # ── COMPLETE-REACH driver (spec §Phase-2 synthetic-first): reach.compute over a STUB graph with INJECTED
+  #    default + opt-in edges (the reach-graph mkStub/defaultEdgeTargets approach), then projectClass over
+  #    the resulting reach — so the single-visit dedup + structural-descendant + edge closure are exercised
+  #    end-to-end (NOT a pre-built reach list). This is how the corpus terminal will behave once Phase 5
+  #    wires the real edges; here the edges are injected synthetically.
+  mkRa =
+    defaultEdgeTargets:
+    import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
+      inherit
+        prelude
+        scope
+        aspects
+        select
+        resolve
+        ;
+    } { inherit defaultEdgeTargets; };
+  # A reach-graph stub `self` (resolved-aspects / declarations / children).
+  mkStub = graph: {
+    get =
+      id: attr:
+      if attr == "resolved-aspects" then
+        (graph.${id} or { }).resolved or [ ]
+      else if attr == "declarations" then
+        { actions.resolution = (graph.${id} or { }).edges or [ ]; }
+      else if attr == "children" then
+        (graph.${id} or { }).children or { }
+      else
+        throw "projection stub: unexpected attr ${attr}";
+    node = id: (graph.${id} or { }).node or { };
+  };
+  reachEdgeAct = target: classFilter: {
+    __action = "reach-edge";
+    inherit target classFilter;
+  };
+  # projectClass over a COMPLETE reach: reach.compute (with the injected default edges) → the class slice.
+  projectReach =
+    {
+      defaultEdgeTargets ? (_: [ ]),
+      graph,
+      id,
+      class,
+    }:
+    projectOver ((mkRa defaultEdgeTargets).reach.compute (mkStub graph) id) class;
 
   # ── ANCHOR fixture: the class-fold-subtree fleet (nixos host `igloo` + three hm user cells, each cell
   #    emitting a nixos (define-user) slice + a home-manager slice). NO reach edges (corpus has none until
@@ -186,6 +245,118 @@ in
         "dflt"
         "optin"
       ];
+    };
+
+    # ══ COMPLETE-REACH projection SEMANTICS (Task 3 — the terminal-content proofs, spec §6 intent) ══════
+    #    Drive the REAL reach.compute over a stub with INJECTED default + opt-in edges, then projectClass —
+    #    proving the terminal (terminalModulesAt = projectClass) produces the RIGHT output on a complete
+    #    reach (the fleet will match once Phase 5 wires the real corpus edges). These are the outcomes the
+    #    spec §6 intent oracle names: spicetify ONCE, intel cpu+gpu BOTH, define-user nixos@host + hm@cell.
+
+    # (a) THE SPICETIFY DOUBLE dissolves — ONE declaration. A user (sini) reaches `roles.media` (→ the
+    #     spicetify hm aspect) via BOTH its OWN include AND an opt-in edge to the host that ALSO includes it
+    #     (same A-IDENT key). Single-visit collapses own+edge to ONE node ⇒ the spicetify hm slice appears
+    #     EXACTLY ONCE in the user's home-manager projection (spec §0/§3: the double dissolves as a graph
+    #     property, no dedup rule). RED under v1's blanket host→cell gather (the u25 "already declared" abort).
+    test-semantic-spicetify-double-resolves-once = {
+      expr =
+        let
+          spicetify = mkNode "roles.media" { home-manager.tag = "spicetify"; };
+          graph = {
+            sini = {
+              resolved = [
+                (mkNode "sini-own" { home-manager.tag = "sini"; })
+                spicetify # sini's OWN include of roles.media.
+              ];
+              edges = [ (reachEdgeAct "host" "home-manager") ]; # opt-in edge to the host…
+            };
+            host.resolved = [ spicetify ]; # …which ALSO includes roles.media (same key).
+          };
+          ts = builtins.concatMap tags (projectReach {
+            inherit graph;
+            id = "sini";
+            class = "home-manager";
+          });
+        in
+        {
+          spicetifyCount = builtins.length (builtins.filter (t: t == "spicetify") ts); # ONCE.
+          hasOwn = builtins.elem "sini" ts;
+        };
+      expected = {
+        spicetifyCount = 1; # own+edge collapsed by single-visit — no double.
+        hasOwn = true;
+      };
+    };
+
+    # (b) A-IDENT DE-COLLISION — `hardware.cpu.intel` AND `hardware.gpu.intel` BOTH present. Two DISTINCT
+    #     aspects (distinct A-IDENT keys) whose short names would collide under a name-only identity are
+    #     kept as two nodes (native container-relative key), so both nixos slices project (spec §6 Cause-2).
+    test-semantic-intel-cpu-and-gpu-both-present = {
+      expr =
+        let
+          graph = {
+            host.resolved = [
+              (mkNode "hardware.cpu.intel" { nixos.tag = "cpu-intel"; })
+              (mkNode "hardware.gpu.intel" { nixos.tag = "gpu-intel"; })
+            ];
+          };
+          ts = builtins.concatMap tags (projectReach {
+            inherit graph;
+            id = "host";
+            class = "nixos";
+          });
+        in
+        {
+          cpu = builtins.elem "cpu-intel" ts;
+          gpu = builtins.elem "gpu-intel" ts;
+          count = builtins.length ts; # BOTH — no key collision collapse.
+        };
+      expected = {
+        cpu = true;
+        gpu = true;
+        count = 2;
+      };
+    };
+
+    # (c) DEFINE-USER SPLIT — ONE parametric multi-class aspect (`define-user`) projects nixos@HOST (via the
+    #     structural-descendant edge, Task 1) AND home-manager@CELL (the cell's own include). One reachable
+    #     node, projected per-class-per-scope (spec §2 define-user model): the host's nixos projection carries
+    #     the define-user nixos slice; the cell's home-manager projection carries the define-user hm slice.
+    test-semantic-define-user-nixos-at-host-hm-at-cell = {
+      expr =
+        let
+          defineUser = mkNode "define-user" {
+            nixos.tag = "du-nixos"; # the users.users.<n> shape (host class).
+            home-manager.tag = "du-hm"; # the cell's own hm content.
+          };
+          graph = {
+            host = {
+              resolved = [ (mkNode "host-own" { nixos.tag = "host"; }) ];
+              children.cell = { }; # the (user,host) cell nests under the host.
+            };
+            cell.resolved = [ defineUser ]; # define-user lives on the cell.
+          };
+          hostNixos = builtins.concatMap tags (projectReach {
+            inherit graph;
+            id = "host";
+            class = "nixos";
+          });
+          cellHm = builtins.concatMap tags (projectReach {
+            inherit graph;
+            id = "cell";
+            class = "home-manager";
+          });
+        in
+        {
+          hostHasDefineUserNixos = builtins.elem "du-nixos" hostNixos; # nixos@host (structural descendant).
+          hostNoHmLeak = !(builtins.elem "du-hm" hostNixos); # the hm slice does NOT enter the nixos projection.
+          cellHasDefineUserHm = builtins.elem "du-hm" cellHm; # home-manager@cell (own).
+        };
+      expected = {
+        hostHasDefineUserNixos = true;
+        hostNoHmLeak = true;
+        cellHasDefineUserHm = true;
+      };
     };
   };
 }
