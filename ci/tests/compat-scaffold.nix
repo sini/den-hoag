@@ -1,6 +1,6 @@
 # compat-scaffold — the den-compat skeleton addressability gate (Task 0). Proves the shim is wired
 # into the flake and exposes the shapes every later shim task builds on: `compile` returns the
-# concern-DECLARATION attrset (the five four-concern keys + `include` + `sharedAspectKeys`), and each
+# concern-DECLARATION attrset (the five four-concern keys + `include`), and each
 # legacy surface carries its `_denCompat.legacy` tag (so severability is testable from Task 4 onward,
 # C5). The desugar itself lands in Tasks 1–5.
 { lib, denCompat, ... }:
@@ -13,8 +13,7 @@
     # `compile` is a pure v1Decls → den-hoag concern-declaration function (Law C2). It returns the five
     # concern-declaration keys the four-concern API consumes, plus `include` — the §370 directAspects seam
     # the R5 self-named-aspect desugar (spec §10) appends onto (flake-module.nix `addSelfIncludes`); the
-    # compile core emits it EMPTY, so bare `compile` is unchanged in content — plus `sharedAspectKeys`
-    # (Track A rung 1, the `den.default` shared-radiation keys). attrNames is sorted.
+    # compile core emits it EMPTY, so bare `compile` is unchanged in content. attrNames is sorted.
     test-compile-concern-keys = {
       expr = builtins.attrNames (denCompat.compile { });
       expected = [
@@ -24,10 +23,6 @@
         "entities"
         "include"
         "policies"
-        # Shared-vs-own provenance (Track A rung 1): the `den.default` reserved-aspect key(s) whose class
-        # content is radiated-shared, for the class-modules `__shared` sidecar (R-ROOT-FILTER). Empty here
-        # (no `den.default` in `{ }`), non-empty `[ "__default" ]` when `den.default` is declared.
-        "sharedAspectKeys"
       ];
     };
     test-legacy-provides-tag = {

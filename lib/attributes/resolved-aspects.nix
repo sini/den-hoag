@@ -28,13 +28,6 @@
   # the ctx handed to `forwardExpand` (seed + fixpoint expansion). A17: it must keep `resolvedAspects`
   # unforced at stamp — see the `ctx` binding in `compute` for the force-boundary law.
   enrichContext ? ({ bindings, ... }: bindings),
-  # Shared-vs-own PROVENANCE (Track A rung 1, R-ROOT-FILTER prerequisite). The resolved-aspect keys that
-  # ROOT a radiated-SHARED subtree (the `den.default` reserved-aspect key `__default`). A node is
-  # SHARED iff it is such a root OR was reached by forward expansion FROM a shared node — the transitive
-  # `den.default` subtree, v1's `@default` provider suffix (route.nix `isDenDefaultModule`). The flag
-  # rides each node as `__denShared` for class-modules' `__shared` sidecar. Native default `[ ]` ⇒ every
-  # node `__denShared = false` (byte-identical; the flag is inert additive data).
-  sharedAspectKeys ? [ ],
   # FRAMEWORK DEFAULT EDGE (spec §2 baseline injection, F5). A function `id -> [ { target; classFilter ? null } ]`
   # returning the per-node default reach-edges the framework injects — the seam through which baseline home
   # content reaches every user cell WITHOUT an explicit opt-in (replacing den.default radiation; a baseline
@@ -46,7 +39,6 @@
 }:
 let
   keyOf = aspects.key;
-  sharedKeySet = prelude.foldl' (acc: k: acc // { ${k} = true; }) { } sharedAspectKeys;
   seenEq = a: b: builtins.attrNames a.seen == builtins.attrNames b.seen;
   isSelector = v: builtins.isAttrs v && v ? __sel;
 
@@ -54,12 +46,9 @@ let
   # list: skip already-seen keys, otherwise mark seen, resolve concrete (a parametric __isWrappedFn
   # is invoked with ctx; a static submodule passes through), and recurse its `includes`. Returns
   # { seen; nodes } with seen ⊇ the input seen (monotone). Threads acc.nodes through the fold so
-  # sibling roots are all retained.
-  # `sharedFrom` — the SHARED flag inherited from the expansion parent (a node under a `den.default`
-  # subtree is shared; the top-level call passes `false`, so a node is shared iff its own key roots a
-  # shared subtree OR an ancestor did). Threaded down the include recursion, stamped as `__denShared`.
+  # sibling roots are all retained. A node is `{ key; content }` — bare, no provenance marker.
   forwardExpand =
-    ctx: seen0: sharedFrom: aspectList:
+    ctx: seen0: aspectList:
     prelude.foldl'
       (
         acc: aspect:
@@ -71,11 +60,10 @@ let
         else
           let
             concrete = if aspect.__isWrappedFn or false then aspect ctx else aspect;
-            shared = sharedFrom || (sharedKeySet ? ${key});
             newSeen = acc.seen // {
               ${key} = true;
             };
-            childResult = forwardExpand ctx newSeen shared (concrete.includes or [ ]);
+            childResult = forwardExpand ctx newSeen (concrete.includes or [ ]);
           in
           {
             seen = childResult.seen;
@@ -85,7 +73,6 @@ let
                 {
                   inherit key;
                   content = concrete;
-                  __denShared = shared;
                 }
               ]
               ++ childResult.nodes;
@@ -447,7 +434,7 @@ in
         ownEntry = (self.node id).decls.__entry or null;
 
         roots = directAspectsFor ownEntry ++ policyEdgeAspects resolutionActs;
-        seed = forwardExpand ctx (constraintSeen resolutionActs) false roots;
+        seed = forwardExpand ctx (constraintSeen resolutionActs) roots;
 
         ancestorSeen = ancestorResolvedKeys self id;
         nbIndex = indexByNeededBy;
@@ -474,7 +461,7 @@ in
                     hasAspect = k: prev.seen ? ${keyOf k};
                   }
                 ) allConditionalAspects;
-                expanded = forwardExpand ctx prev.seen false (nbExtras ++ guardExtras);
+                expanded = forwardExpand ctx prev.seen (nbExtras ++ guardExtras);
               in
               {
                 seen = expanded.seen;

@@ -54,10 +54,9 @@ let
   projectOver =
     reachList: class: prelude.concatMap (n: map (e: e.module) (classSliceOf n class)) reachList;
 
-  # A synthetic resolved-aspect node `{ key; content; __denShared }` (the reach node shape).
+  # A synthetic resolved-aspect node `{ key; content }` (the reach node shape).
   mkNode = key: content: {
     inherit key content;
-    __denShared = false;
   };
 
   # ── COMPLETE-REACH driver (spec §Phase-2 synthetic-first): reach.compute over a STUB graph with INJECTED
@@ -442,6 +441,34 @@ in
       expected = {
         noAbort = true;
         hasOwn = true;
+      };
+    };
+
+    # (c) NAME ROBUSTNESS (Phase-3 hardening): a reached aspect whose `content` lacks a populated `.name`
+    #     (a synthetic/degenerate node) with an UNREGISTERED key must STILL abort NAMED — the
+    #     `assertKeysRegistered` `content.name or "<unnamed>"` fallback keeps the abort the intended
+    #     `errors.unknownAspectKey`-shaped message, never a raw `attribute 'name' missing` throw that would
+    #     mask the real (unregistered-key) fault. Drives the abort path directly on a `.name`-less aspect.
+    test-totality-nameless-aspect-unregistered-key-aborts-named = {
+      expr =
+        let
+          namelessTypo = mkNode "nameless-typo" { nixxos.tag = "boom"; }; # NO `name` key in content.
+          r = builtins.tryEval (builtins.seq (assertKeysRegistered namelessTypo) true);
+        in
+        {
+          # Aborts (not silently passing) — the fallback name reaches the named-abort branch.
+          aborts = !r.success;
+          # NON-RAW: had it thrown the raw `attribute 'name' missing`, the aspect below (registered key,
+          # still `.name`-less) would ALSO throw — the positive control proves the fallback lets a
+          # registered-key `.name`-less aspect pass, so the abort above is the NAMED unregistered-key path.
+          namelessRegisteredOk =
+            (builtins.tryEval (
+              builtins.seq (assertKeysRegistered (mkNode "nameless-ok" { nixos.tag = "ok"; })) true
+            )).success;
+        };
+      expected = {
+        aborts = true;
+        namelessRegisteredOk = true;
       };
     };
   };

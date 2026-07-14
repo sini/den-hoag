@@ -207,8 +207,8 @@ let
   # flagged `__dropped` is a DEFINED NO-OP — its target resolved to an absent/null class, so it renders no
   # edge (a route emitted probe-safe by an emitter that gates value-conditionally, yet INERT at a firing
   # scope whose target is absent). A native fleet emits none; every ordinary delivery has `__dropped`
-  # unset, so this filter is byte-identical for one. Shared by the edge renderer (`deliveryEdgesAt`) and
-  # the terminal gather (`deliveryModulesAt`) — one source of the firing-scope delivery set.
+  # unset, so this filter is byte-identical for one. The firing-scope delivery set the edge renderer
+  # (`deliveryEdgesAt`, the trace) reads.
   deliveriesAt =
     id:
     builtins.filter (a: (a.__action or null) == "delivery" && !(a.__dropped or false)) (
@@ -227,9 +227,8 @@ let
   # ordinary self-targeted delivery; witnessed). THE RATIFIED TRACE-TARGET CEILING (§9 #53c,
   # accepted-and-ledgered): the parent-target makes the den-hoag edge target the PARENT root where v1's
   # cell-fired synthesize edge targets the CELL — a TRACE-only divergence, drvPath-invisible (the
-  # delivered content byte-matches), P1-unexercised; fixture-surfaced re-opener. Used by BOTH the edge
-  # renderer (the fold's target root) and the terminal gather (the "targets this root" filter), so the
-  # two stay in lockstep — the #66 single-path invariant depends on them agreeing.
+  # delivered content byte-matches), P1-unexercised; fixture-surfaced re-opener. Read by the edge renderer
+  # (`deliveryEdgesAt`) as the fold's target root.
   deliveryTargetRootOf =
     id: d:
     if d.appendToParent or false then
@@ -265,47 +264,15 @@ let
   # terminal of its own at the source class (the nixos host's homeManager bucket builds nothing), so it
   # is consumed once per delivery — disjoint from classSubtreeAt (same-class) and the #66 gather's
   # cross-class law. A17: the lazy id spine (ancestors/descendants are id walks; buckets force at the
-  # gather only). ROOT RESTRICTION: an ancestor member whose class the firing cell OWNS is restricted to
-  # its SHARED (`den.default`) modules by `filterRootModules` below (v1 route.nix:540-552, R-ROOT-FILTER)
-  # — this is what keeps a host's OWN home-manager content (the corpus's `roles.media`
-  # `programs.spicetify`, at host + user scope) from doubling into a user cell's gather (ledger u25).
+  # gather only). This member list is the edge renderer's TRACE identity (`deliveryEdgesAt`); the ancestor
+  # SHARED-only restriction the v1 gather applied (`filterRootModules`, route.nix:540-552) belonged to the
+  # deleted terminal emission fold, not the trace — projection (`terminalModulesAt = projectClass` over
+  # `reach`) supersedes the emission model entirely (spec §1 Corollary: no shared/own marker).
   collectedMembersOf =
     n:
     prelude.foldl' (acc: a: [ a ] ++ acc) [ ] (scope.ancestors result n)
     ++ [ n ]
     ++ scope.descendants result n;
-
-  # ── R-ROOT-FILTER (the filterRootModules twin, v1 route.nix:532-552; design §B Decision 2) ───────────
-  # In a delivery's per-member source gather, for a member `nid` that is a PROPER ANCESTOR of the firing
-  # cell `n`, if the bucket class `srcClass == producingClassOf n` (the cell OWNS the class), restrict
-  # `nid`'s `srcClass` modules to the SHARED (`den.default`-radiated) ones — drop `nid`'s scope-OWN
-  # declarations (they are that entity's OWN content, not aggregation fodder). The cell's OWN bucket
-  # (`nid == n`) and its descendants are NEVER filtered; a class the cell does NOT produce keeps `nid`'s
-  # full bucket. This is v1's `ownedClasses ∋ fromClass ⇒ filter isDenDefaultModule rootModules`: den-hoag
-  # reads the SHARED flag off the class-modules `__shared` sidecar (A1's marker; positionally aligned with
-  # the class bucket) rather than v1's `@default` module-key suffix. IDENTITY: a member that is `n` or a
-  # descendant, or a class the cell does not own, is returned unfiltered ⇒ byte-identical where the rule
-  # is corpus-inert (axon-01 — the twin fires only when an ANCESTOR carries the cell's produced class).
-  ancestorSetOf = n: prelude.foldl' (acc: a: acc // { ${a} = true; }) { } (scope.ancestors result n);
-  filterRootModules =
-    n: nid: srcClass: mods:
-    let
-      isProperAncestor = (ancestorSetOf n) ? ${nid};
-      cellOwnsClass = srcClass == producingClassOf n;
-    in
-    if isProperAncestor && cellOwnsClass then
-      let
-        sharedFlags = (classModulesAt nid).__shared.${srcClass} or [ ];
-        keepAt = i: i < builtins.length sharedFlags && builtins.elemAt sharedFlags i;
-      in
-      # Positional zip: keep `mods[i]` iff `sharedFlags[i]` (the A1 sidecar is aligned with the bucket).
-      # A missing/short sidecar (defensive) treats the entry as OWN (drop) — the restriction never keeps
-      # an unmarked ancestor module, matching v1's "shared-only" ceiling.
-      prelude.concatMap (i: if keepAt i then [ (builtins.elemAt mods i) ] else [ ]) (
-        prelude.imap0 (i: _: i) mods
-      )
-    else
-      mods;
 
   deliveryEdgesAt =
     id:
@@ -319,12 +286,9 @@ let
             # #62c + #74a — the firing scope's ANCESTOR CHAIN (v1's rootModules, outermost first) PLUS
             # itself PLUS its descendant cells (Task 5): a host-fired route gathers the user cells'
             # class content; a cell-fired forward gathers its HOST's bucket first (§10). Root-fired ⇒
-            # ancestors = [ ] ⇒ the pre-#74 members exactly. R-ROOT-FILTER NOTE: this is the TRACE/outputFor
-            # render; the per-(member,class) shared-only restriction is a CONTENT filter applied at the
-            # TERMINAL gather (`deliveryModulesChain`, the sole drv path), not here — the trace renders edge
-            # IDENTITY (the members LIST, unchanged: `[host, cell]`) and `outputFor` is not a shipped
-            # artifact (§9/§11: P2 hashes the terminal). So the members list stays whole; the filter never
-            # perturbs the frozen trace (the parity oracle) — only the built content.
+            # ancestors = [ ] ⇒ the pre-#74 members exactly. This is the TRACE render — it emits edge
+            # IDENTITY (the members LIST, `[host, cell]`); the built content is projection's concern
+            # (`terminalModulesAt = projectClass`), not this fold.
             members = collectedMembersOf id;
           };
           target = edge.targets.root {
@@ -337,134 +301,6 @@ let
         };
     in
     map renderDelivery (deliveriesAt id);
-
-  # ── #66 delivery→terminal unification (design note §9, the terminal dual of v1's post-route read) ────
-  # den-hoag's A15 fold unifies the content-mover with the trace onto ONE edge set (`edgesForRoot` feeds
-  # BOTH `outputFor` and `traceFor`), so ALL routed/forwarded content lives in the delivery-edge stream.
-  # But the TERMINAL crossing reads `classSubtreeAt` alone (same-class buckets), so the CROSS-class routed
-  # content (os→nixos `programs.zsh.enable`, home-manager→nixos `home-manager.users`) is present in
-  # `outputFor` yet ABSENT from the built drv. v1 SEPARATES the layers — routes `appendToClass` into the
-  # target class bucket, the terminal reads POST-route buckets, the trace is a DESCRIPTIVE parallel — so v1
-  # never double-counts; den-hoag CANNOT copy that (under the unified edge set the content would
-  # materialize TWICE in `outputFor`). Instead the terminal's INPUT widens to match the fold's OUTPUT.
-  #
-  # `deliveryModulesAt root class` = the CROSS-class delivery module content delivered at (root, class):
-  # every CLASS-source delivery TARGETING this root+class, its SOURCE-class bucket gathered across the
-  # delivery's `[ firing ] ++ descendants` subtree — the #62c source-members that already aggregate the
-  # descendant cells — placed at the delivery path (merge ⇒ direct, nest ⇒ setAttrByPath, the fold's
-  # `place`). Own-BUCKET per member (`classModulesAt`, not `classSubtreeAt`) so the subtree aggregates
-  # ONCE — the ADDITIVE realization (§9 risk 2: `classSubtreeAt ++` a delivery-only gather, never a
-  # wholesale `outputFor` read whose materialize-vs-raw-list shape would perturb the drv). NB (catalog
-  # v73 review): this is the CORRECTED single-count, not a mirror of the fold's output — in the general
-  # host-fired-delivery-with-cell-carried-content case, `outputFor`'s collected union reads each #62c
-  # member's bucket through the members list and can LATENTLY double a descendant's content where this
-  # gather counts it once (corpus-vacuous; outputFor is not a shipped artifact surface — P1 traces are
-  # identity-level and P2 hashes the terminal, which reads THIS gather). The scan walks `[ root ] ++
-  # descendants root` so a #53c cell-fired delivery that `appendToParent`-targets this root is picked up
-  # (LIVE since #53c: `deliveryTargetRootOf` resolves the parent target; a delivery without the flag
-  # targets its own firing node, so only `root` itself contributes for those).
-  #
-  # SINGLE-PATH INVARIANT (§9): same-class (the fold) ⊥ cross-class (delivery). A MODULE provide
-  # (`module != null`) collects the TARGET class — its provided module rides the target scope's OWN class
-  # bucket (translateDelivery, `sourceClass == targetClass`; `classSubtreeAt` already reads it), so it
-  # contributes NOTHING NEW here (skip — re-adding would double). A same-class MERGE class-source
-  # (from == to == `class`, `mode == "merge"`) gathers the class bucket at the ROOT path exactly where
-  # `classSubtreeAt` already placed it ⇒ DOUBLE — the loud guard aborts (corpus emits none; a same-class
-  # NEST places at a DISTINCT path, v1-faithful, never a double, so it is allowed through). A17: the scan
-  # walks the delivery declaration set + the id spine + class-modules ATTRIBUTE presence, never module
-  # bodies. IDENTITY: a delivery-free root ⇒ `[ ]` at every class ⇒ terminal = `classSubtreeAt` exactly
-  # (the 840 baseline unchanged).
-  # #75a (design §11, C1 — ratified): THE SOURCE-SIDE CHAIN READ, the source dual of #66's terminal
-  # read. A delivery's collected source, per member m and source class C, is
-  # `(classModulesAt m).C ++ deliveryModulesAt m C` — the cross-class delivery output already targeted
-  # at (m, C) SPLICES into the source, reusing this very gather as the chain link (the corpus chain:
-  # the home-platform route {homeLinux → homeManager} fires at the user cell, home-platform.nix:38-42,
-  # and the hm userForward's source then reads the routed LOCALE content — v1's appendToClass appends
-  # at the firing scope and getCollectedSource reads the POST-route bucket; here no bucket is ever
-  # touched — the M2 terminal-only posture: deliveryEdgesAt/outputFor/trace UNCHANGED, outputFor stays
-  # composition-incomplete by design (P2 hashes the terminal, which reads this gather)). SINGLE-PATH: a
-  # chained source class (homeManager) has NO terminal ⇒ its routed content is consumed once, by the
-  # forward source alone. A12: base-then-routed (v1's append order; order owner-waived, u24).
-  # TERMINATION: the read descends strictly along fromClass edges over the class-target DAG (acyclic on
-  # the corpus — the §11 census); a (scope, class) revisit ON THE RECURSION PATH aborts LOUD
-  # (errors.deliveryChainCycle — the containmentCycle precedent; v1's own complex-forward topoSort
-  # throws on a cycle, route.nix:496). The seen-set is PATH-LOCAL (threaded down, not global), so a DAG
-  # diamond — two deliveries legitimately sourcing one (scope, class) on separate branches — never
-  # false-aborts. IDENTITY: no cross-class delivery into C ⇒ `++ [ ]` ⇒ byte-identical (the 904/71
-  # baseline).
-  deliveryModulesAt = deliveryModulesChain { };
-  deliveryModulesChain =
-    seen: root: class:
-    let
-      key = "${root}|${class}";
-      seen' = seen // {
-        ${key} = true;
-      };
-      forNode =
-        n:
-        prelude.concatMap (
-          d:
-          if deliveryTargetRootOf n d != root || d.targetClass.name != class then
-            [ ]
-          else if d.module != null then
-            [ ] # module provide rides the target's OWN class bucket (classSubtreeAt reads it) — no re-add
-          else if d.sourceClass.name == class && d.mode == "merge" then
-            errors.sameClassMergeDelivery {
-              inherit class;
-              scope = n;
-              root = root;
-            }
-          else
-            let
-              srcClass = d.sourceClass.name;
-              members = collectedMembersOf n; # #74a — the same member set the edge render names
-              # #75a — base-then-routed per member: the member's OWN bucket, then the delivery output
-              # already targeted at (member, srcClass) — the chain link (path-local seen-set threaded).
-              # CROSS-class only: a same-class NEST delivery (from == to, distinct path — the #66
-              # allowance) sources its own target class, so a chain link would SELF-loop by
-              # construction (chain(root, class) re-entered from within itself ⇒ the cycle guard);
-              # its source stays the pre-#75a base-only read (the pinned witness surface,
-              # test-same-class-nest-delivery-allowed).
-              # R-ROOT-FILTER: an ANCESTOR member's own `srcClass` bucket is restricted to its SHARED
-              # (`den.default`) modules when the firing cell OWNS `srcClass` — v1 filterRootModules
-              # (route.nix:540-552). The cell's own bucket and descendants pass unfiltered; the routed
-              # chain link (`deliveryModulesChain`) is a distinct-scope delivery, never an ancestor-own
-              # copy, so it is not restricted.
-              srcMods = prelude.concatMap (
-                nid:
-                filterRootModules n nid srcClass ((classModulesAt nid).${srcClass} or [ ])
-                ++ (if srcClass == class then [ ] else deliveryModulesChain seen' nid srcClass)
-              ) members;
-            in
-            if d.mode == "merge" then
-              # merge-mode sources land TOP-LEVEL at the target terminal, whose deltaOf/instantiate
-              # wrapAll binds their channel/entity formals wholesale — no wrap here (byte-gate: the
-              # os→nixos path stays byte-identical).
-              srcMods
-            else
-              # NEST-mode sources (#74b) are placed UNDER a path, INVISIBLE to the terminal's wholesale
-              # wrapAll — their channel/entity formals would go unbound (the corpus's syncthing member
-              # hm module demands the `replicateHome` channel arg: `home-manager.users.<u>` cannot
-              # supply it — the re-probe abort). v1 evaluates EVERY forward-source module (root + own)
-              # in the target hm eval with the FIRING user scope's args (the complex forward's
-              # extraArgsFor threading, route.nix — member.nix reads its OWN emission, the F4 raw read),
-              # so the wrap binds with the FIRING node's bindings (`bindingsAt n` — the cell), the same
-              # gen-bind DI the terminal runs (deltaOf, r2 obligation 6). A formal-less (attrset)
-              # module passes through unwrapped — the #53c/#74a witness shapes byte-unchanged.
-              map (m: nestAtPath d.path m)
-                (bind.wrapAll {
-                  modules = srcMods;
-                  bindings = bindingsAt n;
-                }).modules
-        ) (deliveriesAt n);
-    in
-    if seen ? ${key} then
-      errors.deliveryChainCycle {
-        scope = root;
-        inherit class;
-      }
-    else
-      prelude.concatMap forNode ([ root ] ++ scope.descendants result root);
 
   # ── projectClass (Phase 2 Task 2, spec §1/§3): the class-slice PROJECTION over `reach` ───────────────
   # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
@@ -492,15 +328,16 @@ let
 
   # The per-class TERMINAL assembly (spec §3/§4, Phase 2 Task 3 — THE PIVOT). Projection over `reach`
   # REPLACES the v1 emission model: `terminalModulesAt id class = projectClass id class` (the class-`C`
-  # slice of every aspect in `reach id`, canonical merge_ord). This subsumes BOTH halves of the old
-  # `classSubtreeAt id class ++ deliveryModulesAt id class`:
+  # slice of every aspect in `reach id`, canonical merge_ord). This subsumed BOTH halves of the old
+  # `classSubtreeAt id class ++ deliveryModulesAt id class` emission model (both DELETED in Phase 3):
   #   • the same-class subtree fold (`classSubtreeAt`) → reach's STRUCTURAL-DESCENDANT component (Task 1;
   #     the anchor proved projectClass == classSubtreeAt byte-identically on own+descendant content), and
-  #   • the cross-class delivery emission (`deliveryModulesAt`/`collectedMembersOf`) → reach's positive
-  #     EDGES (opt-in reach-edge + framework default edge, class-scoped F9).
-  # Consumed at the three terminal reads (`hostModules`/`deltaOf`/`contentIdsOf`). `classSubtreeAt`/
-  # `deliveryModulesAt`/`deliveryModulesChain` are now DEAD for the terminal (Phase 3 deletes them);
-  # `collectedMembersOf` STAYS LIVE (the edge renderer `deliveryEdgesAt` still calls it for the trace).
+  #   • the cross-class delivery emission → reach's positive EDGES (opt-in reach-edge + framework default
+  #     edge, class-scoped F9).
+  # Consumed at the three terminal reads (`hostModules`/`deltaOf`/`contentIdsOf`). The v1 emission fold
+  # (`deliveryModulesAt`/`deliveryModulesChain`) is DELETED; `classSubtreeAt` STAYS as the projection's
+  # own-content leaf + the anchor oracle, and `collectedMembersOf` STAYS LIVE (the edge renderer
+  # `deliveryEdgesAt` still calls it for the trace).
   #
   # THE RED WINDOW (spec §Phase-2 scope, INTENTIONAL — documented, not silent): the corpus has NO
   # reach-edge / reach-suppress / default-edge PRODUCERS until Phase 5 (corpus migration wires host-aspects

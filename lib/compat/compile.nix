@@ -1604,14 +1604,6 @@ builtins.seq surfaceTotalityOk {
       ;
   };
   inherit aspects policies;
-  # Shared-vs-own PROVENANCE (Track A rung 1, R-ROOT-FILTER prerequisite): the resolved-aspect keys
-  # whose class content is radiated-SHARED root content rather than scope-own. v1's `isDenDefaultModule`
-  # marks `den.default`-tagged modules (`@default` suffix); den-hoag's twin is the reserved `__default`
-  # aspect radiated by the `__denDefault` policy edge to every host+user scope. When `den.default` is
-  # declared, its resolved-node key is `__default` (verified — the radiated node lands under that key),
-  # so class-modules marks that aspect's class content shared. Absent ⇒ `[ ]` (no radiation, no shared
-  # content) — byte-identical to a fixture without `den.default`.
-  sharedAspectKeys = if hasDefault then [ "__default" ] else [ ];
   # Static entity-scoped aspect inclusions (den-hoag `den.include`, the §370 `directAspects` seed).
   # The compile core emits NONE — this is the seam the LEGACY `self-provide` desugar (R5, spec §10)
   # appends its self-named-aspect includes onto (flake-module.nix `addSelfIncludes`), severable: with

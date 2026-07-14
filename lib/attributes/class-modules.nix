@@ -36,17 +36,15 @@ let
   # THE ONE per-aspect class-slice extraction (Phase 2 Task 2, factored out of `classContentOf` below so
   # `class-modules` buckets AND `projectClass` — the reach-based projection — share EXACTLY one extraction).
   # `classSliceOf aspect class` = the `class`-C bucket contribution of a SINGLE resolved-aspect node
-  # (`{ key; content; __denShared }`): the aspect's `content.${class}` deferredModule IFF that key is a
-  # registered `class` key (via `classifyKey`, §2.2) and its body is a non-empty declaration. Returns a
-  # `[ { module; shared; } ]` list (0 or 1 entry — one class = one content key) — `shared` is the node's
-  # `__denShared` flag (Track A rung 1: true iff the aspect roots/descends the radiated `den.default`
-  # subtree). A `_`-prefixed / channel / facet key is skipped; a `{ }` body is a declared no-op, dropped so
-  # bucket counts reflect real content. `projectClass` maps `.module` (bare, for the classSubtreeAt anchor).
+  # (`{ key; content; }`): the aspect's `content.${class}` deferredModule IFF that key is a registered
+  # `class` key (via `classifyKey`, §2.2) and its body is a non-empty declaration. Returns a `[ { module; } ]`
+  # list (0 or 1 entry — one class = one content key). A `_`-prefixed / channel / facet key is skipped; a
+  # `{ }` body is a declared no-op, dropped so bucket counts reflect real content. `projectClass` maps
+  # `.module` (bare, for the classSubtreeAt anchor).
   classSliceOf =
     aspect: class:
     let
       content = aspect.content;
-      shared = aspect.__denShared or false;
     in
     if
       prelude.hasPrefix "_" class || !(content ? ${class}) || classifyKey content.name class != "class"
@@ -56,15 +54,7 @@ let
       let
         m = content.${class};
       in
-      if m == { } then
-        [ ]
-      else
-        [
-          {
-            module = m;
-            inherit shared;
-          }
-        ];
+      if m == { } then [ ] else [ { module = m; } ];
 
   # §2.2 TOTALITY at the projection terminal (ruling 2026-07-14). Classify EVERY non-`_` content key of an
   # aspect via `classifyKey` — a `facet`/`class`/`channel` key passes, a genuinely UNREGISTERED key (a typo
@@ -73,19 +63,25 @@ let
   # on a reachable aspect can NEVER silently vanish on the drv path (`classSliceOf class` alone classifies
   # ONLY the projected class key — the totality hole this closes; spec §2.2/§5 silent-content-loss). Returns
   # `null` (forced for the abort side-effect only); the classify-all logic is `classContentOf`'s, shared.
+  # NAME ROBUSTNESS: `classifyKey` takes the aspect NAME only to frame the `errors.unknownAspectKey` abort.
+  # A reached aspect whose `content` lacks a populated `.name` (a synthetic/degenerate node) must STILL abort
+  # with the NAMED `unknownAspectKey`-shaped message on a genuinely unregistered key — never a raw
+  # `attribute 'name' missing` throw that masks the real (unregistered-key) fault. `content.name or "<unnamed>"`
+  # supplies a key-only fallback name so the abort message stays the intended one.
   assertKeysRegistered =
     aspect:
     let
       content = aspect.content;
+      aspectName = content.name or "<unnamed>";
       keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
     in
-    prelude.foldl' (acc: k: builtins.seq (classifyKey content.name k) acc) null keys;
+    prelude.foldl' (acc: k: builtins.seq (classifyKey aspectName k) acc) null keys;
 
   # One resolved aspect's class-bucket contributions: iterate its content keys (skipping the module
   # system's own `_`-prefixed keys), and collect each `class` key's slice (via `classSliceOf` — THE ONE
   # extraction). A `channel`/`facet` key contributes `[ ]`; an unregistered key aborts inside `classifyKey`
-  # (§2.2). Each collected entry is a `{ module; shared; }` record; the public bucket strips back to the
-  # bare `module` (byte-identical), the `shared` flag riding the `__shared` sidecar (R-ROOT-FILTER twin, A2).
+  # (§2.2). Each collected entry is a `{ module; }` record; the public bucket strips back to the bare
+  # `module` (`splitBuckets`).
   classContentOf =
     aspect:
     let
@@ -106,22 +102,14 @@ let
       builtins.attrNames m
     );
 
-  # Split the record-carrying buckets (`{ <class> = [ { module; shared; } ]; }`) into the PUBLIC
-  # attribute value: the bare-module buckets `{ <class> = [ <deferredModule> ]; }` (byte-identical to
-  # the pre-marker output — every existing reader at output-modules reads `.${class}` positionally) PLUS
-  # the `__shared` sidecar `{ <class> = [ <bool> ]; }` positionally aligned with each class bucket. The
-  # `__`-prefix keeps the sidecar OUT of every class-name read (readers access `.${class}` by name, never
-  # `attrNames` the value expecting only classes — checked at output-modules `classModulesAt` consumers),
-  # so this is purely additive (A1: no consumer behavior change yet — A2 reads the sidecar).
+  # Strip the record-carrying buckets (`{ <class> = [ { module; } ]; }`) to the PUBLIC attribute value:
+  # the bare-module buckets `{ <class> = [ <deferredModule> ]; }` — every reader at output-modules reads
+  # `.${class}` positionally.
   splitBuckets =
     recBuckets:
-    let
-      cns = builtins.attrNames recBuckets;
-    in
-    (prelude.foldl' (acc: cn: acc // { ${cn} = map (e: e.module) recBuckets.${cn}; }) { } cns)
-    // {
-      __shared = prelude.foldl' (acc: cn: acc // { ${cn} = map (e: e.shared) recBuckets.${cn}; }) { } cns;
-    };
+    prelude.foldl' (acc: cn: acc // { ${cn} = map (e: e.module) recBuckets.${cn}; }) { } (
+      builtins.attrNames recBuckets
+    );
 in
 {
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, exported for `projectClass`
@@ -146,9 +134,7 @@ in
 
         base = prelude.foldl' (acc: a: mergeBuckets acc (classContentOf a)) emptyBuckets resolvedAspects;
 
-        # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket. A node's
-        # own inject is a SCOPE-OWN declaration (`shared = false`); it is never `den.default`-radiated root
-        # content, so it is never filtered by the R-ROOT-FILTER twin.
+        # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket.
         injects = builtins.filter (a: a.__action == "inject") resolutionActs;
         withInject = prelude.foldl' (
           acc: inj:
@@ -157,12 +143,7 @@ in
           in
           acc
           // {
-            ${cn} = (acc.${cn} or [ ]) ++ [
-              {
-                module = inj.module;
-                shared = false;
-              }
-            ];
+            ${cn} = (acc.${cn} or [ ]) ++ [ { module = inj.module; } ];
           }
         ) base injects;
 

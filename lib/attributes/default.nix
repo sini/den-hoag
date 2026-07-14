@@ -121,10 +121,6 @@ in
       containmentRelations ? { },
       classNames,
       classifyKey,
-      # Shared-vs-own provenance (Track A rung 1): the resolved-aspect keys that root a radiated-shared
-      # (`den.default`) subtree, passed to resolved-aspects which stamps each node's `__denShared` flag
-      # (class-modules reads it for the `__shared` sidecar). Default `[ ]` ⇒ no aspect marked shared.
-      sharedAspectKeys ? [ ],
       # Framework default-edge injector (spec §2 baseline, Task 3): `id -> [ { target; classFilter ? null } ]`,
       # threaded to resolved-aspects' `reach`. Native default `(_: [ ])` ⇒ no default edges ⇒ reach unchanged.
       defaultEdgeTargets ? (_: [ ]),
@@ -142,7 +138,6 @@ in
             allAspects
             directIncludes
             enrichContext
-            sharedAspectKeys
             defaultEdgeTargets
             ;
         })

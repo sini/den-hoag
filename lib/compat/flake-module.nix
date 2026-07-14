@@ -245,9 +245,6 @@ let
         inherit (compiled.entities) schema membership contentClass;
         aspects = compiled.aspects;
         policies = compiled.policies;
-        # Shared-vs-own provenance (Track A rung 1): the `den.default` reserved-aspect key(s), so
-        # class-modules can mark radiated-shared class content in its `__shared` sidecar (R-ROOT-FILTER).
-        sharedAspectKeys = compiled.sharedAspectKeys or [ ];
         quirks = compiled.channels;
         enrichBindings = hasAspect.mkEnrich entityKinds;
         # The SAME hook at RESOLUTION depth — the aspect-fn ctx twin (F2: shared refKey identity, not a

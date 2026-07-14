@@ -460,19 +460,6 @@ let
         };
       };
 
-      # den.sharedAspectKeys — shared-vs-own provenance (Track A rung 1, R-ROOT-FILTER prerequisite):
-      # the resolved-aspect KEYS whose class content is radiated-SHARED root content rather than
-      # scope-own. class-modules reads it to mark each bucket entry in its `__shared` sidecar. Compat
-      # sets `[ "__default" ]` (the `den.default` reserved-aspect key); native default `[ ]` ⇒ no aspect
-      # marked shared ⇒ the sidecar is all-`false` (byte-identical class buckets).
-      sharedAspectKeysDecl = {
-        options.den.sharedAspectKeys = merge.mkOption {
-          type = merge.types.listOf merge.types.str;
-          default = [ ];
-          description = "Resolved-aspect keys whose class content is radiated-shared (`den.default`), for the class-modules `__shared` sidecar (R-ROOT-FILTER). Native default `[ ]`.";
-        };
-      };
-
       denMeta = entity.discoverKinds userModules;
       ent = entity.build {
         userModules = [
@@ -496,7 +483,6 @@ let
           probeSentinelDecl
           resolveFamilyNamesDecl
           excludeFamilyNamesDecl
-          sharedAspectKeysDecl
         ]
         ++ userModules;
         inherit denMeta;
@@ -871,10 +857,6 @@ let
           ;
         classNames = effectiveClassNames;
         inherit (denAspects) classifyKey;
-        # Shared-vs-own provenance (Track A rung 1): the resolved-aspect keys whose class content is
-        # radiated-shared. The v1-surface shim sets `den.sharedAspectKeys = [ "__default" ]` (the
-        # `den.default` reserved-aspect key); a native fleet leaves it unset ⇒ `[ ]` ⇒ nothing shared.
-        sharedAspectKeys = ent.config.den.sharedAspectKeys or [ ];
       };
 
       structural = runResolve {

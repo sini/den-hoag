@@ -86,12 +86,11 @@ let
   #    precedent): a synthetic graph of nodes, each with a `resolved-aspects` list + a `declarations`
   #    resolution stratum carrying reach-edge actions. `reach.compute stub id` is the P-PROJECT reach(S).
   #
-  #    A synthetic resolved-aspect node: `{ key; content; __denShared }`. `content` carries class keys
+  #    A synthetic resolved-aspect node: `{ key; content }`. `content` carries class keys
   #    (nixos/home-manager/…) so the class-filter (n.content ? ${C}) selects; keys are the identity for
   #    single-visit dedup.
   mkNode = key: content: {
     inherit key content;
-    __denShared = false;
   };
   # aspect nodes used across the fixtures — a nixos-only host aspect, an hm-defining host aspect, an
   # own cell aspect, and a SHARED aspect present in both a cell's own subtree AND across an edge.
