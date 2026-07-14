@@ -111,22 +111,20 @@ in
     # (1) the resolve.to-derived cell: the ambient emitter fires, the forward parent-targets the host,
     #     and the host's nixos terminal carries home-manager.users.tux with the cell's hm content.
     #
-    # PHASE 5 PENDING (den-hoag projection red window — Phase 2 Task 3): terminalModulesAt = projectClass
-    # projects over `reach`; the hm-battery user→host hm forward is a cross-class DELIVERY that Phase 5
-    # wires as an opt-in reach-EDGE (cell → host). Until that corpus edge producer exists, the per-user hm
-    # content does NOT reach the host terminal (reach host = structural subtree only) — the delivery half
-    # is absent by design (spec §Phase-2 scope; NOT faked green). Re-baselined to the red-window value; the
-    # REAL expected is `{ users = [ "tux" ]; tags = [ "hm-tux" ]; }`, re-baselined at Phase 6. (The edge
-    # trace test below — test-resolved-user-edge-host-rooted — STAYS GREEN: the edge renderer is live.)
+    # PHASE 4 DELIVERED (the #10 hm-user-detect descendant-driven route, Task 2): terminalModulesAt =
+    # projectClass, and the HOST projecting `nixos` gathers the cell-fired `appendToParent` hm-battery route
+    # from its DESCENDANT cell (`parentTargetedRoutesAt`) — the resolve.to-derived cell's `home-manager`
+    # slice remaps to `nixos` at `[ home-manager users tux ]`. The per-user hm content NOW reaches the host
+    # terminal (the delivery half is a projection transform). The mark-pending marker was mis-scoped (this
+    # is hm-forward content, not a host-aspects reach-edge — that is Phase 5).
     test-resolved-user-hm-lands-at-host-terminal = {
       expr = {
         users = hostHmUsers resolved;
         tags = hostHmTagsOf resolved "tux";
       };
-      # Phase 5 real value: { users = [ "tux" ]; tags = [ "hm-tux" ]; }
       expected = {
-        users = [ ];
-        tags = [ ];
+        users = [ "tux" ];
+        tags = [ "hm-tux" ];
       };
     };
     # …the edge is host-rooted (the #53c parent target) and appendToParent-annotated (v1 route.nix:813).

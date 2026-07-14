@@ -308,17 +308,45 @@ let
   # resolution actions `deliveriesAt` reads for the trace) to a class-remap record `{ from; to; at; guard }`
   # readable by `projectClass`. `from`/`to` are the source/target CLASS NAMES (the `deliveryEdgesAt` source
   # arm: a MODULE source (provide) collects the TARGET class, a CLASS source (route) collects `from`), `at`
-  # is the placement path, `guard` the v1 eval-time closure (or null). A native fleet emits no delivery ⇒
-  # `[ ]` ⇒ the route-remap is `++ [ ]` (additive identity — `projectClass` byte-identical to the base).
-  # A `__dropped` delivery (null target) renders no remap, exactly as `deliveriesAt` skips it for the trace.
+  # is the placement path, `guard` the v1 eval-time closure (or null). `lowerRoute` renders ONE delivery to
+  # that record (shared by the OWN-scope routes below and the descendant-driven parent-targeted routes,
+  # Task 2). A native fleet emits no delivery ⇒ `[ ]` ⇒ the route-remap is `++ [ ]` (additive identity —
+  # `projectClass` byte-identical to the base). A `__dropped` delivery (null target) never reaches here
+  # (`deliveriesAt` skips it, exactly as for the trace).
+  lowerRoute = d: {
+    from = (if d.module != null then d.targetClass else d.sourceClass).name;
+    to = d.targetClass.name;
+    at = d.path;
+    guard = d.guard or null;
+  };
+
+  # `routesAt id` = the class-remaps of the OWN-scope routes fired at `id` — the deliveries that target the
+  # firing scope ITSELF. An `appendToParent` delivery is EXCLUDED here (it targets the containment parent;
+  # the HOST gathers it via `parentTargetedRoutesAt`, Task 2) so a cell-fired parent-targeted route is
+  # remapped ONCE, at the host, never doubled at the cell.
   routesAt =
+    id: map lowerRoute (builtins.filter (d: !(d.appendToParent or false)) (deliveriesAt id));
+
+  # ── #10 hm-user-detect — the DESCENDANT-DRIVEN parent-targeted route (Phase 4 Task 2, spec §5 (b/d)) ──
+  # A cell-fired `appendToParent` route (the v1 hm-user-detect forward: `homeManager → host.class` at
+  # `[ home-manager users <u> ]`, emitted by the home-manager battery at every (user,host) cell) targets the
+  # CONTAINMENT PARENT root (the host), not the firing cell — so the HOST, projecting its class, gathers these
+  # from its DESCENDANT cells (the reach descendant component already brings the cells into the host's view;
+  # this is the class-remap SOURCE side). `parentTargetedRoutesAt id` = for each descendant cell `c`, each
+  # non-dropped `appendToParent` delivery at `c` whose target root resolves to `id`
+  # (`deliveryTargetRootOf`), lowered to a class-remap PLUS its `sourceScope = c` (the cell whose class-`from`
+  # slice the route remaps). The route's `at` (the intoPath) is ALREADY concrete — the cell resolved
+  # `<u>` = `user.name` at fire time (`[ home-manager users tux ]`), so no per-cell name resolution is needed
+  # here. Native identity: a host with no hm cells has no descendant `appendToParent` delivery ⇒ `[ ]`.
+  parentTargetedRoutesAt =
     id:
-    map (d: {
-      from = (if d.module != null then d.targetClass else d.sourceClass).name;
-      to = d.targetClass.name;
-      at = d.path;
-      guard = d.guard or null;
-    }) (deliveriesAt id);
+    prelude.concatMap (
+      c:
+      map (d: {
+        route = lowerRoute d;
+        sourceScope = c;
+      }) (builtins.filter (d: (d.appendToParent or false) && deliveryTargetRootOf c d == id) (deliveriesAt c))
+    ) (scope.descendants result id);
 
   # A route's guard against the projecting scope (spec §5: "eval the guard against the scope; false →
   # contribute nothing"). The v1 route guard is a closure over the scope's binding environment (home-platform
@@ -357,17 +385,30 @@ let
   # accepted, ledgered over-report. The routed-delta anchor witness (`ci/tests/projection.nix`) pins the
   # invariant `projectClass id C == classSubtreeAt id C ++ <route remap delta>` (exact-equal only for a
   # route-FREE class), so the phantom is asserted BOUNDED (harmless empties), never silently unaccounted.
+  # Remap the class-`from` slice of every node in `reach srcScope`, placed at `at` — the shared body of both
+  # the own-scope route (srcScope = the projecting scope) and the descendant-driven parent-targeted route
+  # (srcScope = the descendant cell). `guardHolds route srcScope` gates against the SOURCE scope's bindings.
+  remapOver =
+    srcScope: route:
+    prelude.concatMap (
+      n: placeSlice route.at (map (e: e.module) (classSliceOf n route.from))
+    ) (result.get srcScope "reach");
+
   routeRemapFor =
     id: class:
+    # (1) OWN-scope routes fired at `id` (Task 1) — the source node set is `reach id`.
     prelude.concatMap (
-      route:
-      if route.to == class && guardHolds route id then
-        prelude.concatMap (
-          n: placeSlice route.at (map (e: e.module) (classSliceOf n route.from))
-        ) (result.get id "reach")
-      else
-        [ ]
-    ) (routesAt id);
+      route: if route.to == class && guardHolds route id then remapOver id route else [ ]
+    ) (routesAt id)
+    # (2) DESCENDANT-DRIVEN parent-targeted routes (Task 2, #10 hm-user-detect) — a cell-fired
+    #     `appendToParent` route targeting THIS host: the SOURCE is the descendant cell (`sourceScope`), so
+    #     the cell's class-`from` (`home-manager`) slice remaps to `class` (`nixos`) at the route's per-cell
+    #     `at` (`[ home-manager users <u> ]`). `reach sourceScope` = the cell's OWN subtree (no host edge),
+    #     so the cell's OWN hm content is delivered (the v1 filterRootModules R-ROOT-FILTER: host scope-own
+    #     hm does NOT ride the cell's gather), and the guard is evaluated at the CELL.
+    ++ prelude.concatMap (
+      pt: if pt.route.to == class && guardHolds pt.route pt.sourceScope then remapOver pt.sourceScope pt.route else [ ]
+    ) (parentTargetedRoutesAt id);
 
   # ── projectClass (Phase 2 Task 2, spec §1/§3): the class-slice PROJECTION over `reach` ───────────────
   # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in

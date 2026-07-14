@@ -79,13 +79,16 @@ let
   # A `delivery` resolution action (the shape `translateDelivery`/`deliveriesAt` produce/read): a
   # class→class route carries `sourceClass`/`targetClass` entries (`{ name; }`), a `path`, `mode`, and a
   # `guard` closure (or null). `module = null` ⇒ a CLASS source (route case) — `routesAt` reads
-  # `from = sourceClass.name`. `__action = "delivery"`, not `__dropped`.
+  # `from = sourceClass.name`. `appendToParent` (default false) ⇒ the route targets the containment PARENT
+  # root (the #10 hm-user-detect forward — gathered by the host via `parentTargetedRoutesAt`, Task 2).
+  # `__action = "delivery"`, not `__dropped`.
   deliveryAct =
     {
       from,
       to,
       at ? [ ],
       guard ? null,
+      appendToParent ? false,
     }:
     {
       __action = "delivery";
@@ -94,7 +97,7 @@ let
       module = null;
       path = at;
       mode = "merge";
-      inherit guard;
+      inherit guard appendToParent;
     };
 
   # A STUB `result` for `mkOutputModules`: `reach id` = the reached node list, `declarations` = the route
@@ -323,6 +326,86 @@ in
           "hm-a"
           "hm-b"
         ];
+      };
+    };
+
+    # ══ (5) #10 hm-user-detect — DESCENDANT-DRIVEN parent-targeted route (Task 2, spec §5 (b/d)) ══════════
+    # A cell-fired `appendToParent` route `{ from="home-manager"; to="nixos"; at=[home-manager users tux] }`
+    # targets the containment PARENT (the host), NOT the firing cell. The HOST projecting `nixos` gathers it
+    # from its DESCENDANT cell (`parentTargetedRoutesAt`): the cell's `home-manager` slice remaps to `nixos`
+    # at `[ home-manager users tux ]`. The stub graph: host (children={cell}) + cell (parent=host, carrying an
+    # own hm slice `hm-tux` and the appendToParent delivery). `deliveryTargetRootOf cell d` = cell.parent =
+    # host, so the host gathers it; the source is `reach cell` (the cell's OWN subtree).
+    test-route-hm-user-detect-descendant-at-host = {
+      expr =
+        let
+          graph = {
+            host = {
+              node.parent = null;
+              children.cell = { };
+              reach = [ (mkNode "host-own" { nixos.tag = "nixos-host"; }) ]; # host's OWN nixos.
+            };
+            cell = {
+              node.parent = "host";
+              reach = [ (mkNode "acct" { home-manager.tag = "hm-tux"; }) ]; # the cell's OWN hm content.
+              routes = [
+                (deliveryAct {
+                  from = "home-manager";
+                  to = "nixos";
+                  at = [
+                    "home-manager"
+                    "users"
+                    "tux"
+                  ];
+                  appendToParent = true; # targets the parent (host), gathered by parentTargetedRoutesAt.
+                })
+              ];
+            };
+          };
+          hostNixos = projectClassOf graph "host" "nixos";
+          # the nested hm module the host's nixos projection carries: { home-manager.users.<u> = <module> }.
+          hmUsers = builtins.concatMap (
+            m: if builtins.isAttrs m && m ? home-manager then builtins.attrNames (m.home-manager.users or { }) else [ ]
+          ) hostNixos;
+          hmTags = builtins.concatMap (
+            m: if builtins.isAttrs m && m ? home-manager then tags (m.home-manager.users.tux or { }) else [ ]
+          ) hostNixos;
+          hostOwnTags = builtins.concatMap tags hostNixos; # the host's own nixos slice survives.
+        in
+        {
+          users = hmUsers; # the cell's hm remapped at home-manager.users.tux on the HOST's nixos.
+          tags = hmTags; # carrying the cell's OWN hm-tux content.
+          hostOwnPresent = builtins.elem "nixos-host" hostOwnTags; # base host nixos untouched (additive).
+        };
+      expected = {
+        users = [ "tux" ];
+        tags = [ "hm-tux" ];
+        hostOwnPresent = true;
+      };
+    };
+
+    # (5b) IDENTITY — a host with NO hm cells (no descendant appendToParent delivery) ⇒ no
+    #      home-manager.users.* injection (the parent-targeted remap is `++ [ ]`).
+    test-route-hm-user-detect-no-cell-identity = {
+      expr =
+        let
+          graph.host = {
+            node.parent = null;
+            children = { }; # NO descendant cells.
+            reach = [ (mkNode "host-own" { nixos.tag = "nixos-host"; }) ];
+          };
+          hostNixos = projectClassOf graph "host" "nixos";
+          hmUsers = builtins.concatMap (
+            m: if builtins.isAttrs m && m ? home-manager then builtins.attrNames (m.home-manager.users or { }) else [ ]
+          ) hostNixos;
+        in
+        {
+          hmUsers = hmUsers; # no injection.
+          hostOwn = builtins.concatMap tags hostNixos; # only the host's own nixos.
+        };
+      expected = {
+        hmUsers = [ ];
+        hostOwn = [ "nixos-host" ];
       };
     };
   };
