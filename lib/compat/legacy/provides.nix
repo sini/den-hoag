@@ -197,7 +197,17 @@ let
           value = mkCarrier aName key provides.${key};
         }) crossKeys
       );
-      seedStubs = map (key: { name = "${aName}/${key}"; }) crossKeys;
+      # A-IDENT (gen-aspects @14652a0): the seed stub is a NAME-REF to the top-level carrier `${aName}/${key}`,
+      # so it MUST key to that referent — NOT to its own includes-POSITION. gen-aspects re-roots a bare
+      # include's `meta.aspect-chain` off the option path (`[<aspect> includes]`, types.nix:233 mkDefault) and
+      # `identity.key = pathKey(chain ++ [name])`, which would prepend the position → `<aspect>/includes/<name>`,
+      # diverging from the carrier's top-level `${aName}/${key}` (chain `[ ]`) and BREAKING the `neededBy`
+      # cond-2 visibility (`visible ? keyOf carrier`) — the carrier never radiates. Pin the chain to `[ ]`
+      # (mkDefault yields to this explicit set) so the stub keys as `${aName}/${key}`, matching the carrier.
+      seedStubs = map (key: {
+        name = "${aName}/${key}";
+        meta.aspect-chain = [ ];
+      }) crossKeys;
       selfContent = if hasSelf then mkSelfContent aName aspect provides.${aName} else null;
     };
 
