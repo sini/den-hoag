@@ -1164,6 +1164,7 @@ in
     # exported so tests detect the share path via this constant instead of re-hardcoding the string.
     classShareCoreAttr = "denClassShareCore";
     inherit
+      prelude
       dispatch
       resolve
       scope

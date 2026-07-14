@@ -1,29 +1,43 @@
 # Phase 1 (den-hoag class-projection over the resolved-aspect graph, spec §2) — THE EDGE MODEL.
 #
-# Task 1: the edge-DECLARATION reads. `resolved-aspects.nix` exposes `reachEdgesOf`/`reachSuppressOf`,
-# pure list functions over a node's `resolutionActs` (the resolution stratum of `declarations`), mirroring
-# the existing `policyEdgeAspects` (`__action == "edge"`) / `constraintSeen` (`__action == "drop"`) reads:
-#   - `reachEdgesOf` filters `__action == "reach-edge"` → `[ { target; classFilter ? null; } ]` (the
-#     POSITIVE cross-scope reachability edge: target resolves to another node, optionally class-scoped, F9).
-#   - `reachSuppressOf` filters `__action == "reach-suppress"` → `[ { edge; when; } ]` (the NEGATIVE /
-#     suppression edge, F3-exclude / u21: `edge` = the positive edge to remove, `when` = a scope predicate).
-#   - No edge decls ⇒ `[ ]` both (additive identity — Phase 1 is unread by any consumer).
+# Task 1: the edge-DECLARATION reads (`reachEdgesOf`/`reachSuppressOf` in resolved-aspects.nix — pure list
+# functions over a node's `resolutionActs`, mirroring `policyEdgeAspects` `__action == "edge"` / `constraintSeen`
+# `__action == "drop"`): `reachEdgesOf` filters `reach-edge` → `[ { target; classFilter ? null } ]` (POSITIVE
+# cross-scope edge, class-scoped F9); `reachSuppressOf` filters `reach-suppress` → `[ { edge; when } ]` (NEGATIVE
+# suppression, F3-exclude / u21).
 #
-# UNIT read: the helpers use only `map`/`builtins.filter`/`inherit`, no `prelude`/instance args — so the
-# module is imported with DUMMY first-stage deps and `{ }` instance args (the compat-builtin-classes.nix
-# prelude-free precedent), and the helpers are called on a SYNTHETIC `resolutionActs` list authored inline
-# in the `reach-edge`/`reach-suppress` action shape (`{ __action = "reach-edge"; target; classFilter; }`).
-{ denHoagSrc, ... }:
+# After Task 2, `reachEdgesOf` is INTERNAL (`let`-bound) and its behaviour is witnessed THROUGH `reach` (below);
+# `reachSuppressOf` stays returned on the module attrset for its Phase-1 `when`-predicate witness (its `reach`
+# consumer arrives in Task 4). `reach` (Task 2) needs the REAL prelude/resolve/scope/aspects/select, so the module
+# is imported with denHoag.internal deps and `reach.compute self id` is driven against a STUB `self` (the
+# compat-expose-gather.nix mkStub precedent) serving synthetic per-node resolved-aspects/declarations — the
+# traversal witnessed as a pure graph function (no policy vocabulary for reach-edges; Phase-5 wiring authors those).
+{
+  denHoag,
+  denHoagSrc,
+  ...
+}:
 let
+  # Import resolved-aspects.nix with the REAL denHoag.internal deps (the `reach` accessor's compute folds +
+  # builds a resolve.attr record; `reachSuppressOf` rides the same attrset — see header for the witness plan).
+  inherit (denHoag.internal)
+    prelude
+    scope
+    resolve
+    aspects
+    select
+    ;
   ra = import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
-    prelude = { };
-    scope = { };
-    resolve = { };
-    aspects = { };
-    select = { };
+    inherit
+      prelude
+      scope
+      resolve
+      aspects
+      select
+      ;
   } { };
 
-  # A synthetic resolution-action list: one positive reach-edge (class-scoped homeManager), one negative
+  # A synthetic resolution-action list: one positive reach-edge (class-scoped home-manager), one negative
   # reach-suppress (droid-gated), and unrelated actions (an `edge`/`drop` from the existing strata) the
   # reads MUST ignore — proving the filter selects on `__action` exactly.
   whenDroid = scope: (scope.host.class or null) == "droid";
@@ -31,7 +45,7 @@ let
     {
       __action = "reach-edge";
       target = "host:igloo";
-      classFilter = "homeManager";
+      classFilter = "home-manager"; # the den-hoag class-key convention (hyphenated, per class-modules).
     }
     {
       __action = "reach-edge";
@@ -56,23 +70,86 @@ let
       };
     }
   ];
+
+  # ══ Task 2 — the reach(id) closure. Driven against a STUB `self` (the compat-expose-gather mkStub
+  #    precedent): a synthetic graph of nodes, each with a `resolved-aspects` list + a `declarations`
+  #    resolution stratum carrying reach-edge actions. `reach.compute stub id` is the P-PROJECT reach(S).
+  #
+  #    A synthetic resolved-aspect node: `{ key; content; __denShared }`. `content` carries class keys
+  #    (nixos/home-manager/…) so the class-filter (n.content ? ${C}) selects; keys are the identity for
+  #    single-visit dedup.
+  mkNode = key: content: {
+    inherit key content;
+    __denShared = false;
+  };
+  # aspect nodes used across the fixtures — a nixos-only host aspect, an hm-defining host aspect, an
+  # own cell aspect, and a SHARED aspect present in both a cell's own subtree AND across an edge.
+  nHostNixos = mkNode "host-nixos" { nixos.tag = "n"; };
+  nHostHm = mkNode "host-hm" { home-manager.tag = "h"; };
+  nOwn = mkNode "cell-own" { home-manager.tag = "own"; };
+  nShared = mkNode "shared" { home-manager.tag = "s"; };
+  nB = mkNode "b-aspect" { home-manager.tag = "b"; };
+
+  reachEdgeAct = target: classFilter: {
+    __action = "reach-edge";
+    inherit target classFilter;
+  };
+
+  # Build a stub `self`: `graph` = { <id> = { resolved = [ nodes ]; edges = [ reach-edge acts ]; }; }.
+  # `self.get id "resolved-aspects"` → that node's list; `self.get id "declarations"` → its resolution
+  # stratum (the reach-edge acts); `self.node id` → a minimal node record (scope for suppress predicates).
+  mkStub =
+    graph:
+    let
+      self = {
+        get =
+          id: attr:
+          if attr == "resolved-aspects" then
+            (graph.${id} or { resolved = [ ]; }).resolved or [ ]
+          else if attr == "declarations" then
+            { actions.resolution = (graph.${id} or { }).edges or [ ]; }
+          else
+            throw "reach-graph stub: unexpected attr ${attr}";
+        node = id: (graph.${id} or { }).node or { };
+      };
+    in
+    self;
+  # keys of a reach result, for order/membership assertions.
+  keysOf = nodes: map (n: n.key) nodes;
+  reachKeys = graph: id: keysOf (ra.reach.compute (mkStub graph) id);
 in
 {
   flake.tests.reach-graph = {
-    # ── Task 1 (a): reachEdgesOf reads the positive edges — target + classFilter, defaulting null. The
-    #    `edge`/`drop`/`reach-suppress` actions are ignored (filter on `__action == "reach-edge"`). ──
-    test-reach-edges-of = {
-      expr = ra.reachEdgesOf acts;
-      expected = [
+    # ── Task 1 (a) THROUGH reach (reachEdgesOf demoted to internal): the positive-edge read — target +
+    #    classFilter (defaulting null), ignoring the `edge`/`drop`/`reach-suppress` acts — is witnessed via
+    #    `reach`. A node declaring the mixed `acts` list reaches ONLY its two reach-edge targets: host:igloo
+    #    class-scoped to home-manager (its nixos-only aspect EXCLUDED), host:cabin unfiltered (all present).
+    test-reach-edges-read-via-reach = {
+      expr =
+        let
+          g = {
+            src.edges = acts; # mixed reach-edge + reach-suppress + edge + drop.
+            "host:igloo".resolved = [
+              nHostNixos # nixos-only → excluded by the homeManager classFilter.
+              nHostHm # home-manager → included.
+            ];
+            "host:cabin".resolved = [ nB ]; # null filter → included.
+          };
+          ks = reachKeys g "src";
+        in
         {
-          target = "host:igloo";
-          classFilter = "homeManager";
-        }
-        {
-          target = "host:cabin";
-          classFilter = null;
-        }
-      ];
+          iglooHm = builtins.elem "host-hm" ks; # class-scoped target reached.
+          iglooNixosExcluded = !(builtins.elem "host-nixos" ks); # F9: nixos-only NOT reached.
+          cabinUnfiltered = builtins.elem "b-aspect" ks; # null-filter target reached.
+          # the `edge`/`drop` resolution acts contribute nothing (only reach-edge is followed).
+          count = builtins.length ks;
+        };
+      expected = {
+        iglooHm = true;
+        iglooNixosExcluded = true;
+        cabinUnfiltered = true;
+        count = 2; # host-hm + b-aspect (src has no own resolved-aspects).
+      };
     };
 
     # ── Task 1 (b): reachSuppressOf reads the negative edges — { edge; when } — ignoring the others. The
@@ -97,31 +174,155 @@ in
       };
     };
 
-    # ── Task 1 (c): additive identity — no edge declarations ⇒ [ ] for both reads. ──
+    # ── Task 1 (c): additive identity — a node whose declarations carry ONLY non-reach-edge acts (edge/
+    #    drop) follows NO positive edge ⇒ reach = own subtree only (the reachEdgesOf `[ ]` identity, now
+    #    read through `reach`). The suppress read (still exported) is `[ ]` for a no-suppress list. ──
     test-no-edge-decls-identity = {
-      expr = {
-        edges = ra.reachEdgesOf [ ];
-        suppress = ra.reachSuppressOf [ ];
-        # a list carrying ONLY unrelated strata is also empty for both reads.
-        edgesFromUnrelated = ra.reachEdgesOf [
-          {
-            __action = "edge";
-            aspect = {
-              key = "x";
+      expr =
+        let
+          g = {
+            src = {
+              resolved = [ nOwn ];
+              edges = [
+                {
+                  __action = "edge";
+                  aspect = {
+                    key = "x";
+                  };
+                }
+                {
+                  __action = "drop";
+                  aspect = {
+                    key = "y";
+                  };
+                }
+              ];
             };
-          }
-          {
-            __action = "drop";
-            aspect = {
-              key = "y";
-            };
-          }
-        ];
-      };
+          };
+        in
+        {
+          ownOnly = reachKeys g "src"; # no reach-edge ⇒ own subtree only.
+          suppress = ra.reachSuppressOf [ ]; # no reach-suppress ⇒ [ ].
+        };
       expected = {
-        edges = [ ];
+        ownOnly = [ "cell-own" ];
         suppress = [ ];
-        edgesFromUnrelated = [ ];
+      };
+    };
+
+    # ══ Task 2 — reach(id) closure witnesses ══════════════════════════════════════════════════════════
+
+    # ── (a) IDENTITY: a node with NO positive edges ⇒ reach id == its own resolved-aspects. ──
+    test-reach-identity-no-edges = {
+      expr = reachKeys {
+        cell = {
+          resolved = [ nOwn ];
+        };
+      } "cell";
+      expected = [ "cell-own" ];
+    };
+
+    # ── (b) CLASS-SCOPED, no over-reach (F9): a positive edge cell→host classFilter="homeManager" pulls the
+    #    host's hm-defining aspect but EXCLUDES the host's nixos-only aspect. ──
+    test-reach-class-scoped-no-nixos-overreach = {
+      expr =
+        let
+          g = {
+            cell = {
+              resolved = [ nOwn ];
+              edges = [ (reachEdgeAct "host" "home-manager") ];
+            };
+            host.resolved = [
+              nHostNixos
+              nHostHm
+            ];
+          };
+          ks = reachKeys g "cell";
+        in
+        {
+          hasOwn = builtins.elem "cell-own" ks;
+          hasHostHm = builtins.elem "host-hm" ks;
+          hasHostNixos = builtins.elem "host-nixos" ks; # MUST be false (class-scoped).
+        };
+      expected = {
+        hasOwn = true;
+        hasHostHm = true;
+        hasHostNixos = false;
+      };
+    };
+
+    # ── (c) SINGLE-VISIT per reach(S): the SAME aspect (`shared`) reachable via BOTH the cell's own subtree
+    #    AND an edge appears EXACTLY ONCE (dedup by key). ──
+    test-reach-single-visit-count-1 = {
+      expr =
+        let
+          g = {
+            cell = {
+              resolved = [
+                nOwn
+                nShared
+              ];
+              edges = [ (reachEdgeAct "host" null) ];
+            };
+            host.resolved = [ nShared ]; # same key "shared" as the cell's own include.
+          };
+          ks = reachKeys g "cell";
+        in
+        builtins.length (builtins.filter (k: k == "shared") ks);
+      expected = 1;
+    };
+
+    # ── (d) PER-SCOPE, not global: two cells each edge to the SAME host aspect; each runs its OWN traversal,
+    #    so the shared aspect is present in BOTH reach sets (no global visited-set collapses them). ──
+    test-reach-per-scope-both-present = {
+      expr =
+        let
+          g = {
+            cellA = {
+              resolved = [ (mkNode "own-a" { home-manager.tag = "a"; }) ];
+              edges = [ (reachEdgeAct "host" null) ];
+            };
+            cellB = {
+              resolved = [ (mkNode "own-b" { home-manager.tag = "b"; }) ];
+              edges = [ (reachEdgeAct "host" null) ];
+            };
+            host.resolved = [ nShared ];
+          };
+        in
+        {
+          aHasShared = builtins.elem "shared" (reachKeys g "cellA");
+          bHasShared = builtins.elem "shared" (reachKeys g "cellB");
+        };
+      expected = {
+        aHasShared = true;
+        bHasShared = true;
+      };
+    };
+
+    # ── (e) TRANSITIVE: id→a→b (positive edges) includes b's (class-filtered) aspects in reach id. ──
+    test-reach-transitive-b-present = {
+      expr =
+        let
+          g = {
+            cell = {
+              resolved = [ nOwn ];
+              edges = [ (reachEdgeAct "a" null) ];
+            };
+            a = {
+              resolved = [ (mkNode "a-aspect" { home-manager.tag = "a"; }) ];
+              edges = [ (reachEdgeAct "b" null) ];
+            };
+            b.resolved = [ nB ];
+          };
+          ks = reachKeys g "cell";
+        in
+        {
+          hasA = builtins.elem "a-aspect" ks;
+          hasB = builtins.elem "b-aspect" ks; # transitively reached.
+        };
+      expected = {
+        hasA = true;
+        hasB = true;
       };
     };
   };

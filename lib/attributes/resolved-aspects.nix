@@ -251,11 +251,90 @@ let
           (builtins.filter (n: !(dropped ? ${n.key})) nodes);
     in
     dedup.out;
+  # A resolved-aspect node `n` passes an edge's class filter iff the filter is null (all classes) OR the
+  # aspect's content carries the class key `C` (Phase 1's dep-free class predicate — the Phase-2 projection
+  # engine folds in the full `classifyKey` class/setting discrimination). A nixos-only host aspect has no
+  # `homeManager` key ⇒ a `homeManager`-scoped edge excludes it (F9 no over-reach).
+  passesClassFilter = classFilter: n: classFilter == null || (n.content or { }) ? ${classFilter};
 in
 {
-  # Phase 1 edge-declaration reads (spec §2) — exposed for the reach-graph witness + the Phase-2
-  # projection engine. Pure list functions over a node's resolution stratum; no consumer reads them yet.
-  inherit reachEdgesOf reachSuppressOf;
+  # `reachEdgesOf` is now INTERNAL (`let`-bound only) — its behaviour (target + classFilter reads, F9
+  # class-scope) is witnessed THROUGH `reach` (the reach-graph class-scoped / transitive / identity units),
+  # so no permanent public surface is needed for it. `reachSuppressOf` stays exported: its consumer is
+  # Task 4 (negative-edge suppression subtracts it inside `reach`); until then it has no in-`reach` reader,
+  # so its Phase-1 `when`-predicate witness reads it directly (dropped once Task 4 wires + witnesses it).
+  inherit reachSuppressOf;
+
+  # reach(id): the P-PROJECT per-scope single-visit resolved-aspect closure (spec §1/§2). Own resolved
+  # aspects FIRST, then each POSITIVE reach-edge's target resolved aspects (class-filtered), transitively
+  # over the target's own edges; dedup by A-IDENT key (single-visit, PER this traversal — NOT global, so
+  # distinct scopes each run their own). Accumulates as a LIST, dedup preserving first occurrence (own-first
+  # order — the merge_ord canonical order Task 5 pins). Acyclic along the edge DAG (a target-id visited-set
+  # guards a cycle); reuses the ancestorResolvedKeys top-down `self.get target "..."` cross-scope read.
+  # (Negative-edge suppression is layered in by Task 4.)
+  reach = resolve.attr {
+    name = "reach";
+    kind = "circular";
+    readsAttrs = [
+      "resolved-aspects"
+      "declarations"
+    ];
+    compute =
+      self: id:
+      let
+        # Positive edges declared at a node. (Negative-edge suppression — reach-suppress whose `when`
+        # holds — is subtracted here by Task 4; Task 2 delivers the positive-edge closure only.)
+        edgesAt = nid: reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
+
+        # Fold one edge's (class-filtered, not-yet-seen) target aspects into the accumulator, recursing into
+        # the target's own edges FIRST-occurrence-preserving. `acc = { seen; nodes; visitedIds; }`: seen =
+        # keyset for node single-visit, nodes = the ordered result, visitedIds = edge-cycle guard.
+        addTarget =
+          acc: edge:
+          if acc.visitedIds ? ${edge.target} then
+            acc
+          else
+            let
+              targetNodes = builtins.filter (passesClassFilter edge.classFilter) (
+                self.get edge.target "resolved-aspects"
+              );
+              acc' = acc // {
+                visitedIds = acc.visitedIds // {
+                  ${edge.target} = true;
+                };
+              };
+              withNodes = prelude.foldl' addNode acc' targetNodes;
+            in
+            # transitively follow the target's own edges (same class filter is NOT inherited — each edge
+            # carries its own filter; the target's edges apply their own).
+            prelude.foldl' addTarget withNodes (edgesAt edge.target);
+
+        # Add a single resolved-aspect node if its key is unseen (single-visit dedup, first-occurrence).
+        addNode =
+          acc: n:
+          if acc.seen ? ${n.key} then
+            acc
+          else
+            {
+              seen = acc.seen // {
+                ${n.key} = true;
+              };
+              nodes = acc.nodes ++ [ n ];
+              inherit (acc) visitedIds;
+            };
+
+        ownNodes = self.get id "resolved-aspects";
+        seededOwn = prelude.foldl' addNode {
+          seen = { };
+          nodes = [ ];
+          visitedIds = {
+            ${id} = true;
+          };
+        } ownNodes;
+        result = prelude.foldl' addTarget seededOwn (edgesAt id);
+      in
+      result.nodes;
+  };
 
   resolved-aspects = resolve.attr {
     name = "resolved-aspects";
