@@ -63,7 +63,18 @@ let
     { host, ... }:
     {
       name = "ag/${host.name}";
-      ${host.class}.persistMarker = if (host.hasAspect { __provider = [ "imp" ]; }) then "P" else "X";
+      # Task 3: the `host.hasAspect` ref carries native `.key` (== pathKey __provider); the `{__provider}`-
+      # only shape was the retired refKey reconstruction input.
+      ${host.class}.persistMarker =
+        if
+          (host.hasAspect {
+            __provider = [ "imp" ];
+            key = "imp";
+          })
+        then
+          "P"
+        else
+          "X";
     };
 
   ev = lib.evalModules {
@@ -208,6 +219,7 @@ in
           (builtins.tryEval (
             lazyProbe.host.hasAspect {
               __provider = [ "x" ];
+              key = "x"; # native `.key` (Task 3); == pathKey __provider.
             }
           )).success;
       };

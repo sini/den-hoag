@@ -85,15 +85,16 @@ let
     builtinClassNames = builtins.attrNames denHoag.classes;
     batteryClassNames = legacy.defaults.registeredClasses;
   };
-  # The projected hasAspect entity surface (v1 PR #602 semantics; the den-hoag dissolution). `stampProvider`
-  # is the SINGLE identity source compile.nix's include-grounding ALSO imports (path-cached ⇒ one definition,
-  # no duplication), so a `host.hasAspect den.aspects.<path>` ref keys IDENTICALLY to the resolved-aspects
-  # node it answers for (W2). `refKey`/`mkEnrich` bind the gen-aspects identity; the schema entity-kind set
-  # is bound per-fleet at the bridge (flake-module.nix `mkFleetModuleWith` → `den.enrichBindings`).
+  # The projected hasAspect entity surface (v1 PR #602 semantics; the den-hoag dissolution). Task 3: `refKey`
+  # now reads a ref's NATIVE `.key` directly (has-aspect.nix — no `__provider` reconstruction), so a
+  # `host.hasAspect den.aspects.<path>` ref keys IDENTICALLY to the resolved-aspects node it answers for (W2,
+  # both `gen-aspects.key`). `stampProviderLib` is still imported for compile.nix's include-grounding path
+  # (the compile-side readers move to native identity in Task 4, with the `__provider` deletion); has-aspect
+  # no longer needs it. `refKey`/`mkEnrich` bind the identity; the schema entity-kind set is bound per-fleet
+  # at the bridge (flake-module.nix `mkFleetModuleWith` → `den.enrichBindings`).
   stampProviderLib = import ./stamp-provider.nix { inherit prelude; };
   hasAspect = import ./has-aspect.nix {
     inherit aspects;
-    inherit (stampProviderLib) stampProvider;
   };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });

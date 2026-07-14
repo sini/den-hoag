@@ -3,23 +3,24 @@
 # v1 stamps a SHARED projected `hasAspect` onto every entity-kind ctx binding at the CONSUMING scope
 # (pin sg0zid…-source nix/lib/aspects/fx/policy/schema.nix:88-96 — one `mkProjectedHasAspect` answers for
 # the active scope's re-keyed bucket, so `host`/`user`/… all read "is X delivered into THIS scope"). The
-# membership test is `refKey ref ∈ pathSet` with the THREE-branch `refKey` law (has-aspect.nix:7-16):
-# name+meta → `pathKey(aspectPath ref)`; `__provider` → `pathKey ref.__provider`; else a NAMED throw
-# (never a silent false). The surface is class-invariant (`{ __functor; forClass; forAnyClass; }`,
-# :56-65).
+# membership test is `refKey ref ∈ pathSet`; under A-IDENT (Task 3) `refKey` is a SINGLE native-`.key`
+# lookup + a NAMED throw for a keyless ref (never a silent false). The surface is class-invariant
+# (`{ __functor; forClass; forAnyClass; }`).
 #
 # THE DISSOLUTION (v2). den-hoag has NO re-key machinery and no per-scope path-set bucket: a node's
 # resolved-aspects (attribute 7) IS the projected set for that node — the deduped `[ { key; content; } ]`
 # list whose keys are exactly `gen-aspects.key` of every aspect delivered into the node. So the projected
 # hasAspect is a pure lookup over the node's OWN resolved-aspects entry keys, keyed by `refKey` — the same
-# `gen-aspects.key` identity, so the ref and the resolved node agree BY CONSTRUCTION (both grounded through
-# the SAME `stampProvider`, see stamp-provider.nix; W2 pins it).
+# `gen-aspects.key` identity, so the ref and the resolved node agree BY CONSTRUCTION (W2 pins it).
 #
-# THE MATCHING LAW. `refKey ref` recovers the identity the corpus reads a `den.aspects.<path>` value with:
-# a NAVIGATED value off the annotated `den` arg carries `__provider` (annotate.nix), so it takes the
-# `__provider` branch = `key (stampProvider ref)` = `pathKey ref.__provider`; a value read straight off the
-# compiled REGISTRY carries name+meta, the name+meta branch = `key ref`. Both equal the resolved node's key
-# (which `resolved-aspects.nix` computed as `keyOf concrete` over the SAME `stampProvider` grounding).
+# THE MATCHING LAW (Task 3 — native identity). `refKey ref` = `ref.key`: under A-IDENT every
+# `den.aspects.<path>` value carries its OWN container-relative `.key` (born in gen-aspects' type). A
+# NAVIGATED value off the `den` arg (the shim binds the NAVIGATION view — flake-module.nix `bindLegacyEnv →
+# annotatedViewNav`) AND a value read straight off the compiled REGISTRY both carry `.key`, and it equals the
+# resolved node's key (`resolved-aspects.nix` `keyOf concrete`, the SAME `gen-aspects.key`). The prior
+# three-branch reconstruction (name+meta / `__provider` via `stampProvider`) retired — the PROBE
+# (ci/tests/native-identity.nix) pins `.key == pathKey __provider` per node while both coexist (Task 4 deletes
+# `__provider`).
 #
 # THE CENSUS (nix-config b0b20769): 13 reads, all `host.hasAspect den.aspects.<path>`, all in
 # delivery-depth nixos aspect bodies (networking.nix:341 `core.network.manager`, gpg.nix:80/bitwarden.nix:39
@@ -33,24 +34,22 @@
 # `seen` (hence resolved-aspects). So the entity-stamp never re-enters the resolve that produced it (W4).
 {
   aspects,
-  stampProvider,
 }:
 let
-  inherit (aspects) key; # gen-aspects identity: pathKey(aspectPath) for a name+meta / stampProvider'd value.
-
-  # v1's FULL three-branch refKey law (has-aspect.nix:7-16 @ pin). NEVER a silent false: an unresolvable
-  # ref shape aborts NAMED (the message names the requirement), so a mistyped `hasAspect <x>` self-announces.
+  # A NATIVE-IDENTITY refKey (Task 3 — the value-injection debt closure). Under A-IDENT a `den.aspects.<path>`
+  # value carries its OWN container-relative `.key` (born in gen-aspects' type; the compat two-eval binds the
+  # NAVIGATION view — `flake-module.nix bindLegacyEnv → annotatedViewNav` — so a navigated ref AND a value read
+  # off the compiled registry both carry `.key`). So `refKey` is a SINGLE lookup: the ref's native `.key`,
+  # which by construction equals the resolved node's `keyOf` (both `gen-aspects.key`, W2). No `__provider`
+  # reconstruction (the prior three-branch's `stampProvider` path retires; PROBE proves `.key ==
+  # pathKey __provider` per node this task). NEVER a silent false: a ref with no `.key` aborts NAMED, so a
+  # mistyped `hasAspect <x>` self-announces (the v1 refKey posture preserved).
   refKey =
     ref:
-    if builtins.isAttrs ref && (ref ? name) && (ref ? meta) then
-      key ref
-    else if builtins.isAttrs ref && (ref ? __provider) then
-      # A nested/navigated aspect value from the annotated `den` arg (annotate.nix sets `__provider`, not
-      # name/meta). `stampProvider` derives name = last / aspect-chain = init, so `key` = `pathKey __provider`
-      # — the SAME identity the include-grounding path stamps (stamp-provider.nix; the by-construction match).
-      key (stampProvider ref)
+    if builtins.isAttrs ref && (ref ? key) then
+      ref.key
     else
-      throw "hasAspect: ref must have `name`+`meta` or `__provider` (got ${builtins.typeOf ref}).";
+      throw "hasAspect: ref must be a `den.aspects.<path>` value carrying `key` (got ${builtins.typeOf ref}).";
 in
 {
   inherit refKey;

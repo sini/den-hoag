@@ -184,20 +184,22 @@ let
     in
     raw // { aspects = typedAspectsView raw.aspects; };
 
-  # R1 legacy binding — bind `_module.args.den` to the RAW view (UNCHANGED this task). A v1 module body's
-  # `with den.aspects; …` include captures nodes off THIS binding, and those captured includes flow to
-  # `compile` (`config.den.aspects.<e>.includes`); a typed node carries a materialized `name`, which trips
-  # `stampProvider`'s `!(v ? name)` gate and collapses the include's resolved key to the leaf (the
-  # compat-include-identity `core/systemd/boot`→`boot` regression). So the include-capture surface stays
-  # RAW + `__provider` (compile grounds it byte-identically). Task 3 flips this to the NAV view AND repoints
-  # `stampProvider`/`refKey` onto the native `.key` in ONE change (the readers move together, no half-state).
+  # R1 legacy binding — bind `_module.args.den` to the NAVIGATION view (Task 3). A `host.hasAspect
+  # den.aspects.<path>` ref (the 13-read corpus census) now reads a node carrying native `.key`, so
+  # `refKey` is a single `ref.key` lookup (has-aspect.nix) — no `__provider` reconstruction. The nav view
+  # ALSO carries the grafted `__provider` (additive), so a `with den.aspects; …` include CAPTURED off this
+  # binding and flowed to `compile` still grounds byte-identically: compile's `stampProvider` reads
+  # `v.__provider` (the graft), unchanged this task (compile-grounding readers move in Task 4 with the
+  # `__provider` deletion). The name-ref-in-includes canary (a captured typed node carries a materialized
+  # `name` + native `meta.aspect-chain`, so `identity.key` = the full container path natively — NOT the
+  # positional collapse Task 2 feared) is pinned by compat-include-identity F1-F5 + the native-identity PROBE.
   bindLegacyEnv =
     {
       config,
       ...
     }:
     {
-      config._module.args.den = annotatedViewRaw config.den;
+      config._module.args.den = annotatedViewNav config.den;
     };
 
   # `evalV1Raw` — the COMPILE input: read back `config.den` with the RAW `__provider` aspects (unwalked

@@ -25,14 +25,19 @@ let
   genKey = denHoag.internal.aspects.key;
 
   # ── UNIT: refKey identity + the mkEnrich stamp ────────────────────────────────────────────────────
-  # The two ref shapes a `den.aspects.core.network.manager` read produces: a NAVIGATED value off the
-  # annotated `den` arg (annotate.nix sets `__provider`, not name/meta) and a REGISTRY value (name+meta).
+  # The two ref shapes a `den.aspects.core.network.manager` read produces. Task 3 (native A-IDENT): under
+  # the NAV binding a navigated ref carries its OWN `.key`, and a registry value likewise (the aspectType
+  # computes the `key` option). So refKey reads `.key` directly — the `{__provider}`-only / `{name+meta}`-
+  # only shapes were the RETIRED reconstruction inputs. We keep the legacy shape fields ALONGSIDE `.key`
+  # here so the W2 pin stays meaningful: both refs carry the SAME native `.key`, AND that key still equals
+  # the gen-aspects.key reconstruction from each legacy shape (the by-construction agreement the PROBE pins).
   refNav = {
     __provider = [
       "core"
       "network"
       "manager"
     ];
+    key = "core/network/manager"; # native `.key` (nav binding); == pathKey __provider.
   };
   refReg = {
     name = "manager";
@@ -40,6 +45,7 @@ let
       "core"
       "network"
     ];
+    key = "core/network/manager"; # native `.key` (registry value); == genKey { name; meta }.
   };
 
   # A fixture node's resolved-aspects (attribute-7 shape: `[ { key; content } ]`), keyed by the SAME
@@ -179,24 +185,35 @@ let
         den.hosts.x86_64-linux.plain = { };
         # `withaspect`'s self-named aspect (auto-included at host withaspect, R5). Its nixos body reads
         # `host.hasAspect` at delivery depth — the corpus networking.nix:341 shape. Its includes carry a
-        # NAMELESS `__provider` child (`kid`), so the stampProvider LIFT (W5 transitive) is exercised.
-        den.aspects.withaspect.includes = [ { __provider = [ "kid" ]; } ];
+        # NAMELESS `__provider` child (`kid`) — under A-IDENT resolution keys it `kid` from the graft, the
+        # transitive-delivery witness (W5). Task 3: the `host.hasAspect` refs now carry native `.key`
+        # (== pathKey __provider); the `{__provider}`-only shape was the retired refKey reconstruction input.
+        den.aspects.withaspect.includes = [
+          {
+            __provider = [ "kid" ];
+            key = "kid";
+          }
+        ];
         den.aspects.withaspect.nixos =
           { host, ... }:
           {
             hasSelf = host.hasAspect {
               __provider = [ "withaspect" ];
+              key = "withaspect";
             }; # delivered (self) → true
             hasChild = host.hasAspect {
               __provider = [ "kid" ];
+              key = "kid";
             }; # via nested include → true (W5)
             hasAbsent = host.hasAspect {
               __provider = [ "nope" ];
+              key = "nope";
             }; # not delivered → false
             # the corpus mkForce-false shape typechecks as a bool
             managerForced = lib.mkForce (
               host.hasAspect {
                 __provider = [ "nope" ];
+                key = "nope";
               }
             );
           };
@@ -206,6 +223,7 @@ let
           {
             plainHasWithaspect = host.hasAspect {
               __provider = [ "withaspect" ];
+              key = "withaspect";
             }; # absent here → false
           };
       }
@@ -220,7 +238,9 @@ in
       expr = {
         refKeyNav = refKey refNav;
         refKeyReg = refKey refReg;
-        # both ref shapes ground through the SAME gen-aspects.key (via stampProvider for the __provider arm)
+        # Task 3: refKey reads native `.key`, and that key STILL equals the gen-aspects.key reconstruction
+        # from each legacy shape (nav via stampProvider, reg via name+meta) — the by-construction agreement,
+        # now a PROBE property (`.key == reconstruction`) rather than two live reconstruction paths.
         navEqGenKey = refKey refNav == genKey (stampProvider refNav);
         regEqGenKey = refKey refReg == genKey refReg;
       };
@@ -236,6 +256,7 @@ in
       expr = {
         refK = refKey {
           __provider = [ "marker" ];
+          key = "marker"; # native `.key` (Task 3); == pathKey __provider.
         };
         present = builtins.elem "marker" w2MarkerKeys;
       };
@@ -264,11 +285,13 @@ in
       expr = {
         absent = enrManager.host.hasAspect {
           __provider = [ "absent" ];
+          key = "absent";
         };
         mkForceShape =
           (lib.mkForce (
             enrManager.host.hasAspect {
               __provider = [ "absent" ];
+              key = "absent";
             }
           )).content;
       };
@@ -278,7 +301,8 @@ in
       };
     };
 
-    # ── W-throw: neither name+meta nor __provider ⇒ a NAMED throw (never a silent false) ────────────────
+    # ── W-throw: a ref with no native `.key` ⇒ a NAMED throw (never a silent false). Task 3: the guard is
+    #    now "carries `.key`"; a shapeless ref (`{ foo = 1; }`) still self-announces LOUD. ────────────────
     test-w-throw-unresolvable-ref = {
       expr =
         (builtins.tryEval (refKey {
@@ -296,6 +320,7 @@ in
           (builtins.tryEval (
             lazyProbe.host.hasAspect {
               __provider = [ "x" ];
+              key = "x";
             }
           )).success;
       };
@@ -331,12 +356,15 @@ in
       expr = {
         userHas = enrCell.user.hasAspect {
           __provider = [ "userland" ];
+          key = "userland";
         };
         userLacks = enrCell.user.hasAspect {
           __provider = [ "hostonly" ];
+          key = "hostonly";
         };
         hostSharesSet = enrCell.host.hasAspect {
           __provider = [ "userland" ];
+          key = "userland";
         };
       };
       expected = {
