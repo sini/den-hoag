@@ -106,6 +106,28 @@ let
   policyEdgeAspects =
     resolutionActs: map (a: a.aspect) (builtins.filter (a: a.__action == "edge") resolutionActs);
 
+  # ── The reachability edge model (Phase 1, spec §2). Mirrors policyEdgeAspects/constraintSeen: pure
+  #    reads over a node's `resolutionActs`, filtered on `__action`. Unread by any consumer yet (additive
+  #    — Phase 2's projection engine consumes them). ──
+
+  # Outgoing POSITIVE reachability edges declared at this node. Each is `{ target; classFilter ? null }` —
+  # target resolves to another node whose resolved aspects enter reach(S), optionally restricted to one
+  # class slice (F9 class-scoped edge: no classFilter ⇒ null ⇒ all classes).
+  reachEdgesOf =
+    resolutionActs:
+    map (a: {
+      inherit (a) target;
+      classFilter = a.classFilter or null;
+    }) (builtins.filter (a: a.__action == "reach-edge") resolutionActs);
+
+  # Outgoing NEGATIVE (suppression) edges (F3-exclude / u21). Each `{ edge; when }` removes a positive
+  # edge from reach(S) when the scope predicate `when` holds (e.g. `host.class == "droid"`).
+  reachSuppressOf =
+    resolutionActs:
+    map (a: { inherit (a) edge when; }) (
+      builtins.filter (a: a.__action == "reach-suppress") resolutionActs
+    );
+
   # Scope-level `drop` declarations pre-seed `seen` so forward expansion prunes the dropped aspects'
   # include subtrees (§Constraints, scope-level).
   constraintSeen =
@@ -231,6 +253,10 @@ let
     dedup.out;
 in
 {
+  # Phase 1 edge-declaration reads (spec §2) — exposed for the reach-graph witness + the Phase-2
+  # projection engine. Pure list functions over a node's resolution stratum; no consumer reads them yet.
+  inherit reachEdgesOf reachSuppressOf;
+
   resolved-aspects = resolve.attr {
     name = "resolved-aspects";
     kind = "circular";

@@ -127,14 +127,23 @@ in
       sharedAspectKeys ? [ ],
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
-    // (resolvedAspects {
+    // {
+      # Only the equation record enters the equations map; the module ALSO exposes the Phase-1
+      # reach-edge/reach-suppress declaration reads (pure list helpers, not equations) — those are
+      # surfaced on `internal` (reachEdgeReads), never spread here (gen-resolve iterates equation
+      # values as sets, a bare helper lambda would break the two-stratum classification).
       inherit
-        allAspects
-        directIncludes
-        enrichContext
-        sharedAspectKeys
+        (resolvedAspects {
+          inherit
+            allAspects
+            directIncludes
+            enrichContext
+            sharedAspectKeys
+            ;
+        })
+        resolved-aspects
         ;
-    })
+    }
     // (collections {
       inherit
         quirkDag
