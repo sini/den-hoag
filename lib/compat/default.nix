@@ -183,8 +183,9 @@ in
   # merged corpus tree (both consumers: the `den` module arg + the fleet def).
   inherit (annotateLib) annotateAspects;
   # The projected hasAspect entity surface (v1 PR #602). `stampProvider` is the single include-identity
-  # source (shared with compile.nix); `refKey` is the three-branch membership-key law; `mkEnrich` builds the
-  # `den.enrichBindings` hook (the bridge binds the schema entity-kind set). Exposed for the witness suite.
+  # source (shared with compile.nix's still-`__provider` grounding — moves in Task 4); `refKey` is now a
+  # SINGLE native-`.key` lookup (Task 3 — the ref carries its own gen identity, no reconstruction); `mkEnrich`
+  # builds the `den.enrichBindings` hook (the bridge binds the schema entity-kind set). Exposed for the witness suite.
   inherit (stampProviderLib) stampProvider;
   inherit (hasAspect) refKey mkEnrich;
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness

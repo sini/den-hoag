@@ -4,12 +4,14 @@
 # at delivery depth. Census (b0b20769): 13 reads, all `host.hasAspect`, all delivery-depth nixos bodies.
 #
 # THE LAW. v1 stamps a SHARED projected `hasAspect` onto every entity-kind ctx binding at the consuming
-# scope (pin schema.nix:88-96), membership = `refKey ref ∈ pathSet` with the THREE-branch refKey law
-# (name+meta → key ref; __provider → key (stampProvider ref); else NAMED throw), surface class-invariant
-# (`{ __functor; forClass; forAnyClass; }`). THE DISSOLUTION: den-hoag has no re-key machinery — a node's
-# resolved-aspects (attribute 7) IS the projected set, so the surface is a pure lookup over the node's OWN
-# resolved-aspects entry keys, keyed by the SAME gen-aspects.key identity (ref and node agree by
-# construction — both grounded through the shared `stampProvider`).
+# scope (pin schema.nix:88-96), membership = `refKey ref ∈ pathSet`; under A-IDENT (Task 3) `refKey` is a
+# SINGLE native-`.key` lookup + a NAMED throw for a keyless ref (never a silent false), surface
+# class-invariant (`{ __functor; forClass; forAnyClass; }`). THE DISSOLUTION: den-hoag has no re-key
+# machinery — a node's resolved-aspects (attribute 7) IS the projected set, so the surface is a pure lookup
+# over the node's OWN resolved-aspects entry keys, keyed by the SAME gen-aspects.key identity (ref and node
+# agree by construction — both carry the native `.key`). The `{__provider}`/`{name+meta}`-only fixtures below
+# retain those fields ALONGSIDE a native `.key` (== pathKey/genKey of the same path): the retired
+# reconstruction inputs, kept to pin the by-construction agreement as a PROBE property.
 #
 # The witnesses split UNIT (refKey/mkEnrich directly — deterministic seam logic: W2/W3/W4/W6/W-throw/filter)
 # and END-TO-END (the bridge's forcing terminal — the corpus path through bindingsAt: W1/W3-e2e/W5).

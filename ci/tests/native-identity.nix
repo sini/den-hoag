@@ -1,4 +1,4 @@
-# NATIVE A-IDENT ON THE evalV1 SURFACE (Phase 5 Task 2 — the value-injection debt closure, first half).
+# NATIVE A-IDENT ON THE evalV1 SURFACE (Phase 5 Task 2 the native identity; Task 3 the PROBE + reader repoint).
 #
 # THE RUNG. The compat two-eval reads the v1 declaration surface (`den.aspects.<path>`) back through a
 # SEPARATE v1-shaped eval (`evalV1`). Historically that surface was a `raw` option: a navigated node
