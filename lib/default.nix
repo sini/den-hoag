@@ -905,6 +905,13 @@ let
         # `channelBindingsAt` is byte-identical to its own-emissions form). An external consumer wires
         # its gather supplier (the v1 expose-ascent twin, #62b).
         channelGather = ent.config.den.channelGather or (_: { });
+        # THE ONE per-aspect class-slice extraction (Task 2), built with the discovered `classifyKey` so
+        # `projectClass` (the reach-based projection) and the `class-modules` buckets share exactly one
+        # extraction — the ANCHOR `projectClass == classSubtreeAt` on a no-edge node is that equivalence.
+        classSliceOf = attributesLib.mkClassSlice {
+          classNames = effectiveClassNames;
+          inherit (denAspects) classifyKey;
+        };
       };
 
       # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,

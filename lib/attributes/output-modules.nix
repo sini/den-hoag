@@ -82,6 +82,13 @@
   # is the eval passed opaquely; a supplier that walks it must stay lazy over the id spine (never force all
   # descendants' resolved-aspects).
   channelGather ? (_: { }),
+  # THE ONE per-aspect class-slice extraction (Task 2, `attributes/class-modules.nix classSliceOf`, threaded
+  # through `attributesLib.mkClassSlice` with the discovered `classifyKey`). `classSliceOf aspect class`
+  # returns that aspect's `class`-C bucket contribution as `[ { module; shared; } ]` (0 or 1) — `projectClass`
+  # maps `.module` (bare, the classSubtreeAt anchor). Native default reproduces the bucket read locally but is
+  # ALWAYS supplied by den-hoag's assembly (the class-modules extraction is the single source); the default is
+  # a defensive identity for a caller that constructs `mkOutputModules` standalone without the extraction.
+  classSliceOf ? (_: _: [ ]),
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;
@@ -454,6 +461,23 @@ let
     else
       prelude.concatMap forNode ([ root ] ++ scope.descendants result root);
 
+  # ── projectClass (Phase 2 Task 2, spec §1/§3): the class-slice PROJECTION over `reach` ───────────────
+  # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
+  # reach's canonical order (own-subtree → descendant cells → default edges → opt-in edges — the merge_ord
+  # Task 5 pins). Each reach node's `content` is already ctx-resolved at ITS OWN scope (the P-PROJECT
+  # closure resolves per-provider), so the slice is ctx-correct across scopes. `classSliceOf` is THE ONE
+  # extraction the `class-modules` buckets use (0/1 `{ module; shared }` per aspect); `.module` strips to the
+  # bare deferredModule.
+  #
+  # THE ANCHOR (Task 2 subsume proof): for a node with NO reach edges, reach = its OWN scope subtree
+  # (`[ id ] ++ scope.descendants`, Task 1) and `projectClass id class == classSubtreeAt id class`
+  # byte-identically — projection reproduces the fold on own-content BEFORE it replaces the emission (Task 3).
+  # `reach` single-visit-dedups by A-IDENT key, so an aspect reachable twice contributes its slice ONCE.
+  # UNCONSUMED here (additive) — `terminalModulesAt` still folds `classSubtreeAt ++ deliveryModulesAt`.
+  projectClass =
+    id: class:
+    prelude.concatMap (n: map (e: e.module) (classSliceOf n class)) (result.get id "reach");
+
   # The per-class TERMINAL assembly (the LAW, §9): the same-class subtree fold FIRST (`classSubtreeAt`,
   # A12 base) then the routed cross-class delivery AFTER (`deliveryModulesAt`, v1's `appendToClass`
   # appends). Consumed at the three terminal reads (`hostModules`/`deltaOf`/`contentIdsOf`); the fold
@@ -733,5 +757,10 @@ in
     traceFor
     systems
     deferredToThunk
+    # Phase 2 Task 2: the class-slice projection over `reach` + the `classSubtreeAt` down-fold it subsumes,
+    # exposed so the ANCHOR witness (`projectClass id class == classSubtreeAt id class` on a no-edge node)
+    # compares them on a real fleet. UNCONSUMED by the terminal yet (Task 3 wires `terminalModulesAt`).
+    projectClass
+    classSubtreeAt
     ;
 }

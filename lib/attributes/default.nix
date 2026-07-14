@@ -158,7 +158,11 @@ in
         consumerLib
         ;
     })
-    // (classModules { inherit classNames classifyKey; })
+    // {
+      # Only the EQUATION record `class-modules` enters the map — `classSliceOf` (the factored per-aspect
+      # extraction, exported alongside) is a bare function threaded to `mkOutputModules` (below), never here.
+      inherit (classModules { inherit classNames classifyKey; }) class-modules;
+    }
     // {
       local-demand-data = localDemandData;
     }
@@ -182,6 +186,17 @@ in
   # and the per-class terminal crossing. Reads the FINAL eval (not an in-flight `self`), so den-hoag
   # applies it once at the top level (like the narrow accessor).
   mkOutputModules = outputModules;
+
+  # THE ONE per-aspect class-slice extraction (Task 2), built per-mkDen with the DISCOVERED `classifyKey`
+  # and threaded to `mkOutputModules` as the `classSliceOf` instance arg (so `projectClass` and the
+  # `class-modules` buckets share exactly one extraction). `classNames` is inert for the slice (it reads
+  # only `classifyKey` + `prelude`), passed to satisfy the class-modules instance signature.
+  mkClassSlice =
+    {
+      classNames,
+      classifyKey,
+    }:
+    (classModules { inherit classNames classifyKey; }).classSliceOf;
 
   # Expose the structural builder for the suite's minimal-scenario scaffolding (b2 builds
   # structural equations over hand-built roots/rules).

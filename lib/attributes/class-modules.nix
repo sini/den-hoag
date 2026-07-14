@@ -33,42 +33,56 @@ let
     else
       c;
 
+  # THE ONE per-aspect class-slice extraction (Phase 2 Task 2, factored out of `classContentOf` below so
+  # `class-modules` buckets AND `projectClass` — the reach-based projection — share EXACTLY one extraction).
+  # `classSliceOf aspect class` = the `class`-C bucket contribution of a SINGLE resolved-aspect node
+  # (`{ key; content; __denShared }`): the aspect's `content.${class}` deferredModule IFF that key is a
+  # registered `class` key (via `classifyKey`, §2.2) and its body is a non-empty declaration. Returns a
+  # `[ { module; shared; } ]` list (0 or 1 entry — one class = one content key) — `shared` is the node's
+  # `__denShared` flag (Track A rung 1: true iff the aspect roots/descends the radiated `den.default`
+  # subtree). A `_`-prefixed / channel / facet key is skipped; a `{ }` body is a declared no-op, dropped so
+  # bucket counts reflect real content. `projectClass` maps `.module` (bare, for the classSubtreeAt anchor).
+  classSliceOf =
+    aspect: class:
+    let
+      content = aspect.content;
+      shared = aspect.__denShared or false;
+    in
+    if
+      prelude.hasPrefix "_" class || !(content ? ${class}) || classifyKey content.name class != "class"
+    then
+      [ ]
+    else
+      let
+        m = content.${class};
+      in
+      if m == { } then
+        [ ]
+      else
+        [
+          {
+            module = m;
+            inherit shared;
+          }
+        ];
+
   # One resolved aspect's class-bucket contributions: iterate its content keys (skipping the module
-  # system's own `_`-prefixed keys), classify each, and collect the non-empty `class` buckets. A
-  # `channel`/`facet` key is skipped; an unregistered key aborts inside `classifyKey` (§2.2). Each
-  # collected entry is a `{ module; shared; }` record — `shared` is the resolved node's `__denShared`
-  # flag (Track A rung 1: true iff the aspect roots or descends the radiated `den.default` subtree —
-  # resolved-aspects stamps it). The public bucket strips back to the bare `module` (byte-identical); the
-  # `shared` flag rides the `__shared` sidecar for the R-ROOT-FILTER twin (A2).
+  # system's own `_`-prefixed keys), and collect each `class` key's slice (via `classSliceOf` — THE ONE
+  # extraction). A `channel`/`facet` key contributes `[ ]`; an unregistered key aborts inside `classifyKey`
+  # (§2.2). Each collected entry is a `{ module; shared; }` record; the public bucket strips back to the
+  # bare `module` (byte-identical), the `shared` flag riding the `__shared` sidecar (R-ROOT-FILTER twin, A2).
   classContentOf =
     aspect:
     let
       content = aspect.content;
-      shared = aspect.__denShared or false;
       keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
     in
     prelude.foldl' (
       acc: k:
-      if classifyKey content.name k == "class" then
-        let
-          m = content.${k};
-        in
-        # An empty class body ({}) is a declared no-op — dropped rather than merged as an
-        # empty module, so bucket counts reflect real content.
-        if m == { } then
-          acc
-        else
-          acc
-          // {
-            ${k} = (acc.${k} or [ ]) ++ [
-              {
-                module = m;
-                inherit shared;
-              }
-            ];
-          }
-      else
-        acc
+      let
+        slice = classSliceOf aspect k;
+      in
+      if slice == [ ] then acc else acc // { ${k} = (acc.${k} or [ ]) ++ slice; }
     ) { } keys;
 
   mergeBuckets =
@@ -95,6 +109,12 @@ let
     };
 in
 {
+  # THE ONE per-aspect class-slice extraction, exported for `projectClass` (output-modules Task 2). It is
+  # NOT an equation record — the assembly (attributes/default.nix) selects `class-modules` into the equations
+  # map and threads `classSliceOf` to `mkOutputModules` separately (a bare function would break gen-resolve's
+  # two-stratum equation classification if spread into the map).
+  inherit classSliceOf;
+
   class-modules = resolve.attr {
     name = "class-modules";
     kind = "synthesized";
