@@ -264,9 +264,15 @@ in
       ];
     };
 
-    # ── (c) SINGLE-VISIT across the descendant component: an aspect present on BOTH the host and a descendant
-    #    cell appears ONCE (keyOf dedup, first-occurrence = the host position). ──
-    test-structural-descendant-single-visit = {
+    # ── (c) PER-PROVIDER MULTIPLICITY across the descendant component (spec §1 single-visit refined
+    #    2026-07-14, THE ANCHOR ruling): an aspect present on BOTH the host and a descendant cell is a
+    #    DISTINCT ctx-eval result at each DISTINCT scope, so BOTH survive (count 2, host-first) — NOT a
+    #    bare-key collapse. This is the law that makes reach's structural component byte-identical to
+    #    `classSubtreeAt` (three cells' one parametric `acct` → three `users.users.<n>` nodes, not one); a
+    #    bare-key collapse here would be the u24-class content-loss the spec §5 warns of. (Bare-key
+    #    single-visit still applies to the EDGE closure + within a node — witnessed by the reach-single-visit
+    #    / default-edge-dedup edge cases below.) ──
+    test-structural-descendant-per-provider-multiplicity = {
       expr =
         let
           g = {
@@ -274,17 +280,20 @@ in
               resolved = [ nShared ]; # host has `shared`.
               children.cell = { };
             };
-            cell.resolved = [ nShared ]; # cell ALSO has `shared` (same key).
+            cell.resolved = [ nShared ]; # cell ALSO has `shared` (same key, DISTINCT scope).
           };
           ks = reachKeys g "host";
         in
         {
-          count = builtins.length (builtins.filter (k: k == "shared") ks); # dedup ⇒ 1.
-          keys = ks; # only ONE "shared", at the host (first) position.
+          count = builtins.length (builtins.filter (k: k == "shared") ks); # distinct scopes ⇒ 2.
+          keys = ks; # BOTH "shared" nodes: host (first) then cell (structural subtree order).
         };
       expected = {
-        count = 1;
-        keys = [ "shared" ];
+        count = 2;
+        keys = [
+          "shared"
+          "shared"
+        ];
       };
     };
 
