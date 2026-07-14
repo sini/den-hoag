@@ -132,11 +132,10 @@ in
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // {
       # Only the EQUATION records enter the equations map — `resolved-aspects` (attr 7) and `reach` (the
-      # Phase-1 P-PROJECT closure, a resolve.attr record). The module ALSO returns `reachSuppressOf` (a pure
-      # list helper, NOT an equation — directly importable for its Phase-1 `when`-predicate witness until
-      # Task 4's `reach` consumes it); it is never spread here (gen-resolve iterates equation values as
-      # sets; a bare helper lambda would break the two-stratum classification). `reachEdgesOf` is fully
-      # internal (`let`-bound), witnessed through `reach`.
+      # Phase-1 P-PROJECT closure, a resolve.attr record). The reach-edge/reach-suppress declaration reads
+      # (`reachEdgesOf`/`reachSuppressOf`) are fully internal (`let`-bound in resolved-aspects.nix, consumed
+      # inside `reach`), witnessed through `reach` — never spread here (gen-resolve iterates equation values
+      # as sets; a bare helper lambda would break the two-stratum classification).
       inherit
         (resolvedAspects {
           inherit

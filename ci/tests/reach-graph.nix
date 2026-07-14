@@ -164,31 +164,13 @@ in
       };
     };
 
-    # ── Task 1 (b): reachSuppressOf reads the negative edges — { edge; when } — ignoring the others. The
-    #    `when` predicate is carried through as-is (a function); assert it fires on a droid scope only. ──
-    test-reach-suppress-of = {
-      expr =
-        let
-          s = ra.reachSuppressOf acts;
-          only = builtins.head s;
-        in
-        {
-          count = builtins.length s;
-          edge = only.edge;
-          firesOnDroid = only.when { host.class = "droid"; };
-          firesOnNixos = only.when { host.class = "nixos"; };
-        };
-      expected = {
-        count = 1;
-        edge = "user-to-host";
-        firesOnDroid = true;
-        firesOnNixos = false;
-      };
-    };
+    # (Task 1 (b) `test-reach-suppress-of` — the direct `reachSuppressOf` `when`-predicate witness — is
+    #  RETIRED here: suppression is now consumed inside `reach` (Task 4), so it is witnessed through `reach`
+    #  by the suppression-both-arms units below, mirroring the reachEdgesOf demotion.)
 
     # ── Task 1 (c): additive identity — a node whose declarations carry ONLY non-reach-edge acts (edge/
     #    drop) follows NO positive edge ⇒ reach = own subtree only (the reachEdgesOf `[ ]` identity, now
-    #    read through `reach`). The suppress read (still exported) is `[ ]` for a no-suppress list. ──
+    #    read through `reach`). ──
     test-no-edge-decls-identity = {
       expr =
         let
@@ -214,11 +196,9 @@ in
         in
         {
           ownOnly = reachKeys g "src"; # no reach-edge ⇒ own subtree only.
-          suppress = ra.reachSuppressOf [ ]; # no reach-suppress ⇒ [ ].
         };
       expected = {
         ownOnly = [ "cell-own" ];
-        suppress = [ ];
       };
     };
 
@@ -418,6 +398,84 @@ in
         in
         builtins.length (builtins.filter (k: k == "baseline-hm") ks);
       expected = 1;
+    };
+
+    # ══ Task 4 — negative-edge suppression (reach-suppress, u21 exclude) witnesses ═════════════════════
+    #    A node declares a POSITIVE reach-edge E (→ "host") AND a reach-suppress { edge = "host"; when } —
+    #    edge identity is the TARGET (Phase 1 has no separate edge-id). `when` is evaluated against the
+    #    node's scope (`self.node id`). The droid predicate is `host.class == "droid"`. Two nodes share the
+    #    SAME decls but differ only in scope (`node.host.class`): the droid arm suppresses E, the non-droid
+    #    arm keeps it — asserting BOTH arms from one declaration set.
+
+    # ── (a)+(b) BOTH ARMS: droid scope → E suppressed → host aspect ABSENT; non-droid scope → E survives →
+    #    host aspect PRESENT. ──
+    test-suppression-both-arms = {
+      expr =
+        let
+          whenDroidScope = scope: (scope.host.class or null) == "droid";
+          decls = [
+            (reachEdgeAct "host" null) # positive edge E → host.
+            {
+              __action = "reach-suppress";
+              edge = "host"; # remove the edge whose target is "host".
+              when = whenDroidScope;
+            }
+          ];
+          g = {
+            droidCell = {
+              resolved = [ nOwn ];
+              edges = decls;
+              node.host.class = "droid"; # scope handed to `when` ⇒ suppress FIRES.
+            };
+            nixosCell = {
+              resolved = [ nOwn ];
+              edges = decls;
+              node.host.class = "nixos"; # `when` FALSE ⇒ edge survives.
+            };
+            host.resolved = [ nHostHm ];
+          };
+        in
+        {
+          droidHasHost = builtins.elem "host-hm" (reachKeys g "droidCell"); # suppressed → false.
+          droidHasOwn = builtins.elem "cell-own" (reachKeys g "droidCell"); # own subtree unaffected.
+          nixosHasHost = builtins.elem "host-hm" (reachKeys g "nixosCell"); # survives → true.
+        };
+      expected = {
+        droidHasHost = false;
+        droidHasOwn = true;
+        nixosHasHost = true;
+      };
+    };
+
+    # ── (c) when=FALSE is a NO-OP: a reach-suppress whose `when` never holds leaves the positive edge intact
+    #    (the same edge target is reached). Matches by edge identity — a suppress naming a DIFFERENT target
+    #    also leaves E intact. ──
+    test-suppression-when-false-and-mismatch-noop = {
+      expr =
+        let
+          g = {
+            cell = {
+              resolved = [ nOwn ];
+              edges = [
+                (reachEdgeAct "host" null)
+                {
+                  __action = "reach-suppress";
+                  edge = "host";
+                  when = _: false; # never holds ⇒ no-op.
+                }
+                {
+                  __action = "reach-suppress";
+                  edge = "some-other-target"; # identity mismatch ⇒ never removes E.
+                  when = _: true;
+                }
+              ];
+              node = { }; # scope irrelevant (when=false / mismatch).
+            };
+            host.resolved = [ nHostHm ];
+          };
+        in
+        builtins.elem "host-hm" (reachKeys g "cell");
+      expected = true; # E survives both a false-when suppress and a target-mismatch suppress.
     };
   };
 }

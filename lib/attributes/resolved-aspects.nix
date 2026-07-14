@@ -266,12 +266,10 @@ let
   passesClassFilter = classFilter: n: classFilter == null || (n.content or { }) ? ${classFilter};
 in
 {
-  # `reachEdgesOf` is now INTERNAL (`let`-bound only) — its behaviour (target + classFilter reads, F9
-  # class-scope) is witnessed THROUGH `reach` (the reach-graph class-scoped / transitive / identity units),
-  # so no permanent public surface is needed for it. `reachSuppressOf` stays exported: its consumer is
-  # Task 4 (negative-edge suppression subtracts it inside `reach`); until then it has no in-`reach` reader,
-  # so its Phase-1 `when`-predicate witness reads it directly (dropped once Task 4 wires + witnesses it).
-  inherit reachSuppressOf;
+  # `reachEdgesOf`/`reachSuppressOf` are INTERNAL (`let`-bound only) — both are now CONSUMED inside `reach`
+  # (positive edges + negative-edge suppression), so their behaviour is witnessed THROUGH `reach` (the
+  # reach-graph class-scoped / transitive / suppression-both-arms units); no permanent public surface is
+  # needed for either.
 
   # reach(id): the P-PROJECT per-scope single-visit resolved-aspect closure (spec §1/§2). Own resolved
   # aspects FIRST, then each POSITIVE reach-edge's target resolved aspects (class-filtered), transitively
@@ -279,7 +277,8 @@ in
   # distinct scopes each run their own). Accumulates as a LIST, dedup preserving first occurrence (own-first
   # order — the merge_ord canonical order Task 5 pins). Acyclic along the edge DAG (a target-id visited-set
   # guards a cycle); reuses the ancestorResolvedKeys top-down `self.get target "..."` cross-scope read.
-  # (Negative-edge suppression is layered in by Task 4.)
+  # NEGATIVE-EDGE SUPPRESSION (Task 4): each node's positive edges minus the edges its held reach-suppress
+  # declarations remove (`when` true for the node's scope), matched by edge identity = `target`.
   reach = resolve.attr {
     name = "reach";
     kind = "circular";
@@ -293,15 +292,37 @@ in
         # Positive edges at a node: the FRAMEWORK default edges (baseline injection, Task 3) FIRST — the
         # merge_ord default-edge < opt-in precedence (Task 5) — then the node's own DECLARED (opt-in) edges.
         # `defaultEdgeTargets nid` is `[ { target; classFilter ? null } ]` (native `[ ]` ⇒ inert identity).
-        # (Negative-edge suppression — reach-suppress whose `when` holds — is subtracted here by Task 4.)
         defaultEdgesAt =
           nid:
           map (e: {
             inherit (e) target;
             classFilter = e.classFilter or null;
           }) (defaultEdgeTargets nid);
-        edgesAt =
+        positiveEdgesAt =
           nid: defaultEdgesAt nid ++ reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
+
+        # NEGATIVE-EDGE SUPPRESSION (spec §2 F3-exclude / u21). The suppressed-EDGE set at a node: the
+        # `target`s named by every reach-suppress declaration whose scope predicate `when` HOLDS for the
+        # node's scope (`self.node nid`). Phase-1 EDGE IDENTITY is the edge's `target` (a positive edge is
+        # identified by the node it reaches; `reach-suppress.edge` names that target) — no separate edge-id
+        # field yet. A suppress whose `when` is false contributes nothing (the positive edge survives).
+        suppressedTargetsAt =
+          nid:
+          let
+            scopeOf = self.node nid;
+            held = builtins.filter (s: s.when scopeOf) (
+              reachSuppressOf ((self.get nid "declarations").actions.resolution or [ ])
+            );
+          in
+          prelude.foldl' (acc: s: acc // { ${s.edge} = true; }) { } held;
+
+        # A node's positive edges MINUS its held suppressions (matched by edge identity = `target`).
+        edgesAt =
+          nid:
+          let
+            suppressed = suppressedTargetsAt nid;
+          in
+          builtins.filter (e: !(suppressed ? ${e.target})) (positiveEdgesAt nid);
 
         # Fold one edge's (class-filtered, not-yet-seen) target aspects into the accumulator, recursing into
         # the target's own edges FIRST-occurrence-preserving. `acc = { seen; nodes; visitedIds; }`: seen =
