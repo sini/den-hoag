@@ -134,16 +134,25 @@ let
   freeformMod = {
     config._module.freeformType = schema.types.lazyAttrsOf schema.types.raw;
   };
-  interpretSynthesize =
-    edgeRec: _pi: _reads:
+
+  # ── composeSynthesize — the v1 `buildForwardAspect` adapter composition, factored out (shared by BOTH
+  #    the gen-edge `interpret.synthesize` fold-interpreter AND the projection content-producer below). It
+  #    COMPOSES a NEW intoClass module from the spec: freeform + (optional) adapterModule + mapModule
+  #    (sourceModule). This is the bucket-(c) CONTENT PRODUCER shape (spec §5) — DISTINCT from #15's
+  #    arg-rewrite-on-EXISTING-content: here `adaptArgs` wraps a module the forward SYNTHESIZES, not a
+  #    reached-node slice. When `adaptArgs != null` the composed value is the SAME function-module the
+  #    projection arg-env crossing hook (output-modules `argEnvWrap`, Task 3) produces —
+  #    `args: { imports = mods; _module.args = adaptArgs args; }` — so a synthesize producer's module
+  #    crosses the terminal `evalModules` boundary IDENTICALLY (v1 nestWithAdaptArgs), the arg-rewrite
+  #    applying at the crossing where `args` exist, NOT at composition time. ──────────────────────────────
+  composeSynthesize =
+    spec: sourceModule:
     let
-      payload = edgeRec.source.synthesize.module;
-      spec = payload.forwardSpec;
       mapModule = spec.mapModule or id;
       adapterModule = spec.adapterModule or null;
       adaptArgs = spec.adaptArgs or null;
       # v1 forward.nix: the mapped source module + freeform + (optional) adapterModule.
-      mapped = mapModule payload.sourceModule;
+      mapped = mapModule sourceModule;
       mods = [ freeformMod ] ++ optional (adapterModule != null) adapterModule ++ [ mapped ];
     in
     # No adapter-args threading ⇒ a plain module set (v1 mkDirectAspect's imports). adaptArgs ⇒ a FUNCTION
@@ -158,17 +167,43 @@ let
         imports = mods;
         _module.args = adaptArgs args;
       };
+
+  interpretSynthesize =
+    edgeRec: _pi: _reads:
+    let
+      payload = edgeRec.source.synthesize.module;
+    in
+    composeSynthesize payload.forwardSpec payload.sourceModule;
+
+  # ── synthesizeProducer — the PROJECTION content producer re-expression (Phase 4 Task 4, spec §5 (c),
+  #    generality). A COMPLEX (adapter-bearing) forward re-expressed as a projection CONTENT PRODUCER: it
+  #    yields `{ class; module }` where `module` is the composed intoClass slice (`composeSynthesize`), a
+  #    real class-`intoClass` slice contributed at the target — produced at the terminal crossing (the
+  #    composed function-module fires there, reusing Task 3's arg-env seam). This REPLACES the deleted
+  #    emission-fold path (`interpret.synthesize` was folded by the old `materialize`; the projection model
+  #    consumes the producer's module as a target-class slice instead). ZERO corpus consumers (the census
+  #    found none — a synthesize forward is generality machinery), so this is fleet-INERT: no fleet emits a
+  #    synthesize forward ⇒ no producer ⇒ fleet output byte-unchanged. Validated SYNTHETICALLY. ──────────
+  synthesizeProducer = spec: {
+    class = spec.intoClass;
+    module = composeSynthesize spec (spec.sourceModule or { });
+  };
 in
 {
   _denCompat.legacy = "forwards";
 
   # The forward machinery (the desugar primitives), for the harness + a future forward-using corpus.
+  # `synthesizeProducer`/`composeSynthesize` re-express a complex forward as a PROJECTION content producer
+  # (Task 4) — the composed intoClass module rides projectClass as a target-class slice, crossing the
+  # terminal via the Task-3 arg-env seam (generality; zero corpus consumers ⇒ fleet-inert).
   inherit
     isComplex
     forwardId
     tier1
     synthRecord
     forward
+    composeSynthesize
+    synthesizeProducer
     ;
 
   # interpret — the gen-edge source interpreters, threaded into den-hoag's single `materialize` via the

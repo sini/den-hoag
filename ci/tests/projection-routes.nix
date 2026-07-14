@@ -18,6 +18,7 @@
 {
   denHoag,
   denHoagSrc,
+  denCompat,
   nixpkgsLib,
   ...
 }:
@@ -587,6 +588,82 @@ in
       expected = {
         guardTrue = "injected-pkgs";
         guardFalse = "none";
+      };
+    };
+
+    # ══ (7) SYNTHESIZE content producer — the interpret/synthesize re-express (Task 4, spec §5 (c)) ═══════
+    # A COMPLEX (adapter-bearing) forward re-expressed as a projection CONTENT PRODUCER: `synthesizeProducer
+    # spec` COMPOSES a NEW `intoClass` module (adapter + mapModule(sourceModule) + freeform) — DISTINCT from
+    # #15's arg-rewrite-on-EXISTING-content. The composed module is a target-class slice; when it carries
+    # `adaptArgs` it is the SAME function-module the Task-3 arg-env crossing produces, so it crosses the
+    # terminal evalModules boundary identically (the arg-rewrite applies at the crossing). Zero corpus
+    # consumers ⇒ fleet-INERT (7b); this synthetic witness is NON-VACUOUS (the produced module carries real
+    # content AND reads an adaptArgs-injected arg, resolved at a REAL evalModules crossing).
+    test-synthesize-producer-yields-module-at-target = {
+      expr =
+        let
+          fwd = denCompat.legacy.forwards;
+          # a synthesize spec: mapModule TRANSFORMS the source into a NEW module reading an injected arg;
+          # adaptArgs injects `injected` (the content-PRODUCER shape — composes a new module, not a rewrite).
+          spec = {
+            fromClass = "devshell";
+            intoClass = "flake-parts";
+            sourceModule = { tag = "src-seed"; }; # the source the adapter maps.
+            mapModule = src: (
+              { injected, ... }:
+              {
+                marker = injected; # the composed module READS the adaptArgs-injected arg (freeform-absorbed).
+                seed = src.tag; # …and carries the mapped source content (non-vacuous).
+              }
+            );
+            adaptArgs = _args: { injected = "synth-injected"; }; # the content-producer arg-env.
+          };
+          produced = fwd.synthesizeProducer spec;
+          # cross via gen-merge's module system (`merge.evalModuleTree`) — den-hoag's OWN module evaluator,
+          # the one the inert `flake-parts` collect terminal uses (the composed module carries den-hoag's
+          # `freeformMod`, a gen-merge type, so it crosses HERE, not raw nixpkgs lib.evalModules). The
+          # produced function-module fires `_module.args = adaptArgs args` at this crossing (Task-3 seam),
+          # so the mapped module's `injected` read resolves and the mapped source content is present.
+          ev = merge.evalModuleTree { modules = [ produced.module ]; };
+        in
+        {
+          class = produced.class; # the target class the producer contributes to.
+          marker = ev.config.marker; # the adaptArgs-injected arg, resolved at the crossing.
+          seed = ev.config.seed; # the mapped source content (proves the compose ran).
+          moduleIsFunction = builtins.isFunction produced.module; # the arg-env content-producer shape.
+        };
+      expected = {
+        class = "flake-parts";
+        marker = "synth-injected"; # the injection resolved at the terminal crossing.
+        seed = "src-seed"; # the composed module carries the mapped source (non-vacuous).
+        moduleIsFunction = true;
+      };
+    };
+
+    # (7b) FLEET-INERT — zero corpus consumers: a NO-adapter synthesize spec composes a PLAIN module set
+    #      (no adaptArgs ⇒ not a function), and the corpus emits NO synthesize forward ⇒ the producer is
+    #      never invoked on a real fleet ⇒ fleet output byte-unchanged (the generality machinery is dormant).
+    test-synthesize-producer-no-adapter-plain-module = {
+      expr =
+        let
+          fwd = denCompat.legacy.forwards;
+          spec = {
+            fromClass = "devshell";
+            intoClass = "flake-parts";
+            sourceModule = { tag = "plain-src"; };
+            # NO adaptArgs / adapterModule / mapModule ⇒ a plain composed module set.
+          };
+          produced = fwd.synthesizeProducer spec;
+        in
+        {
+          moduleIsFunction = builtins.isFunction produced.module; # plain ⇒ NOT a function.
+          hasImports = produced.module ? imports; # a plain module set { imports = [...]; }.
+          class = produced.class;
+        };
+      expected = {
+        moduleIsFunction = false;
+        hasImports = true;
+        class = "flake-parts";
       };
     };
   };
