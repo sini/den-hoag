@@ -27,15 +27,22 @@ let
     aspects
     select
     ;
-  ra = import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
-    inherit
-      prelude
-      scope
-      resolve
-      aspects
-      select
-      ;
-  } { };
+  # `ra` = the module with NATIVE instance args (defaultEdgeTargets = (_: [ ]) ⇒ no default edges). Task 3
+  # witnesses the default-edge PRIMITIVE by re-importing the module with a custom `defaultEdgeTargets`
+  # instance arg (`raWith` below), so `reach` folds those injected edges in.
+  mkRa =
+    instanceArgs:
+    import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
+      inherit
+        prelude
+        scope
+        resolve
+        aspects
+        select
+        ;
+    } instanceArgs;
+  ra = mkRa { };
+  raWith = defaultEdgeTargets: mkRa { inherit defaultEdgeTargets; };
 
   # A synthetic resolution-action list: one positive reach-edge (class-scoped home-manager), one negative
   # reach-suppress (droid-gated), and unrelated actions (an `edge`/`drop` from the existing strata) the
@@ -116,7 +123,12 @@ let
     self;
   # keys of a reach result, for order/membership assertions.
   keysOf = nodes: map (n: n.key) nodes;
-  reachKeys = graph: id: keysOf (ra.reach.compute (mkStub graph) id);
+  # reach over the NATIVE module instance (no default edges); reachKeysWith drives a specific instance
+  # (Task 3's raWith, carrying a custom defaultEdgeTargets).
+  reachKeysOn =
+    raInst: graph: id:
+    keysOf (raInst.reach.compute (mkStub graph) id);
+  reachKeys = reachKeysOn ra;
 in
 {
   flake.tests.reach-graph = {
@@ -130,7 +142,7 @@ in
           g = {
             src.edges = acts; # mixed reach-edge + reach-suppress + edge + drop.
             "host:igloo".resolved = [
-              nHostNixos # nixos-only → excluded by the homeManager classFilter.
+              nHostNixos # nixos-only → excluded by the home-manager classFilter.
               nHostHm # home-manager → included.
             ];
             "host:cabin".resolved = [ nB ]; # null filter → included.
@@ -222,7 +234,7 @@ in
       expected = [ "cell-own" ];
     };
 
-    # ── (b) CLASS-SCOPED, no over-reach (F9): a positive edge cell→host classFilter="homeManager" pulls the
+    # ── (b) CLASS-SCOPED, no over-reach (F9): a positive edge cell→host classFilter="home-manager" pulls the
     #    host's hm-defining aspect but EXCLUDES the host's nixos-only aspect. ──
     test-reach-class-scoped-no-nixos-overreach = {
       expr =
@@ -324,6 +336,88 @@ in
         hasA = true;
         hasB = true;
       };
+    };
+
+    # ══ Task 3 — framework default-edge (baseline injection) witnesses ═════════════════════════════════
+    #    A `defaultEdgeTargets id` supplies per-node default reach-edges (the framework baseline seam). The
+    #    baseline graph carries a `baseline` node with an hm aspect; a user cell has NO declared reach-edge.
+
+    # ── (a) IDENTITY / additivity: with the NATIVE module (defaultEdgeTargets = (_: [ ])), a cell with no
+    #    declared edge reaches its own subtree ONLY — the default-edge seam is inert (Task 2 byte-unchanged). ──
+    test-default-edge-unset-identity = {
+      expr = reachKeys {
+        cell.resolved = [ nOwn ];
+        baseline.resolved = [ (mkNode "baseline-hm" { home-manager.tag = "base"; }) ];
+      } "cell";
+      expected = [ "cell-own" ]; # baseline NOT reached — no default edge injected.
+    };
+
+    # ── (b) INJECTION: defaultEdgeTargets injects a `cell → baseline` default edge on USER CELLS only. Each
+    #    cell's reach then includes the baseline's (class-filtered) aspects; a non-user node is unaffected. ──
+    test-default-edge-injects-baseline = {
+      expr =
+        let
+          # inject the baseline default edge on ids starting "cell" (the synthetic "is a user cell" test).
+          isCell = id: builtins.substring 0 4 id == "cell";
+          dget =
+            id:
+            if isCell id then
+              [
+                {
+                  target = "baseline";
+                  classFilter = "home-manager";
+                }
+              ]
+            else
+              [ ];
+          g = {
+            cellA.resolved = [ nOwn ];
+            host.resolved = [ nHostNixos ]; # a non-user node — must NOT get the baseline edge.
+            baseline.resolved = [
+              (mkNode "baseline-hm" { home-manager.tag = "base"; })
+              (mkNode "baseline-nixos" { nixos.tag = "bn"; }) # class-filtered OUT (home-manager edge).
+            ];
+          };
+          reachW = reachKeysOn (raWith dget);
+        in
+        {
+          cellHasOwn = builtins.elem "cell-own" (reachW g "cellA");
+          cellHasBaselineHm = builtins.elem "baseline-hm" (reachW g "cellA");
+          cellBaselineNixosFiltered = !(builtins.elem "baseline-nixos" (reachW g "cellA")); # F9.
+          hostUnaffected = reachW g "host"; # non-user ⇒ no default edge ⇒ own only.
+        };
+      expected = {
+        cellHasOwn = true;
+        cellHasBaselineHm = true;
+        cellBaselineNixosFiltered = true;
+        hostUnaffected = [ "host-nixos" ];
+      };
+    };
+
+    # ── (c) The default edge is an ORDINARY positive edge — single-visit dedups it against an OWN-include of
+    #    the SAME baseline aspect (a cell that already includes `baseline-hm` in its own subtree AND reaches
+    #    it via the default edge ⇒ the aspect appears ONCE). ──
+    test-default-edge-dedup-vs-own = {
+      expr =
+        let
+          dget = _: [
+            {
+              target = "baseline";
+              classFilter = null;
+            }
+          ];
+          shared = mkNode "baseline-hm" { home-manager.tag = "base"; };
+          g = {
+            cellA.resolved = [
+              nOwn
+              shared # own-include of the SAME key the default edge also reaches.
+            ];
+            baseline.resolved = [ shared ];
+          };
+          ks = reachKeysOn (raWith dget) g "cellA";
+        in
+        builtins.length (builtins.filter (k: k == "baseline-hm") ks);
+      expected = 1;
     };
   };
 }

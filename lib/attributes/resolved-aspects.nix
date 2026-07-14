@@ -35,6 +35,14 @@
   # rides each node as `__denShared` for class-modules' `__shared` sidecar. Native default `[ ]` ⇒ every
   # node `__denShared = false` (byte-identical; the flag is inert additive data).
   sharedAspectKeys ? [ ],
+  # FRAMEWORK DEFAULT EDGE (spec §2 baseline injection, F5). A function `id -> [ { target; classFilter ? null } ]`
+  # returning the per-node default reach-edges the framework injects — the seam through which baseline home
+  # content reaches every user cell WITHOUT an explicit opt-in (replacing den.default radiation; a baseline
+  # is not a special "shared" tier, just an ordinary positive edge the framework adds). `reach` unions these
+  # BEFORE the node's own declared (opt-in) edges (the merge_ord default-edge < opt-in precedence, Task 5).
+  # Native default `(_: [ ])` ⇒ NO default edges ⇒ `reach` is byte-identical to Task 2 (additive identity);
+  # Phase-5 wires the corpus baseline set (define-user/hostname/… — spec §2 F5) onto this arg.
+  defaultEdgeTargets ? (_: [ ]),
 }:
 let
   keyOf = aspects.key;
@@ -254,7 +262,7 @@ let
   # A resolved-aspect node `n` passes an edge's class filter iff the filter is null (all classes) OR the
   # aspect's content carries the class key `C` (Phase 1's dep-free class predicate — the Phase-2 projection
   # engine folds in the full `classifyKey` class/setting discrimination). A nixos-only host aspect has no
-  # `homeManager` key ⇒ a `homeManager`-scoped edge excludes it (F9 no over-reach).
+  # `home-manager` key ⇒ a `home-manager`-scoped edge excludes it (F9 no over-reach).
   passesClassFilter = classFilter: n: classFilter == null || (n.content or { }) ? ${classFilter};
 in
 {
@@ -282,9 +290,18 @@ in
     compute =
       self: id:
       let
-        # Positive edges declared at a node. (Negative-edge suppression — reach-suppress whose `when`
-        # holds — is subtracted here by Task 4; Task 2 delivers the positive-edge closure only.)
-        edgesAt = nid: reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
+        # Positive edges at a node: the FRAMEWORK default edges (baseline injection, Task 3) FIRST — the
+        # merge_ord default-edge < opt-in precedence (Task 5) — then the node's own DECLARED (opt-in) edges.
+        # `defaultEdgeTargets nid` is `[ { target; classFilter ? null } ]` (native `[ ]` ⇒ inert identity).
+        # (Negative-edge suppression — reach-suppress whose `when` holds — is subtracted here by Task 4.)
+        defaultEdgesAt =
+          nid:
+          map (e: {
+            inherit (e) target;
+            classFilter = e.classFilter or null;
+          }) (defaultEdgeTargets nid);
+        edgesAt =
+          nid: defaultEdgesAt nid ++ reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
 
         # Fold one edge's (class-filtered, not-yet-seen) target aspects into the accumulator, recursing into
         # the target's own edges FIRST-occurrence-preserving. `acc = { seen; nodes; visitedIds; }`: seen =

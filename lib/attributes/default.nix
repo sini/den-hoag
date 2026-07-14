@@ -125,6 +125,9 @@ in
       # (`den.default`) subtree, passed to resolved-aspects which stamps each node's `__denShared` flag
       # (class-modules reads it for the `__shared` sidecar). Default `[ ]` ⇒ no aspect marked shared.
       sharedAspectKeys ? [ ],
+      # Framework default-edge injector (spec §2 baseline, Task 3): `id -> [ { target; classFilter ? null } ]`,
+      # threaded to resolved-aspects' `reach`. Native default `(_: [ ])` ⇒ no default edges ⇒ reach unchanged.
+      defaultEdgeTargets ? (_: [ ]),
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // {
@@ -141,6 +144,7 @@ in
             directIncludes
             enrichContext
             sharedAspectKeys
+            defaultEdgeTargets
             ;
         })
         resolved-aspects
