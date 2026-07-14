@@ -16,6 +16,7 @@
   denHoag,
   prelude,
   schema,
+  aspects,
   compile,
   ingest,
   annotate,
@@ -24,6 +25,78 @@
   legacy,
 }:
 let
+  # ── Phase 5 Task 2 — the PARALLEL TYPED NAVIGATION VIEW (native A-IDENT, additive). ────────────────
+  # gen-aspects @14652a0 (A-IDENT) makes a TYPED aspect node carry its own container-relative identity at
+  # merge: `.key` = the full `den/aspects`-relative path (`pathKey prefix`), `meta.aspect-chain` = its
+  # ancestors — born in the type, never reconstructed. The compat two-eval needs that native identity on
+  # the NAVIGATION SURFACE (the `den` legacy binding a module's `with den.aspects` reads, and the evalV1
+  # read-back Task 3's readers + the native-identity suite consume). But it must NOT reach `compile`:
+  # compile reads the RAW aspect tree and does its OWN wrap-ground (compile.nix §339; a class body
+  # `nixos = { … }` must stay a raw attrset — a typed tree wraps it as a `deferredModule` `{ imports; }`
+  # or leaks the typed node's structural options into the class-modules bucket, reshaping what the
+  # terminal delivers). So: ONE raw tree for compile (unchanged, `__provider`-annotated), a PARALLEL
+  # typed VIEW for navigation — the same single gen identity system (`aspectsType`), applied where it
+  # belongs. Task 3 later repoints the readers onto the native `.key` and retires the `__provider` graft.
+  #
+  # cnf.classes = { }: `.key`/`meta.aspect-chain` are PATH-derived (identity.nix), class-INDEPENDENT, so
+  # an empty class set gives correct native identity WITHOUT making a class key a `deferredModule` option
+  # (which would wrap the navigated class body — corrupting a corpus `with den.aspects` reader that reads
+  # class content off a navigated node). A class key (`nixos`/`homeManager`/…) then rides the
+  # `aspectsRoot`/`aspectSubmodule` freeform as an ordinary nested attrset — navigable, uncorrupted.
+  # `aspectModules`/`metaModules` are empty: the view supplies ONLY intrinsic identity (`.key`/`meta`/
+  # `name`/`includes`), not den-hoag's concern-option surface (that lives on the compiled bridge output).
+  aspectsViewCnf = {
+    classes = { };
+    moduleArgs = {
+      settings = true;
+      aspects = true;
+      lib = true;
+      config = true;
+      options = true;
+      pkgs = true;
+    };
+    aspectModules = [ ];
+    metaModules = [ ];
+    collections = { };
+  };
+  aspectsViewType = aspects.aspectsType aspectsViewCnf;
+
+  # `typedAspectsView rawAspects` — eval the RAW v1 aspects through `aspectsViewType` (the probe's
+  # evDirect shape) so each navigated node carries native `.key`/`meta.aspect-chain`, then GRAFT the raw
+  # tree's `__provider` stamps back on (additive: a navigated node carries BOTH the native key AND the
+  # legacy provider path this task — Task 4 deletes the graft). The eval also rebinds `_module.args.aspects
+  # = config` internally (aspectsType), so a `with aspects; …` include inside the view resolves against
+  # the typed siblings. Falls back to `{ }` for an aspect-less fleet (mkOption default).
+  graftProviders =
+    typed: raw:
+    if !(builtins.isAttrs raw) || !(builtins.isAttrs typed) then
+      typed
+    else
+      typed
+      // prelude.optionalAttrs (raw ? __provider) { inherit (raw) __provider; }
+      // builtins.listToAttrs (
+        map (k: {
+          name = k;
+          value = graftProviders (typed.${k} or { }) raw.${k};
+        }) (builtins.filter (k: builtins.substring 0 2 k != "__") (builtins.attrNames raw))
+      );
+  typedAspectsView =
+    rawAspects:
+    let
+      ev = schema.evalModuleTree {
+        modules = [
+          {
+            options.aspects = schema.mkOption {
+              type = aspectsViewType;
+              default = { };
+            };
+            config.aspects = rawAspects;
+          }
+        ];
+      };
+    in
+    graftProviders ev.config.aspects rawAspects;
+
   # A `raw` option holds any v1 value unmerged (single-def passthrough) — the v1 grammar (parametric
   # aspects, policy records, two-level host maps) is never type-walked or freeform-mangled.
   rawOpt =
@@ -84,14 +157,12 @@ let
   # den-hoag core probes and `concern-aspects` moduleArgs carry ZERO legacy names — this binding lives in
   # the shim's v1 eval, never crosses into den-hoag.
   # board #58 (Fork A): the `__provider`-annotated view of a v1 `den` surface — `annotate` is the
-  # post-fold walk (annotate.nix; v1 annotateDeep, pin types.nix:561-574). Applied to BOTH direct-path
-  # consumers below: the legacy `den` binding (the navigation surface a module's `with den.aspects` —
-  # and a policy's emitted `den.aspects.<path>` — reads) and the evalV1 read-back (compile's input), so
-  # the direct mkDen path exercises the SAME identity mechanism the bridge ships (CI/parity fixtures
-  # must run the shipped mechanism, not a fallback). Idempotent on the bridge path — its tree arrives
-  # already annotated (`!(v ? __provider)`). The fleet's declared classes/quirks feed the walk's
-  # exclusion guard, exactly as v1 reads its own registries at annotation time (types.nix:540-542).
-  annotatedView =
+  # post-fold walk (annotate.nix; v1 annotateDeep, pin types.nix:561-574). This is `compile`'s RAW input:
+  # a class body rides as an unwalked attrset, `stampProvider` recovers v1's include identity from the
+  # provider path. Idempotent on the bridge path — its tree arrives already annotated (`!(v ? __provider)`).
+  # The fleet's declared classes/quirks feed the walk's exclusion guard, exactly as v1 reads its own
+  # registries at annotation time (types.nix:540-542).
+  annotatedViewRaw =
     den:
     den
     // {
@@ -101,22 +172,51 @@ let
       } (den.aspects or { });
     };
 
+  # Phase 5 Task 2 — the NAVIGATION view: the `__provider`-annotated raw aspects run ALSO through
+  # `typedAspectsView`, so every navigated node carries native A-IDENT `.key`/`meta.aspect-chain` (born in
+  # the type) alongside the grafted `__provider` (additive). This is the surface a v1 module's
+  # `with den.aspects; …` include, a policy's emitted `den.aspects.<path>` ref, and the evalV1 read-back
+  # (Task 3's readers + the native-identity suite) read. NEVER fed to `compile` (which takes the raw view).
+  annotatedViewNav =
+    den:
+    let
+      raw = annotatedViewRaw den;
+    in
+    raw // { aspects = typedAspectsView raw.aspects; };
+
+  # R1 legacy binding — bind `_module.args.den` to the RAW view (UNCHANGED this task). A v1 module body's
+  # `with den.aspects; …` include captures nodes off THIS binding, and those captured includes flow to
+  # `compile` (`config.den.aspects.<e>.includes`); a typed node carries a materialized `name`, which trips
+  # `stampProvider`'s `!(v ? name)` gate and collapses the include's resolved key to the leaf (the
+  # compat-include-identity `core/systemd/boot`→`boot` regression). So the include-capture surface stays
+  # RAW + `__provider` (compile grounds it byte-identically). Task 3 flips this to the NAV view AND repoints
+  # `stampProvider`/`refKey` onto the native `.key` in ONE change (the readers move together, no half-state).
   bindLegacyEnv =
     {
       config,
       ...
     }:
     {
-      config._module.args.den = annotatedView config.den;
+      config._module.args.den = annotatedViewRaw config.den;
     };
 
-  # Eval the v1 modules in the v1-shaped tree and read back `config.den` (the v1 declaration surface,
-  # verbatim, `aspects` __provider-annotated) for `compile` to desugar. `bindLegacyEnv` (R1) binds `den`
-  # so a v1 module body may reference it. Only `flakeModuleCore` (not the legacy tag modules) declares
-  # options here.
+  # `evalV1Raw` — the COMPILE input: read back `config.den` with the RAW `__provider` aspects (unwalked
+  # class bodies, byte-identical class-modules buckets). Only `flakeModuleCore` declares options here.
+  evalV1Raw =
+    userModules:
+    annotatedViewRaw
+      (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
+      .config.den;
+
+  # `evalV1` — the PUBLIC read-back (Task 3's readers + the native-identity suite): the NAVIGATION view, so
+  # a navigated `den.aspects.<path>` carries native `.key`/`meta.aspect-chain` (born in the type) alongside
+  # the grafted `__provider`. This is a READ-ONLY VIEW over the same v1 eval — it is NOT fed to `compile`
+  # (which uses `evalV1Raw`) and NOT the `with den.aspects` include-capture binding (`bindLegacyEnv`, raw),
+  # so a captured include's compile identity is untouched. It exposes native identity on exactly the surface
+  # this task's acceptance reads; Task 3 makes the readers consume it.
   evalV1 =
     userModules:
-    annotatedView
+    annotatedViewNav
       (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
       .config.den;
 
@@ -401,7 +501,7 @@ let
     }:
     denHoag.mkDen (
       [
-        (mkFleetModuleWith (compileFull (evalV1 userModules)) nixosTerminal)
+        (mkFleetModuleWith (compileFull (evalV1Raw userModules)) nixosTerminal)
         interpretModule
         probeSentinelModule
         resolveFamilyModule

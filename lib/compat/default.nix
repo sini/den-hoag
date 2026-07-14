@@ -134,6 +134,7 @@ let
         denHoag
         prelude
         schema
+        aspects
         compile
         ingest
         hasAspect
