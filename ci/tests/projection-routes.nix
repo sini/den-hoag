@@ -10,11 +10,15 @@
 # This drives the REAL `mkOutputModules` (`lib/attributes/output-modules.nix`) over a STUB `result` that
 # serves `reach` (the reached nodes), `declarations` (the `__action="delivery"` route records `routesAt`
 # lowers), `enriched-context` (the guard's scope bindings) and `node`/`children`. The witnesses:
-#   1. homeLinux→homeManager (at=[], guard true): the homeManager projection includes the reached nodes'
-#      homeLinux slices (in projection order) IN ADDITION to the base homeManager slices.
-#   2. guard-FALSE (wrong host.system): the route contributes NOTHING.
+#   1. homeLinux→homeManager (at=[], no guard): the homeManager projection includes the reached nodes'
+#      homeLinux slices (in projection order) IN ADDITION to the base homeManager slices. (This IS the
+#      corpus home-platform route — UNGUARDED; its platform gate is at POLICY dispatch, not a route guard.)
+#   2. SYNTHETIC content-time guard-FALSE (a route guard reading host.system): the route contributes NOTHING
+#      (framework generality — the corpus route has no guard; this exercises the guard feature synthetically).
 #   3. nested (at=[devshells default]): the remapped slice wrapped under devshells.default, NOT flat.
 #   4. no route targeting C ⇒ `projectClass id C` UNCHANGED (identity — the additive base).
+# Guard PHASE (functionArgs classification, owner ruling): content-time (entity formals → gated at
+# projection) vs eval-time (module formals → config-gated at the crossing via nested eval, no import-cycle).
 {
   denHoag,
   denHoagSrc,
@@ -225,9 +229,13 @@ in
       ];
     };
 
-    # ══ (2) GUARD-FALSE — a wrong-host.system guard contributes NOTHING ═════════════════════════════════
-    # The route's guard is a closure over the scope bindings (home-platform guards on host.system suffix).
-    # A guard returning false gates the WHOLE remap out — the home-manager projection is the base only.
+    # ══ (2) GUARD-FALSE — a wrong-host.system content-time guard contributes NOTHING ═══════════════════════
+    # A SYNTHETIC content-time route guard (a closure over the enriched-context entity bindings, reading
+    # `host.system`) returning false gates the WHOLE remap out — the home-manager projection is the base only.
+    # (Framework generality — an END-USER config may put such a guard on a route. NOTE: the corpus's OWN
+    # home-platform is NOT this shape: it gates at POLICY dispatch (`lib.optional (hasSuffix host.system)
+    # route`), so its emitted homeLinux→homeManager route is UNGUARDED — this witness exercises the guard
+    # feature synthetically, not the corpus route.)
     test-route-guard-false-contributes-nothing = {
       expr =
         let
@@ -548,14 +556,131 @@ in
       };
     };
 
-    # (6d) GUARD gates AT THE CROSSING — an adaptArgs route ALSO carrying an EVAL-TIME guard
-    #      (`{config,...}: config.enable`) gates the content at the crossing (v1 `optionalAttrs (guard args)`):
-    #      guard-TRUE ⇒ the slice's marker resolves; guard-FALSE ⇒ the slice is gated out (default "none").
-    test-route-adaptArgs-guard-gates-at-crossing = {
+    # (6d) THE RECURSION WITNESS — an EVAL-TIME guard (`{options,...}`, a MODULE formal) gates content AT THE
+    #      CROSSING WITHOUT infinite recursion. This is the EXACT case that recursed under the old import-gate
+    #      (`imports = optional (guard args) placed` cycles: imports ← guard(options) ← options ← imports).
+    #      The CONFIG-GATE-via-nested-eval (owner ruling 2026-07-14) breaks the cycle: the wrapper declares NO
+    #      options + imports NOTHING conditionally (outer `options` guard-independent), nested-evals the opaque
+    #      slice, and `mkIf (guard args)` gates its config. guard-TRUE (`options ? marker`, exists) ⇒ the slice
+    #      content; guard-FALSE (`options ? nonesuch`, missing) ⇒ gated out → the option default. NO adaptArgs.
+    test-route-evaltime-guard-config-gate-no-recursion = {
       expr =
         let
-          mkGraph = guardVal: {
+          mkGraph = present: {
             scope = {
+              reach = [ (mkNode "d" { devshell.marker = "slice-content"; }) ]; # plain content slice.
+              routes = [
+                (deliveryAct {
+                  from = "devshell";
+                  to = "flake-parts";
+                  at = [
+                    "devshells"
+                    "default"
+                  ];
+                  # EVAL-TIME guard: reads `options` (a module binding absent from enriched-context).
+                  guard = { options, ... }: options ? ${if present then "marker" else "nonesuch"};
+                })
+              ];
+            };
+          };
+          markerWith = present: crossFlakeParts (projectClassOf (mkGraph present) "scope" "flake-parts");
+        in
+        {
+          guardTrue = markerWith true; # options ? marker (exists) ⇒ content gated IN at the crossing.
+          guardFalse = markerWith false; # options ? nonesuch (missing) ⇒ mkIf false ⇒ default (no recursion).
+        };
+      expected = {
+        guardTrue = "slice-content";
+        guardFalse = "none";
+      };
+    };
+
+    # (6e) EVAL-TIME guard WITHOUT adaptArgs is STILL wrapped + config-gated — the case the retired adaptArgs-
+    #      proxy COULDN'T express (functionArgs decouples guard-phase from adaptArgs). The placed module is a
+    #      FUNCTION (the config-gate wrapper) even with NO adaptArgs; it declares NO options and its config is
+    #      the nested slice's config under `mkIf`.
+    test-route-evaltime-guard-without-adaptArgs-wraps = {
+      expr =
+        let
+          graph.scope = {
+            reach = [ (mkNode "d" { devshell.marker = "plain"; }) ];
+            routes = [
+              (deliveryAct {
+                from = "devshell";
+                to = "flake-parts";
+                at = [
+                  "devshells"
+                  "default"
+                ];
+                guard = { options, ... }: options ? marker; # eval-time, NO adaptArgs.
+              })
+            ];
+          };
+          placed = (builtins.head (projectClassOf graph "scope" "flake-parts")).devshells.default;
+        in
+        {
+          isFunction = builtins.isFunction placed; # WRAPPED despite no adaptArgs (eval-time guard).
+          marker = crossFlakeParts (projectClassOf graph "scope" "flake-parts"); # guard TRUE ⇒ content.
+        };
+      expected = {
+        isFunction = true;
+        marker = "plain";
+      };
+    };
+
+    # (6f) adaptArgs + EVAL-TIME guard — BOTH apply: the config-gate wraps AND the adaptArgs injection rides
+    #      the nested `_module.args`, so a guard-gated slice reads the injected arg. guard-TRUE ⇒ the slice's
+    #      injected marker; guard-FALSE ⇒ gated out → default.
+    test-route-adaptArgs-plus-evaltime-guard = {
+      expr =
+        let
+          mkGraph = present: {
+            scope = {
+              reach = [
+                (mkNode "d" {
+                  devshell =
+                    { pkgs2, ... }:
+                    {
+                      marker = pkgs2; # reads the adaptArgs-injected arg (freeform-absorbed).
+                    };
+                })
+              ];
+              routes = [
+                (deliveryAct {
+                  from = "devshell";
+                  to = "flake-parts";
+                  at = [
+                    "devshells"
+                    "default"
+                  ];
+                  adaptArgs = _args: { pkgs2 = "injected-pkgs"; };
+                  guard = { options, ... }: options ? ${if present then "marker" else "nonesuch"};
+                })
+              ];
+            };
+          };
+          markerWith = present: crossFlakeParts (projectClassOf (mkGraph present) "scope" "flake-parts");
+        in
+        {
+          guardTrue = markerWith true; # guard TRUE ⇒ adaptArgs injection resolves in the gated content.
+          guardFalse = markerWith false; # guard FALSE ⇒ gated out → default.
+        };
+      expected = {
+        guardTrue = "injected-pkgs";
+        guardFalse = "none";
+      };
+    };
+
+    # (6g) CONTENT-TIME guard (`{host,...}`, an ENTITY formal) gates at PROJECTION, decoupled from adaptArgs.
+    #      functionArgs classifies it CONTENT-TIME (host ∈ enriched-context) ⇒ gated by guardHolds BEFORE the
+    #      crossing: guard-FALSE ⇒ the WHOLE remap dropped (0 modules, never reaches the crossing); guard-TRUE
+    #      ⇒ present (1 module) AND still adaptArgs-wrapped for the crossing. Proves the two concerns decouple.
+    test-route-contenttime-guard-gates-at-projection = {
+      expr =
+        let
+          mkGraph = system: {
+            scope = {
+              ctx.host.system = system; # the enriched-context entity binding the guard reads.
               reach = [
                 (mkNode "d" {
                   devshell =
@@ -574,20 +699,22 @@ in
                     "default"
                   ];
                   adaptArgs = _args: { pkgs2 = "injected-pkgs"; };
-                  guard = _args: guardVal; # eval-time guard (gates at the crossing, not at projection).
+                  guard = { host, ... }: host.system == "x86_64-linux"; # content-time (reads host entity).
                 })
               ];
             };
           };
-          markerWith = guardVal: crossFlakeParts (projectClassOf (mkGraph guardVal) "scope" "flake-parts");
+          lenOf = system: builtins.length (projectClassOf (mkGraph system) "scope" "flake-parts");
         in
         {
-          guardTrue = markerWith true; # slice present ⇒ injected marker.
-          guardFalse = markerWith false; # slice gated out ⇒ the option default.
+          matchLen = lenOf "x86_64-linux"; # projection guard PASSES ⇒ remap present.
+          matchMarker = crossFlakeParts (projectClassOf (mkGraph "x86_64-linux") "scope" "flake-parts");
+          noMatchLen = lenOf "aarch64-darwin"; # projection guard FAILS ⇒ WHOLE remap dropped (0).
         };
       expected = {
-        guardTrue = "injected-pkgs";
-        guardFalse = "none";
+        matchLen = 1;
+        matchMarker = "injected-pkgs";
+        noMatchLen = 0;
       };
     };
 

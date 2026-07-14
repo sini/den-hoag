@@ -352,21 +352,41 @@ let
       }) (builtins.filter (d: (d.appendToParent or false) && deliveryTargetRootOf c d == id) (deliveriesAt c))
     ) (scope.descendants result id);
 
-  # A route's guard against the projecting scope (spec §5: "eval the guard against the scope; false →
-  # contribute nothing"). The v1 route guard is a closure over the scope's binding environment (home-platform
-  # guards on `host.system` suffix). Here — the CONTENT half, pre-terminal — it is evaluated against the
-  # node's enriched-context bindings (host/user entity entries). A `null` guard is unconditional.
-  #
-  # THE CONTENT/ARG-ENV SPLIT (Task 3, spec §5): a route carrying `adaptArgs` is a bucket-(c) ARG-ENVIRONMENT
-  # route — its guard is an EVAL-TIME predicate over the nixpkgs `evalModules` args (`{options,...}: options ?
-  # wsl`), which the enriched-context does NOT carry — so its guard is DEFERRED to the terminal crossing
-  # (`argEnvWrap`, `optionalAttrs (guard args)`), NOT gated here (gating it against the content-time context
-  # would mis-evaluate an options/config predicate). A route with NO `adaptArgs` is a pure-content route: its
-  # guard is content-time (home-platform), gated HERE. So `guardHolds` gates only content-route guards; the
-  # arg-env route's guard rides the wrapper.
+  # ── Route guard PHASE classification by STATIC FORMALS (owner ruling 2026-07-14) ─────────────────────
+  # A route `guard` is a predicate closure; WHEN it can run is decided by WHICH bindings it destructures —
+  # via `builtins.functionArgs`:
+  #   • CONTENT-TIME — every static formal is satisfiable from the ENRICHED-CONTEXT (the entity bindings:
+  #     host/user/system/…, present at PROJECTION). Gated at PROJECTION (`guardHolds`).
+  #   • EVAL-TIME — a formal needs a MODULE binding (config/options/pkgs/…) available ONLY at the terminal
+  #     `evalModules` crossing. Gated at the crossing (`argEnvWrap`'s config-gate).
+  # This DECOUPLES guard-phase from `adaptArgs`: an eval-time guard fires at the crossing WITHOUT adaptArgs,
+  # and a content-time guard is gated at projection even WITH adaptArgs. The check is a direct AVAILABILITY
+  # test (no hardcoded name list): the enriched-context's OWN keys are the entity/kind bindings, so a formal
+  # absent from them needs the crossing. A bare `args:` guard (empty functionArgs) is trivially content-time.
+  # CORPUS REALITY (2026-07-14): the frozen corpus has ZERO route guards — home-platform gates at POLICY
+  # dispatch (`lib.optional (hasSuffix host.system) route`, so the emitted route is UNGUARDED), and no wsl
+  # route guard exists. So this is FRAMEWORK GENERALITY (an END-USER config's guard-bearing route — den is a
+  # general framework), validated synthetically; every real fleet route has `guard == null` (drv-invisible).
+  # EDGE (ledgered, no corpus instance): a guard with formals in BOTH sets classifies EVAL-TIME (a module
+  # formal forces the crossing) but cannot read its entity formals there until entity bindings are threaded
+  # into the terminal args — future.
+  guardIsContentTime =
+    guard: id:
+    let
+      ctx = result.get id "enriched-context";
+      formals = builtins.attrNames (builtins.functionArgs guard);
+    in
+    prelude.all (f: ctx ? ${f}) formals;
+
+  # A route's CONTENT-TIME guard against the projecting scope. `null` guard ⇒ unconditional. A content-time
+  # guard is evaluated HERE against the enriched-context; an EVAL-TIME guard is DEFERRED (true here, gated at
+  # the crossing by `argEnvWrap`). Decoupled from adaptArgs: a content-time guard WITH adaptArgs is still
+  # gated here; an eval-time guard WITHOUT adaptArgs rides the wrapper.
   guardHolds =
     route: id:
-    route.adaptArgs != null || route.guard == null || route.guard (result.get id "enriched-context");
+    route.guard == null
+    || !(guardIsContentTime route.guard id)
+    || route.guard (result.get id "enriched-context");
 
   # `place at slice`: the fold's nest (`nestAtPath`, gen-edge core.setAttrByPath). `at == []` ⇒ the slice
   # FLAT (bucket b pure remap, #14 home-platform homeLinux→homeManager); `at ≠ []` ⇒ each module wrapped
@@ -375,31 +395,70 @@ let
   placeSlice = at: slice: if at == [ ] then slice else map (m: nestAtPath at m) slice;
 
   # ── The ARG-ENVIRONMENT crossing hook (Phase 4 Task 3, spec §5 (c) — the HARD bucket) ────────────────
-  # A route carrying `adaptArgs` (`{config,...}: config.allModuleArgs` for #15 devshell→flake-parts;
-  # `args: args // { osConfig = args.config; }` for os-user) rewrites the terminal EVAL-TIME arg environment,
-  # NOT the projected content. `projectClass` stays a pure CONTENT projection (Task 1 placed the slice); the
-  # arg-env transform rides ON that placed module as a nixpkgs FUNCTION-MODULE
-  # `args: { imports = [ <placed> ]; _module.args = adaptArgs args; }` — v1's `nestWithAdaptArgs`
-  # (`_module.args = adaptArgs args`, the module-system's own nested-arg mechanism). It is a NO-OP at
-  # projection time (a function is inert content); the arg-rewrite APPLIES only when the nixpkgs `evalModules`
-  # TERMINAL forces it (where `args`/`config` exist), injecting the adapted args every SIBLING module in that
-  # eval reads — so a slice module destructuring an `allModuleArgs`-provided arg resolves at the crossing.
-  # ATTACHES to EXACTLY the adaptArgs-route slice (built HERE, where the route↔slice pairing is known — the
-  # per-slice attach, never the whole class content). A route with NO `adaptArgs` is NOT an arg-env route:
-  # it gets the identity (the placed slice verbatim), so pure-content routes (Tasks 1/2) eval plain,
-  # byte-identical — their CONTENT-TIME guard is already gated at projection by `guardHolds`, never wrapped
-  # here. ONLY an `adaptArgs`-bearing (bucket-c) route is wrapped. Its EVAL-TIME `guard` (deferred from
-  # `guardHolds`, which skips adaptArgs routes) gates the content at the crossing (v1 `optionalAttrs (guard
-  # args)`): `imports = optional (guard args) placed` — guard-false ⇒ an EMPTY module at eval; a null guard
-  # is unconditional. So the eval-time function-module exists IFF the route carries adaptArgs.
+  # A route carrying `adaptArgs` (`{config,...}: config.allModuleArgs` for #15 devshell→flake-parts) rewrites
+  # the terminal EVAL-TIME arg environment, and/or an EVAL-TIME `guard` gates content at the crossing.
+  # `projectClass` stays a pure CONTENT projection (Task 1 placed the slice); the arg-env/guard transform
+  # rides ON that placed module as a FUNCTION-MODULE fired at the terminal `evalModules` crossing (where
+  # `args`/`config`/`options` exist). Three shapes (`id` = the projecting scope, for guard classification):
+  #
+  #   (1) NO adaptArgs AND no eval-time guard → IDENTITY (the placed slice verbatim). A pure-content route,
+  #       or a route whose only guard is CONTENT-TIME (already gated at projection by `guardHolds`), evals
+  #       plain — byte-identical to Tasks 1/2.
+  #   (2) adaptArgs, NO eval-time guard → the arg-env FUNCTION-MODULE `args: { imports = [ placed ];
+  #       _module.args = adaptArgs args; }` (v1 `nestWithAdaptArgs`) — injects the adapted args every SIBLING
+  #       module reads. No guard gates imports, so no fixpoint cycle.
+  #   (3) EVAL-TIME guard (with OR without adaptArgs) → the CONFIG-GATE via a NESTED EVAL (owner ruling
+  #       2026-07-14). Gating `imports` on an eval-time guard (which reads `options`/`config`) is a FIXPOINT
+  #       CYCLE (imports ← guard(options) ← options ← imports → infinite recursion). v1 sidesteps by gating
+  #       CONFIG (`mkIf`), never imports — option DECLARATIONS stay unconditional so `options` is well-defined
+  #       independent of the guard. For an OPAQUE slice: the wrapper declares NO options and imports NOTHING
+  #       conditionally (→ the outer option-set is guard-independent → NO CYCLE); it NESTED-EVALS the opaque
+  #       slice (`args.lib.evalModules`, the terminal's own evaluator; a freeform absorber lets the opaque
+  #       slice's config keys land; adaptArgs rides the nested `_module.args`) and `mkIf (guard args)` gates
+  #       THAT nested `.config` into the outer. guard-false ⇒ `mkIf false` ⇒ no config contributed (content
+  #       absent); guard-true ⇒ the nested config contributed. NO recursion either arm (proven against the
+  #       exact `{options,...}: options ? x` case that recursed under an import-gate).
+  #
+  # ATTACHES to EXACTLY the route's slice (built HERE, where the route↔slice pairing is known — the per-slice
+  # attach, never the whole class content). OPTION-DECLARATION BOUND (ledgered, no corpus instance): the
+  # config-gate gates the slice's CONFIG contribution — if an eval-time-guarded slice DECLARES options (rare;
+  # content slices contribute config: packages/settings, not option declarations), those declarations do NOT
+  # reach the outer option-set (they live in the nested eval). This is FUNDAMENTAL to the module system (you
+  # cannot conditionally declare an option without the import-cycle), not a den limit — the common case (a
+  # slice contributes config, the guard checks an option declared ELSEWHERE, e.g. a wsl module declares
+  # `wsl`, the guard gates OTHER content on `options ? wsl`) is sound.
   argEnvWrap =
-    route: placed:
-    if route.adaptArgs == null then
-      placed # NOT an arg-env route — identity (content-time guard, if any, is handled by guardHolds).
-    else
+    route: id: placed:
+    let
+      evalTimeGuard = route.guard != null && !(guardIsContentTime route.guard id);
+    in
+    if route.adaptArgs == null && !evalTimeGuard then
+      placed # (1) NOT a crossing route — identity (a content-time guard, if any, is handled by guardHolds).
+    else if !evalTimeGuard then
+      # (2) adaptArgs only — the arg-env wrapper (no guard gating imports ⇒ no cycle).
       args: {
-        imports = if route.guard == null then [ placed ] else prelude.optional (route.guard args) placed;
+        imports = [ placed ];
         _module.args = route.adaptArgs args;
+      }
+    else
+      # (3) eval-time guard (± adaptArgs) — CONFIG-GATE via a nested eval (no import-cycle). The nested eval
+      # uses the terminal's OWN evaluator (`args.lib.evalModules`), a freeform absorber for the opaque slice,
+      # and the adaptArgs injection as its `_module.args`. `mkIf (guard args)` gates the nested config.
+      args:
+      let
+        nestedArgs = if route.adaptArgs == null then { } else route.adaptArgs args;
+        nested = args.lib.evalModules {
+          modules = [
+            # freeform absorber in the terminal's OWN type system (`args.lib`), so the opaque slice's config
+            # keys land regardless of which terminal (nixpkgs / gen-merge) runs the crossing.
+            { config._module.freeformType = args.lib.types.lazyAttrsOf args.lib.types.raw; }
+            placed
+            { config._module.args = nestedArgs; }
+          ];
+        };
+      in
+      {
+        config = args.lib.mkIf (route.guard args) nested.config;
       };
 
   # The route class-remap contribution to `projectClass id C`: for each route TARGETING C whose guard holds
@@ -433,7 +492,7 @@ let
       # level), THEN placeSlice nests the wrapper at the route path — the `_module.args = adaptArgs args`
       # must be INSIDE the target submodule's nested eval (e.g. inside `devshells.default`), NOT at the
       # outer level (where it would not reach the nested submodule's args). Order is load-bearing.
-      n: placeSlice route.at (map (m: argEnvWrap route m) (map (e: e.module) (classSliceOf n route.from)))
+      n: placeSlice route.at (map (m: argEnvWrap route srcScope m) (map (e: e.module) (classSliceOf n route.from)))
     ) (result.get srcScope "reach");
 
   routeRemapFor =
