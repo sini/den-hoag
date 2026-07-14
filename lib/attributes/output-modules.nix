@@ -302,6 +302,73 @@ let
     in
     map renderDelivery (deliveriesAt id);
 
+  # ── Route class-remap (Phase 4 Task 1, spec §5 (b) — the CONTENT transform layer) ───────────────────
+  # A ROUTE is a class→class CONTENT transform on the projected view (NOT a reachability edge — that is
+  # the §2 reach model). `routesAt id` LOWERS the firing scope's `delivery` declarations (the SAME
+  # resolution actions `deliveriesAt` reads for the trace) to a class-remap record `{ from; to; at; guard }`
+  # readable by `projectClass`. `from`/`to` are the source/target CLASS NAMES (the `deliveryEdgesAt` source
+  # arm: a MODULE source (provide) collects the TARGET class, a CLASS source (route) collects `from`), `at`
+  # is the placement path, `guard` the v1 eval-time closure (or null). A native fleet emits no delivery ⇒
+  # `[ ]` ⇒ the route-remap is `++ [ ]` (additive identity — `projectClass` byte-identical to the base).
+  # A `__dropped` delivery (null target) renders no remap, exactly as `deliveriesAt` skips it for the trace.
+  routesAt =
+    id:
+    map (d: {
+      from = (if d.module != null then d.targetClass else d.sourceClass).name;
+      to = d.targetClass.name;
+      at = d.path;
+      guard = d.guard or null;
+    }) (deliveriesAt id);
+
+  # A route's guard against the projecting scope (spec §5: "eval the guard against the scope; false →
+  # contribute nothing"). The v1 route guard is a closure over the scope's binding environment (home-platform
+  # guards on `host.system` suffix, wsl on `options ? wsl`). Here — the CONTENT half, pre-terminal — it is
+  # evaluated against the node's enriched-context bindings (host/user entity entries). A `null` guard is
+  # unconditional (present in both arms, v1 parity — a guard gates content, never rule-firing). The
+  # ARG-ENVIRONMENT half (adaptArgs/guard needing the nixpkgs `evalModules` args) rides the terminal
+  # crossing (Task 3); this is the pure-content gate.
+  guardHolds =
+    route: id: route.guard == null || route.guard (result.get id "enriched-context");
+
+  # `place at slice`: the fold's nest (`nestAtPath`, gen-edge core.setAttrByPath). `at == []` ⇒ the slice
+  # FLAT (bucket b pure remap, #14 home-platform homeLinux→homeManager); `at ≠ []` ⇒ each module wrapped
+  # under the path as a content module (`{ <at> = <module>; }`, nest-via-content-module — the shape later
+  # tasks place per-cell home-manager.users.<u> content at, #10/#15). Pure attrset assembly (A1).
+  placeSlice = at: slice: if at == [ ] then slice else map (m: nestAtPath at m) slice;
+
+  # The route class-remap contribution to `projectClass id C`: for each route TARGETING C whose guard holds
+  # at the scope, the guard-gated remap of each REACHED node's class-`from` slice, placed at the route's
+  # path. A route whose `to != C` contributes nothing to the C projection (the transform is class-scoped).
+  # Additive to the base projection — a scope with no C-targeting route yields `[ ]` (identity).
+  #
+  # LEDGERED — THE PRODUCING-CLASS OVER-REPORT, UNMASKED BY A CROSS-CLASS ROUTE (accept-and-ledger, owner
+  # ruling 2026-07-14). `class-modules` OVER-REPORTS: gen-aspects' freeform gives EVERY class key a trivial
+  # `{ imports = [ { } ]; }` DEFAULT body even for an aspect that declares no content there (the documented
+  # §2.5 over-report, output-modules.nix:118-126). The BASE fold masks this via producing-class scoping
+  # (`classBucketsOf` folds only a node's OWN producing class); a ROUTE is an EXPLICIT cross-class read, so
+  # `classSliceOf n route.from` over a `from` the reached node never declared yields that phantom default
+  # slice. The corpus's built-in os→nixos route surfaces it (an `acct`-shaped cell declares nixos+home-manager,
+  # never `os`, yet its phantom `os` default slice remaps into nixos). This is DRVPATH-HARMLESS (the phantom
+  # body is `{ imports = [ { } ]; }` — an empty no-op module the terminal merge absorbs to nothing) and is
+  # NOT filtered here: the only phantom signal is the nixpkgs `_file = "<default>"` presentation marker on the
+  # INNER module (not a robust gen-aspects "was-never-declared" contract), so dropping on it would be the
+  # emptiness-by-another-name fragile filter the spec §5 silent-content-loss warns against. `classSliceOf`
+  # already drops a LITERAL `{ }` body; the freeform default is not literal-`{ }`, so it rides through — the
+  # accepted, ledgered over-report. The routed-delta anchor witness (`ci/tests/projection.nix`) pins the
+  # invariant `projectClass id C == classSubtreeAt id C ++ <route remap delta>` (exact-equal only for a
+  # route-FREE class), so the phantom is asserted BOUNDED (harmless empties), never silently unaccounted.
+  routeRemapFor =
+    id: class:
+    prelude.concatMap (
+      route:
+      if route.to == class && guardHolds route id then
+        prelude.concatMap (
+          n: placeSlice route.at (map (e: e.module) (classSliceOf n route.from))
+        ) (result.get id "reach")
+      else
+        [ ]
+    ) (routesAt id);
+
   # ── projectClass (Phase 2 Task 2, spec §1/§3): the class-slice PROJECTION over `reach` ───────────────
   # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
   # reach's canonical order (own-subtree → descendant cells → default edges → opt-in edges — the merge_ord
@@ -320,11 +387,18 @@ let
   # unregistered typo key on a REACHABLE aspect aborts NAMED (never silently vanishes on the drv path,
   # the §5 content-loss failure that `classSliceOf class` alone — classifying only the projected key —
   # would let through). Totality covers reached content (edges/descendants), not just the own node.
+  #
+  # ROUTE CLASS-REMAP (Phase 4 Task 1, spec §5 (b)). The base class-slice projection over `reach` PLUS the
+  # additive route-remap layer (`routeRemapFor`): a route `{ from=D; to=C; at; guard }` lowered at the
+  # projecting scope contributes the guard-gated remap of each reached node's class-D slice, placed at `at`,
+  # into the class-C projection. A native fleet emits no route ⇒ `routeRemapFor id class == [ ]` ⇒
+  # `projectClass` is byte-identical to the base (identity — the anchor + all Phase 1/2/3 witnesses green).
   projectClass =
     id: class:
     prelude.concatMap (
       n: builtins.seq (assertKeysRegistered n) (map (e: e.module) (classSliceOf n class))
-    ) (result.get id "reach");
+    ) (result.get id "reach")
+    ++ routeRemapFor id class;
 
   # The per-class TERMINAL assembly (spec §3/§4, Phase 2 Task 3 — THE PIVOT). Projection over `reach`
   # REPLACES the v1 emission model: `terminalModulesAt id class = projectClass id class` (the class-`C`

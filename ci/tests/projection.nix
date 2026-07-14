@@ -154,23 +154,38 @@ let
 in
 {
   flake.tests.projection = {
-    # ══ THE ANCHOR — projectClass == classSubtreeAt on a no-edge node (the subsume proof) ══════════════
-    # A real fleet host with descendant cells but NO reach edges: reach = `[id] ++ scope.descendants`, so
-    # the class-slice projection over reach reproduces the classSubtreeAt down-fold BYTE-IDENTICALLY (same
-    # module list, same A12 own-first ++ lexicographic-DFS order). This is projection SUBSUMING the fold.
+    # ══ THE ANCHOR — projectClass vs classSubtreeAt on a no-edge node (the subsume proof) ═══════════════
+    # A real fleet host with descendant cells but NO reach edges: reach = `[id] ++ scope.descendants`, so the
+    # BASE class-slice projection over reach reproduces the classSubtreeAt SAME-CLASS down-fold. Phase 4
+    # REFINED the invariant: `projectClass id C == classSubtreeAt id C` is EXACT only for a route-FREE class
+    # (no route targets C at the projecting scope); a routed class gains the route-remap DELTA
+    # (`projectClass ⊇ classSubtreeAt`). The corpus's built-in os→nixos route (mkDen os-class battery) routes
+    # `nixos` at every host, so the strong exact-equality anchor moves to the route-FREE `home-manager` class,
+    # and `nixos` gets the routed-DELTA anchor — together they prove projection = same-class fold PLUS the
+    # route transform, precisely (spec §5 (b), owner ruling 2026-07-14).
 
-    # (a) byte-identical module list at the host's NIXOS class (own host slice ++ the three cells' nixos).
-    test-anchor-projectClass-eq-classSubtreeAt-nixos = {
-      expr = out.projectClass igloo "nixos" == out.classSubtreeAt igloo "nixos";
+    # (a) ROUTED-DELTA (the NEW correct invariant for a routed class): `nixos` is routed by the built-in
+    #     os→nixos route (at=[]), so `projectClass igloo "nixos"` = the SAME-CLASS fold `classSubtreeAt igloo
+    #     "nixos"` PLUS the route remap. The os→nixos route has at=[] and reach==subtree, so its remap is
+    #     exactly the os-class subtree fold `classSubtreeAt igloo "os"` (each reached node's os slice, flat).
+    #     A clean, non-circular decomposition — the base same-class prefix ++ the route-remap delta.
+    test-anchor-projectClass-nixos-routed-delta = {
+      expr = out.projectClass igloo "nixos" == out.classSubtreeAt igloo "nixos" ++ out.classSubtreeAt igloo "os";
       expected = true;
     };
-    # (b) byte-identical at the HOME-MANAGER class too (the cells' hm slices; the per-class companion).
-    test-anchor-projectClass-eq-classSubtreeAt-hm = {
+    # (b) ROUTE-FREE EXACT (the PRESERVED strong same-class subsume proof): `home-manager` is NOT routed at
+    #     igloo (the host's own routes target nixos only), so `projectClass id C == classSubtreeAt id C`
+    #     holds EXACTLY — projection reproduces the SAME-CLASS down-fold byte-identically (same module list,
+    #     same A12 own-first ++ lexicographic-DFS order), the route-remap delta being `[ ]`.
+    test-anchor-projectClass-eq-classSubtreeAt-hm-route-free = {
       expr = out.projectClass igloo "home-manager" == out.classSubtreeAt igloo "home-manager";
       expected = true;
     };
-    # (c) the projection's actual CONTENT + ORDER (not just equality) — own-first ++ lexicographic-DFS,
-    #     proving the anchor equality is over the RIGHT value (the subtree fold), not two empties.
+    # (c) the projection's actual TAGGED CONTENT + ORDER at nixos — own-first ++ lexicographic-DFS — UNCHANGED
+    #     by the route layer: the os→nixos remap contributes only PHANTOM empty os slices (the ledgered §2.5
+    #     over-report — an `acct` cell declares no os content, so its os slice is a `{ imports = [ { } ]; }`
+    #     no-op carrying NO tag), so the tagged nixos content is exactly the four same-class slices. This
+    #     proves the routed-delta above is over the RIGHT value (real nixos content untouched, delta = empties).
     test-anchor-projectClass-nixos-content-order = {
       expr = builtins.concatMap tags (out.projectClass igloo "nixos");
       expected = [
