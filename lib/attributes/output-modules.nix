@@ -253,15 +253,47 @@ let
   # terminal of its own at the source class (the nixos host's homeManager bucket builds nothing), so it
   # is consumed once per delivery — disjoint from classSubtreeAt (same-class) and the #66 gather's
   # cross-class law. A17: the lazy id spine (ancestors/descendants are id walks; buckets force at the
-  # gather only). filterRootModules (v1 route.nix:539-551 — the den.default-shared restriction when
-  # fromClass is ctx-owned) is CORPUS-INERT (v1 ships the full host zsh bucket) and NOT built (§10
-  # item 4) — LOUD RE-OPENER: a future cell-fired forward whose fromClass is ctx-owned would
-  # over-deliver vs v1 (P2-caught; the ledger u23 note).
+  # gather only). ROOT RESTRICTION: an ancestor member whose class the firing cell OWNS is restricted to
+  # its SHARED (`den.default`) modules by `filterRootModules` below (v1 route.nix:540-552, R-ROOT-FILTER)
+  # — this is what keeps a host's OWN home-manager content (the corpus's `roles.media`
+  # `programs.spicetify`, at host + user scope) from doubling into a user cell's gather (ledger u25).
   collectedMembersOf =
     n:
     prelude.foldl' (acc: a: [ a ] ++ acc) [ ] (scope.ancestors result n)
     ++ [ n ]
     ++ scope.descendants result n;
+
+  # ── R-ROOT-FILTER (the filterRootModules twin, v1 route.nix:532-552; design §B Decision 2) ───────────
+  # In a delivery's per-member source gather, for a member `nid` that is a PROPER ANCESTOR of the firing
+  # cell `n`, if the bucket class `srcClass == producingClassOf n` (the cell OWNS the class), restrict
+  # `nid`'s `srcClass` modules to the SHARED (`den.default`-radiated) ones — drop `nid`'s scope-OWN
+  # declarations (they are that entity's OWN content, not aggregation fodder). The cell's OWN bucket
+  # (`nid == n`) and its descendants are NEVER filtered; a class the cell does NOT produce keeps `nid`'s
+  # full bucket. This is v1's `ownedClasses ∋ fromClass ⇒ filter isDenDefaultModule rootModules`: den-hoag
+  # reads the SHARED flag off the class-modules `__shared` sidecar (A1's marker; positionally aligned with
+  # the class bucket) rather than v1's `@default` module-key suffix. IDENTITY: a member that is `n` or a
+  # descendant, or a class the cell does not own, is returned unfiltered ⇒ byte-identical where the rule
+  # is corpus-inert (axon-01 — the twin fires only when an ANCESTOR carries the cell's produced class).
+  ancestorSetOf = n: prelude.foldl' (acc: a: acc // { ${a} = true; }) { } (scope.ancestors result n);
+  filterRootModules =
+    n: nid: srcClass: mods:
+    let
+      isProperAncestor = (ancestorSetOf n) ? ${nid};
+      cellOwnsClass = srcClass == producingClassOf n;
+    in
+    if isProperAncestor && cellOwnsClass then
+      let
+        sharedFlags = (classModulesAt nid).__shared.${srcClass} or [ ];
+        keepAt = i: i < builtins.length sharedFlags && builtins.elemAt sharedFlags i;
+      in
+      # Positional zip: keep `mods[i]` iff `sharedFlags[i]` (the A1 sidecar is aligned with the bucket).
+      # A missing/short sidecar (defensive) treats the entry as OWN (drop) — the restriction never keeps
+      # an unmarked ancestor module, matching v1's "shared-only" ceiling.
+      prelude.concatMap (i: if keepAt i then [ (builtins.elemAt mods i) ] else [ ]) (
+        prelude.imap0 (i: _: i) mods
+      )
+    else
+      mods;
 
   deliveryEdgesAt =
     id:
@@ -275,7 +307,12 @@ let
             # #62c + #74a — the firing scope's ANCESTOR CHAIN (v1's rootModules, outermost first) PLUS
             # itself PLUS its descendant cells (Task 5): a host-fired route gathers the user cells'
             # class content; a cell-fired forward gathers its HOST's bucket first (§10). Root-fired ⇒
-            # ancestors = [ ] ⇒ the pre-#74 members exactly.
+            # ancestors = [ ] ⇒ the pre-#74 members exactly. R-ROOT-FILTER NOTE: this is the TRACE/outputFor
+            # render; the per-(member,class) shared-only restriction is a CONTENT filter applied at the
+            # TERMINAL gather (`deliveryModulesChain`, the sole drv path), not here — the trace renders edge
+            # IDENTITY (the members LIST, unchanged: `[host, cell]`) and `outputFor` is not a shipped
+            # artifact (§9/§11: P2 hashes the terminal). So the members list stays whole; the filter never
+            # perturbs the frozen trace (the parity oracle) — only the built content.
             members = collectedMembersOf id;
           };
           target = edge.targets.root {
@@ -376,9 +413,14 @@ let
               # construction (chain(root, class) re-entered from within itself ⇒ the cycle guard);
               # its source stays the pre-#75a base-only read (the pinned witness surface,
               # test-same-class-nest-delivery-allowed).
+              # R-ROOT-FILTER: an ANCESTOR member's own `srcClass` bucket is restricted to its SHARED
+              # (`den.default`) modules when the firing cell OWNS `srcClass` — v1 filterRootModules
+              # (route.nix:540-552). The cell's own bucket and descendants pass unfiltered; the routed
+              # chain link (`deliveryModulesChain`) is a distinct-scope delivery, never an ancestor-own
+              # copy, so it is not restricted.
               srcMods = prelude.concatMap (
                 nid:
-                ((classModulesAt nid).${srcClass} or [ ])
+                filterRootModules n nid srcClass ((classModulesAt nid).${srcClass} or [ ])
                 ++ (if srcClass == class then [ ] else deliveryModulesChain seen' nid srcClass)
               ) members;
             in

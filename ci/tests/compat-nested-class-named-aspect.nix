@@ -127,18 +127,19 @@ in
       expr = builtins.elem "nixos-from-nested" hostTermTags;
       expected = true;
     };
-    # …the delivered per-user hm content = the genuine host hm base + the cell's own, and carries NO
-    #    class-keyed record (the u22-family abort shape is impossible).
+    # …the delivered per-user hm content carries NO class-keyed record (the u22-family abort shape is
+    #    impossible). R-ROOT-FILTER re-baseline (ledger u23(b) → u25): `hm-host-base` is host SCOPE-OWN
+    #    (schema.host.includes) and the cell owns home-manager, so it is DROPPED from the cell's gather —
+    #    only the cell's own `hm-tux` survives (v1 filterRootModules; a den.default-shared host hm would
+    #    survive, none here). Re-baselined from the pre-twin `[hm-host-base, hm-tux]`. The class-record
+    #    cleanliness (the test's core intent) is unchanged and reinforced.
     test-user-hm-clean-of-class-records = {
       expr = {
         tags = userHmTags;
         hasClassKeys = userHmHasClassKeys;
       };
       expected = {
-        tags = [
-          "hm-host-base"
-          "hm-tux"
-        ];
+        tags = [ "hm-tux" ];
         hasClassKeys = false;
       };
     };
