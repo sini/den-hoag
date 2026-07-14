@@ -106,9 +106,12 @@ let
     inherit target classFilter;
   };
 
-  # Build a stub `self`: `graph` = { <id> = { resolved = [ nodes ]; edges = [ reach-edge acts ]; }; }.
+  # Build a stub `self`: `graph` = { <id> = { resolved = [ nodes ]; edges = [ reach-edge acts ];
+  # children = { <childId> = { }; }; }; }.
   # `self.get id "resolved-aspects"` → that node's list; `self.get id "declarations"` → its resolution
-  # stratum (the reach-edge acts); `self.node id` → a minimal node record (scope for suppress predicates).
+  # stratum (the reach-edge acts); `self.get id "children"` → the structural-descendant walk's child map
+  # (Task 1 — `scope.descendants self id` DFS reads it); `self.node id` → a minimal node record (scope for
+  # suppress predicates).
   mkStub =
     graph:
     let
@@ -119,6 +122,8 @@ let
             (graph.${id} or { resolved = [ ]; }).resolved or [ ]
           else if attr == "declarations" then
             { actions.resolution = (graph.${id} or { }).edges or [ ]; }
+          else if attr == "children" then
+            (graph.${id} or { }).children or { }
           else
             throw "reach-graph stub: unexpected attr ${attr}";
         node = id: (graph.${id} or { }).node or { };
@@ -203,6 +208,112 @@ in
         };
       expected = {
         ownOnly = [ "cell-own" ];
+      };
+    };
+
+    # ══ Task 1 (Phase 2) — the STRUCTURAL-DESCENDANT edge (subsumes classSubtreeAt) ═════════════════════
+    #    reach's OWN/structural component is now the scope SUBTREE `[ id ] ++ scope.descendants self id`, not
+    #    node-local. A host's reach includes its descendant CELLS' resolved-aspect nodes (the define-user
+    #    nixos@host-from-cell mechanism, mirrored at the resolved-aspect level). `scope.descendants` reads the
+    #    stub's `children` map (DFS). The class filter is a Task-2 projection concern — reach returns ALL
+    #    reachable nodes here regardless of class.
+
+    # ── (a) DESCENDANT PRESENT + CANONICAL POSITION: a host with a descendant cell → reach host includes the
+    #    cell's define-user-shaped aspect, AFTER the host's own subtree, BEFORE any edge target. ──
+    test-structural-descendant-in-canonical-position = {
+      expr =
+        let
+          nDefineUser = mkNode "define-user" { nixos.tag = "du"; };
+          g = {
+            host = {
+              resolved = [ nHostNixos ]; # host's own aspect (structural, first).
+              children.cell = { }; # a descendant cell.
+              edges = [ (reachEdgeAct "eprov" null) ]; # an opt-in edge (its target comes AFTER the subtree).
+            };
+            cell.resolved = [ nDefineUser ]; # the descendant cell's aspect.
+            eprov.resolved = [ nB ]; # the edge target.
+          };
+          ks = reachKeys g "host";
+        in
+        {
+          hasCellAspect = builtins.elem "define-user" ks; # descendant cell's aspect reached.
+          keys = ks; # exact canonical order: own subtree (host, cell) THEN edge target.
+        };
+      expected = {
+        hasCellAspect = true;
+        keys = [
+          "host-nixos" # host's own (structural first)
+          "define-user" # descendant cell (structural subtree, after own, before edges)
+          "b-aspect" # opt-in edge target (after the whole structural subtree)
+        ];
+      };
+    };
+
+    # ── (b) LEAF IDENTITY (additivity): a childless node (scope.descendants = []) ⇒ structural component ==
+    #    its own resolved aspects EXACTLY — proves the subtree walk is additive for leaf nodes. ──
+    test-structural-leaf-identity = {
+      expr = reachKeys {
+        leaf.resolved = [
+          nOwn
+          nShared
+        ]; # no `children` ⇒ scope.descendants = [] ⇒ [ leaf ] subtree only.
+      } "leaf";
+      expected = [
+        "cell-own"
+        "shared"
+      ];
+    };
+
+    # ── (c) SINGLE-VISIT across the descendant component: an aspect present on BOTH the host and a descendant
+    #    cell appears ONCE (keyOf dedup, first-occurrence = the host position). ──
+    test-structural-descendant-single-visit = {
+      expr =
+        let
+          g = {
+            host = {
+              resolved = [ nShared ]; # host has `shared`.
+              children.cell = { };
+            };
+            cell.resolved = [ nShared ]; # cell ALSO has `shared` (same key).
+          };
+          ks = reachKeys g "host";
+        in
+        {
+          count = builtins.length (builtins.filter (k: k == "shared") ks); # dedup ⇒ 1.
+          keys = ks; # only ONE "shared", at the host (first) position.
+        };
+      expected = {
+        count = 1;
+        keys = [ "shared" ];
+      };
+    };
+
+    # ── (d) ALL reachable regardless of CLASS: reach returns descendant nodes irrespective of class — the
+    #    class filter is a Task-2 projection concern, not applied in reach. A host reaches a nixos-only cell
+    #    aspect AND a home-manager cell aspect alike (no class gate on the structural subtree). ──
+    test-structural-descendant-class-agnostic = {
+      expr =
+        let
+          g = {
+            host = {
+              resolved = [ nHostNixos ];
+              children = {
+                cellA = { };
+                cellB = { };
+              };
+            };
+            cellA.resolved = [ (mkNode "cell-nixos" { nixos.tag = "cn"; }) ];
+            cellB.resolved = [ (mkNode "cell-hm" { home-manager.tag = "ch"; }) ];
+          };
+          ks = reachKeys g "host";
+        in
+        {
+          hasNixosCell = builtins.elem "cell-nixos" ks; # nixos descendant reached.
+          hasHmCell = builtins.elem "cell-hm" ks; # home-manager descendant reached (no class gate).
+        };
+      expected = {
+        hasNixosCell = true;
+        hasHmCell = true;
       };
     };
 

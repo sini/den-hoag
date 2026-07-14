@@ -271,8 +271,10 @@ in
   # reach-graph class-scoped / transitive / suppression-both-arms units); no permanent public surface is
   # needed for either.
 
-  # reach(id): the P-PROJECT per-scope single-visit resolved-aspect closure (spec §1/§2). Own resolved
-  # aspects FIRST, then each POSITIVE reach-edge's target resolved aspects (class-filtered), transitively
+  # reach(id): the P-PROJECT per-scope single-visit resolved-aspect closure (spec §1/§2). The OWN/structural
+  # component is the scope SUBTREE (`[ id ] ++ scope.descendants self id` — own node then descendant cells,
+  # subsuming v1's `classSubtreeAt` down-fold, Task 1) FIRST, then each POSITIVE reach-edge's target resolved
+  # aspects (class-filtered), transitively
   # over the target's own edges; dedup by A-IDENT key (single-visit, PER this traversal — NOT global, so
   # distinct scopes each run their own). Accumulates as a LIST, dedup preserving first occurrence (own-first
   # order — the merge_ord canonical order Task 5 pins). Acyclic along the edge DAG (a target-id visited-set
@@ -285,6 +287,7 @@ in
     readsAttrs = [
       "resolved-aspects"
       "declarations"
+      "children"
     ];
     compute =
       self: id:
@@ -361,21 +364,34 @@ in
               inherit (acc) visitedIds;
             };
 
+        # STRUCTURAL-DESCENDANT EDGE (spec §2, Task 1 — subsumes v1's `classSubtreeAt` down-fold). The
+        # OWN/structural component of reach is not node-local: it is the scope SUBTREE `[ id ] ++
+        # scope.descendants self id` (own node FIRST, then descendants in lexicographic-DFS order — the same
+        # `[id] ++ scope.descendants result id` walk `classSubtreeAt`/the #62c/#66 folds run, mirrored at the
+        # RESOLVED-ASPECT level rather than class buckets), each node contributing its `self.get nid
+        # "resolved-aspects"`. This is how a host reaches its descendant CELLS' aspect nodes (the `define-user`
+        # nixos@host-from-cell mechanism, now a reach edge). `scope.descendants` reads `self.get nid "children"`
+        # (declared in readsAttrs) — the lazy id spine, top-down over the containment DAG, so no cycle. The
+        # class filter is a PROJECTION concern (Task 2), NOT applied here — reach returns ALL reachable nodes.
+        #
         # CANONICAL merge_ord ORDER (spec §1, Task 5 — LOAD-BEARING for order-semantic content: the zsh
         # ZSH_HIGHLIGHT_HIGHLIGHTERS multiset, persistence entry order — ledger u24). The result list is
-        # accumulated OWN-subtree FIRST (forwardExpand order), THEN the edges of `edgesAt id` in precedence
-        # order (default edges < opt-in edges — `positiveEdgesAt` puts `defaultEdgesAt` before the declared
-        # reach-edges), each provider contributing its resolved-aspects in include order; `addNode` dedups
-        # by first occurrence, so this order is STABLE and deterministic (no set-iteration nondeterminism).
-        # Do NOT reorder these folds — the Phase-2 class-slice merge depends on this sequence.
-        ownNodes = self.get id "resolved-aspects";
+        # accumulated OWN-SUBTREE FIRST (own node's forwardExpand order, then each descendant's, in
+        # `scope.descendants` order), THEN the edges of `edgesAt id` in precedence order (default edges <
+        # opt-in edges — `positiveEdgesAt` puts `defaultEdgesAt` before the declared reach-edges), each
+        # provider contributing its resolved-aspects in include order; `addNode` dedups by first occurrence
+        # (an aspect on both host and a cell keeps its host/own position), so this order is STABLE and
+        # deterministic (no set-iteration nondeterminism). Do NOT reorder these folds — the Phase-2
+        # class-slice merge depends on this sequence.
+        subtreeIds = [ id ] ++ scope.descendants self id;
+        structuralNodes = prelude.concatMap (nid: self.get nid "resolved-aspects") subtreeIds;
         seededOwn = prelude.foldl' addNode {
           seen = { };
           nodes = [ ];
           visitedIds = {
             ${id} = true;
           };
-        } ownNodes;
+        } structuralNodes;
         result = prelude.foldl' addTarget seededOwn (edgesAt id);
       in
       result.nodes;
