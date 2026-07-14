@@ -6,12 +6,16 @@
 # cross-scope edge, class-scoped F9); `reachSuppressOf` filters `reach-suppress` → `[ { edge; when } ]` (NEGATIVE
 # suppression, F3-exclude / u21).
 #
-# After Task 2, `reachEdgesOf` is INTERNAL (`let`-bound) and its behaviour is witnessed THROUGH `reach` (below);
-# `reachSuppressOf` stays returned on the module attrset for its Phase-1 `when`-predicate witness (its `reach`
-# consumer arrives in Task 4). `reach` (Task 2) needs the REAL prelude/resolve/scope/aspects/select, so the module
-# is imported with denHoag.internal deps and `reach.compute self id` is driven against a STUB `self` (the
-# compat-expose-gather.nix mkStub precedent) serving synthetic per-node resolved-aspects/declarations — the
-# traversal witnessed as a pure graph function (no policy vocabulary for reach-edges; Phase-5 wiring authors those).
+# Both `reachEdgesOf` AND `reachSuppressOf` are INTERNAL (`let`-bound) — consumed inside `reach` (positive
+# edges + negative-edge suppression), witnessed THROUGH `reach` (below), no public export. `reach` needs the
+# REAL prelude/resolve/scope/aspects/select, so the module is imported with denHoag.internal deps and
+# `reach.compute self id` is driven against a STUB `self` (the compat-expose-gather.nix mkStub precedent)
+# serving synthetic per-node resolved-aspects/declarations — the traversal witnessed as a pure graph function
+# (no policy vocabulary for reach-edges/suppresses in Phase 1; Phase-5 corpus wiring authors those).
+#
+# Witness map: Task 2 = reach closure (identity / class-scope F9 / single-visit / per-scope / transitive);
+# Task 3 = framework default-edge (unset-identity / injection / dedup); Task 4 = suppression (droid both-arms
+# / when-false + mismatch no-op); Task 5 = canonical merge_ord order ([O D P] / provider include-order / stable).
 {
   denHoag,
   denHoagSrc,
@@ -476,6 +480,119 @@ in
         in
         builtins.elem "host-hm" (reachKeys g "cell");
       expected = true; # E survives both a false-when suppress and a target-mismatch suppress.
+    };
+
+    # ══ Task 5 — canonical reach ordering (merge_ord determinism) witnesses ════════════════════════════
+    #    P-PROJECT merge_ord: own-subtree FIRST, then default-edge targets, then opt-in-edge targets, each
+    #    provider in include order. The Phase-2 class-slice merge relies on this for order-semantic content
+    #    (the zsh ZSH_HIGHLIGHT_HIGHLIGHTERS multiset, persistence entry order — ledger u24).
+
+    # ── (a) EXACT ORDER [O D P]: a cell with own aspect O, a DEFAULT edge → provider D, and an OPT-IN
+    #    (declared reach-edge) → provider P. reach keys = [ O, D, P ] (own first, default before opt-in). ──
+    test-reach-canonical-order = {
+      expr =
+        let
+          # default edge on the cell → node "dprov"; the cell also DECLARES an opt-in reach-edge → "pprov".
+          dget =
+            id:
+            if id == "cell" then
+              [
+                {
+                  target = "dprov";
+                  classFilter = null;
+                }
+              ]
+            else
+              [ ];
+          g = {
+            cell = {
+              resolved = [ (mkNode "O" { home-manager.tag = "o"; }) ];
+              edges = [ (reachEdgeAct "pprov" null) ]; # opt-in edge.
+            };
+            dprov.resolved = [ (mkNode "D" { home-manager.tag = "d"; }) ];
+            pprov.resolved = [ (mkNode "P" { home-manager.tag = "p"; }) ];
+          };
+        in
+        reachKeysOn (raWith dget) g "cell";
+      expected = [
+        "O" # own subtree first
+        "D" # then the default-edge provider
+        "P" # then the opt-in-edge provider
+      ];
+    };
+
+    # ── (b) PROVIDER in INCLUDE ORDER: each provider contributes its own resolved-aspects in list order,
+    #    and own-subtree multi-aspect order is preserved (forwardExpand order). ──
+    test-reach-provider-include-order = {
+      expr =
+        let
+          dget =
+            id:
+            if id == "cell" then
+              [
+                {
+                  target = "dprov";
+                  classFilter = null;
+                }
+              ]
+            else
+              [ ];
+          g = {
+            cell.resolved = [
+              (mkNode "O1" { home-manager.tag = "o1"; })
+              (mkNode "O2" { home-manager.tag = "o2"; })
+            ];
+            dprov.resolved = [
+              (mkNode "D1" { home-manager.tag = "d1"; })
+              (mkNode "D2" { home-manager.tag = "d2"; })
+            ];
+          };
+        in
+        reachKeysOn (raWith dget) g "cell";
+      expected = [
+        "O1"
+        "O2" # own, in include order
+        "D1"
+        "D2" # default provider, in include order
+      ];
+    };
+
+    # ── (c) STABLE across re-eval: reach is a pure list-accumulate with first-occurrence dedup — two
+    #    independent evaluations of the SAME reach return the byte-identical key sequence (deterministic,
+    #    no set-iteration nondeterminism). ──
+    test-reach-order-stable = {
+      expr =
+        let
+          dget =
+            id:
+            if id == "cell" then
+              [
+                {
+                  target = "dprov";
+                  classFilter = null;
+                }
+              ]
+            else
+              [ ];
+          g = {
+            cell = {
+              resolved = [ (mkNode "O" { home-manager.tag = "o"; }) ];
+              edges = [ (reachEdgeAct "pprov" null) ];
+            };
+            dprov.resolved = [ (mkNode "D" { home-manager.tag = "d"; }) ];
+            pprov.resolved = [ (mkNode "P" { home-manager.tag = "p"; }) ];
+          };
+          once = reachKeysOn (raWith dget) g "cell";
+          twice = reachKeysOn (raWith dget) g "cell";
+        in
+        once == twice
+        &&
+          once == [
+            "O"
+            "D"
+            "P"
+          ];
+      expected = true;
     };
   };
 }

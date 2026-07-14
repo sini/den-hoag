@@ -361,6 +361,13 @@ in
               inherit (acc) visitedIds;
             };
 
+        # CANONICAL merge_ord ORDER (spec §1, Task 5 — LOAD-BEARING for order-semantic content: the zsh
+        # ZSH_HIGHLIGHT_HIGHLIGHTERS multiset, persistence entry order — ledger u24). The result list is
+        # accumulated OWN-subtree FIRST (forwardExpand order), THEN the edges of `edgesAt id` in precedence
+        # order (default edges < opt-in edges — `positiveEdgesAt` puts `defaultEdgesAt` before the declared
+        # reach-edges), each provider contributing its resolved-aspects in include order; `addNode` dedups
+        # by first occurrence, so this order is STABLE and deterministic (no set-iteration nondeterminism).
+        # Do NOT reorder these folds — the Phase-2 class-slice merge depends on this sequence.
         ownNodes = self.get id "resolved-aspects";
         seededOwn = prelude.foldl' addNode {
           seen = { };
