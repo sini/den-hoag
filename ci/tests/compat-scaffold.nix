@@ -22,6 +22,10 @@
         "entities"
         "include"
         "policies"
+        # Shared-vs-own provenance (Track A rung 1): the `den.default` reserved-aspect key(s) whose class
+        # content is radiated-shared, for the class-modules `__shared` sidecar (R-ROOT-FILTER). Empty here
+        # (no `den.default` in `{ }`), non-empty `[ "__default" ]` when `den.default` is declared.
+        "sharedAspectKeys"
       ];
     };
     test-legacy-provides-tag = {

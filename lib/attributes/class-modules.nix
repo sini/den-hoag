@@ -35,11 +35,16 @@ let
 
   # One resolved aspect's class-bucket contributions: iterate its content keys (skipping the module
   # system's own `_`-prefixed keys), classify each, and collect the non-empty `class` buckets. A
-  # `channel`/`facet` key is skipped; an unregistered key aborts inside `classifyKey` (§2.2).
+  # `channel`/`facet` key is skipped; an unregistered key aborts inside `classifyKey` (§2.2). Each
+  # collected entry is a `{ module; shared; }` record — `shared` is the resolved node's `__denShared`
+  # flag (Track A rung 1: true iff the aspect roots or descends the radiated `den.default` subtree —
+  # resolved-aspects stamps it). The public bucket strips back to the bare `module` (byte-identical); the
+  # `shared` flag rides the `__shared` sidecar for the R-ROOT-FILTER twin (A2).
   classContentOf =
     aspect:
     let
       content = aspect.content;
+      shared = aspect.__denShared or false;
       keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
     in
     prelude.foldl' (
@@ -50,7 +55,18 @@ let
         in
         # An empty class body ({}) is a declared no-op — dropped rather than merged as an
         # empty module, so bucket counts reflect real content.
-        if m == { } then acc else acc // { ${k} = (acc.${k} or [ ]) ++ [ m ]; }
+        if m == { } then
+          acc
+        else
+          acc
+          // {
+            ${k} = (acc.${k} or [ ]) ++ [
+              {
+                module = m;
+                inherit shared;
+              }
+            ];
+          }
       else
         acc
     ) { } keys;
@@ -60,6 +76,23 @@ let
     prelude.foldl' (acc': cn: acc' // { ${cn} = (acc'.${cn} or [ ]) ++ m.${cn}; }) acc (
       builtins.attrNames m
     );
+
+  # Split the record-carrying buckets (`{ <class> = [ { module; shared; } ]; }`) into the PUBLIC
+  # attribute value: the bare-module buckets `{ <class> = [ <deferredModule> ]; }` (byte-identical to
+  # the pre-marker output — every existing reader at output-modules reads `.${class}` positionally) PLUS
+  # the `__shared` sidecar `{ <class> = [ <bool> ]; }` positionally aligned with each class bucket. The
+  # `__`-prefix keeps the sidecar OUT of every class-name read (readers access `.${class}` by name, never
+  # `attrNames` the value expecting only classes — checked at output-modules `classModulesAt` consumers),
+  # so this is purely additive (A1: no consumer behavior change yet — A2 reads the sidecar).
+  splitBuckets =
+    recBuckets:
+    let
+      cns = builtins.attrNames recBuckets;
+    in
+    (prelude.foldl' (acc: cn: acc // { ${cn} = map (e: e.module) recBuckets.${cn}; }) { } cns)
+    // {
+      __shared = prelude.foldl' (acc: cn: acc // { ${cn} = map (e: e.shared) recBuckets.${cn}; }) { } cns;
+    };
 in
 {
   class-modules = resolve.attr {
@@ -78,14 +111,24 @@ in
 
         base = prelude.foldl' (acc: a: mergeBuckets acc (classContentOf a)) emptyBuckets resolvedAspects;
 
-        # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket.
+        # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket. A node's
+        # own inject is a SCOPE-OWN declaration (`shared = false`); it is never `den.default`-radiated root
+        # content, so it is never filtered by the R-ROOT-FILTER twin.
         injects = builtins.filter (a: a.__action == "inject") resolutionActs;
         withInject = prelude.foldl' (
           acc: inj:
           let
             cn = className inj.class;
           in
-          acc // { ${cn} = (acc.${cn} or [ ]) ++ [ inj.module ]; }
+          acc
+          // {
+            ${cn} = (acc.${cn} or [ ]) ++ [
+              {
+                module = inj.module;
+                shared = false;
+              }
+            ];
+          }
         ) base injects;
 
         # `reroute { from; to }` (spec §2.3 resolution) — moves a class's collected content to another
@@ -104,6 +147,6 @@ in
           }
         ) withInject reroutes;
       in
-      withReroute;
+      splitBuckets withReroute;
   };
 }

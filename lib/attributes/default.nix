@@ -121,9 +121,20 @@ in
       containmentRelations ? { },
       classNames,
       classifyKey,
+      # Shared-vs-own provenance (Track A rung 1): the resolved-aspect keys that root a radiated-shared
+      # (`den.default`) subtree, passed to resolved-aspects which stamps each node's `__denShared` flag
+      # (class-modules reads it for the `__shared` sidecar). Default `[ ]` ⇒ no aspect marked shared.
+      sharedAspectKeys ? [ ],
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
-    // (resolvedAspects { inherit allAspects directIncludes enrichContext; })
+    // (resolvedAspects {
+      inherit
+        allAspects
+        directIncludes
+        enrichContext
+        sharedAspectKeys
+        ;
+    })
     // (collections {
       inherit
         quirkDag
