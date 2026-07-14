@@ -18,6 +18,7 @@
 {
   denHoag,
   denHoagSrc,
+  nixpkgsLib,
   ...
 }:
 let
@@ -88,6 +89,7 @@ let
       to,
       at ? [ ],
       guard ? null,
+      adaptArgs ? null,
       appendToParent ? false,
     }:
     {
@@ -97,7 +99,7 @@ let
       module = null;
       path = at;
       mode = "merge";
-      inherit guard appendToParent;
+      inherit guard adaptArgs appendToParent;
     };
 
   # A STUB `result` for `mkOutputModules`: `reach id` = the reached node list, `declarations` = the route
@@ -161,6 +163,33 @@ let
       ++ (if m ? imports then builtins.concatMap tags m.imports else [ ])
     else
       [ ];
+
+  # nixpkgs lib for the Task-3 arg-env witnesses — the REAL evalModules crossing (the terminal), where a
+  # projected flake-parts slice reading an adaptArgs-injected arg must resolve. `lib` is den-hoag's ONE
+  # sanctioned nixpkgs boundary (mirrors the terminal); the arg-env witnesses cross it explicitly.
+  lib = nixpkgsLib;
+
+  # Cross the projected `flake-parts` content through a REAL evalModules with a `devshells.default`
+  # submodule option (the corpus #15 shape), returning the resolved `devshells.default.marker` — a slice
+  # module sets `marker` from an adaptArgs-injected arg, so a resolved marker PROVES the injection reached
+  # the nested submodule eval. `tryEval` so a missing-arg abort (the fails-without-hook teeth) is observable.
+  crossFlakeParts =
+    projected:
+    (lib.evalModules {
+      modules = [
+        {
+          options.devshells = lib.mkOption {
+            type = lib.types.attrsOf (
+              lib.types.submoduleWith {
+                modules = [ { options.marker = lib.mkOption { type = lib.types.str; default = "none"; }; } ];
+              }
+            );
+            default = { };
+          };
+        }
+      ]
+      ++ projected;
+    }).config.devshells.default.marker;
 in
 {
   flake.tests.projection-routes = {
@@ -406,6 +435,158 @@ in
       expected = {
         hmUsers = [ ];
         hostOwn = [ "nixos-host" ];
+      };
+    };
+
+    # ══ (6) #15 devshell adaptArgs — the ARG-ENV crossing hook (Task 3, spec §5 (c) — the HARD bucket) ════
+    # A route `{ from="devshell"; to="flake-parts"; at=[devshells default]; adaptArgs={...}: {pkgs2=...} }`.
+    # projectClass (Task 1) places the devshell slice at `devshells.default` (content half); the arg-env
+    # wrapper rides that placed module so at the TERMINAL evalModules crossing the slice evaluates WITH the
+    # adaptArgs-injected arg, injected INTO the `devshells.default` nested submodule eval (v1 nestWithAdaptArgs).
+    # The slice module `{ pkgs2, ... }: config.marker = pkgs2` STRICTLY reads `pkgs2` — an arg ONLY the
+    # adaptArgs `_module.args` provides. A resolved `marker = "injected-pkgs"` crossing a REAL evalModules is
+    # the load-bearing teeth: the injection reached the `devshells.default` NESTED submodule eval. (The
+    # module system does NOT honor a formal default under `submoduleWith`, so the strict read is genuinely
+    # unsatisfiable WITHOUT the hook — the fails-without is proven STRUCTURALLY in 6b: no hook ⇒ no
+    # `_module.args` injection path exists on the placed module at all.)
+    test-route-devshell-adaptArgs-injects-at-crossing = {
+      expr =
+        let
+          graph.scope = {
+            reach = [
+              (mkNode "d" {
+                devshell =
+                  { pkgs2, ... }:
+                  {
+                    config.marker = pkgs2; # STRICTLY reads the adaptArgs-injected arg (allModuleArgs-shaped).
+                  };
+              })
+            ];
+            routes = [
+              (deliveryAct {
+                from = "devshell";
+                to = "flake-parts";
+                at = [
+                  "devshells"
+                  "default"
+                ];
+                adaptArgs = _args: { pkgs2 = "injected-pkgs"; }; # the #15 allModuleArgs-shaped injection.
+              })
+            ];
+          };
+        in
+        crossFlakeParts (projectClassOf graph "scope" "flake-parts");
+      expected = "injected-pkgs"; # the slice resolved WITH the injected arg at the crossing.
+    };
+
+    # (6b) THE TEETH (fails-without, STRUCTURAL) — WITH adaptArgs the placed slice is a FUNCTION-MODULE
+    #      carrying the `_module.args` arg-env injection; WITHOUT it the placed slice is a PLAIN attrset with
+    #      NO injection path (so a strict `pkgs2` read like 6's would be unsatisfiable at the crossing — the
+    #      module system offers no default under submoduleWith). The presence/absence of the function-wrapper
+    #      IS the load-bearing contrast: the injection exists iff the route carries adaptArgs. (Structural
+    #      rather than a crossing-abort because the module-system missing-arg error is not `tryEval`-catchable.)
+    test-route-adaptArgs-injection-present-iff-adaptArgs = {
+      expr =
+        let
+          slice = mkNode "d" { devshell.tag = "shell"; };
+          mkGraph = adaptArgs: {
+            scope = {
+              reach = [ slice ];
+              routes = [
+                (deliveryAct (
+                  {
+                    from = "devshell";
+                    to = "flake-parts";
+                    at = [
+                      "devshells"
+                      "default"
+                    ];
+                  }
+                  // (if adaptArgs == null then { } else { inherit adaptArgs; })
+                ))
+              ];
+            };
+          };
+          # the placed module under `devshells.default` — a function (arg-env wrapper) iff adaptArgs present.
+          placedOf =
+            adaptArgs:
+            let
+              m = builtins.head (projectClassOf (mkGraph adaptArgs) "scope" "flake-parts");
+            in
+            m.devshells.default;
+        in
+        {
+          withAdaptArgs = builtins.isFunction (placedOf (_args: { pkgs2 = "x"; })); # function-wrapper present.
+          withoutAdaptArgs = builtins.isFunction (placedOf null); # plain module — NO injection path.
+        };
+      expected = {
+        withAdaptArgs = true;
+        withoutAdaptArgs = false;
+      };
+    };
+
+    # (6c) NO-adaptArgs IDENTITY — a plain content route's placed slice is a PLAIN module (attrset), NOT a
+    #      function-wrapper: non-adaptArgs content evals verbatim (byte-identical to Tasks 1/2, no arg-env
+    #      contamination). The homeLinux→home-manager route (Task 1) places a plain module.
+    test-route-no-adaptArgs-placed-slice-is-plain = {
+      expr =
+        let
+          graph.scope = {
+            reach = [ (mkNode "a" { homeLinux.tag = "linux-a"; }) ];
+            routes = [ (deliveryAct { from = "homeLinux"; to = "home-manager"; }) ]; # NO adaptArgs.
+          };
+          hm = projectClassOf graph "scope" "home-manager";
+        in
+        {
+          isFunction = builtins.isFunction (builtins.head hm); # MUST be false — a plain module.
+          tags = builtins.concatMap tags hm; # the content is verbatim.
+        };
+      expected = {
+        isFunction = false;
+        tags = [ "linux-a" ];
+      };
+    };
+
+    # (6d) GUARD gates AT THE CROSSING — an adaptArgs route ALSO carrying an EVAL-TIME guard
+    #      (`{config,...}: config.enable`) gates the content at the crossing (v1 `optionalAttrs (guard args)`):
+    #      guard-TRUE ⇒ the slice's marker resolves; guard-FALSE ⇒ the slice is gated out (default "none").
+    test-route-adaptArgs-guard-gates-at-crossing = {
+      expr =
+        let
+          mkGraph = guardVal: {
+            scope = {
+              reach = [
+                (mkNode "d" {
+                  devshell =
+                    { pkgs2, ... }:
+                    {
+                      config.marker = pkgs2;
+                    };
+                })
+              ];
+              routes = [
+                (deliveryAct {
+                  from = "devshell";
+                  to = "flake-parts";
+                  at = [
+                    "devshells"
+                    "default"
+                  ];
+                  adaptArgs = _args: { pkgs2 = "injected-pkgs"; };
+                  guard = _args: guardVal; # eval-time guard (gates at the crossing, not at projection).
+                })
+              ];
+            };
+          };
+          markerWith = guardVal: crossFlakeParts (projectClassOf (mkGraph guardVal) "scope" "flake-parts");
+        in
+        {
+          guardTrue = markerWith true; # slice present ⇒ injected marker.
+          guardFalse = markerWith false; # slice gated out ⇒ the option default.
+        };
+      expected = {
+        guardTrue = "injected-pkgs";
+        guardFalse = "none";
       };
     };
   };

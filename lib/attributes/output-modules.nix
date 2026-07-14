@@ -318,6 +318,10 @@ let
     to = d.targetClass.name;
     at = d.path;
     guard = d.guard or null;
+    # The ARG-ENVIRONMENT closure (Task 3, bucket c) — carried straight through to the terminal crossing
+    # (today the trace records only its PRESENCE as a boolean; the CLOSURE must reach the eval boundary).
+    # `null` ⇒ no arg-env transform (the ordinary content route, Tasks 1/2 — the wrapper is identity).
+    adaptArgs = d.adaptArgs or null;
   };
 
   # `routesAt id` = the class-remaps of the OWN-scope routes fired at `id` — the deliveries that target the
@@ -350,19 +354,53 @@ let
 
   # A route's guard against the projecting scope (spec §5: "eval the guard against the scope; false →
   # contribute nothing"). The v1 route guard is a closure over the scope's binding environment (home-platform
-  # guards on `host.system` suffix, wsl on `options ? wsl`). Here — the CONTENT half, pre-terminal — it is
-  # evaluated against the node's enriched-context bindings (host/user entity entries). A `null` guard is
-  # unconditional (present in both arms, v1 parity — a guard gates content, never rule-firing). The
-  # ARG-ENVIRONMENT half (adaptArgs/guard needing the nixpkgs `evalModules` args) rides the terminal
-  # crossing (Task 3); this is the pure-content gate.
+  # guards on `host.system` suffix). Here — the CONTENT half, pre-terminal — it is evaluated against the
+  # node's enriched-context bindings (host/user entity entries). A `null` guard is unconditional.
+  #
+  # THE CONTENT/ARG-ENV SPLIT (Task 3, spec §5): a route carrying `adaptArgs` is a bucket-(c) ARG-ENVIRONMENT
+  # route — its guard is an EVAL-TIME predicate over the nixpkgs `evalModules` args (`{options,...}: options ?
+  # wsl`), which the enriched-context does NOT carry — so its guard is DEFERRED to the terminal crossing
+  # (`argEnvWrap`, `optionalAttrs (guard args)`), NOT gated here (gating it against the content-time context
+  # would mis-evaluate an options/config predicate). A route with NO `adaptArgs` is a pure-content route: its
+  # guard is content-time (home-platform), gated HERE. So `guardHolds` gates only content-route guards; the
+  # arg-env route's guard rides the wrapper.
   guardHolds =
-    route: id: route.guard == null || route.guard (result.get id "enriched-context");
+    route: id:
+    route.adaptArgs != null || route.guard == null || route.guard (result.get id "enriched-context");
 
   # `place at slice`: the fold's nest (`nestAtPath`, gen-edge core.setAttrByPath). `at == []` ⇒ the slice
   # FLAT (bucket b pure remap, #14 home-platform homeLinux→homeManager); `at ≠ []` ⇒ each module wrapped
   # under the path as a content module (`{ <at> = <module>; }`, nest-via-content-module — the shape later
   # tasks place per-cell home-manager.users.<u> content at, #10/#15). Pure attrset assembly (A1).
   placeSlice = at: slice: if at == [ ] then slice else map (m: nestAtPath at m) slice;
+
+  # ── The ARG-ENVIRONMENT crossing hook (Phase 4 Task 3, spec §5 (c) — the HARD bucket) ────────────────
+  # A route carrying `adaptArgs` (`{config,...}: config.allModuleArgs` for #15 devshell→flake-parts;
+  # `args: args // { osConfig = args.config; }` for os-user) rewrites the terminal EVAL-TIME arg environment,
+  # NOT the projected content. `projectClass` stays a pure CONTENT projection (Task 1 placed the slice); the
+  # arg-env transform rides ON that placed module as a nixpkgs FUNCTION-MODULE
+  # `args: { imports = [ <placed> ]; _module.args = adaptArgs args; }` — v1's `nestWithAdaptArgs`
+  # (`_module.args = adaptArgs args`, the module-system's own nested-arg mechanism). It is a NO-OP at
+  # projection time (a function is inert content); the arg-rewrite APPLIES only when the nixpkgs `evalModules`
+  # TERMINAL forces it (where `args`/`config` exist), injecting the adapted args every SIBLING module in that
+  # eval reads — so a slice module destructuring an `allModuleArgs`-provided arg resolves at the crossing.
+  # ATTACHES to EXACTLY the adaptArgs-route slice (built HERE, where the route↔slice pairing is known — the
+  # per-slice attach, never the whole class content). A route with NO `adaptArgs` is NOT an arg-env route:
+  # it gets the identity (the placed slice verbatim), so pure-content routes (Tasks 1/2) eval plain,
+  # byte-identical — their CONTENT-TIME guard is already gated at projection by `guardHolds`, never wrapped
+  # here. ONLY an `adaptArgs`-bearing (bucket-c) route is wrapped. Its EVAL-TIME `guard` (deferred from
+  # `guardHolds`, which skips adaptArgs routes) gates the content at the crossing (v1 `optionalAttrs (guard
+  # args)`): `imports = optional (guard args) placed` — guard-false ⇒ an EMPTY module at eval; a null guard
+  # is unconditional. So the eval-time function-module exists IFF the route carries adaptArgs.
+  argEnvWrap =
+    route: placed:
+    if route.adaptArgs == null then
+      placed # NOT an arg-env route — identity (content-time guard, if any, is handled by guardHolds).
+    else
+      args: {
+        imports = if route.guard == null then [ placed ] else prelude.optional (route.guard args) placed;
+        _module.args = route.adaptArgs args;
+      };
 
   # The route class-remap contribution to `projectClass id C`: for each route TARGETING C whose guard holds
   # at the scope, the guard-gated remap of each REACHED node's class-`from` slice, placed at the route's
@@ -391,7 +429,11 @@ let
   remapOver =
     srcScope: route:
     prelude.concatMap (
-      n: placeSlice route.at (map (e: e.module) (classSliceOf n route.from))
+      # argEnvWrap wraps EACH slice module FIRST (so the arg-env `_module.args` lands at the SLICE's eval
+      # level), THEN placeSlice nests the wrapper at the route path — the `_module.args = adaptArgs args`
+      # must be INSIDE the target submodule's nested eval (e.g. inside `devshells.default`), NOT at the
+      # outer level (where it would not reach the nested submodule's args). Order is load-bearing.
+      n: placeSlice route.at (map (m: argEnvWrap route m) (map (e: e.module) (classSliceOf n route.from)))
     ) (result.get srcScope "reach");
 
   routeRemapFor =
