@@ -35,18 +35,19 @@ let
     select
     ;
 
-  # THE ONE per-aspect class-slice extraction, built with the base `classifyKey` (nixos/darwin/
-  # home-manager/k8s-manifests) — the same function the assembly threads to `projectClass`.
-  classSliceOf =
-    (import "${denHoagSrc}/lib/attributes/class-modules.nix"
+  # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, built with the base
+  # `classifyKey` (nixos/darwin/home-manager/k8s-manifests) — the same functions the assembly threads to
+  # `projectClass`.
+  cm =
+    import "${denHoagSrc}/lib/attributes/class-modules.nix"
       {
         inherit prelude resolve;
       }
       {
         classNames = [ ];
         inherit classifyKey;
-      }
-    ).classSliceOf;
+      };
+  inherit (cm) classSliceOf assertKeysRegistered;
 
   # projectClass replicated over a STUB reach list (byte-identical to output-modules.nix's body — a pure
   # class-slice fold over `reach id`). `reachList` stands in for `result.get id "reach"`.
@@ -102,6 +103,20 @@ let
       class,
     }:
     projectOver ((mkRa defaultEdgeTargets).reach.compute (mkStub graph) id) class;
+
+  # projectClass WITH the §2.2 totality pass (byte-identical to output-modules.nix's projectClass body:
+  # `seq (assertKeysRegistered n)` per REACHED aspect before its slice) — for the reached-content totality
+  # witness (a typo key on an aspect reached via an EDGE aborts NAMED, not just an own-node key).
+  projectReachTotal =
+    {
+      defaultEdgeTargets ? (_: [ ]),
+      graph,
+      id,
+      class,
+    }:
+    prelude.concatMap (
+      n: builtins.seq (assertKeysRegistered n) (map (e: e.module) (classSliceOf n class))
+    ) ((mkRa defaultEdgeTargets).reach.compute (mkStub graph) id);
 
   # ── ANCHOR fixture: the class-fold-subtree fleet (nixos host `igloo` + three hm user cells, each cell
   #    emitting a nixos (define-user) slice + a home-manager slice). NO reach edges (corpus has none until
@@ -356,6 +371,77 @@ in
         hostHasDefineUserNixos = true;
         hostNoHmLeak = true;
         cellHasDefineUserHm = true;
+      };
+    };
+
+    # ══ §2.2 TOTALITY over REACHED content (ruling 2026-07-14) ══════════════════════════════════════════
+    # Projection widened what a scope reaches (edges + descendants), so the unregistered-key totality abort
+    # must cover REACHED aspects, not just own-node content — else a typo on an edge-reached aspect would
+    # silently vanish on the drv path (the §5 silent-content-loss failure). `projectReachTotal` mirrors
+    # output-modules.nix's projectClass (the `assertKeysRegistered` force per reached aspect).
+
+    # (a) a typo key (`nixxos`) on an aspect reached via an OPT-IN EDGE aborts NAMED under projection —
+    #     totality holds for edge-reached content, not just the own node.
+    test-totality-unregistered-key-on-reached-aspect-aborts = {
+      expr =
+        let
+          graph = {
+            host = {
+              resolved = [ (mkNode "host-own" { nixos.tag = "host"; }) ];
+              edges = [ (reachEdgeAct "provider" null) ]; # opt-in edge to the provider…
+            };
+            # …whose aspect carries an UNREGISTERED content key `nixxos` (a typo — neither facet/class/channel).
+            # `name` is the aspect name classifyKey reports in the abort (real resolved aspects carry it).
+            provider.resolved = [
+              (mkNode "typo-aspect" {
+                name = "typo-aspect";
+                nixxos.tag = "boom";
+              })
+            ];
+          };
+          r = builtins.tryEval (
+            builtins.deepSeq (projectReachTotal {
+              inherit graph;
+              id = "host";
+              class = "nixos";
+            }) true
+          );
+        in
+        r.success; # MUST be false — the reached typo aborts named at projection.
+      expected = false;
+    };
+
+    # (b) NON-VACUOUS companion: the SAME edge-reached aspect with a REGISTERED class key (`nixos`) does NOT
+    #     abort — only a genuinely unregistered key does; a registered key of a reached aspect passes
+    #     (e.g. define-user's darwin/home-manager keys while projecting nixos are registered, never abort).
+    test-totality-registered-key-on-reached-aspect-ok = {
+      expr =
+        let
+          graph = {
+            host = {
+              resolved = [ (mkNode "host-own" { nixos.tag = "host"; }) ];
+              edges = [ (reachEdgeAct "provider" null) ];
+            };
+            provider.resolved = [
+              (mkNode "ok-aspect" {
+                name = "ok-aspect";
+                nixos.tag = "reached";
+              })
+            ]; # registered key.
+          };
+          ts = builtins.concatMap tags (projectReachTotal {
+            inherit graph;
+            id = "host";
+            class = "nixos";
+          });
+        in
+        {
+          noAbort = builtins.elem "reached" ts; # the reached registered slice projects, no abort.
+          hasOwn = builtins.elem "host" ts;
+        };
+      expected = {
+        noAbort = true;
+        hasOwn = true;
       };
     };
   };
