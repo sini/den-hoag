@@ -234,7 +234,7 @@ let
     || (builtins.isAttrs v && v ? __contentValues)
     || (
       builtins.isAttrs v
-      && !(builtins.isAttrs v && v ? imports && isEmptyDeferredModule v)
+      && !(v ? imports && isEmptyDeferredModule v)
       && (
         v == { }
         || builtins.any (
@@ -364,10 +364,7 @@ let
       # stayed nameless, so every navigated static include keyed `"<anon>"` (gen-aspects `aspectPath`),
       # forwardExpand's seen-dedup kept only the FIRST sibling, transitive chains starved behind their
       # intermediate's key, and the content-driven member spine (output-modules `contentIdsOf`) dropped
-      # starved hosts from `nixosConfigurations` entirely — the corpus zero-content diagnosis. Identity:
-      # `stampProvider` (v1 wrapChild, normalize.nix:95-119) when the value is annotated; the DISTINCT
-      # POSITIONAL name as the annotation-less inline-literal fallback — v1's own nameless posture
-      # (children.nix's `<parent>/<anon>:<idx>` rename).
+      # starved hosts from `nixosConfigurations` entirely — the corpus zero-content diagnosis.
       # Does an include carry REAL content (a non-empty class deferredModule, a non-empty channel value, or
       # non-empty `.includes`)? A CONTENT-BEARING navigated node (`with den.aspects; [ core.systemd.boot ]`)
       # already carries its OWN correct native `.key` (its definition path — `core/systemd/boot`); an
