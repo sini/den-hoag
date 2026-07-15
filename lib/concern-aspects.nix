@@ -24,7 +24,7 @@
   errors,
 }:
 let
-  # Shape B — the shared class + channel keySemantics builder. The SAME class + channel vocabulary feeds
+  # The shared class + channel keySemantics builder. The SAME class + channel vocabulary feeds
   # this concern AND every other consumer of the aspect schema, so no channel key falls to freeform.
   keySemanticsLib = import ./key-semantics.nix { inherit prelude; };
   # §B4a reverse injection — declared on the aspect submodule (not inside a parametric body).
@@ -92,7 +92,7 @@ let
       config.id_hash = builtins.hashString "sha256" "den-aspect:${config.key}";
     };
 
-  # cnf drives gen-aspects' `aspectType` — Shape B: ONE `keySemantics` map declares every aspect key's
+  # cnf drives gen-aspects' `aspectType`: ONE `keySemantics` map declares every aspect key's
   # semantics. gen-aspects builds each key's option generically: `class → deferredModule` content bucket,
   # `channel → raw` passthrough (an emission — plain data, attrset, or config-thunk — rides untouched, never
   # freeform-absorbed), `facet → the entry's `module`` (a full module mounted via `imports`, so a facet may
@@ -167,7 +167,7 @@ let
     if builtins.elem key facets then
       "facet"
     else
-      # Category off the single keySemantics source (Shape B): a registered class → "class", a quirk channel
+      # Category off the single keySemantics source: a registered class → "class", a quirk channel
       # → "channel"; anything else is an unregistered key (a typo — freeform-absorbed by gen-aspects) → abort.
       let
         cat = keySemantics.${key}.category or null;

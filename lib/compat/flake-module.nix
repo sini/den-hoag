@@ -24,13 +24,13 @@
   legacy,
 }:
 let
-  # Shape B — the shared class + channel keySemantics builder (fixes #8: the NAV VIEW declares the fleet's
+  # The shared class + channel keySemantics builder. The NAV VIEW declares the fleet's
   # quirk vocabulary — the SAME `key-semantics.nix` helper den-hoag core uses — so a `den.quirks` channel key
   # like `firewall` types as a `raw` channel option instead of falling to freeform / being wrapped as a
-  # nested aspect on the navigation surface a `with den.aspects` reader / a `hasAspect` ref consumes).
+  # nested aspect on the navigation surface a `with den.aspects` reader / a `hasAspect` ref consumes.
   keySemanticsLib = import ../key-semantics.nix { inherit prelude; };
 
-  # ── THE TYPED aspect tree — native A-IDENT (Task 4a: the SINGLE typed tree). ────────────────────────
+  # ── THE TYPED aspect tree — native A-IDENT (the SINGLE typed tree). ────────────────────────
   # gen-aspects (A-IDENT) makes a TYPED aspect node carry its own container-relative identity at merge:
   # `.key` = the full `den/aspects`-relative path (`pathKey prefix`), `meta.aspect-chain` = its ancestors —
   # born in the type, never reconstructed. den-hoag types its aspect tree ONCE (`typedCompileTree`, below):
@@ -54,9 +54,9 @@ let
     collections = { };
   };
 
-  # ── Task 4a — the SINGLE TYPED TREE `compile` consumes. ────────────────────────────────────────────
+  # ── The SINGLE TYPED TREE `compile` consumes. ────────────────────────────────────────────
   # The COMPILE view types class bodies as deferredModule content buckets (`nixos = { imports = [ raw ]; }`
-  # — opaque, terminal-clean) AND declares the fleet's `den.quirks` channels as `raw` passthroughs (#8, so a
+  # — opaque, terminal-clean) AND declares the fleet's `den.quirks` channels as `raw` passthroughs (so a
   # channel key is not freeform-absorbed into a nested aspect). ONE gen-native representation, no raw/typed
   # dual — compile reads each node's NATIVE `.key`/`name`/`meta.aspect-chain` (born in the type) and projects
   # its class deferredModule buckets THROUGH by value. `mkCompileAspectsType` is fleet-parameterised (the
@@ -355,13 +355,13 @@ let
   # `evalV1Raw` — the compat two-eval read-back: `config.den` with its aspects RAW (class bodies unwalked).
   # The v1→v1 LEGACY DESUGARS (`desugarLegacy`: provides/forwards/defaults) run on THIS raw tree (they read
   # raw `provides`/`schema.<kind>.includes`, which must NOT be freeform-absorbed by typing). The SINGLE TYPED
-  # TREE (Task 4a) is applied AFTER desugar, in `compileFull` (`typeAspects`), so compile consumes
+  # TREE is applied AFTER desugar, in `compileFull` (`typeAspects`), so compile consumes
   # deferredModule class buckets carrying native `.key`.
   evalV1Raw =
     userModules:
     (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
     .config.den;
-  # `typeAspects v1Den` — run the (post-desugar) RAW aspect tree through the compile view (Task 4a): compile
+  # `typeAspects v1Den` — run the (post-desugar) RAW aspect tree through the compile view: compile
   # consumes deferredModule class buckets + native `.key`. Applied in `compileFull` AFTER the legacy desugars.
   typeAspects =
     v1Den:
@@ -607,7 +607,7 @@ let
   # entity name overlaps an aspect name — so `compileFull ≡ compile` on any fixture with no such overlap,
   # exactly the severability the C5 suite pins. A legacy fixture through a wiring WITHOUT its module keeps
   # the residual key, which trips compile's sentinel (Law C5).
-  # `compileFull` — apply the legacy desugars (v1→v1, over the RAW tree), THEN type the aspect tree (Task 4a
+  # `compileFull` — apply the legacy desugars (v1→v1, over the RAW tree), THEN type the aspect tree (the
   # single typed tree), then compile + append R5 self-includes. Typing AFTER desugar keeps the raw `provides`/
   # kind-include grammar readable by the desugars while giving compile the typed class buckets + native `.key`.
   compileFull = v1: addSelfIncludes (compile (typeAspects (desugarLegacy v1)));

@@ -1,8 +1,8 @@
-# Shape B — the ONE keySemantics vocabulary builder (gen-aspects `cnf.keySemantics`). gen-aspects builds
+# The ONE keySemantics vocabulary builder (gen-aspects `cnf.keySemantics`). gen-aspects builds
 # every declared aspect key's option GENERICALLY from this map: `class → deferredModule`, `channel → raw
 # passthrough`, `facet → the entry's own option/module`. den-hoag declares its whole aspect vocabulary
-# through here, so an aspect key's semantics live in ONE place (fixes the old parallel `classes` +
-# `channelModules` + `aspectModules` split, and lets `classifyKey` read category off the same source).
+# through here, so an aspect key's semantics live in ONE place (a single source for the class + channel +
+# facet vocabulary, from which `classifyKey` also reads a key's category).
 #
 # This file owns only the CLASS + CHANNEL half — the categories every consumer of the aspect schema shares
 # (identical class + fleet-quirk vocabulary, so a quirk-channel key never falls to freeform). FACET entries
