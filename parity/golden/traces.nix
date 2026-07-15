@@ -46,10 +46,14 @@
     v1Hash = "5c1b4d82045fece9b0289b9396b487fdc0db53183f795476eafec17d57271b8c";
     hoagHash = "bfa2e1eb6abebbeefd74cfcba02e8fb4e0ab97013f606877d0ba35aa75f3843c";
   };
-  # quirkChannel — no self-named aspect (the `seed` aspect rides `schema.host.includes`), so NO nixos fold;
-  # but the ambient os-to-host route fires at host:igloo → `collected:host:igloo/os` matches v1 (matched 1).
-  # The `feat` quirk-channel fold is `extra` (v1 folds quirk content into classes — the disjoint-domain
-  # witness). The 5 `missing` = v1's host nixos/homeManager folds + the three user-scoped edges.
+  # quirkChannel — the `seed` aspect rides `schema.host.includes`. Task 4a (single typed tree): host:igloo's
+  # `nixos` producing-class default fold now emits `collected:host:igloo/nixos | merge`, matching v1 (matched
+  # 2). The raw class-content walk was DROPPING this edge (an empty raw nixos bucket skipped the fold); the
+  # single typed tree gives the class a deferredModule bucket so the fold fires — RE-BASELINED to restore v1
+  # parity (verified: den v1 pin 11866c16 `traceV1 quirkChannel` DELIVERS `collected:host:igloo/nixos`; the
+  # single tree restores it, not a spurious edge). The `feat` quirk-channel fold stays `extra` (v1 folds quirk
+  # content into classes — the disjoint-domain witness). The 4 residual `missing` = v1's homeManager fold +
+  # the three user-scoped edges (the scope-model boundary).
   quirkChannel = {
     v1 = [
       "root:host:igloo/homeManager |  | collected:host:igloo/homeManager | merge"
@@ -61,14 +65,15 @@
     ];
     hoag = [
       "root:host:igloo/feat |  | collected:host:igloo/feat | merge"
+      "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge"
       "root:host:igloo/nixos |  | collected:host:igloo/os | merge"
     ];
     matched = [
+      "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge"
       "root:host:igloo/nixos |  | collected:host:igloo/os | merge"
     ];
     missing = [
       "root:host:igloo/homeManager |  | collected:host:igloo/homeManager | merge"
-      "root:host:igloo/nixos |  | collected:host:igloo/nixos | merge"
       "root:user:tux/nixos |  | collected:user:tux/os | merge"
       "root:user:tux/nixos | home-manager/users/tux | synthesize:homeManager/nixos/home-manager/users/tux/homeManager>nixos | nest"
       "root:user:tux/nixos | users/users/tux | collected:user:tux/user | nest"
@@ -77,7 +82,8 @@
       "root:host:igloo/feat |  | collected:host:igloo/feat | merge"
     ];
     v1Hash = "5c1b4d82045fece9b0289b9396b487fdc0db53183f795476eafec17d57271b8c";
-    hoagHash = "b30b135737039bf7e0a7787a7136b2f47278d7e996eb25c703fb9061a0109eef";
+    # Task 4a — re-derived: the hoag edge set gained `collected:host:igloo/nixos` (the L7 restore).
+    hoagHash = "05d6697cef82188b18d834e3ee17ea7e29df5aa81cb0bbf2116745955a826e73";
   };
   # classFold — `base` aspect carries nixos content via `schema.host.includes` (nixos fold matches), and the
   # ambient os-to-host route fires (os edge matches): matched 2, extra 0. The 4 residual `missing` are the

@@ -57,8 +57,21 @@ let
       id = "L4: den-hoag quirk-channel fold has no v1 counterpart (disjoint-domain extra)";
       match = hasInfix "/feat | merge";
     }
+  ];
+  # RESOLVED families — a divergence the harness USED to surface, now CLOSED. Recorded (not silent-deleted)
+  # so the milestone is preserved: it WAS a real divergence, and which change fixed it. Kept OUT of the live
+  # `families` gate (`test-families-all-live` requires every LIVE family to still be exercised; a resolved
+  # family is by definition no longer exercised). Its `match` stays here as documentation of what closed.
+  resolvedFamilies = [
     {
-      id = "L4: v1 always folds host class content, den-hoag only with content (class-fold domain boundary)";
+      id = "L4-RESOLVED: v1 host-nixos fold — CLOSED by the single typed tree (Task 4a).";
+      # Was: v1 always folds host class content, den-hoag only with non-empty content — so a host whose raw
+      # `nixos` bucket was EMPTY skipped the fold and DROPPED `collected:host:<h>/nixos | merge` that v1
+      # delivers (the quirkChannel `seed` fixture: the seed aspect rides a quirk channel, no nixos content →
+      # empty raw bucket → dropped edge). The single typed tree gives EVERY class key a deferredModule bucket
+      # (opaque `{imports=[raw]}`), so the producing-class default fold fires and the edge is RESTORED,
+      # byte-matching v1 (verified: den v1 pin 11866c16 `traceV1 quirkChannel` DELIVERS the edge). den-hoag
+      # now folds host class content like v1 — the class-fold domain boundary is CLOSED.
       match = k: hasInfix "collected:host:" k && hasInfix "/nixos | merge" k;
     }
   ];

@@ -31,30 +31,17 @@ let
   # nested aspect on the navigation surface a `with den.aspects` reader / a `hasAspect` ref consumes).
   keySemanticsLib = import ../key-semantics.nix { inherit prelude; };
 
-  # ── Phase 5 Task 2 — the PARALLEL TYPED NAVIGATION VIEW (native A-IDENT, additive). ────────────────
-  # gen-aspects @14652a0 (A-IDENT) makes a TYPED aspect node carry its own container-relative identity at
-  # merge: `.key` = the full `den/aspects`-relative path (`pathKey prefix`), `meta.aspect-chain` = its
-  # ancestors — born in the type, never reconstructed. The compat two-eval needs that native identity on
-  # the NAVIGATION SURFACE (the `den` legacy binding a module's `with den.aspects` reads, and the evalV1
-  # read-back Task 3's readers + the native-identity suite consume). But it must NOT reach `compile`:
-  # compile reads the RAW aspect tree and does its OWN wrap-ground (compile.nix §339; a class body
-  # `nixos = { … }` must stay a raw attrset — a typed tree wraps it as a `deferredModule` `{ imports; }`
-  # or leaks the typed node's structural options into the class-modules bucket, reshaping what the
-  # terminal delivers). So: ONE raw tree for compile (unchanged, `__provider`-annotated), a PARALLEL
-  # typed VIEW for navigation — the same single gen identity system (`aspectsType`), applied where it
-  # belongs. Task 3 later repoints the readers onto the native `.key` and retires the `__provider` graft.
-  #
-  # Shape B — the nav view declares the fleet's `den.quirks` CHANNELS as `raw` passthroughs but NO CLASSES:
-  #   • CLASSES stay freeform (empty class category): a class body (`nixos = { … }`) rides the
-  #     `aspectsRoot`/`aspectSubmodule` freeform as an ordinary nested attrset — navigable, uncorrupted —
-  #     because a `deferredModule` class option would WRAP the navigated body, corrupting a corpus
-  #     `with den.aspects` reader that reads class content off a navigated node.
-  #   • CHANNELS are declared `raw` (Shape B, #8): a `raw` channel option holds the value VERBATIM (transparent
-  #     passthrough — a reader reading `.firewall` gets the raw value), so a channel key is NOT freeform-
-  #     absorbed as a nested aspect (matching the raw `annotate` walk, which EXCLUDES quirk names from being
-  #     stamped as aspects). `.key`/`meta.aspect-chain` are PATH-derived (identity.nix), so this preserves
-  #     native identity. `metaModules` empty: the view supplies ONLY intrinsic identity, not den-hoag's
-  #     concern-option surface (that lives on the compiled bridge output).
+  # ── THE TYPED aspect tree — native A-IDENT (Task 4a: the SINGLE typed tree). ────────────────────────
+  # gen-aspects (A-IDENT) makes a TYPED aspect node carry its own container-relative identity at merge:
+  # `.key` = the full `den/aspects`-relative path (`pathKey prefix`), `meta.aspect-chain` = its ancestors —
+  # born in the type, never reconstructed. den-hoag types its aspect tree ONCE (`typedCompileTree`, below):
+  # class keys become deferredModule content buckets, channel keys `raw` passthroughs, and every node carries
+  # native `.key`. BOTH the navigation surface (`bindLegacyEnv`'s `_module.args.den`, the `evalV1` read-back)
+  # AND `compile` read this ONE tree — no raw/typed dual (the dual double-typed a nav-captured include: nav
+  # classes-freeform → the class body a NESTED aspect, then compile re-typed it as a deferredModule of that
+  # nested aspect → the F1 structural leak). compile consumes the typed node (project class buckets, strip
+  # structural facets, carry the include's native identity). `aspectsViewCnf` is the shared base cnf (the
+  # module-arg surface + empty meta); `mkCompileAspectsType` adds the fleet's keySemantics.
   aspectsViewCnf = {
     moduleArgs = {
       settings = true;
@@ -67,55 +54,217 @@ let
     metaModules = [ ];
     collections = { };
   };
-  # PARAMETERISED by the fleet's quirk channel names (threaded from `typedAspectsView` via the raw `den`).
-  mkAspectsViewType =
-    quirkChannelNames:
+
+  # ── Task 4a — the SINGLE TYPED TREE `compile` consumes. ────────────────────────────────────────────
+  # The COMPILE view types class bodies as deferredModule content buckets (`nixos = { imports = [ raw ]; }`
+  # — opaque, terminal-clean) AND declares the fleet's `den.quirks` channels as `raw` passthroughs (#8, so a
+  # channel key is not freeform-absorbed into a nested aspect). ONE gen-native representation, no raw/typed
+  # dual — compile reads each node's NATIVE `.key`/`name`/`meta.aspect-chain` (born in the type) and projects
+  # its class deferredModule buckets THROUGH by value. `mkCompileAspectsType` is fleet-parameterised (the
+  # declared class + channel names come from `den.classes`/`den.quirks`, threaded in `evalV1Raw`), built from
+  # the SAME `key-semantics.nix` helper den-hoag core uses — one class + channel vocabulary source.
+  # NOTE the v1 `homeManager` spelling is DELIBERATELY EXCLUDED (den-hoag's built-in is grounded `home-manager`;
+  # a v1 `homeManager` body rides freeform and is grounded by translateAspect's `groundKeys` downstream).
+  compileClassNamesBase = builtins.attrNames denHoag.classes ++ legacy.defaults.registeredClasses;
+  mkCompileAspectsType =
+    {
+      declaredClassNames,
+      quirkChannelNames,
+    }:
     aspects.aspectsType (
       aspectsViewCnf
       // {
         keySemantics = keySemanticsLib.mkClassChannelSemantics {
-          classNames = [ ]; # classes stay freeform on the nav view (see above)
+          classNames = compileClassNamesBase ++ declaredClassNames;
           quirkChannels = quirkChannelNames;
         };
       }
     );
-
-  # `typedAspectsView quirkChannelNames rawAspects` — eval the RAW v1 aspects through the nav view type
-  # (`mkAspectsViewType`, the probe's evDirect shape, channel-aware per Shape B / #8) so each navigated node
-  # carries native `.key`/`meta.aspect-chain` and a quirk channel key rides `raw` (not freeform), then GRAFT the raw
-  # tree's `__provider` stamps back on (additive: a navigated node carries BOTH the native key AND the
-  # legacy provider path this task — Task 4 deletes the graft). The eval also rebinds `_module.args.aspects
-  # = config` internally (aspectsType), so a `with aspects; …` include inside the view resolves against
-  # the typed siblings. Falls back to `{ }` for an aspect-less fleet (mkOption default).
-  graftProviders =
-    typed: raw:
-    if !(builtins.isAttrs raw) || !(builtins.isAttrs typed) then
+  # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW `__provider`-
+  # annotated v1 aspect tree through the compile view, yielding a typed tree whose class keys are
+  # deferredModules and whose nodes carry native `.key`. The `__provider` graft rides through the type's
+  # freeform (a `__`-prefixed key), so a navigated node carries BOTH native `.key` AND `__provider` — compile
+  # reads `.key` (native) and the graft is dead weight a later task deletes. `evalModuleTree` also rebinds
+  # `_module.args.aspects = config` internally, so a `with aspects; …` include inside the tree resolves
+  # against its typed siblings. Falls back to `{ }` for an aspect-less fleet (mkOption default).
+  # §2.2 TOTALITY under the typed tree (Bug 3). gen-aspects' freeform types ANY undeclared attrset key as a
+  # nested aspect — so a TYPO (`nixxos = { networking… }`, neither facet/class/channel and NOT a legit nested
+  # aspect) is silently absorbed + gains empty class/structural defaults that mis-classify it NESTED at
+  # compile's `isNestedAspectKey` (which then strips it) → the §2.2 abort never fires. FIX: classify over the
+  # RAW value (clean, pre-typing defaults) and splice the raw unregistered key BACK onto the typed node, so it
+  # reaches class-modules `assertKeysRegistered` as a content key and aborts NAMED — LAZILY (only when the
+  # aspect is resolved; a fixture that builds an aspect but never resolves it must not abort — compat-compile-
+  # golden `roundTrip`). A legit nested aspect (raw value carries a recognized sub-key — structural/class/
+  # channel — recursively) is untouched.
+  structuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
+  # den-hoag facets absent from v1's structural set (KEEP IN SYNC with concern-aspects.nix `facets`).
+  hoagFacetsSet = prelude.genAttrs [
+    "neededBy"
+    "tags"
+    "projects"
+    "key"
+    "id_hash"
+    "settings"
+  ] (_: true);
+  isStructuralRawKey = k: structuralKeysSet ? ${k} || hoagFacetsSet ? ${k};
+  # `mkRawTotality { declaredClassNames; quirkChannelNames; }` — the RAW §2.2 discriminator: a candidate key
+  # (non-structural/`__`/class/channel) is a LEGIT nested aspect iff its raw value is an attrset carrying a
+  # recognized sub-key (structural/class/channel) OR a deeper candidate that recurses to one (the namespace-
+  # path shape `core.systemd.boot`). Otherwise it is an UNREGISTERED key (v1's `unregisteredClassKeys`).
+  mkRawTotality =
+    {
+      declaredClassNames,
+      quirkChannelNames,
+    }:
+    let
+      classSet = prelude.genAttrs (compileClassNamesBase ++ declaredClassNames) (_: true);
+      quirkSet = prelude.genAttrs quirkChannelNames (_: true);
+      recognizedSubKey =
+        sk:
+        builtins.substring 0 2 sk != "__"
+        && (isStructuralRawKey sk || quirkSet ? ${sk} || classSet ? ${sk});
+      isCandidate =
+        k:
+        !(isStructuralRawKey k)
+        && !(classSet ? ${k})
+        && !(quirkSet ? ${k})
+        && builtins.substring 0 2 k != "__";
+      looksNested =
+        v:
+        builtins.isAttrs v
+        && builtins.any (sk: recognizedSubKey sk || (isCandidate sk && looksNested v.${sk})) (
+          builtins.attrNames v
+        );
+      isUnregistered = raw: k: isCandidate k && !(builtins.isAttrs raw.${k} && looksNested raw.${k});
+      # a MALFORMED `{ name; fn }` include — an attrset carrying a FN-VALUED unregistered key (not a
+      # structural facet / registered class / `__`-prefixed), bearing NO policy/route/wrapped marker: a
+      # typo'd policy record or a mis-keyed content set. The typed tree would WRAP its `fn` into a valid
+      # nested include (silent inert-fire); we abort LOUD here (over the RAW element, §2.2 self-announce).
+      malformedFnKeys =
+        inc:
+        builtins.filter (
+          k:
+          builtins.isFunction inc.${k}
+          && !(isStructuralRawKey k)
+          && !(classSet ? ${k})
+          && builtins.substring 0 2 k != "__"
+        ) (builtins.attrNames inc);
+      isMalformedFnInclude =
+        inc:
+        builtins.isAttrs inc
+        && !(inc.__isPolicy or false)
+        && !((inc.__denCanTake or null) != null)
+        && !((inc.__fn or null) != null)
+        && !(inc.__isWrappedFn or false)
+        && !(inc.__guard or false)
+        && malformedFnKeys inc != [ ];
+      malformedFnIncludeAbort =
+        inc:
+        throw "den-hoag compat (§2.2): aspect-include `${inc.name or "<unnamed>"}` declares key `${builtins.head (malformedFnKeys inc)}` with a function value — neither a facet, a registered class, nor a quirk channel. A `{ name; fn; }`-shaped include is a MALFORMED policy record (a typo'd `{ __isPolicy; name; fn }`) or a mis-keyed content set; add the `__isPolicy = true;` marker, or move the fn into the `includes` LIST as a bare parametric include `[ (ctx: <content>) ]`.";
+    in
+    {
+      inherit
+        isUnregistered
+        isCandidate
+        isMalformedFnInclude
+        malformedFnIncludeAbort
+        ;
+      # a legit nested-aspect CHILD to recurse into (raw attrset whose value looks nested).
+      isNestedChild = raw: k: isCandidate k && builtins.isAttrs raw.${k} && looksNested raw.${k};
+    };
+  # A POLICY RECORD (`{ __isPolicy | __denCanTake; fn; … }`) in an aspect's `includes` is NOT aspect content:
+  # its `fn` returns a v1 EFFECT LIST, so `aspectOrFn` would wrap it as a guard functor whose merge chokes
+  # (`expected a set but found a list`) when compile applies it. It must ride RAW in the typed tree; the
+  # markers survive the type wrap, so the restore splices the raw record back over the typed include.
+  isPolicyRec =
+    v: builtins.isAttrs v && ((v.__isPolicy or false) || (v.__denCanTake or null) != null);
+  # splice raw unregistered keys + raw policy-record includes back onto the parallel typed node (+ recurse
+  # legit nested children / non-policy includes).
+  restoreUnregistered =
+    tot: typed: raw:
+    if !(builtins.isAttrs typed) || !(builtins.isAttrs raw) then
       typed
     else
-      typed
-      // prelude.optionalAttrs (raw ? __provider) { inherit (raw) __provider; }
+      let
+        unregistered = builtins.filter (tot.isUnregistered raw) (builtins.attrNames raw);
+      in
+      builtins.removeAttrs typed unregistered
       // builtins.listToAttrs (
         map (k: {
           name = k;
-          value = graftProviders (typed.${k} or { }) raw.${k};
-        }) (builtins.filter (k: builtins.substring 0 2 k != "__") (builtins.attrNames raw))
-      );
-  typedAspectsView =
-    quirkChannelNames: rawAspects:
-    let
-      ev = schema.evalModuleTree {
-        modules = [
+          value = raw.${k};
+        }) unregistered
+      )
+      //
+        prelude.optionalAttrs
+          (builtins.isList (typed.includes or null) && builtins.isList (raw.includes or null))
           {
-            options.aspects = schema.mkOption {
-              type = mkAspectsViewType quirkChannelNames;
-              default = { };
-            };
-            config.aspects = rawAspects;
+            includes = prelude.imap0 (
+              i: tinc:
+              let
+                rinc = if i < builtins.length raw.includes then builtins.elemAt raw.includes i else null;
+              in
+              if rinc == null then
+                tinc
+              else if tot.isMalformedFnInclude rinc then
+                tot.malformedFnIncludeAbort rinc
+              else if isPolicyRec rinc then
+                # a policy record rides RAW (its `fn` returns an effect list, never aspect content).
+                rinc
+              else if builtins.isAttrs rinc && builtins.isAttrs tinc then
+                # a STATIC aspect include — recurse so a policy record nested in ITS `.includes` (the battery
+                # shape `include.includes = [ { __isPolicy } ]`) is spliced raw too.
+                restoreUnregistered tot tinc rinc
+              else
+                tinc
+            ) typed.includes;
           }
-        ];
-      };
+      // builtins.listToAttrs (
+        map
+          (k: {
+            name = k;
+            value = restoreUnregistered tot (typed.${k} or { }) raw.${k};
+          })
+          (
+            builtins.filter (k: tot.isNestedChild raw k && builtins.isAttrs (typed.${k} or null)) (
+              builtins.attrNames raw
+            )
+          )
+      );
+  # the aspect CONTAINER top entry — keys are aspect NAMES (not content keys), so classify per-ENTRY only.
+  restoreUnregisteredTree =
+    tot: typed: raw:
+    builtins.listToAttrs (
+      map (name: {
+        inherit name;
+        value =
+          if builtins.isAttrs (raw.${name} or null) then
+            restoreUnregistered tot (typed.${name} or { }) raw.${name}
+          else
+            typed.${name};
+      }) (builtins.attrNames raw)
+    );
+  typedCompileTree =
+    args@{
+      declaredClassNames,
+      quirkChannelNames,
+    }:
+    rawAspects:
+    let
+      typed =
+        (schema.evalModuleTree {
+          modules = [
+            {
+              options.aspects = schema.mkOption {
+                type = mkCompileAspectsType { inherit declaredClassNames quirkChannelNames; };
+                default = { };
+              };
+              config.aspects = rawAspects;
+            }
+          ];
+        }).config.aspects;
     in
-    graftProviders ev.config.aspects rawAspects;
+    restoreUnregisteredTree (mkRawTotality args) typed rawAspects;
 
   # A `raw` option holds any v1 value unmerged (single-def passthrough) — the v1 grammar (parametric
   # aspects, policy records, two-level host maps) is never type-walked or freeform-mangled.
@@ -192,17 +341,24 @@ let
       } (den.aspects or { });
     };
 
-  # Phase 5 Task 2 — the NAVIGATION view: the `__provider`-annotated raw aspects run ALSO through
-  # `typedAspectsView`, so every navigated node carries native A-IDENT `.key`/`meta.aspect-chain` (born in
-  # the type) alongside the grafted `__provider` (additive). This is the surface a v1 module's
-  # `with den.aspects; …` include, a policy's emitted `den.aspects.<path>` ref, and the evalV1 read-back
-  # (Task 3's readers + the native-identity suite) read. NEVER fed to `compile` (which takes the raw view).
+  # The NAVIGATION view — the `__provider`-annotated raw aspects run through the SAME `typedCompileTree`
+  # compile consumes, so a navigated node carries native A-IDENT `.key`/`meta.aspect-chain` (born in the type)
+  # AND the `__provider` graft (a `__`-prefixed freeform key, additive). This is the surface a v1 module's
+  # `with den.aspects; …` include, a policy's emitted `den.aspects.<path>` ref, and the `evalV1` read-back
+  # (Task 3's readers + the native-identity suite) read. Using the ONE typed tree here (not a classes-freeform
+  # variant) is what keeps a `with den.aspects` include IDENTICAL to its compile-tree sibling — no double-type.
   annotatedViewNav =
     den:
     let
       raw = annotatedViewRaw den;
     in
-    raw // { aspects = typedAspectsView (builtins.attrNames (den.quirks or { })) raw.aspects; };
+    raw
+    // {
+      aspects = typedCompileTree {
+        declaredClassNames = builtins.attrNames (den.classes or { });
+        quirkChannelNames = builtins.attrNames (den.quirks or { });
+      } raw.aspects;
+    };
 
   # R1 legacy binding — bind `_module.args.den` to the NAVIGATION view (Task 3). A `host.hasAspect
   # den.aspects.<path>` ref (the 13-read corpus census) now reads a node carrying native `.key`, so
@@ -222,19 +378,27 @@ let
       config._module.args.den = annotatedViewNav config.den;
     };
 
-  # `evalV1Raw` — the COMPILE input: read back `config.den` with the RAW `__provider`-annotated aspects
-  # (unwalked class bodies — compile.nix does its OWN §339 wrap-ground over the raw tree). Only
-  # `flakeModuleCore` declares options here. A raw class body `nixos = { … }` stays a raw attrset (NOT a
-  # deferredModule): the raw walk delivers class content correctly (one module per resolved node, structural
-  # options never leaking into a class bucket, a `{ __provider; key }` delivery ref keeping its authored
-  # identity), which the single-typed compile tree could not (double-delivery + structural leak + positional
-  # re-key). The Shape-B keySemantics work lands where the tree IS typed — the NAV VIEW (`typedAspectsView`)
-  # and core (`concern-aspects`) — declaring channels so a quirk key is not freeform-absorbed (#8).
+  # `evalV1Raw` — the compat two-eval read-back: `config.den` with its aspects `__provider`-annotated (RAW —
+  # class bodies unwalked). The v1→v1 LEGACY DESUGARS (`desugarLegacy`: provides/forwards/defaults) run on
+  # THIS raw tree (they read raw `provides`/`schema.<kind>.includes`, which must NOT be freeform-absorbed by
+  # typing). The SINGLE TYPED TREE (Task 4a) is applied AFTER desugar, in `compileFull` (`typeAspects`), so
+  # compile consumes deferredModule class buckets carrying native `.key`.
   evalV1Raw =
     userModules:
     annotatedViewRaw
       (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
       .config.den;
+  # `typeAspects v1Den` — run the (post-desugar) RAW aspect tree through the compile view (Task 4a): compile
+  # consumes deferredModule class buckets + native `.key`. Applied in `compileFull` AFTER the legacy desugars.
+  typeAspects =
+    v1Den:
+    v1Den
+    // {
+      aspects = typedCompileTree {
+        declaredClassNames = builtins.attrNames (v1Den.classes or { });
+        quirkChannelNames = builtins.attrNames (v1Den.quirks or { });
+      } (v1Den.aspects or { });
+    };
 
   # `evalV1` — the PUBLIC read-back (Task 3's readers + the native-identity suite): the NAVIGATION view, so
   # a navigated `den.aspects.<path>` carries native `.key`/`meta.aspect-chain` (born in the type) alongside
@@ -472,7 +636,10 @@ let
   # entity name overlaps an aspect name — so `compileFull ≡ compile` on any fixture with no such overlap,
   # exactly the severability the C5 suite pins. A legacy fixture through a wiring WITHOUT its module keeps
   # the residual key, which trips compile's sentinel (Law C5).
-  compileFull = v1: addSelfIncludes (compile (desugarLegacy v1));
+  # `compileFull` — apply the legacy desugars (v1→v1, over the RAW tree), THEN type the aspect tree (Task 4a
+  # single typed tree), then compile + append R5 self-includes. Typing AFTER desugar keeps the raw `provides`/
+  # kind-include grammar readable by the desugars while giving compile the typed class buckets + native `.key`.
+  compileFull = v1: addSelfIncludes (compile (typeAspects (desugarLegacy v1)));
   # `den.interpret` — the gen-edge source-interpreter seam (item 7): the legacy forwards module's
   # `synthesize`/`rewalk` composers, threaded into den-hoag's single `materialize` via the shipped raw
   # option (lib/default.nix `interpretDecl`, output-modules.nix `interpret ? { }`) WITHOUT editing

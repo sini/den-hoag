@@ -48,6 +48,22 @@ let
   ];
   cm = fleet.den.structural.eval.get "host:igloo" "class-modules";
   bucketKeys = cls: builtins.concatMap builtins.attrNames (cm.${cls} or [ ]);
+  # Task 4a — the single typed tree delivers class content as a deferredModule `{ imports = [ body ]; }`
+  # (opaque, terminal-clean — nixpkgs flattens the wrap; the parity igloo-toplevel gate pins byte-identity).
+  # So the bucket shape is now `["imports"]`, not the raw body's top key. `bucketContentKeys` unwraps the
+  # deferredModule to assert the DELIVERED CONTENT (the equivalence the owner set as the bar), not the wrap.
+  # Recursively unwrap nested deferredModule `{ imports = [ … ]; }` (gen-merge wraps `{ _file; imports }`)
+  # down to the real content module, then collect its non-`_`-prefixed keys — the delivered content.
+  unwrapModule =
+    m: if builtins.isAttrs m && m ? imports then builtins.concatMap unwrapModule m.imports else [ m ];
+  bucketContentKeys =
+    cls:
+    builtins.concatMap (
+      m:
+      builtins.filter (k: builtins.substring 0 1 k != "_") (
+        builtins.concatMap builtins.attrNames (unwrapModule m)
+      )
+    ) (cm.${cls} or [ ]);
 in
 {
   flake.tests.compat-annotate-battery-classes = {
@@ -88,15 +104,25 @@ in
       expected = false;
     };
 
-    # end-to-end: the class-modules buckets the terminal reads are stamp-free — the os bucket carries
-    # ONLY the content key (pre-#67 it was [ __provider progB ], the u17 terminal abort), the nixos
-    # bucket is unchanged.
-    test-e2e-os-bucket-clean = {
+    # end-to-end: the class-modules buckets the terminal reads are stamp-free. Task 4a — the buckets are now
+    # deferredModule wraps `{ imports = [ body ]; }` (the single typed tree; terminal-clean), so the wrap
+    # shape is `["imports"]` and the DELIVERED CONTENT (unwrapped) is the raw body's key — the equivalence
+    # the owner set as the bar (the toplevel is byte-identical; the parity igloo gate pins it). No `__provider`
+    # reaches the bucket (the u17 hazard stays closed — structural options are core facets, skipped).
+    test-e2e-os-bucket-shape = {
       expr = bucketKeys "os";
+      expected = [ "imports" ];
+    };
+    test-e2e-os-bucket-content = {
+      expr = bucketContentKeys "os";
       expected = [ "progB" ];
     };
-    test-e2e-nixos-bucket-unchanged = {
+    test-e2e-nixos-bucket-shape = {
       expr = bucketKeys "nixos";
+      expected = [ "imports" ];
+    };
+    test-e2e-nixos-bucket-content = {
+      expr = bucketContentKeys "nixos";
       expected = [ "progA" ];
     };
   };

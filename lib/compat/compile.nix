@@ -229,12 +229,29 @@ let
   # arm, leaving the nested sub-aspect on its parent to abort §2.2 at every including scope. List-valued
   # keys and the empty body are accepted as class-like; a non-empty flat-SCALAR shadow set is still
   # rejected (the arm's purpose).
+  # Under the single typed tree a class-keyed value is a deferredModule WRAP (`{ imports = [ … ]; }`), and
+  # gen-aspects materializes EVERY registered class key on EVERY aspect — an UNSET class defaults to the EMPTY
+  # wrap `{ imports = [ { } ]; }`. That empty wrap must NOT count as class-like content: else a typo attrset
+  # (`nixxos = { networking… }`, typed with all-empty class defaults) would flip `recognizedSubKey` true on
+  # its default `nixos` sub-key and mis-classify NESTED (silently stripped) instead of aborting §2.2. Peel the
+  # wrap and check the real leaf modules; an empty wrap is a declared no-op, not content (mirrors
+  # class-modules.nix `isEmptyModule`).
+  unwrapDeferred =
+    m: if builtins.isAttrs m && m ? imports then builtins.concatMap unwrapDeferred m.imports else [ m ];
+  isEmptyDeferred =
+    m:
+    builtins.isAttrs m
+    && m ? imports
+    && builtins.all (
+      leaf: builtins.isAttrs leaf && builtins.all (k: prelude.hasPrefix "_" k) (builtins.attrNames leaf)
+    ) (unwrapDeferred m);
   looksLikeClassContent =
     v:
     builtins.isFunction v
     || (builtins.isAttrs v && v ? __contentValues)
     || (
       builtins.isAttrs v
+      && !(isEmptyDeferred v)
       && (
         v == { }
         || builtins.any (
@@ -368,19 +385,49 @@ let
       # `stampProvider` (v1 wrapChild, normalize.nix:95-119) when the value is annotated; the DISTINCT
       # POSITIONAL name as the annotation-less inline-literal fallback — v1's own nameless posture
       # (children.nix's `<parent>/<anon>:<idx>` rename).
+      # Under the single typed tree, a node placed in a container `includes` LIST is A-IDENT-keyed by its
+      # OPTION PATH (`withaspect/includes/0`, name = "0") — POSITIONAL, not its authored identity. A
+      # `{ __provider; key }` DELIVERY REF (compat-has-aspect W5 `kid`) carries its OWN provenance in the
+      # `__provider` graft, so the positional `.key`/`name` are WRONG for it. Carry the navigated node's own
+      # identity: when `__provider` is present, DERIVE name/key/meta.aspect-chain/id_hash from it (v1 wrapChild
+      # parity), OVERRIDING the container's positional recompute. A normal aspect defined at a path has
+      # `pathKey __provider == its native .key`, so this is a no-op there; a positionally-placed ref is
+      # corrected. `stampProvider` (guarded `!(v?name)`) no-ops on the typed node — its `name` is the
+      # positional "0" — so the override is applied HERE, in the compile-only include-identity path.
       stampIdentity =
         fallbackName: ref:
-        let
-          s = stampProvider ref;
-        in
-        if s ? name then
-          s
-        else
-          s
+        if builtins.isList (ref.__provider or null) && ref.__provider != [ ] then
+          ref
           // {
-            name = fallbackName;
-            # the A12 producer key for the positional-fallback arm (see stampProvider's id_hash note).
-            id_hash = s.id_hash or (builtins.hashString "sha256" "den-aspect:${fallbackName}");
+            name = prelude.last ref.__provider;
+            key = builtins.concatStringsSep "/" ref.__provider;
+            id_hash = builtins.hashString "sha256" (
+              "den-aspect:" + builtins.concatStringsSep "/" ref.__provider
+            );
+            meta = (ref.meta or { }) // {
+              aspect-chain = prelude.init ref.__provider;
+            };
+          }
+        else
+          # No `__provider`. Two sub-cases, distinguished by whether the typed `name` is the A-IDENT POSITIONAL
+          # default for a list element (a bare integer index) or a real AUTHORED name that survived typing:
+          #   • ANONYMOUS inline literal (`h4.includes = [ { nixos… } ]`) → `name = "0"` (positional): use the
+          #     per-position FALLBACK (`<parent>:include:<idx>` — v1's nameless posture, the F4 witness).
+          #   • AUTHORED name (`{ name = "carrier/to-users"; }` — the provides seed stub) → KEEP the name.
+          # In BOTH cases CLEAR the aspect-chain so `gen-aspects.key` (= `pathKey (aspect-chain ++ [name])`) is
+          # the bare name, NOT `<container-path>/<name>` (the container's positional A-IDENT chain).
+          let
+            isPositional = builtins.match "[0-9]+" (ref.name or "") != null;
+            nm = if isPositional || !(ref ? name) then fallbackName else ref.name;
+          in
+          ref
+          // {
+            name = nm;
+            key = nm;
+            id_hash = builtins.hashString "sha256" "den-aspect:${nm}";
+            meta = (ref.meta or { }) // {
+              aspect-chain = [ ];
+            };
           };
       # COORD GATE + ARG-SHAPING (v1 canTake parity) — RELOCATED UPSTREAM (Task B). The gate + `intersectAttrs`
       # now live in gen-aspects' `wrapGatedFn` (the N-GATE): forwardExpand invokes a wrapped fn UNCONDITIONALLY

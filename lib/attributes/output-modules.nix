@@ -114,16 +114,16 @@ let
   # whose collected source names a CLASS moves that class's real content (before this, a class-source
   # delivery traced but its collected read hit an absent channel ⇒ empty — the C7.5 gap).
   #
-  # PRODUCING-CLASS scoping (§2.5, mirrors the terminal): `class-modules` over-reports — the aspect
-  # submodule's freeform gives EVERY class key a trivial `{ imports = [ ]; }` body even for an aspect that
-  # declares no content there, so a bare-channel aspect at a nixos host shows non-empty nixos/home-manager/
-  # k8s-manifests buckets alike. The terminal's `contentIdsOf` already resolves this by keying on the
-  # node's OWN producing class (`memberClassName`); the default fold does the SAME here (one class per
-  # scope — den-hoag's contentClass model), so a nixos host folds `nixos` (never a phantom k8s edge) and a
-  # home-manager cell folds `home-manager`. Cross-class content movement is the EXPLICIT deliver/inject
-  # edge, never the default fold. NO-EFFECT-RUNTIME: one attribute read + one list non-emptiness test on
-  # the bucket spine (never a module body — deferred class content is a `deferredModule` thunk carried
-  # UNFORCED, so presence stays A17-lazy exactly like `channelsOf` over quirks).
+  # PRODUCING-CLASS scoping (§2.5, mirrors the terminal): a scope emits its default-fold edge for its ONE
+  # PRODUCING class (`producingClassOf`, den-hoag's contentClass model) — a nixos host folds `nixos` (never a
+  # phantom k8s edge), a home-manager cell folds `home-manager`. The fold fires on producing-class MEMBERSHIP,
+  # NOT on bucket non-emptiness: a bare-channel host (its aspects emit only quirk content, no nixos class body
+  # — edge-completeness `axon`) still emits `collected:scope/nixos | merge`, matching v1's `defaultFoldEdges`
+  # (which folds a producing class unconditionally). `class-modules` now drops EMPTY class buckets (the typed
+  # `{ imports = [ { } ]; }` no-op — `classSliceOf` isEmptyModule, so a delivered bucket carries only REAL
+  # content, no double-count), so emptiness can no longer gate the fold; producing-class presence does. Cross-
+  # class content movement is the EXPLICIT deliver/inject edge, never the default fold. NO-EFFECT-RUNTIME: one
+  # producing-class read (the node's contentClass) — never a module body (deferred content stays A17-lazy).
   isClassName = cn: classesByName ? ${cn};
   classModulesAt = id: result.get id "class-modules";
 
@@ -170,7 +170,14 @@ let
     let
       cn = producingClassOf id;
     in
-    if cn != null && classSubtreeAt id cn != [ ] then [ cn ] else [ ];
+    if cn == null then
+      [ ]
+    else
+      # Fire the default fold for the producing class UNCONDITIONALLY (bare-channel hosts fold too), but STILL
+      # force the node's class-modules classification — the §2.2 side-effect that aborts a typo'd content key
+      # on a reached aspect (`assertKeysRegistered`/`classifyKey`), which the pre-empty-drop emptiness test
+      # used to trigger. `seq` forces the bucket spine (classification) without gating the fold on its result.
+      builtins.seq (classSubtreeAt id cn) [ cn ];
 
   # Delivery declarations (an external consumer's `deliver`/`route`/`provide`, `declare.delivery`) dispatched at a
   # node → gen-edge records, rendered HERE where the firing scope (the node id) and the collected
@@ -328,8 +335,7 @@ let
   # firing scope ITSELF. An `appendToParent` delivery is EXCLUDED here (it targets the containment parent;
   # the HOST gathers it via `parentTargetedRoutesAt`, Task 2) so a cell-fired parent-targeted route is
   # remapped ONCE, at the host, never doubled at the cell.
-  routesAt =
-    id: map lowerRoute (builtins.filter (d: !(d.appendToParent or false)) (deliveriesAt id));
+  routesAt = id: map lowerRoute (builtins.filter (d: !(d.appendToParent or false)) (deliveriesAt id));
 
   # ── #10 hm-user-detect — the DESCENDANT-DRIVEN parent-targeted route (Phase 4 Task 2, spec §5 (b/d)) ──
   # A cell-fired `appendToParent` route (the v1 hm-user-detect forward: `homeManager → host.class` at
@@ -346,10 +352,14 @@ let
     id:
     prelude.concatMap (
       c:
-      map (d: {
-        route = lowerRoute d;
-        sourceScope = c;
-      }) (builtins.filter (d: (d.appendToParent or false) && deliveryTargetRootOf c d == id) (deliveriesAt c))
+      map
+        (d: {
+          route = lowerRoute d;
+          sourceScope = c;
+        })
+        (
+          builtins.filter (d: (d.appendToParent or false) && deliveryTargetRootOf c d == id) (deliveriesAt c)
+        )
     ) (scope.descendants result id);
 
   # ── Route guard PHASE classification by STATIC FORMALS (owner ruling 2026-07-14) ─────────────────────
@@ -492,7 +502,10 @@ let
       # level), THEN placeSlice nests the wrapper at the route path — the `_module.args = adaptArgs args`
       # must be INSIDE the target submodule's nested eval (e.g. inside `devshells.default`), NOT at the
       # outer level (where it would not reach the nested submodule's args). Order is load-bearing.
-      n: placeSlice route.at (map (m: argEnvWrap route srcScope m) (map (e: e.module) (classSliceOf n route.from)))
+      n:
+      placeSlice route.at (
+        map (m: argEnvWrap route srcScope m) (map (e: e.module) (classSliceOf n route.from))
+      )
     ) (result.get srcScope "reach");
 
   routeRemapFor =
@@ -508,7 +521,11 @@ let
     #     so the cell's OWN hm content is delivered (the v1 filterRootModules R-ROOT-FILTER: host scope-own
     #     hm does NOT ride the cell's gather), and the guard is evaluated at the CELL.
     ++ prelude.concatMap (
-      pt: if pt.route.to == class && guardHolds pt.route pt.sourceScope then remapOver pt.sourceScope pt.route else [ ]
+      pt:
+      if pt.route.to == class && guardHolds pt.route pt.sourceScope then
+        remapOver pt.sourceScope pt.route
+      else
+        [ ]
     ) (parentTargetedRoutesAt id);
 
   # ── projectClass (Phase 2 Task 2, spec §1/§3): the class-slice PROJECTION over `reach` ───────────────

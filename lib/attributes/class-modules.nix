@@ -33,14 +33,31 @@ let
     else
       c;
 
+  # Is a class-content module EMPTY (a declared no-op)? Under the single typed tree a class key's body is a
+  # deferredModule WRAP `{ imports = [ … ]; }` (gen-merge `{ _file; imports }`), so an empty declaration is
+  # `{ imports = [ { } ]; }` — NOT `== { }`. Recursively peel the deferredModule wrap down to the real leaf
+  # modules and drop `_`-prefixed keys (the `_file`/`_module` scaffolding); the module is empty iff every
+  # unwrapped leaf carries no real key. Keeps bucket counts on REAL content (an empty class bucket stays
+  # empty — the F1/F4/F5 no-double-deliver witnesses), byte-parity with the raw walk's `m == { }` drop.
+  unwrapModule =
+    m: if builtins.isAttrs m && m ? imports then builtins.concatMap unwrapModule m.imports else [ m ];
+  # A module is empty iff EVERY unwrapped leaf is an EMPTY attrset (only `_`-prefixed scaffolding keys). A
+  # NON-attrset leaf (a function/path module — a guard fn's body, an imports-only closure) is REAL content,
+  # NEVER empty.
+  isEmptyModule =
+    m:
+    builtins.all (
+      leaf: builtins.isAttrs leaf && builtins.all (k: prelude.hasPrefix "_" k) (builtins.attrNames leaf)
+    ) (unwrapModule m);
+
   # THE ONE per-aspect class-slice extraction (Phase 2 Task 2, factored out of `classContentOf` below so
   # `class-modules` buckets AND `projectClass` — the reach-based projection — share EXACTLY one extraction).
   # `classSliceOf aspect class` = the `class`-C bucket contribution of a SINGLE resolved-aspect node
   # (`{ key; content; }`): the aspect's `content.${class}` deferredModule IFF that key is a registered
   # `class` key (via `classifyKey`, §2.2) and its body is a non-empty declaration. Returns a `[ { module; } ]`
-  # list (0 or 1 entry — one class = one content key). A `_`-prefixed / channel / facet key is skipped; a
-  # `{ }` body is a declared no-op, dropped so bucket counts reflect real content. `projectClass` maps
-  # `.module` (bare, for the classSubtreeAt anchor).
+  # list (0 or 1 entry — one class = one content key). A `_`-prefixed / channel / facet key is skipped; an
+  # EMPTY body (`{ }` raw, or the typed `{ imports = [ { } ]; }` wrap) is a declared no-op, dropped so bucket
+  # counts reflect real content. `projectClass` maps `.module` (bare, for the classSubtreeAt anchor).
   classSliceOf =
     aspect: class:
     let
@@ -54,7 +71,7 @@ let
       let
         m = content.${class};
       in
-      if m == { } then [ ] else [ { module = m; } ];
+      if isEmptyModule m then [ ] else [ { module = m; } ];
 
   # §2.2 TOTALITY at the projection terminal (ruling 2026-07-14). Classify EVERY non-`_` content key of an
   # aspect via `classifyKey` — a `facet`/`class`/`channel` key passes, a genuinely UNREGISTERED key (a typo
