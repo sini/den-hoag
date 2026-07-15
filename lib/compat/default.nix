@@ -71,28 +71,11 @@ let
   # plus the STRUCTURAL EXCLUSION classifier + stamp builder the bridge's `_entityStamps` uses for
   # EVERY discovered kind's registry. Consumed by the bridge + the compat-host-registry unit suite.
   registry = import ./registry.nix { };
-  # board #58 (Fork A): the post-fold `__provider` annotation walk (v1 annotateDeep, pin
-  # types.nix:561-574) — applied by the bridge (corpus path) and the flake-module wiring (direct
-  # mkDen path), each idempotently, so every navigated `den.aspects` value carries its provenance
-  # path and compile's `stampProvider` can recover v1's include identity. `batteryClassNames` (#67,
-  # ledger u17): the legacy batteries' registered classes (os/user) are excluded like the built-ins —
-  # v1's guard reads the REGISTERED `den.classes` (types.nix:540), which on a v1 fleet always carries
-  # the battery classes; the shim's walk runs pre-desugar, so the static `registersClasses` names are
-  # baked here instead (no ordering cycle — battery-module data, not fleet config; lazy let, cycle-free:
-  # `legacy` never references `annotateLib`).
-  annotateLib = import ./annotate.nix {
-    inherit prelude;
-    builtinClassNames = builtins.attrNames denHoag.classes;
-    batteryClassNames = legacy.defaults.registeredClasses;
-  };
-  # The projected hasAspect entity surface (v1 PR #602 semantics; the den-hoag dissolution). Task 3: `refKey`
-  # now reads a ref's NATIVE `.key` directly (has-aspect.nix — no `__provider` reconstruction), so a
-  # `host.hasAspect den.aspects.<path>` ref keys IDENTICALLY to the resolved-aspects node it answers for (W2,
-  # both `gen-aspects.key`). `stampProviderLib` is still imported for compile.nix's include-grounding path
-  # (the compile-side readers move to native identity in Task 4, with the `__provider` deletion); has-aspect
-  # no longer needs it. `refKey`/`mkEnrich` bind the identity; the schema entity-kind set is bound per-fleet
-  # at the bridge (flake-module.nix `mkFleetModuleWith` → `den.enrichBindings`).
-  stampProviderLib = import ./stamp-provider.nix { inherit prelude; };
+  # The projected hasAspect entity surface (v1 PR #602 semantics; the den-hoag dissolution). `refKey` reads a
+  # ref's NATIVE `.key` directly (has-aspect.nix — no reconstruction), so a `host.hasAspect den.aspects.<path>`
+  # ref keys IDENTICALLY to the resolved-aspects node it answers for (W2, both `gen-aspects.key`).
+  # `refKey`/`mkEnrich` bind the identity; the schema entity-kind set is bound per-fleet at the bridge
+  # (flake-module.nix `mkFleetModuleWith` → `den.enrichBindings`).
   hasAspect = import ./has-aspect.nix {
     inherit aspects;
   };
@@ -140,7 +123,6 @@ let
         ingest
         hasAspect
         ;
-      annotate = annotateLib.annotateAspects;
       collectGather = collectGatherLib;
       legacy = legacyArg;
     };
@@ -179,14 +161,9 @@ in
   # The bridge-registry passthrough (ship-gate M2's successor architecture) — the v1 hosts-registry
   # declaration + the structural-exclusion stamp machinery the bridge mounts.
   inherit registry;
-  # board #58 (Fork A) — the post-fold `__provider` annotation walk; the bridge applies it to the
-  # merged corpus tree (both consumers: the `den` module arg + the fleet def).
-  inherit (annotateLib) annotateAspects;
-  # The projected hasAspect entity surface (v1 PR #602). `stampProvider` is the single include-identity
-  # source (shared with compile.nix's still-`__provider` grounding — moves in Task 4); `refKey` is now a
-  # SINGLE native-`.key` lookup (Task 3 — the ref carries its own gen identity, no reconstruction); `mkEnrich`
-  # builds the `den.enrichBindings` hook (the bridge binds the schema entity-kind set). Exposed for the witness suite.
-  inherit (stampProviderLib) stampProvider;
+  # The projected hasAspect entity surface (v1 PR #602). `refKey` is a SINGLE native-`.key` lookup (the ref
+  # carries its own gen identity, no reconstruction); `mkEnrich` builds the `den.enrichBindings` hook (the
+  # bridge binds the schema entity-kind set). Exposed for the witness suite.
   inherit (hasAspect) refKey mkEnrich;
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.

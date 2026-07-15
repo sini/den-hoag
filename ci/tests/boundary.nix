@@ -37,6 +37,7 @@ let
     "concern-policies.nix"
     "concern-aspects.nix"
     "key-semantics.nix"
+    "module-shape.nix"
     "concern-quirks.nix"
     "concern-classes.nix"
     "linearization.nix"

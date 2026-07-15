@@ -72,21 +72,12 @@ let
         bv
     ) b;
 
-  # board #58 (Fork A): the `__provider`-annotated fleet surface — ONE post-fold walk over the merged
-  # `den.aspects` tree (compat.annotateAspects, annotate.nix; v1 annotateDeep, pin types.nix:561-574),
-  # feeding BOTH consumers below: the corpus policy closures' `den` module arg (the navigation surface
-  # a dispatch-emitted `den.aspects.<path>` include reads) and the fleet def handed to the shim (the
-  # navigation surface an aspect's `with den.aspects` includes read via compile). POST-fold, never
-  # inside `v1DeepMerge` — the fold's recurse-only-on-collision property is the load-bearing
-  # formals-preservation mechanism (`options.aspects` comment) and stays byte-identical. The fleet's
-  # declared classes/quirks feed the walk's exclusion guard (v1 reads its own registries the same way,
-  # types.nix:540-542).
-  annotatedDen = config.den // {
-    aspects = compat.annotateAspects {
-      classNames = builtins.attrNames (config.den.classes or { });
-      quirkNames = builtins.attrNames (config.den.quirks or { });
-    } (config.den.aspects or { });
-  };
+  # The fleet's merged `den.*` surface, handed to the corpus policy closures' `den` module arg (the
+  # navigation surface a dispatch-emitted `den.aspects.<path>` include reads) and to the shim (via `mkDenWith`,
+  # which types `den.aspects` through the compile view — `typedCompileTree` — so every navigated node carries
+  # its native gen-aspects `.key`, the identity compile grounds by). No `__provider` annotation: identity is
+  # the native `.key`, born in the type.
+  fleetDen = config.den;
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
@@ -492,9 +483,9 @@ in
   # arg carries BOTH the config surface (config.den) AND the lib surface at `den.lib` (v1's
   # `options.den.lib`), so the bridge splices the migration lib onto `.lib` — the same drop-in surface
   # `inputs.den.lib` exposes. The shim reproduces the config half separately inside its OWN v1 eval.
-  # `aspects` rides ANNOTATED (board #58): a corpus policy navigating `den.aspects.<path>` off this arg
-  # gets the `__provider`-bearing value, so its emitted include recovers v1's provider identity.
-  config._module.args.den = annotatedDen // {
+  # A corpus policy navigating `den.aspects.<path>` off this arg reads a value the shim later types through
+  # the compile view (`mkDenWith`), so its emitted include grounds by the native gen-aspects `.key`.
+  config._module.args.den = fleetDen // {
     lib = denLib;
   };
 
@@ -615,10 +606,10 @@ in
       );
       fleet = [
         {
-          # `annotatedDen` (board #58): the fleet's `den.aspects` carries the post-fold `__provider`
-          # annotation, so compile's include grounding recovers v1's provider identity.
+          # The fleet's `den.*` surface handed to the shim; `mkDenWith` types `den.aspects` through the
+          # compile view, so compile's include grounding reads the native gen-aspects `.key`.
           den =
-            builtins.removeAttrs annotatedDen [
+            builtins.removeAttrs fleetDen [
               "nixpkgs"
               "darwin"
             ]

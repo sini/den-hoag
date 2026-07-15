@@ -9,9 +9,8 @@
 # class-invariant (`{ __functor; forClass; forAnyClass; }`). THE DISSOLUTION: den-hoag has no re-key
 # machinery — a node's resolved-aspects (attribute 7) IS the projected set, so the surface is a pure lookup
 # over the node's OWN resolved-aspects entry keys, keyed by the SAME gen-aspects.key identity (ref and node
-# agree by construction — both carry the native `.key`). The `{__provider}`/`{name+meta}`-only fixtures below
-# retain those fields ALONGSIDE a native `.key` (== pathKey/genKey of the same path): the retired
-# reconstruction inputs, kept to pin the by-construction agreement as a PROBE property.
+# agree by construction — both carry the native `.key`). A ref is a `{ key = <path> }` value; `refKey` is a
+# single `.key` lookup (no reconstruction).
 #
 # The witnesses split UNIT (refKey/mkEnrich directly — deterministic seam logic: W2/W3/W4/W6/W-throw/filter)
 # and END-TO-END (the bridge's forcing terminal — the corpus path through bindingsAt: W1/W3-e2e/W5).
@@ -23,31 +22,17 @@
   ...
 }:
 let
-  inherit (denCompat) refKey mkEnrich stampProvider;
-  genKey = denHoag.internal.aspects.key;
+  inherit (denCompat) refKey mkEnrich;
 
   # ── UNIT: refKey identity + the mkEnrich stamp ────────────────────────────────────────────────────
-  # The two ref shapes a `den.aspects.core.network.manager` read produces. Task 3 (native A-IDENT): under
-  # the NAV binding a navigated ref carries its OWN `.key`, and a registry value likewise (the aspectType
-  # computes the `key` option). So refKey reads `.key` directly — the `{__provider}`-only / `{name+meta}`-
-  # only shapes were the RETIRED reconstruction inputs. We keep the legacy shape fields ALONGSIDE `.key`
-  # here so the W2 pin stays meaningful: both refs carry the SAME native `.key`, AND that key still equals
-  # the gen-aspects.key reconstruction from each legacy shape (the by-construction agreement the PROBE pins).
+  # Native A-IDENT: a `den.aspects.core.network.manager` read (under the NAV binding OR off the compiled
+  # registry) carries its OWN `.key`, so `refKey` is a single `.key` lookup — no reconstruction. The two
+  # shapes below are the nav-view value and the registry value; both carry the SAME native `.key`.
   refNav = {
-    __provider = [
-      "core"
-      "network"
-      "manager"
-    ];
-    key = "core/network/manager"; # native `.key` (nav binding); == pathKey __provider.
+    key = "core/network/manager"; # native `.key` (nav binding)
   };
   refReg = {
-    name = "manager";
-    meta.aspect-chain = [
-      "core"
-      "network"
-    ];
-    key = "core/network/manager"; # native `.key` (registry value); == genKey { name; meta }.
+    key = "core/network/manager"; # native `.key` (registry value)
   };
 
   # A fixture node's resolved-aspects (attribute-7 shape: `[ { key; content } ]`), keyed by the SAME
@@ -186,47 +171,27 @@ let
         den.hosts.x86_64-linux.withaspect = { };
         den.hosts.x86_64-linux.plain = { };
         # `withaspect`'s self-named aspect (auto-included at host withaspect, R5). Its nixos body reads
-        # `host.hasAspect` at delivery depth — the corpus networking.nix:341 shape. Its includes carry a
-        # NAMELESS `__provider` child (`kid`) — under A-IDENT resolution keys it `kid` from the graft, the
-        # transitive-delivery witness (W5). Task 3: the `host.hasAspect` refs now carry native `.key`
-        # (== pathKey __provider); the `{__provider}`-only shape was the retired refKey reconstruction input.
+        # `host.hasAspect` at delivery depth — the corpus networking.nix:341 shape. Its includes carry a BARE
+        # NAME REFERENCE (`{ name = "kid" }`) — the typed tree keys it positionally, and `stampIdentity` carries
+        # its authored name `kid` (chain cleared), the transitive-delivery witness (W5). The `host.hasAspect`
+        # refs carry native `.key` (a `{ key = <path> }` value — refKey is a single `.key` lookup).
         den.aspects.withaspect.includes = [
-          {
-            __provider = [ "kid" ];
-            key = "kid";
-          }
+          { name = "kid"; }
         ];
         den.aspects.withaspect.nixos =
           { host, ... }:
           {
-            hasSelf = host.hasAspect {
-              __provider = [ "withaspect" ];
-              key = "withaspect";
-            }; # delivered (self) → true
-            hasChild = host.hasAspect {
-              __provider = [ "kid" ];
-              key = "kid";
-            }; # via nested include → true (W5)
-            hasAbsent = host.hasAspect {
-              __provider = [ "nope" ];
-              key = "nope";
-            }; # not delivered → false
+            hasSelf = host.hasAspect { key = "withaspect"; }; # delivered (self) → true
+            hasChild = host.hasAspect { key = "kid"; }; # via nested include → true (W5)
+            hasAbsent = host.hasAspect { key = "nope"; }; # not delivered → false
             # the corpus mkForce-false shape typechecks as a bool
-            managerForced = lib.mkForce (
-              host.hasAspect {
-                __provider = [ "nope" ];
-                key = "nope";
-              }
-            );
+            managerForced = lib.mkForce (host.hasAspect { key = "nope"; });
           };
         # `plain` has its own self-named aspect but NOT `withaspect` — the negative host (W3 end-to-end).
         den.aspects.plain.nixos =
           { host, ... }:
           {
-            plainHasWithaspect = host.hasAspect {
-              __provider = [ "withaspect" ];
-              key = "withaspect";
-            }; # absent here → false
+            plainHasWithaspect = host.hasAspect { key = "withaspect"; }; # absent here → false
           };
       }
     ];
@@ -240,25 +205,22 @@ in
       expr = {
         refKeyNav = refKey refNav;
         refKeyReg = refKey refReg;
-        # Task 3: refKey reads native `.key`, and that key STILL equals the gen-aspects.key reconstruction
-        # from each legacy shape (nav via stampProvider, reg via name+meta) — the by-construction agreement,
-        # now a PROBE property (`.key == reconstruction`) rather than two live reconstruction paths.
-        navEqGenKey = refKey refNav == genKey (stampProvider refNav);
-        regEqGenKey = refKey refReg == genKey refReg;
+        # refKey reads native `.key` directly — the ref key IS its `.key` (no reconstruction).
+        navEqKey = refKey refNav == refNav.key;
+        regEqKey = refKey refReg == refReg.key;
       };
       expected = {
         refKeyNav = "core/network/manager";
         refKeyReg = "core/network/manager";
-        navEqGenKey = true;
-        regEqGenKey = true;
+        navEqKey = true;
+        regEqKey = true;
       };
     };
     # refKey of the navigated ref is a key the REAL resolved-aspects of a self-named host carries.
     test-w2-refkey-matches-resolved-node = {
       expr = {
         refK = refKey {
-          __provider = [ "marker" ];
-          key = "marker"; # native `.key` (Task 3); == pathKey __provider.
+          key = "marker"; # native `.key`
         };
         present = builtins.elem "marker" w2MarkerKeys;
       };
@@ -286,13 +248,11 @@ in
     test-w3-absent-false = {
       expr = {
         absent = enrManager.host.hasAspect {
-          __provider = [ "absent" ];
           key = "absent";
         };
         mkForceShape =
           (lib.mkForce (
             enrManager.host.hasAspect {
-              __provider = [ "absent" ];
               key = "absent";
             }
           )).content;
@@ -321,7 +281,6 @@ in
         callForces =
           (builtins.tryEval (
             lazyProbe.host.hasAspect {
-              __provider = [ "x" ];
               key = "x";
             }
           )).success;
@@ -357,15 +316,12 @@ in
     test-w6-user-cell = {
       expr = {
         userHas = enrCell.user.hasAspect {
-          __provider = [ "userland" ];
           key = "userland";
         };
         userLacks = enrCell.user.hasAspect {
-          __provider = [ "hostonly" ];
           key = "hostonly";
         };
         hostSharesSet = enrCell.host.hasAspect {
-          __provider = [ "userland" ];
           key = "userland";
         };
       };

@@ -63,12 +63,10 @@ let
     { host, ... }:
     {
       name = "ag/${host.name}";
-      # Task 3: the `host.hasAspect` ref carries native `.key` (== pathKey __provider); the `{__provider}`-
-      # only shape was the retired refKey reconstruction input.
+      # the `host.hasAspect` ref carries native `.key` (a `{ key = <path> }` value; refKey is a `.key` lookup).
       ${host.class}.persistMarker =
         if
           (host.hasAspect {
-            __provider = [ "imp" ];
             key = "imp";
           })
         then
@@ -167,7 +165,7 @@ let
   #
   #   agCycle = { host, ... }: {
   #     name = "cyc/${host.name}";
-  #     includes = if (host.hasAspect { __provider = [ "imp" ]; }) then [ ] else [ ];  # KEY/STRUCTURE position
+  #     includes = if (host.hasAspect { key = "imp"; }) then [ ] else [ ];  # KEY/STRUCTURE position
   #   };
   #
   # `forwardExpand` reads `concrete.includes` to recurse, forcing the `if` CONDITION → forcing the projected
@@ -218,8 +216,7 @@ in
         callForces =
           (builtins.tryEval (
             lazyProbe.host.hasAspect {
-              __provider = [ "x" ];
-              key = "x"; # native `.key` (Task 3); == pathKey __provider.
+              key = "x"; # native `.key`
             }
           )).success;
       };

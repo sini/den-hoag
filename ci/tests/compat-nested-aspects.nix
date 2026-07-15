@@ -148,11 +148,11 @@ let
         name = "shuo";
       };
 
-  # ── (4') PROVIDER identity (board #58 supersession): the SAME emission with an ANNOTATED value — a
-  #    `__provider`-bearing content set (what the corpus policy actually navigates off the bridge's
-  #    annotated `den` arg) takes v1's provider identity (wrapChild, normalize.nix:95-119): name = last,
-  #    meta.aspect-chain = init, id_hash = the aspectEntry convention over the provider path — CELL-
-  #    INDEPENDENT (the same value emitted at two cells is ONE identity). ────────────────────────────
+  # ── (4') NATIVE identity: the SAME emission with a NAVIGATED value — a content set carrying its OWN native
+  #    gen-aspects `.key` (what a corpus policy navigates off the typed `den` arg — `den.aspects.blade.shuo`):
+  #    `mkEmittedAspect` grounds it through `normalizeList` by that `.key`, so identity is name = last segment,
+  #    meta.aspect-chain = its ancestors, id_hash = the aspectEntry convention over the path — CELL-INDEPENDENT
+  #    (the same value emitted at two cells is ONE identity, the value's own key, not the cell's). ──────────
   peProvCompiled = denCompat.compile {
     policies.p =
       { host, user, ... }:
@@ -162,10 +162,9 @@ let
           value = {
             includes = [ ];
             homeManager.x = true;
-            __provider = [
-              "blade"
-              "shuo"
-            ];
+            name = "shuo";
+            key = "blade/shuo";
+            meta.aspect-chain = [ "blade" ];
           };
         }
       ];
@@ -321,11 +320,10 @@ in
         grounded = true;
       };
     };
-    # (4') EMITTED IDENTITY — PROVIDER (board #58 supersession): an ANNOTATED emitted value takes v1's
-    #      provider identity (wrapChild normalize.nix:95-119) — name = last __provider, aspect-chain =
-    #      init, id_hash = the aspectEntry convention over the path, CELL-INDEPENDENT (both old u7
-    #      ceilings dissolve); class keys still grounded through the same normalizeList.
-    test-emitted-identity-provider = {
+    # (4') EMITTED IDENTITY — NATIVE: a navigated emitted value carrying its OWN `.key` grounds by that key —
+    #      name = its last segment, aspect-chain = its ancestors, id_hash = the aspectEntry convention over the
+    #      path, CELL-INDEPENDENT (both old u7 ceilings dissolve); class keys still grounded through normalizeList.
+    test-emitted-identity-native = {
       expr = {
         name = provEmitBlade.aspect.name;
         chain = provEmitBlade.aspect.meta.aspect-chain;

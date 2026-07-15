@@ -19,7 +19,6 @@
   aspects,
   compile,
   ingest,
-  annotate,
   hasAspect,
   collectGather,
   legacy,
@@ -80,11 +79,9 @@ let
         };
       }
     );
-  # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW `__provider`-
-  # annotated v1 aspect tree through the compile view, yielding a typed tree whose class keys are
-  # deferredModules and whose nodes carry native `.key`. The `__provider` graft rides through the type's
-  # freeform (a `__`-prefixed key), so a navigated node carries BOTH native `.key` AND `__provider` — compile
-  # reads `.key` (native) and the graft is dead weight a later task deletes. `evalModuleTree` also rebinds
+  # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW v1 aspect tree
+  # through the compile view, yielding a typed tree whose class keys are deferredModules and whose nodes carry
+  # native `.key` (the ONLY identity — compile reads `.key` directly). `evalModuleTree` also rebinds
   # `_module.args.aspects = config` internally, so a `with aspects; …` include inside the tree resolves
   # against its typed siblings. Falls back to `{ }` for an aspect-less fleet (mkOption default).
   # §2.2 TOTALITY under the typed tree (Bug 3). gen-aspects' freeform types ANY undeclared attrset key as a
@@ -325,50 +322,27 @@ let
   # when a consumer supplies them; only `den` is bound unconditionally (the corpus's dominant reference).
   # den-hoag core probes and `concern-aspects` moduleArgs carry ZERO legacy names — this binding lives in
   # the shim's v1 eval, never crosses into den-hoag.
-  # board #58 (Fork A): the `__provider`-annotated view of a v1 `den` surface — `annotate` is the
-  # post-fold walk (annotate.nix; v1 annotateDeep, pin types.nix:561-574). This is `compile`'s RAW input:
-  # a class body rides as an unwalked attrset, `stampProvider` recovers v1's include identity from the
-  # provider path. Idempotent on the bridge path — its tree arrives already annotated (`!(v ? __provider)`).
-  # The fleet's declared classes/quirks feed the walk's exclusion guard, exactly as v1 reads its own
-  # registries at annotation time (types.nix:540-542).
-  annotatedViewRaw =
-    den:
-    den
-    // {
-      aspects = annotate {
-        classNames = builtins.attrNames (den.classes or { });
-        quirkNames = builtins.attrNames (den.quirks or { });
-      } (den.aspects or { });
-    };
-
-  # The NAVIGATION view — the `__provider`-annotated raw aspects run through the SAME `typedCompileTree`
-  # compile consumes, so a navigated node carries native A-IDENT `.key`/`meta.aspect-chain` (born in the type)
-  # AND the `__provider` graft (a `__`-prefixed freeform key, additive). This is the surface a v1 module's
-  # `with den.aspects; …` include, a policy's emitted `den.aspects.<path>` ref, and the `evalV1` read-back
-  # (Task 3's readers + the native-identity suite) read. Using the ONE typed tree here (not a classes-freeform
-  # variant) is what keeps a `with den.aspects` include IDENTICAL to its compile-tree sibling — no double-type.
+  # The NAVIGATION view — the RAW v1 aspects run through the SAME `typedCompileTree` compile consumes, so a
+  # navigated node carries native A-IDENT `.key`/`meta.aspect-chain` (born in the type). This is the surface a
+  # v1 module's `with den.aspects; …` include, a policy's emitted `den.aspects.<path>` ref, and the `evalV1`
+  # read-back (the native-identity suite) read. Using the ONE typed tree here (not a classes-freeform variant)
+  # keeps a `with den.aspects` include IDENTICAL to its compile-tree sibling — no double-type.
   annotatedViewNav =
     den:
-    let
-      raw = annotatedViewRaw den;
-    in
-    raw
+    den
     // {
       aspects = typedCompileTree {
         declaredClassNames = builtins.attrNames (den.classes or { });
         quirkChannelNames = builtins.attrNames (den.quirks or { });
-      } raw.aspects;
+      } (den.aspects or { });
     };
 
-  # R1 legacy binding — bind `_module.args.den` to the NAVIGATION view (Task 3). A `host.hasAspect
-  # den.aspects.<path>` ref (the 13-read corpus census) now reads a node carrying native `.key`, so
-  # `refKey` is a single `ref.key` lookup (has-aspect.nix) — no `__provider` reconstruction. The nav view
-  # ALSO carries the grafted `__provider` (additive), so a `with den.aspects; …` include CAPTURED off this
-  # binding and flowed to `compile` still grounds byte-identically: compile's `stampProvider` reads
-  # `v.__provider` (the graft), unchanged this task (compile-grounding readers move in Task 4 with the
-  # `__provider` deletion). The name-ref-in-includes canary (a captured typed node carries a materialized
-  # `name` + native `meta.aspect-chain`, so `identity.key` = the full container path natively — NOT the
-  # positional collapse Task 2 feared) is pinned by compat-include-identity F1-F5 + the native-identity PROBE.
+  # R1 legacy binding — bind `_module.args.den` to the NAVIGATION view. A `host.hasAspect den.aspects.<path>`
+  # ref (the 13-read corpus census) reads a node carrying native `.key`, so `refKey` is a single `ref.key`
+  # lookup (has-aspect.nix). A `with den.aspects; …` include CAPTURED off this binding and flowed to `compile`
+  # grounds by that SAME native `.key` (the include is a typed node — no reconstruction). The name-ref-in-
+  # includes canary (a captured typed node carries a materialized `name` + native `meta.aspect-chain`, so
+  # `identity.key` = the full container path natively) is pinned by compat-include-identity F1-F5.
   bindLegacyEnv =
     {
       config,
@@ -378,16 +352,15 @@ let
       config._module.args.den = annotatedViewNav config.den;
     };
 
-  # `evalV1Raw` — the compat two-eval read-back: `config.den` with its aspects `__provider`-annotated (RAW —
-  # class bodies unwalked). The v1→v1 LEGACY DESUGARS (`desugarLegacy`: provides/forwards/defaults) run on
-  # THIS raw tree (they read raw `provides`/`schema.<kind>.includes`, which must NOT be freeform-absorbed by
-  # typing). The SINGLE TYPED TREE (Task 4a) is applied AFTER desugar, in `compileFull` (`typeAspects`), so
-  # compile consumes deferredModule class buckets carrying native `.key`.
+  # `evalV1Raw` — the compat two-eval read-back: `config.den` with its aspects RAW (class bodies unwalked).
+  # The v1→v1 LEGACY DESUGARS (`desugarLegacy`: provides/forwards/defaults) run on THIS raw tree (they read
+  # raw `provides`/`schema.<kind>.includes`, which must NOT be freeform-absorbed by typing). The SINGLE TYPED
+  # TREE (Task 4a) is applied AFTER desugar, in `compileFull` (`typeAspects`), so compile consumes
+  # deferredModule class buckets carrying native `.key`.
   evalV1Raw =
     userModules:
-    annotatedViewRaw
-      (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
-      .config.den;
+    (schema.evalModuleTree { modules = flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules; })
+    .config.den;
   # `typeAspects v1Den` — run the (post-desugar) RAW aspect tree through the compile view (Task 4a): compile
   # consumes deferredModule class buckets + native `.key`. Applied in `compileFull` AFTER the legacy desugars.
   typeAspects =
@@ -400,12 +373,10 @@ let
       } (v1Den.aspects or { });
     };
 
-  # `evalV1` — the PUBLIC read-back (Task 3's readers + the native-identity suite): the NAVIGATION view, so
-  # a navigated `den.aspects.<path>` carries native `.key`/`meta.aspect-chain` (born in the type) alongside
-  # the grafted `__provider`. This is a READ-ONLY VIEW over the same v1 eval — it is NOT fed to `compile`
-  # (which uses `evalV1Raw`) and NOT the `with den.aspects` include-capture binding (`bindLegacyEnv`, raw),
-  # so a captured include's compile identity is untouched. It exposes native identity on exactly the surface
-  # this task's acceptance reads; Task 3 makes the readers consume it.
+  # `evalV1` — the PUBLIC read-back (the native-identity suite): the NAVIGATION view, so a navigated
+  # `den.aspects.<path>` carries native `.key`/`meta.aspect-chain` (born in the type). This is a READ-ONLY
+  # VIEW over the same v1 eval, exposing native identity on the surface a `hasAspect` ref / a `with den.aspects`
+  # reader consumes.
   evalV1 =
     userModules:
     annotatedViewNav

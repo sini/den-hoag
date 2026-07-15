@@ -13,14 +13,12 @@
 # hasAspect is a pure lookup over the node's OWN resolved-aspects entry keys, keyed by `refKey` — the same
 # `gen-aspects.key` identity, so the ref and the resolved node agree BY CONSTRUCTION (W2 pins it).
 #
-# THE MATCHING LAW (Task 3 — native identity). `refKey ref` = `ref.key`: under A-IDENT every
-# `den.aspects.<path>` value carries its OWN container-relative `.key` (born in gen-aspects' type). A
-# NAVIGATED value off the `den` arg (the shim binds the NAVIGATION view — flake-module.nix `bindLegacyEnv →
-# annotatedViewNav`) AND a value read straight off the compiled REGISTRY both carry `.key`, and it equals the
-# resolved node's key (`resolved-aspects.nix` `keyOf concrete`, the SAME `gen-aspects.key`). The prior
-# three-branch reconstruction (name+meta / `__provider` via `stampProvider`) retired — the PROBE
-# (ci/tests/native-identity.nix) pins `.key == pathKey __provider` per node while both coexist (Task 4 deletes
-# `__provider`).
+# THE MATCHING LAW (native identity). `refKey ref` = `ref.key`: under A-IDENT every `den.aspects.<path>`
+# value carries its OWN container-relative `.key` (born in gen-aspects' type). A NAVIGATED value off the `den`
+# arg (the shim binds the NAVIGATION view — flake-module.nix `bindLegacyEnv → annotatedViewNav`) AND a value
+# read straight off the compiled REGISTRY both carry `.key`, and it equals the resolved node's key
+# (`resolved-aspects.nix` `keyOf concrete`, the SAME `gen-aspects.key`). It is a single lookup — no
+# reconstruction (native identity is the only identity).
 #
 # THE CENSUS (nix-config b0b20769): 13 reads, all `host.hasAspect den.aspects.<path>`, all in
 # delivery-depth nixos aspect bodies (networking.nix:341 `core.network.manager`, gpg.nix:80/bitwarden.nix:39
@@ -36,14 +34,12 @@
   aspects,
 }:
 let
-  # A NATIVE-IDENTITY refKey (Task 3 — the value-injection debt closure). Under A-IDENT a `den.aspects.<path>`
-  # value carries its OWN container-relative `.key` (born in gen-aspects' type; the compat two-eval binds the
-  # NAVIGATION view — `flake-module.nix bindLegacyEnv → annotatedViewNav` — so a navigated ref AND a value read
-  # off the compiled registry both carry `.key`). So `refKey` is a SINGLE lookup: the ref's native `.key`,
-  # which by construction equals the resolved node's `keyOf` (both `gen-aspects.key`, W2). No `__provider`
-  # reconstruction (the prior three-branch's `stampProvider` path retires; PROBE proves `.key ==
-  # pathKey __provider` per node this task). NEVER a silent false: a ref with no `.key` aborts NAMED, so a
-  # mistyped `hasAspect <x>` self-announces (the v1 refKey posture preserved).
+  # A NATIVE-IDENTITY refKey. Under A-IDENT a `den.aspects.<path>` value carries its OWN container-relative
+  # `.key` (born in gen-aspects' type; the compat two-eval binds the NAVIGATION view — `flake-module.nix
+  # bindLegacyEnv → annotatedViewNav` — so a navigated ref AND a value read off the compiled registry both
+  # carry `.key`). So `refKey` is a SINGLE lookup: the ref's native `.key`, which by construction equals the
+  # resolved node's `keyOf` (both `gen-aspects.key`, W2). NEVER a silent false: a ref with no `.key` aborts
+  # NAMED, so a mistyped `hasAspect <x>` self-announces (the v1 refKey posture preserved).
   refKey =
     ref:
     if builtins.isAttrs ref && (ref ? key) then

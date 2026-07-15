@@ -171,14 +171,6 @@ let
       acc: k: builtins.removeAttrs acc [ k ] // { ${v1ClassKeyMap.${k} or k} = attrs.${k}; }
     ) attrs (builtins.attrNames attrs);
 
-  # ── PROVIDER-IDENTITY STAMP (board #58, Fork A) — v1 `wrapChild` parity. Extracted to the SHARED
-  # `stamp-provider.nix` (the single identity source): the include-grounding path here
-  # (`stampIdentity`/`groundRec`/`mkEmittedAspect`) and the projected-hasAspect entity surface
-  # (`has-aspect.nix` `refKey`) MUST recover v1's include identity from the SAME `__provider`-derived
-  # name/aspect-chain/id_hash, so a `host.hasAspect den.aspects.<path>` ref keys IDENTICALLY to the
-  # resolved-aspects node it answers for. One definition, no duplication (see stamp-provider.nix). ──
-  inherit (import ./stamp-provider.nix { inherit prelude; }) stampProvider;
-
   # ── v1 NESTED-ASPECT discriminator (the blade.shuo rung) — v1 `nix/lib/aspects/fx/
   # key-classification.nix:69-80` `isNestedKey` + `:49-56` `looksLikeClassContent`, pin 11866c16. ──
   #
@@ -233,25 +225,16 @@ let
   # gen-aspects materializes EVERY registered class key on EVERY aspect — an UNSET class defaults to the EMPTY
   # wrap `{ imports = [ { } ]; }`. That empty wrap must NOT count as class-like content: else a typo attrset
   # (`nixxos = { networking… }`, typed with all-empty class defaults) would flip `recognizedSubKey` true on
-  # its default `nixos` sub-key and mis-classify NESTED (silently stripped) instead of aborting §2.2. Peel the
-  # wrap and check the real leaf modules; an empty wrap is a declared no-op, not content (mirrors
-  # class-modules.nix `isEmptyModule`).
-  unwrapDeferred =
-    m: if builtins.isAttrs m && m ? imports then builtins.concatMap unwrapDeferred m.imports else [ m ];
-  isEmptyDeferred =
-    m:
-    builtins.isAttrs m
-    && m ? imports
-    && builtins.all (
-      leaf: builtins.isAttrs leaf && builtins.all (k: prelude.hasPrefix "_" k) (builtins.attrNames leaf)
-    ) (unwrapDeferred m);
+  # its default `nixos` sub-key and mis-classify NESTED (silently stripped) instead of aborting §2.2. The
+  # shared `module-shape.nix` helper peels the wrap + judges emptiness (one source with class-modules).
+  inherit (import ../module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
   looksLikeClassContent =
     v:
     builtins.isFunction v
     || (builtins.isAttrs v && v ? __contentValues)
     || (
       builtins.isAttrs v
-      && !(isEmptyDeferred v)
+      && !(builtins.isAttrs v && v ? imports && isEmptyDeferredModule v)
       && (
         v == { }
         || builtins.any (
@@ -385,39 +368,53 @@ let
       # `stampProvider` (v1 wrapChild, normalize.nix:95-119) when the value is annotated; the DISTINCT
       # POSITIONAL name as the annotation-less inline-literal fallback — v1's own nameless posture
       # (children.nix's `<parent>/<anon>:<idx>` rename).
-      # Under the single typed tree, a node placed in a container `includes` LIST is A-IDENT-keyed by its
-      # OPTION PATH (`withaspect/includes/0`, name = "0") — POSITIONAL, not its authored identity. A
-      # `{ __provider; key }` DELIVERY REF (compat-has-aspect W5 `kid`) carries its OWN provenance in the
-      # `__provider` graft, so the positional `.key`/`name` are WRONG for it. Carry the navigated node's own
-      # identity: when `__provider` is present, DERIVE name/key/meta.aspect-chain/id_hash from it (v1 wrapChild
-      # parity), OVERRIDING the container's positional recompute. A normal aspect defined at a path has
-      # `pathKey __provider == its native .key`, so this is a no-op there; a positionally-placed ref is
-      # corrected. `stampProvider` (guarded `!(v?name)`) no-ops on the typed node — its `name` is the
-      # positional "0" — so the override is applied HERE, in the compile-only include-identity path.
+      # Does an include carry REAL content (a non-empty class deferredModule, a non-empty channel value, or
+      # non-empty `.includes`)? A CONTENT-BEARING navigated node (`with den.aspects; [ core.systemd.boot ]`)
+      # already carries its OWN correct native `.key` (its definition path — `core/systemd/boot`); an
+      # identity-only BARE REFERENCE (`{ name = "kid" }` / a provides seed stub) carries ONLY typed defaults
+      # (empty class buckets + positional identity). The classSet unwrap uses the shared `isEmptyDeferredModule`.
+      hasRealContent =
+        ref:
+        builtins.isAttrs ref
+        && builtins.any (
+          k:
+          builtins.substring 0 2 k != "__"
+          && (
+            if builtins.elem (v1ClassKeyMap.${k} or k) classNames then
+              !(isEmptyDeferredModule ref.${k})
+            else if builtins.elem k quirkNames then
+              ref.${k} != null
+            else
+              k == "includes" && builtins.isList ref.${k} && ref.${k} != [ ]
+          )
+        ) (builtins.attrNames ref);
+      # STATIC-INCLUDE IDENTITY. Under the typed tree a node placed in a container `includes` LIST is
+      # A-IDENT-keyed by its OPTION PATH (`withaspect/includes/0`, name = "0", chain `[ withaspect includes ]`)
+      # — POSITIONAL. Three cases, in order:
+      #   • ANONYMOUS inline literal (`h4.includes = [ { nixos… } ]`, F4) → `name = "0"` (a bare integer index,
+      #     the A-IDENT positional default): the per-position FALLBACK (`<parent>:include:<idx>` — v1's
+      #     nameless posture). Checked FIRST (an inline literal IS content-bearing but must NOT keep its
+      #     positional key).
+      #   • CONTENT-BEARING navigated node (`with den.aspects; [ core.systemd.boot ]`, F1/F5) — a non-positional
+      #     name AND real content → its native `.key`/`meta.aspect-chain` are ALREADY its real definition path;
+      #     use them AS-IS (no re-stamp).
+      #   • BARE REFERENCE (`{ name = "kid" }` delivery ref / `{ name = "carrier/to-users" }` provides seed
+      #     stub, W1) — a non-positional name with NO content → KEEP the authored name but CLEAR the positional
+      #     container chain so the key is the bare name (`kid`, not `withaspect/includes/kid`).
       stampIdentity =
         fallbackName: ref:
-        if builtins.isList (ref.__provider or null) && ref.__provider != [ ] then
+        let
+          isPositional = builtins.match "[0-9]+" (ref.name or "") != null;
+        in
+        if !isPositional && (ref ? name) && hasRealContent ref then
+          # a content-bearing navigated node: keep its native `name`/`key`/`meta`, but ensure a content-stable
+          # `id_hash` (derive from `.key` when the node did not carry one — a manually-emitted value).
           ref
-          // {
-            name = prelude.last ref.__provider;
-            key = builtins.concatStringsSep "/" ref.__provider;
-            id_hash = builtins.hashString "sha256" (
-              "den-aspect:" + builtins.concatStringsSep "/" ref.__provider
-            );
-            meta = (ref.meta or { }) // {
-              aspect-chain = prelude.init ref.__provider;
-            };
+          // prelude.optionalAttrs (!(ref ? id_hash) && ref ? key) {
+            id_hash = builtins.hashString "sha256" "den-aspect:${ref.key}";
           }
         else
-          # No `__provider`. Two sub-cases, distinguished by whether the typed `name` is the A-IDENT POSITIONAL
-          # default for a list element (a bare integer index) or a real AUTHORED name that survived typing:
-          #   • ANONYMOUS inline literal (`h4.includes = [ { nixos… } ]`) → `name = "0"` (positional): use the
-          #     per-position FALLBACK (`<parent>:include:<idx>` — v1's nameless posture, the F4 witness).
-          #   • AUTHORED name (`{ name = "carrier/to-users"; }` — the provides seed stub) → KEEP the name.
-          # In BOTH cases CLEAR the aspect-chain so `gen-aspects.key` (= `pathKey (aspect-chain ++ [name])`) is
-          # the bare name, NOT `<container-path>/<name>` (the container's positional A-IDENT chain).
           let
-            isPositional = builtins.match "[0-9]+" (ref.name or "") != null;
             nm = if isPositional || !(ref ? name) then fallbackName else ref.name;
           in
           ref
@@ -526,18 +523,13 @@ let
     normalizeList;
 
   # v1 aspect STRUCTURAL keys that do NOT pass through as den-hoag aspect content: `provides` rides the
-  # legacy module (Task 4), `policies`/`excludes` are re-expressed here, `__*` are v1 pipeline internals.
-  # `__provider` (board #58): the annotation walk stamps it on every aspect-tree node; the REGISTRY
-  # record is keyed by its top-level name already, so the path is stripped here — the compiled registry
-  # stays byte-identical to the pre-annotation shim (and never carries an untyped list key into
-  # den-hoag's `den.aspects` option). Navigated INCLUDE values keep theirs (identity via stampProvider).
+  # legacy module, `policies`/`excludes` are re-expressed here, `_` is the v1 provides/nested child slot.
   droppedAspectKeys = [
     "provides"
     "policies"
     "excludes"
     "classes"
     "_"
-    "__provider"
   ];
 
   # Resolve a v1 aspect REFERENCE to the den-hoag aspect record den-hoag's resolution consumes. Accepts
@@ -612,29 +604,15 @@ let
             meta = parent.meta or { };
             metaWithDrop =
               if excludes == [ ] then parent.meta or null else meta // { drop = (meta.drop or [ ]) ++ excludes; };
-            # board #58 KEY-ALIGNMENT: `keyOf` consumers over v1-NAVIGATED aspect values OUTSIDE the
-            # include path — literal-form `neededBy` triggers (resolved-aspects `indexByNeededBy`) and
-            # `meta.drop`/`excludes` constraint refs (`applyConstraints`/`constraintSeen`) — must see
-            # the SAME provider-derived identity the resolved nodes carry, else a provider-keyed
-            # resolved set never matches an `"<anon>"`-keyed trigger/drop. Corpus-zero today (the
-            # provides desugar emits SELECTOR-form neededBy, legacy/provides.nix:24; corpus `excludes`
-            # are policy excludes on schema kinds), stamped for coherence. Provider-ONLY (no positional
-            # fallback): a nameless un-annotated literal ref stays `"<anon>"` — v1's own posture.
-            stampRefs = map stampProvider;
-            metaStamped =
-              if metaWithDrop == null then
-                null
-              else
-                metaWithDrop
-                // prelude.optionalAttrs (builtins.isList (metaWithDrop.drop or null)) {
-                  drop = stampRefs metaWithDrop.drop;
-                };
+            # `meta.drop`/`neededBy` literal-form refs ride THROUGH as authored — a `keyOf` consumer
+            # (resolved-aspects `indexByNeededBy` / `applyConstraints`) reads each ref's native `.key`, the
+            # SAME `gen-aspects.key` the resolved nodes carry, so a literal ref matches its resolved node by
+            # construction. (The old `stampProvider` map recovered a `__provider`-derived key here; with native
+            # `.key` there is nothing to reconstruct — corpus-zero either way, the provides desugar emits
+            # SELECTOR-form neededBy and corpus excludes are policy excludes on kinds.)
           in
           parent
-          // (if metaStamped == null then { } else { meta = metaStamped; })
-          // prelude.optionalAttrs (builtins.isList (parent.neededBy or null)) {
-            neededBy = stampRefs parent.neededBy;
-          }
+          // (if metaWithDrop == null then { } else { meta = metaWithDrop; })
           // prelude.optionalAttrs (parent ? includes) {
             includes = normalizeList "${name}:include" parent.includes;
           }
@@ -643,41 +621,40 @@ let
 
   # ── DISPATCH-EMITTED content-set include (the census TWIN path — the revived arm). A v1 policy body
   # emits `policy.include den.aspects.<path>` where the navigated value crosses the raw bridge as a BARE
-  # content set (no id_hash/name — the bridge's `anything` drops v1's `__provider` annotation, the same
-  # boundary fact the kind-include contentRefs arm documents). Two corpus consumers:
+  # content set navigated off the typed `den` arg (so it carries its OWN native `.key`). Two corpus consumers:
   #   • `user-aspect-auto-include` (defaults.nix:14-22) emits `den.aspects.<host>.<user>` at user cells —
   #     the nested sub-aspects the translateAspect split strips (blade/cortex × sini/shuo);
   #   • `cluster-aspect` (policies/clusters.nix:73) emits `den.aspects.<cluster>` at cluster scopes
   #     (`den.aspects.axon`, clusters/axon.nix:101).
-  # The emitted value is GROUNDED through the SAME normalizeList machinery translateAspect uses (class
-  # keys grounded, `.includes` children wrapped/recursed — so the sub-aspect's firefox/steam/spicetify
-  # includes resolve at the cell). IDENTITY (board #58 supersession of the old scope-coord Fork-A
-  # ruling): an ANNOTATED emitted value (one navigated off a `__provider`-stamped tree — the corpus
-  # path, since the bridge's `den` module arg is annotated) takes v1's PROVIDER identity (wrapChild,
-  # normalize.nix:95-119 — v1 has no separate emitted-identity class), dissolving both old ceilings
-  # (cell-identity collision of two emitters at one cell; double-landing of one set referenced from two
-  # cells). An annotation-LESS value (closure-captured/synthetic) falls back to the DETERMINISTIC
-  # SCOPE-COORD identity: name = `<emitted>@<coord names>`, id_hash over the firing cell's entity-coord
-  # id_hashes — stable across eval order, distinct per cell. At the value-less stratum probe the coords
-  # are sentinel entries (which carry id_hash/name), so the fallback derivation is probe-safe — though
-  # both corpus emitters gate on a real aspect-name match and emit nothing at the probe (expansion path).
+  # The emitted value is GROUNDED through the SAME normalizeList machinery translateAspect uses (class keys
+  # grounded, `.includes` children wrapped/recursed — so the sub-aspect's firefox/steam/spicetify includes
+  # resolve at the cell). IDENTITY: a navigated value carries its OWN native gen-aspects `.key` (v1 wrapChild
+  # parity — normalize.nix:95-119), so `mkEmittedAspect` grounds it by that key — CELL-INDEPENDENT (identity is
+  # the value's, not the cell's: two emitters at one cell can't collide, one set from two cells dedups to one
+  # node per key-space). A closure-captured / SYNTHETIC value with NO `.key` falls back to the DETERMINISTIC
+  # SCOPE-COORD identity: name = `<emitted>@<coord names>`, id_hash over the firing cell's entity-coord id_hashes
+  # — stable across eval order, distinct per cell. At the value-less stratum probe the coords are sentinel
+  # entries (which carry id_hash/name), so the fallback is probe-safe (both corpus emitters emit nothing there).
+  # A `policy.include <value>` whose value is a CONTENT SET (not a `{ name }`/`{ id_hash }` reference to a
+  # registered aspect): either a NAVIGATED node off the typed `den` arg (carries its OWN native `.key` — the
+  # corpus `user-aspect-auto-include` emitting `den.aspects.<host>.<user>`) or a closure-captured / synthetic
+  # value with neither `key` nor `name` (the scope-coord fallback). An id_hash-bearing resolved record, a
+  # bare `{ name }` reference, a functor, and a policy record are NOT content sets.
   isEmittedContentSet =
     v:
     builtins.isAttrs v
     && !(v ? id_hash)
-    && !(v ? name)
+    && (v ? key || !(v ? name))
     && !(v ? __functor)
     && !((v.__isPolicy or false) || (v.__denCanTake or null) != null);
   mkEmittedAspect =
     normalizeList: ctx: v:
-    # Task B — NATIVE IDENTITY: an emitted `policy.include den.aspects.<path>` value is a navigated node off
-    # the TYPED NAV VIEW, so it carries its OWN native `.key` (== `pathKey __provider` byte-for-byte). Gate on
-    # `v ? key` first; a raw-tree value (a `{ __provider }` structural node with no native `.key`) takes the
-    # `__provider` branch — both grounded identically by normalize. VALUE IDENTITY (board #58): identity is the VALUE's, not the cell's
-    # — a content set referenced from two cells dedups to one resolved node per cell key-space, two emitters at
-    # one cell cannot collide. `name`/`meta.aspect-chain`/`id_hash` come from the normalize static arm
-    # (grounding rides the SAME normalizeList — native `.key`, deterministic + eval-order-free).
-    if (v ? key) || (builtins.isList (v.__provider or null) && v.__provider != [ ]) then
+    # NATIVE IDENTITY: an emitted `policy.include den.aspects.<path>` value is a navigated node off the typed
+    # tree, so it carries its OWN native `.key`. Gate on `v ? key`: ground it through `normalizeList` (which
+    # preserves the native identity). VALUE IDENTITY (board #58): identity is the VALUE's, not the cell's — a
+    # content set referenced from two cells dedups to one resolved node per cell key-space, two emitters at one
+    # cell cannot collide. A closure-captured / synthetic value with NO `.key` takes the scope-coord fallback.
+    if v ? key then
       builtins.head (normalizeList "<emitted>" [ v ])
     else
       # SCOPE-COORD FALLBACK (annotation-less content sets — closure-captured / synthetic values that
@@ -1214,19 +1191,15 @@ let
         && !(classSet ? ${v1ClassKeyMap.${k} or k})
         && !(quirkSet ? ${k})
         && builtins.isAttrs v.${k};
-      # seen-set identity: the value's `name`, else its `__provider` path (the annotate walk stamps every
-      # navigated registry value — top-level and nested — so a nameless registry aspect still cycle-breaks;
-      # an inline anonymous literal has neither and terminates by structure, finite authored data).
+      # seen-set identity: the value's `name`, else its native `.key` (born in gen-aspects' type — every typed
+      # registry value, top-level and nested, carries it, so a nameless registry aspect still cycle-breaks; an
+      # inline anonymous literal has neither and terminates by structure, finite authored data).
       idOf =
         v:
         if (v.name or null) != null then
           v.name
-        # Task B — native `.key` (the single typed tree; == `pathKey __provider`). The `__provider` branch is
-        # the legacy fallback (Task C deletes it once the graft is gone).
         else if (v.key or null) != null then
           v.key
-        else if builtins.isList (v.__provider or null) then
-          "provider:" + builtins.concatStringsSep "." v.__provider
         else
           null;
       go =

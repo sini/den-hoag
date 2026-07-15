@@ -33,22 +33,13 @@ let
     else
       c;
 
-  # Is a class-content module EMPTY (a declared no-op)? Under the single typed tree a class key's body is a
-  # deferredModule WRAP `{ imports = [ … ]; }` (gen-merge `{ _file; imports }`), so an empty declaration is
-  # `{ imports = [ { } ]; }` — NOT `== { }`. Recursively peel the deferredModule wrap down to the real leaf
-  # modules and drop `_`-prefixed keys (the `_file`/`_module` scaffolding); the module is empty iff every
-  # unwrapped leaf carries no real key. Keeps bucket counts on REAL content (an empty class bucket stays
-  # empty — the F1/F4/F5 no-double-deliver witnesses), byte-parity with the raw walk's `m == { }` drop.
-  unwrapModule =
-    m: if builtins.isAttrs m && m ? imports then builtins.concatMap unwrapModule m.imports else [ m ];
-  # A module is empty iff EVERY unwrapped leaf is an EMPTY attrset (only `_`-prefixed scaffolding keys). A
-  # NON-attrset leaf (a function/path module — a guard fn's body, an imports-only closure) is REAL content,
-  # NEVER empty.
-  isEmptyModule =
-    m:
-    builtins.all (
-      leaf: builtins.isAttrs leaf && builtins.all (k: prelude.hasPrefix "_" k) (builtins.attrNames leaf)
-    ) (unwrapModule m);
+  # `isEmptyDeferredModule` — under the single typed tree a class key's body is a deferredModule WRAP
+  # `{ imports = [ … ]; }` (gen-merge `{ _file; imports }`), so an empty declaration is `{ imports = [ { } ]; }`
+  # — NOT `== { }`. The shared `module-shape.nix` helper peels the wrap and judges emptiness (an empty wrap /
+  # raw `{ }` body is a declared no-op; a fn/path leaf is real content). Dropping an empty class body keeps
+  # bucket counts on REAL content (the F1/F4/F5 no-double-deliver witnesses), byte-parity with the raw walk's
+  # `m == { }` drop.
+  inherit (import ../module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
 
   # THE ONE per-aspect class-slice extraction (Phase 2 Task 2, factored out of `classContentOf` below so
   # `class-modules` buckets AND `projectClass` — the reach-based projection — share EXACTLY one extraction).
@@ -71,7 +62,7 @@ let
       let
         m = content.${class};
       in
-      if isEmptyModule m then [ ] else [ { module = m; } ];
+      if isEmptyDeferredModule m then [ ] else [ { module = m; } ];
 
   # §2.2 TOTALITY at the projection terminal (ruling 2026-07-14). Classify EVERY non-`_` content key of an
   # aspect via `classifyKey` — a `facet`/`class`/`channel` key passes, a genuinely UNREGISTERED key (a typo
