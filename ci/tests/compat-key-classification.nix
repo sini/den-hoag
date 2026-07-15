@@ -107,5 +107,30 @@ in
         realSettingKept = true;
       };
     };
+
+    # (4) SHAPE B — `classifyKey` derives category from the ONE `keySemantics` map (structural facets FIRST,
+    # then the map's `category`). A built-in CLASS key → "class"; the keySemantics facet entries
+    # (settings/neededBy/id_hash) → "facet"; a structural built-in option (name/includes) → "facet"; an
+    # UNREGISTERED key aborts LOUD (the §2.2 typo posture). (Channels need a per-fleet instance — pinned
+    # end-to-end by compat-channel-not-freeform, the #8 witness.)
+    test-shapeb-classify-categories = {
+      expr = {
+        classKey = denHoag.internal.classifyKey "probe" "nixos";
+        facetSettings = denHoag.internal.classifyKey "probe" "settings";
+        facetNeededBy = denHoag.internal.classifyKey "probe" "neededBy";
+        facetIdHash = denHoag.internal.classifyKey "probe" "id_hash";
+        structuralName = denHoag.internal.classifyKey "probe" "name";
+        unknownAborts =
+          (builtins.tryEval (denHoag.internal.classifyKey "probe" "totallyUnknownKey")).success;
+      };
+      expected = {
+        classKey = "class";
+        facetSettings = "facet";
+        facetNeededBy = "facet";
+        facetIdHash = "facet";
+        structuralName = "facet";
+        unknownAborts = false;
+      };
+    };
   };
 }

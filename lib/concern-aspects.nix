@@ -24,6 +24,9 @@
   errors,
 }:
 let
+  # Shape B — the shared class + channel keySemantics builder. The SAME class + channel vocabulary feeds
+  # this concern AND every other consumer of the aspect schema, so no channel key falls to freeform.
+  keySemanticsLib = import ./key-semantics.nix { inherit prelude; };
   # §B4a reverse injection — declared on the aspect submodule (not inside a parametric body).
   # `raw` holds either a literal `[ aspectRef … ]` or a single gen-select selector unmerged.
   neededByModule =
@@ -73,23 +76,6 @@ let
       };
     };
 
-  # §2.2/§27 raw channel keys — each registered quirk channel is declared as a `raw`-typed option on
-  # every aspect, so a channel emission (plain data, an attrset, OR a deferred config-thunk) rides
-  # THROUGH the aspect submodule untouched instead of being freeform-absorbed (an attrset would become
-  # a nested aspect, a config-fn a wrapped functor). `raw` = single-value passthrough, no merge attempt.
-  # Empty when the fleet declares no quirks; `local-collection-data` reads `a.content.<channel>` back.
-  channelModules = map (
-    name:
-    { ... }:
-    {
-      options.${name} = merge.mkOption {
-        type = merge.types.raw;
-        default = null;
-        description = "Quirk channel `${name}` contribution (§2.5) — rides raw (never merged).";
-      };
-    }
-  ) (builtins.attrNames quirkChannels);
-
   # Aspect identity (A2) — a content-stable id_hash derived from the structural `key`, so den-hoag
   # aspects are identity-law entries usable by gen-settings (mkSchema/resolveAll route by id_hash) and
   # by `ref` (E6 requires an id_hash-bearing target). Same key ⇒ same id_hash (dedup-coherent with the
@@ -106,12 +92,36 @@ let
       config.id_hash = builtins.hashString "sha256" "den-aspect:${config.key}";
     };
 
-  # cnf drives gen-aspects' `aspectType`. `classes` become clean deferredModule content buckets;
-  # `moduleArgs` is the known-module-arg set gen-aspects uses to tell class-content module fns from
-  # parametric guard fns; `aspectModules`/`metaModules` inject den's option surface into every
-  # instance / every `meta`.
+  # cnf drives gen-aspects' `aspectType` — Shape B: ONE `keySemantics` map declares every aspect key's
+  # semantics. gen-aspects builds each key's option generically: `class → deferredModule` content bucket,
+  # `channel → raw` passthrough (an emission — plain data, attrset, or config-thunk — rides untouched, never
+  # freeform-absorbed), `facet → the entry's `module`` (a full module mounted via `imports`, so a facet may
+  # declare an option AND config — `id_hash` derives from `config.key`). `moduleArgs` is the known-module-arg
+  # set gen-aspects uses to tell a class-content module fn from a parametric guard fn; `metaModules` inject
+  # den's `guard`/`drop` surface into every `meta`. (The old parallel `classes` + `channelModules` +
+  # `aspectModules` split is gone — one vocabulary source, `key-semantics.nix`, shared across consumers.)
+  keySemantics =
+    (keySemanticsLib.mkClassChannelSemantics {
+      inherit classNames;
+      quirkChannels = builtins.attrNames quirkChannels;
+    })
+    // {
+      neededBy = {
+        category = "facet";
+        module = neededByModule;
+      };
+      settings = {
+        category = "facet";
+        module = settingsModule;
+      };
+      # a MODULE (declares `options.id_hash` AND `config.id_hash` off `config.key`) — NOT a bare option.
+      id_hash = {
+        category = "facet";
+        module = idModule;
+      };
+    };
   cnf = {
-    classes = prelude.genAttrs classNames (_: { });
+    inherit keySemantics;
     # `settings`/`aspects` are the FACET vocabulary (static, kind-independent); the entity coordinates are
     # the DECLARED kinds (kind-generic — zero kind-name literals; `datacenter`/`rack`/… bind exactly like
     # `host`/`user`). gen-aspects uses this set to tell a class-content module fn from a parametric guard fn.
@@ -120,12 +130,6 @@ let
       aspects = true;
     }
     // prelude.genAttrs kindNames (_: true);
-    aspectModules = [
-      neededByModule
-      settingsModule
-      idModule
-    ]
-    ++ channelModules;
     metaModules = [
       guardMetaModule
       dropMetaModule
@@ -157,14 +161,18 @@ let
   # aborts here naming the aspect and key.
   classifyKey =
     aspectName: key:
+    # Structural facets FIRST — `name`/`includes`/`meta`/`tags`/`projects`/`key`/`description` are built-in
+    # submodule options, NOT `keySemantics` entries; `settings`/`neededBy`/`id_hash` ARE keySemantics facet
+    # entries but are listed here too, so the class-modules walk skips them without a keySemantics lookup.
     if builtins.elem key facets then
       "facet"
-    else if builtins.elem key classNames then
-      "class"
-    else if quirkChannels ? ${key} then
-      "channel"
     else
-      errors.unknownAspectKey aspectName key;
+      # Category off the single keySemantics source (Shape B): a registered class → "class", a quirk channel
+      # → "channel"; anything else is an unregistered key (a typo — freeform-absorbed by gen-aspects) → abort.
+      let
+        cat = keySemantics.${key}.category or null;
+      in
+      if cat != null then cat else errors.unknownAspectKey aspectName key;
 in
 {
   inherit

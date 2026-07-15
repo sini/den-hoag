@@ -201,7 +201,12 @@ let
         gateFleet.structural.eval.get id "resolved-aspects"
       );
     in
-    ns != [ ] && (builtins.head ns).content.name == "du-fired";
+    # Task B — the gate now relocates UPSTREAM (`wrapGatedFn`): a GATED include returns a CLEAN `{ }` (no
+    # submodule-merge default name), a FIRED one returns the fn's `name = "du-fired"`. `content.name or null`
+    # discriminates robustly (host → `{ }` → null ≠ "du-fired" → gated; cell → "du-fired" → fired). Pre-Task-B
+    # `callGated` returned a submodule-merged `{ }` carrying the default `"<function body>"` name; the clean
+    # `{ }` is the same INERT delivery (host gets no content — verified), just without the merge scaffolding.
+    ns != [ ] && ((builtins.head ns).content.name or null) == "du-fired";
 
   # ── (6b) hostname battery — REAL firing at a host node reading the STAMPED `host.hostName` (the field-
   #    coverage rung; the twin of `class`/`system`). The ACTUAL `bat.hostname` (batteries.nix, v1
@@ -249,7 +254,10 @@ let
   unfWrapped =
     builtins.head
       (denCompat.compile { aspects.a.includes = [ unfreeInc ]; }).aspects.a.includes;
-  unfFires = ctx: genPrelude.hasInfix "packages" (builtins.toJSON (unfWrapped ctx).nixos);
+  # Task B — a GATED `__fn` (missing `class`) returns a clean `{ }` (no `.nixos`); `or { }` keeps `unfFires`
+  # false on the gated path (no `packages`), true when it fires. (Pre-Task-B the submodule-merged gated `{ }`
+  # carried an empty `.nixos`; the clean `{ }` is the same inert result without the merge scaffolding.)
+  unfFires = ctx: genPrelude.hasInfix "packages" (builtins.toJSON ((unfWrapped ctx).nixos or { }));
   unfFleet =
     (denCompat.mkDen [
       {
@@ -307,6 +315,27 @@ let
       }
     ]).den;
   puHasWheel = id: genPrelude.hasInfix "wheel" (builtins.toJSON (bucketAt puShapeFleet id "nixos"));
+
+  # ── R5 (Task B): the RELOCATED coord-gate — `normalize` wraps a bare-fn / `__fn` include via gen-aspects'
+  #    `wrapGatedFn` (the gate + intersectAttrs move UPSTREAM; `onResult = grndDispatch` grounds the result).
+  #    EQUIVALENCE to the old `callGated`: a required coord MISSING ⇒ `{ }` (inert, no throw); PRESENT ⇒ the
+  #    grounded class content, with an EXTRA ctx arg dropped by intersectAttrs. Exercised over BOTH arms —
+  #    a plain bare fn (`:440`) and an `{ __fn }` record (`:444`, the unfree shape). ──
+  # PLAIN-FN arm (:440): a strict `{ host }:` include → wrapped functor.
+  r5PlainInc = { host, ... }: { nixos.r5 = "fired:${host.name or host}"; };
+  r5PlainWrapped =
+    builtins.head
+      (denCompat.compile { aspects.a.includes = [ r5PlainInc ]; }).aspects.a.includes;
+  # __fn arm (:444): a `{ __fn }` record (the unfree shape) requiring `class`.
+  r5FnInc = {
+    name = "r5fn";
+    __fn = { class, ... }: { nixos.r5fn = "fired:${class}"; };
+  };
+  r5FnWrapped =
+    builtins.head
+      (denCompat.compile { aspects.b.includes = [ r5FnInc ]; }).aspects.b.includes;
+  # a ctx WITH the coord (+ an EXTRA `__entry` that intersectAttrs must drop) vs WITHOUT it.
+  r5FiredKeys = wrapped: ctx: builtins.attrNames ((wrapped ctx).nixos or { });
 in
 {
   flake.tests.compat-batteries = {
@@ -443,6 +472,34 @@ in
         firesWithoutClass = false;
         firesWithClass = true;
         hostCtxLacksClass = true;
+      };
+    };
+
+    # (R5) RELOCATED-GATE EQUIVALENCE (Task B) — `normalize` now wraps via `wrapGatedFn` (gate + intersect
+    #      upstream in gen-aspects; `onResult = grndDispatch` grounds). BOTH arms: a required coord MISSING
+    #      ⇒ `{ }` (inert, no throw, no class content); PRESENT ⇒ grounded content, with an EXTRA `__entry`
+    #      ctx arg dropped by intersectAttrs (the strict fn never chokes). This is the byte-equivalence of
+    #      the old inline `callGated` gate, now supplied by the shared gen-aspects gated wrap.
+    test-r5-relocated-gate-equivalence = {
+      expr = {
+        # PLAIN-FN arm (:440), strict `{ host, ... }`:
+        plainInertOnMissing = r5FiredKeys r5PlainWrapped { __entry = { }; } == [ ]; # no `host` ⇒ { }
+        plainFiresOnPresent = r5FiredKeys r5PlainWrapped {
+          __entry = { };
+          host = "h";
+        }; # `host` present, `__entry` dropped
+        # __fn arm (:444), strict `{ class, ... }`:
+        fnInertOnMissing = r5FiredKeys r5FnWrapped { __entry = { }; } == [ ]; # no `class` ⇒ { }
+        fnFiresOnPresent = r5FiredKeys r5FnWrapped {
+          __entry = { };
+          class = "nixos";
+        };
+      };
+      expected = {
+        plainInertOnMissing = true;
+        plainFiresOnPresent = [ "r5" ];
+        fnInertOnMissing = true;
+        fnFiresOnPresent = [ "r5fn" ];
       };
     };
 

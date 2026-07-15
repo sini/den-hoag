@@ -319,11 +319,6 @@ let
   mkNormalize =
     classNames: quirkNames: divertedPolicyNames:
     let
-      # den-hoag's built-in class set PLUS the fleet's declared classes (`den.classes`), enough to route a
-      # battery fn's class content (nixos/darwin/home-manager/wsl/…) at class-A.
-      wrapCnf = {
-        classes = prelude.genAttrs classNames (_: { });
-      };
       # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
       # registry-side instance; see `groundRec` for why the include path needs its own split.
       isNested = mkIsNestedAspectKey classNames quirkNames;
@@ -387,61 +382,55 @@ let
             # the A12 producer key for the positional-fallback arm (see stampProvider's id_hash note).
             id_hash = s.id_hash or (builtins.hashString "sha256" "den-aspect:${fallbackName}");
           };
-      # COORD GATE + ARG-SHAPING (v1 canTake parity): v1 fires a child fn ONLY where its every REQUIRED coord
-      # is in scope, and calls it with a PRECISELY-shaped coord set. den-hoag's forwardExpand invokes a
-      # wrapped fn UNCONDITIONALLY with the full enriched-context (which carries `__entry` + the scope
-      # coords), so we replicate v1 INSIDE the wrapper:
-      #   • GATE — a formal with no default is REQUIRED (`gen-aspects functionArgs` marks it `false`); if any
-      #     required coord is absent (e.g. define-user's `{ host, user }` userContext radiated via
-      #     `den.default` to a HOST scope, whose ctx has `host` but NO `user`) emit `{ }` (inert HERE)
-      #     instead of THROWING `called without required argument 'user'`. This is v1's `canTake` verbatim
-      #     (v1 `nix/lib/can-take.nix`: `required = filter (n: !args.${n}) …`, `satisfied = all (n: params ?
-      #     ${n}) required`) — the SAME required-coord gate.
-      #   • SHAPE — pass only the fn's declared formals (`intersectAttrs`), so a STRICT fn (no `...`, e.g.
-      #     `{ host, user }` / inputs' `{ host }`) does not choke on the ctx's extra `__entry` coord
-      #     (`called with unexpected argument '__entry'`). Also v1 `can-take.nix` (`intersect =
-      #     intersectAttrs args params`). No corpus battery uses an `@args` capture, so dropping non-formal
-      #     coords is safe (a `{ host, ... }` fn only reads named formals anyway).
-      # COORD-SET LIMIT (the `class`-coord gap, ledger row `u1`): the ctx we gate on is den-hoag's
-      # enriched-context (scope coords + `__entry`) — it carries NO per-class `class` coord. v1, by contrast,
-      # BINDS `class = <resolving entity's class>` into the include ctx during its PER-CLASS resolution (v1
-      # `bind.nix:41` / `push-scope.nix:26` `// optionalAttrs (entityClass != null) { class = entityClass; }`,
-      # `fx/resolve.nix:181/183` `base // { class = entityCls; }` / `{ class = hostClass; }`). So a
-      # class-GENERIC include that destructures `{ class, … }` (den.batteries.unfree's `__fn`) has `class`
-      # REQUIRED-but-absent here and gates to `{ }` — a latent-v1-divergence pinned by
-      # `ci/tests/compat-batteries.nix` `test-unfree-class-coord-inert` + ledger row `u1`.
-      callGated =
-        name: fn: ctx:
-        let
-          fa = builtins.functionArgs fn;
-          required = builtins.filter (a: !fa.${a}) (builtins.attrNames fa);
-        in
-        if builtins.all (a: ctx ? ${a}) required then
-          # RESULT-TYPE DISPATCH (v1 `mkParametricNext`, aspect.nix:53-93): a parametric aspect's `__fn`
-          # RESULT is an ATTRSET → aspect CONTENT (grounded + include-recursed, the corpus branch: agenix's
-          # per-class `${host.class}` content), or a LIST → v1's include-effect-ONLY branch (aspect.nix:72-84,
-          # which THROWS on any non-include effect). den-compat has NO corpus consumer of the list branch, so a
-          # list result is a NAMED abort (self-announcing) rather than speculative include-effect processing.
-          let
-            result = fn (builtins.intersectAttrs fa ctx);
-          in
-          if builtins.isList result then errors.parametricListUnsupported name else groundRec name result
-        else
-          { };
+      # COORD GATE + ARG-SHAPING (v1 canTake parity) — RELOCATED UPSTREAM (Task B). The gate + `intersectAttrs`
+      # now live in gen-aspects' `wrapGatedFn` (the N-GATE): forwardExpand invokes a wrapped fn UNCONDITIONALLY
+      # with the full enriched-context, and `wrapGatedFn`'s applicator replicates v1's `canTake` — a REQUIRED
+      # coord (no-default formal) absent (define-user's `{ host, user }` at a HOST scope) ⇒ `{ }` inert (NOT
+      # the throw `called without required argument 'user'`); present ⇒ `intersectAttrs` shapes the args so a
+      # STRICT fn (no `...`) never chokes on the ctx's extra `__entry`. den-hoag threads its result dispatch via
+      # `onResult = grndDispatch` (below). The `callGated` closure is GONE — `normalize` calls `wrapGatedFn`
+      # directly (both arms). COORD-SET LIMIT (the `class`-coord gap, ledger row `u1`): the enriched-context
+      # carries NO per-class `class` coord (v1 binds `class = entityCls` per-class-resolution, bind.nix:41 /
+      # fx/resolve.nix:181), so a class-generic `{ class, … }` include (unfree's `__fn`) has `class`
+      # REQUIRED-but-absent and gates to `{ }` — a latent-v1-divergence pinned by `ci/tests/compat-batteries.nix`
+      # `test-unfree-class-coord-inert` + ledger row `u1` (UNCHANGED — the gate moved, the semantics are byte-equal).
       # A v1 aspect INCLUDE, normalized to the den-hoag shape under a distinct `name`. TRANSITIVE (matching
       # v1's resolve-children re-dispatch → wrapChild re-normalizes a fn RESULT's `.includes`; den-hoag's
       # forwardExpand likewise re-walks `concrete.includes`): a wrapped fn's RESULT and a static aspect's
       # `.includes` both go back through `normalize` (ground class keys, recurse nested bare fns). No
       # infinite loop — the fn recursion is inside the lazy `callGated` closure, forced only per resolution
       # ctx. A `{ __fn; name }` wrapper (unfree) keeps its OWN v1 name (`ref.name`).
+      # Task B — the den-hoag FIRE-PATH result hook (R2), threaded into `wrapGatedFn`'s `onResult`. The
+      # gate + `intersectAttrs` arg-shaping now live UPSTREAM in gen-aspects (`wrapGatedFn` — the N-GATE);
+      # den-hoag keeps ONLY the result dispatch: a LIST result is v1's include-effect-only branch (corpus-
+      # unbuilt) → the named abort (`errors.parametricListUnsupported` is a fn taking `name`), an ATTRSET is
+      # aspect content → `groundRec` (class-key grounding + nested-split + include recursion). This is
+      # exactly the old inline `callGated` result branch (compile.nix former :420-428), relocated.
+      grndDispatch =
+        name: result:
+        if builtins.isList result then errors.parametricListUnsupported name else groundRec name result;
       normalize =
         name: ref:
         if builtins.isFunction ref then
-          aspects.wrapFn wrapCnf name (callGated name ref)
+          # PLAIN bare-fn include (:440): wrap via the gen-aspects GATED fn — its applicator gates on the
+          # inner fn's required coords (missing ⇒ `{ }`, no throw) + `intersectAttrs`, then `onResult`
+          # grounds. `functionArgs` = the INNER fn's real formals (the load-bearing override); `name` keys
+          # the wrap distinctly (the per-position identity, §313-318).
+          aspects.wrapGatedFn {
+            functionArgs = builtins.functionArgs ref;
+            name = name;
+            onResult = grndDispatch name;
+          } ref
         else if builtins.isAttrs ref && (ref.__isWrappedFn or false) then
           ref
         else if builtins.isAttrs ref && (ref.__fn or null) != null then
-          aspects.wrapFn wrapCnf (ref.name or name) (callGated name ref.__fn)
+          # `{ __fn; name }` record (:444, the unfree shape): gate on `ref.__fn`'s formals, keep the record's
+          # OWN v1 name, ground via `onResult`.
+          aspects.wrapGatedFn {
+            functionArgs = builtins.functionArgs ref.__fn;
+            name = ref.name or name;
+            onResult = grndDispatch name;
+          } ref.__fn
         else if builtins.isAttrs ref && !(ref ? id_hash) then
           # A STATIC aspect attrset (inline content / a `{ name }` reference): GROUND its class keys and
           # recurse its includes. A `{ __isPolicy; fn }` policy record NEVER reaches here — every include
@@ -634,16 +623,14 @@ let
     && !((v.__isPolicy or false) || (v.__denCanTake or null) != null);
   mkEmittedAspect =
     normalizeList: ctx: v:
-    if builtins.isList (v.__provider or null) && v.__provider != [ ] then
-      # PROVIDER IDENTITY (board #58 — supersedes the scope-coord identity for ANNOTATED values). v1
-      # applies provider identity to ANY navigated `__provider`-bearing value regardless of arrival
-      # path (wrapChild, normalize.nix:95-119) — the emitted arm is not a separate identity class
-      # under v1. Both u7 identity CEILINGS dissolve: identity is the VALUE's, not the cell's — a
-      # content set referenced from two cells dedups to one resolved node per cell key-space, and two
-      # content-set emitters at one cell cannot collide. `name`/`meta.aspect-chain` come from the
-      # normalize static arm's stampProvider (grounding rides the SAME normalizeList), which also
-      # stamps `id_hash` — the aspectEntry convention over the provider path, deterministic and
-      # eval-order-free.
+    # Task B — NATIVE IDENTITY: an emitted `policy.include den.aspects.<path>` value is a navigated node off
+    # the TYPED NAV VIEW, so it carries its OWN native `.key` (== `pathKey __provider` byte-for-byte). Gate on
+    # `v ? key` first; a raw-tree value (a `{ __provider }` structural node with no native `.key`) takes the
+    # `__provider` branch — both grounded identically by normalize. VALUE IDENTITY (board #58): identity is the VALUE's, not the cell's
+    # — a content set referenced from two cells dedups to one resolved node per cell key-space, two emitters at
+    # one cell cannot collide. `name`/`meta.aspect-chain`/`id_hash` come from the normalize static arm
+    # (grounding rides the SAME normalizeList — native `.key`, deterministic + eval-order-free).
+    if (v ? key) || (builtins.isList (v.__provider or null) && v.__provider != [ ]) then
       builtins.head (normalizeList "<emitted>" [ v ])
     else
       # SCOPE-COORD FALLBACK (annotation-less content sets — closure-captured / synthetic values that
@@ -911,6 +898,19 @@ let
   isConditionalAspect =
     value: builtins.isAttrs value && (value.meta or { }) ? guard && (value.meta or { }) ? aspects;
 
+  # Task B — read a fn's formals whether it is a RAW closure or a gen-aspects `__isWrappedFn` FUNCTOR. Under
+  # the single typed tree a policy record's `fn` (nested in an aspect's `includes`) is type-wrapped by
+  # `aspectType` into a functor (it carries `__functionArgs`, is applied via `__functor`), so a bare
+  # `builtins.functionArgs` throws `requires a function`. The functor mirrors nixpkgs' `setFunctionArgs`
+  # convention, so `__functionArgs` IS the formal set (gate parity preserved). A raw closure keeps
+  # `builtins.functionArgs`. Applying (`fn ctx`) works uniformly — the functor is callable.
+  fnArgsOf =
+    fn:
+    if builtins.isAttrs fn && (fn.__isWrappedFn or false) then
+      fn.__functionArgs
+    else
+      builtins.functionArgs fn;
+
   # den-hoag policy RECORD `{ __condition; fn }`. `fn` is a bare `ctx:` wrapper translating the v1 inner
   # fn's effects to declarations; `__condition` is the DECLARED gate — the inner fn's own `functionArgs`
   # (v1's destructured coords) — so den-hoag's dispatch fires the policy exactly where those coordinates
@@ -922,7 +922,7 @@ let
   # the same way (`innerFn`). A value-conditional body (emits nothing at concern-policies' value-less
   # probe) has its stratum derived per-declaration there; this compile stays stratum-agnostic.
   compilePolicy = ing: normalizeList: aspectRec: value: {
-    __condition = builtins.functionArgs (innerFn value);
+    __condition = fnArgsOf (innerFn value);
     fn = ctx: prelude.concatMap (translateEffect ing normalizeList aspectRec ctx) (innerFn value ctx);
   };
 
@@ -1174,6 +1174,10 @@ let
         v:
         if (v.name or null) != null then
           v.name
+        # Task B — native `.key` (the single typed tree; == `pathKey __provider`). The `__provider` branch is
+        # the legacy fallback (Task C deletes it once the graft is gone).
+        else if (v.key or null) != null then
+          v.key
         else if builtins.isList (v.__provider or null) then
           "provider:" + builtins.concatStringsSep "." v.__provider
         else

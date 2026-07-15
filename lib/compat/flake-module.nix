@@ -25,6 +25,12 @@
   legacy,
 }:
 let
+  # Shape B — the shared class + channel keySemantics builder (fixes #8: the NAV VIEW declares the fleet's
+  # quirk vocabulary — the SAME `key-semantics.nix` helper den-hoag core uses — so a `den.quirks` channel key
+  # like `firewall` types as a `raw` channel option instead of falling to freeform / being wrapped as a
+  # nested aspect on the navigation surface a `with den.aspects` reader / a `hasAspect` ref consumes).
+  keySemanticsLib = import ../key-semantics.nix { inherit prelude; };
+
   # ── Phase 5 Task 2 — the PARALLEL TYPED NAVIGATION VIEW (native A-IDENT, additive). ────────────────
   # gen-aspects @14652a0 (A-IDENT) makes a TYPED aspect node carry its own container-relative identity at
   # merge: `.key` = the full `den/aspects`-relative path (`pathKey prefix`), `meta.aspect-chain` = its
@@ -38,15 +44,18 @@ let
   # typed VIEW for navigation — the same single gen identity system (`aspectsType`), applied where it
   # belongs. Task 3 later repoints the readers onto the native `.key` and retires the `__provider` graft.
   #
-  # cnf.classes = { }: `.key`/`meta.aspect-chain` are PATH-derived (identity.nix), class-INDEPENDENT, so
-  # an empty class set gives correct native identity WITHOUT making a class key a `deferredModule` option
-  # (which would wrap the navigated class body — corrupting a corpus `with den.aspects` reader that reads
-  # class content off a navigated node). A class key (`nixos`/`homeManager`/…) then rides the
-  # `aspectsRoot`/`aspectSubmodule` freeform as an ordinary nested attrset — navigable, uncorrupted.
-  # `aspectModules`/`metaModules` are empty: the view supplies ONLY intrinsic identity (`.key`/`meta`/
-  # `name`/`includes`), not den-hoag's concern-option surface (that lives on the compiled bridge output).
+  # Shape B — the nav view declares the fleet's `den.quirks` CHANNELS as `raw` passthroughs but NO CLASSES:
+  #   • CLASSES stay freeform (empty class category): a class body (`nixos = { … }`) rides the
+  #     `aspectsRoot`/`aspectSubmodule` freeform as an ordinary nested attrset — navigable, uncorrupted —
+  #     because a `deferredModule` class option would WRAP the navigated body, corrupting a corpus
+  #     `with den.aspects` reader that reads class content off a navigated node.
+  #   • CHANNELS are declared `raw` (Shape B, #8): a `raw` channel option holds the value VERBATIM (transparent
+  #     passthrough — a reader reading `.firewall` gets the raw value), so a channel key is NOT freeform-
+  #     absorbed as a nested aspect (matching the raw `annotate` walk, which EXCLUDES quirk names from being
+  #     stamped as aspects). `.key`/`meta.aspect-chain` are PATH-derived (identity.nix), so this preserves
+  #     native identity. `metaModules` empty: the view supplies ONLY intrinsic identity, not den-hoag's
+  #     concern-option surface (that lives on the compiled bridge output).
   aspectsViewCnf = {
-    classes = { };
     moduleArgs = {
       settings = true;
       aspects = true;
@@ -55,14 +64,25 @@ let
       options = true;
       pkgs = true;
     };
-    aspectModules = [ ];
     metaModules = [ ];
     collections = { };
   };
-  aspectsViewType = aspects.aspectsType aspectsViewCnf;
+  # PARAMETERISED by the fleet's quirk channel names (threaded from `typedAspectsView` via the raw `den`).
+  mkAspectsViewType =
+    quirkChannelNames:
+    aspects.aspectsType (
+      aspectsViewCnf
+      // {
+        keySemantics = keySemanticsLib.mkClassChannelSemantics {
+          classNames = [ ]; # classes stay freeform on the nav view (see above)
+          quirkChannels = quirkChannelNames;
+        };
+      }
+    );
 
-  # `typedAspectsView rawAspects` — eval the RAW v1 aspects through `aspectsViewType` (the probe's
-  # evDirect shape) so each navigated node carries native `.key`/`meta.aspect-chain`, then GRAFT the raw
+  # `typedAspectsView quirkChannelNames rawAspects` — eval the RAW v1 aspects through the nav view type
+  # (`mkAspectsViewType`, the probe's evDirect shape, channel-aware per Shape B / #8) so each navigated node
+  # carries native `.key`/`meta.aspect-chain` and a quirk channel key rides `raw` (not freeform), then GRAFT the raw
   # tree's `__provider` stamps back on (additive: a navigated node carries BOTH the native key AND the
   # legacy provider path this task — Task 4 deletes the graft). The eval also rebinds `_module.args.aspects
   # = config` internally (aspectsType), so a `with aspects; …` include inside the view resolves against
@@ -81,13 +101,13 @@ let
         }) (builtins.filter (k: builtins.substring 0 2 k != "__") (builtins.attrNames raw))
       );
   typedAspectsView =
-    rawAspects:
+    quirkChannelNames: rawAspects:
     let
       ev = schema.evalModuleTree {
         modules = [
           {
             options.aspects = schema.mkOption {
-              type = aspectsViewType;
+              type = mkAspectsViewType quirkChannelNames;
               default = { };
             };
             config.aspects = rawAspects;
@@ -182,7 +202,7 @@ let
     let
       raw = annotatedViewRaw den;
     in
-    raw // { aspects = typedAspectsView raw.aspects; };
+    raw // { aspects = typedAspectsView (builtins.attrNames (den.quirks or { })) raw.aspects; };
 
   # R1 legacy binding — bind `_module.args.den` to the NAVIGATION view (Task 3). A `host.hasAspect
   # den.aspects.<path>` ref (the 13-read corpus census) now reads a node carrying native `.key`, so
@@ -202,8 +222,14 @@ let
       config._module.args.den = annotatedViewNav config.den;
     };
 
-  # `evalV1Raw` — the COMPILE input: read back `config.den` with the RAW `__provider` aspects (unwalked
-  # class bodies, byte-identical class-modules buckets). Only `flakeModuleCore` declares options here.
+  # `evalV1Raw` — the COMPILE input: read back `config.den` with the RAW `__provider`-annotated aspects
+  # (unwalked class bodies — compile.nix does its OWN §339 wrap-ground over the raw tree). Only
+  # `flakeModuleCore` declares options here. A raw class body `nixos = { … }` stays a raw attrset (NOT a
+  # deferredModule): the raw walk delivers class content correctly (one module per resolved node, structural
+  # options never leaking into a class bucket, a `{ __provider; key }` delivery ref keeping its authored
+  # identity), which the single-typed compile tree could not (double-delivery + structural leak + positional
+  # re-key). The Shape-B keySemantics work lands where the tree IS typed — the NAV VIEW (`typedAspectsView`)
+  # and core (`concern-aspects`) — declaring channels so a quirk key is not freeform-absorbed (#8).
   evalV1Raw =
     userModules:
     annotatedViewRaw
