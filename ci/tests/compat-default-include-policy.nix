@@ -16,7 +16,7 @@
 #       corpus-shaped body takes its false branch and the compiled fn emits `[ ]`;
 #   (4) BEHAVIORAL — a nixos-only fleet carrying the record resolves crash-free (the corpus probe's
 #       class-A advance in miniature), with `defaults` still reaching both cells;
-#   (5) #72 exclude-family routing — at a droid-classed host the record's exclude-of-policy emission ROUTES
+#   (5) exclude-family routing — at a droid-classed host the record's exclude-of-policy emission ROUTES
 #       through the staged pre-pass's exclude family (its corpus name ∈ the compat tag set), resolving
 #       crash-free; the fixture's record is INLINE-ONLY (never under `den.policies`), so the firing is
 #       attributable to THIS arm alone (fires solely via `__aspectInclude__<name>`).
@@ -34,7 +34,7 @@ let
   # The corpus record shape (the bridge coercion of `den.policies.drop-user-to-host-on-droid`):
   # value-conditional on `host.class`, exclude-of-POLICY on the droid branch, `[ ]` otherwise. The
   # value-less stratum probe sees the enriched sentinel (`class = "«probe»"` ≠ "droid") → false branch.
-  # #72: the record carries the CORPUS name (∈ exclude-family-names.nix), so the staged pre-pass's
+  # The record carries the CORPUS name (∈ exclude-family-names.nix), so the staged pre-pass's
   # exclude family dispatches it with real ctx — the suppression ROUTES (the class-B stub retired).
   dropRec = {
     __isPolicy = true;
@@ -155,7 +155,7 @@ in
         userHasDefault = true;
       };
     };
-    # (5) #72 exclude-family routing: the record's exclude-of-POLICY emission ROUTES through the staged
+    # (5) exclude-family routing: the record's exclude-of-POLICY emission ROUTES through the staged
     #     pre-pass's exclude family (its corpus name is in the compat tag set), so the droid host RESOLVES
     #     crash-free — the suppression of `target-route` is consumed, never dropped (the untagged case stays
     #     LOUD — compat-exclude-family.test-untagged-excluder-aborts).
@@ -163,8 +163,8 @@ in
       expr = raOkAt droidFleet "host:d1";
       expected = true;
     };
-    # (6) the MIXED fleet: both cells resolve (#72 — the droid sibling no longer aborts; the nixos cell
-    #     was already lazy past it).
+    # (6) the MIXED fleet: both cells resolve (the droid sibling no longer aborts via exclude-family
+    #     routing; the nixos cell was already lazy past it).
     test-nixos-cell-lazy-past-droid-sibling = {
       expr = {
         nixosOk = raOkAt mixedFleet "host:h1";

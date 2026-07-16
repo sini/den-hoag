@@ -37,22 +37,14 @@ let
   r2Compiled = denCompat.compile r2Desugared;
 
   # The coerced route records now ride `den.aspects.defaults.includes` (`{ __isPolicy; name; fn }`), and
-  # each compiles to an `__aspectInclude__<name>` policy (the general include arm). The route SHAPE
-  # assertions read the RAW record off the desugared tree (its fn is the exact route body); the compiled
-  # GATE reads `compilePolicy`'s `__condition` (the fn's formals) off the `__aspectInclude__` arm.
-  defaultsIncludeByName =
-    name:
-    builtins.head (
-      builtins.filter (r: (r.name or null) == name) (r2Desugared.aspects.defaults.includes or [ ])
-    );
+  # each compiles to an `__aspectInclude__<name>` policy (the general include arm). The compiled GATE reads
+  # `compilePolicy`'s `__condition` (the fn's formals) off the `__aspectInclude__` arm.
 
   # ── R3 — os → host.class routing (os-class.nix:26-43), a FORMAL-PRESERVING route via the include arm ───
   # The coerced record's `{ host, ... }` formals become `compilePolicy`'s `__condition` (den-hoag fires it
   # only where a host coordinate is in scope). It routes os → the host's OS class (`host.class or null`).
-  # `r3RouteRec` is the RAW desugared record (its `.name` is the membership check); `r3Route` reads the
-  # COMPILED arm's fn (`ctx: concatMap translateEffect …`) so its deliveries carry the `__dropped`
-  # materialization marker + resolved `sourceClass`/`targetClass` entries the shape assertions read.
-  r3RouteRec = defaultsIncludeByName "os-to-host";
+  # `r3Route` reads the COMPILED arm's fn (`ctx: concatMap translateEffect …`) so its deliveries carry the
+  # `__dropped` materialization marker + resolved `sourceClass`/`targetClass` entries the shape assertions read.
   r3Route = r2Compiled.policies.__aspectInclude__os-to-host.fn;
   r3CanTake = r2Compiled.policies.__aspectInclude__os-to-host.__condition; # { host = false; } — compilePolicy's gate, the fn's formals
   r3ToNixos = r3Route {

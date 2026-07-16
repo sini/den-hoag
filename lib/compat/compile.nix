@@ -477,8 +477,7 @@ let
           # recurse its includes. A `{ __isPolicy; fn }` policy record NEVER reaches here — every include
           # arm diverts it at its own grain, mirroring v1 (children.nix:70-72: `processInclude`'s FIRST arm
           # routes an `__isPolicy` include to `register-aspect-policy`, never the aspect walk): a
-          # `den.schema.<kind>.includes` record via `isPolicyRef` → `kindIncludePolicies`; a
-          # `den.default.includes` record via `defaultPolicyRefs` → `defaultIncludePolicies`; a record
+          # `den.schema.<kind>.includes` record via `isPolicyRef` → `kindIncludePolicies`; a record
           # nested in a REGULAR aspect's `.includes` via `keepInclude` above (#65, ledger u16 — the
           # `normalizeList` filter + the `aspectIncludePolicies` static walk; the old "corpus-zero" claim
           # for this grain was FALSIFIED by corpus users/sini.nix:4 → the host-aspects battery, u15). A
@@ -1061,85 +1060,6 @@ let
   # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
   isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
 
-  # `den.default` (v1 modules/aspects/defaults.nix:15-19): the default aspect, injected THERE via
-  # `lib.genAttrs [ "host" "user" "home" ]` as a schema `includes = [ den.default ]` for EXACTLY the three
-  # built-in entity kinds — host, user, home — NOT every kind (custom kinds do NOT receive it). Compiled
-  # the same way: registered as the reserved aspect `__default` (translated like any aspect — grounded
-  # class keys, provides/forward sentinels apply), then radiated by a single `__denDefault` policy.
-  #
-  # NARROWING to v1's kind set: den-hoag folds `home` into `user` (ingest.nix §8 — user IS user∪home), so
-  # v1's {host, user, home} is den-hoag's {host, user}. The policy destructures `{ host, ... }`, which
-  # den-hoag's `dispatch.fromFunctionMatch` reads as a canTake guard (concern-policies.nix): it fires ONLY
-  # at scopes carrying a `host` coordinate — every host and every user cell (a user inherits its host
-  # coordinate) — and NEVER at a custom-kind scope (env/cluster carry only their own coordinate, no host).
-  # The guard rides straight through as the SYNTHESIZED policy's real formals — it is NOT wrapped by
-  # `compilePolicy` (which erases the canTake), so unlike a v1 policy body the destructure gates dispatch.
-  # `host` is required-but-unused (the guard, not a read).
-  # (RESIDUAL: a custom kind BOUND under a host would inherit `host` and match; the corpus census has no
-  # host-nested custom kind — clusters are fleet-level — so this never diverges in practice, PIN.md.)
-  #
-  # One policy, not one-per-kind — a per-kind fan-out would double-radiate at the user cell (which carries
-  # both host and user). `__`-prefixed names cannot collide with a user aspect/policy (den reserves `__`).
-  # Absent (`den.default` unset) ⇒ no aspect, no policy — byte-identical to a fixture without it.
-  hasDefault = (v1Decls.default or { }) != { };
-
-  # ── Aspect-include POLICY-RECORD arm (the `den.default.includes` grain). v1: `processInclude`'s FIRST
-  # arm routes a `{ __isPolicy }` include to `register-aspect-policy` — never the aspect walk (children
-  # .nix:70-72); the registered policy then fires scope-locally where registered (policy/default.nix:96-97
-  # "Policies fire where they're registered — scope-local only"). The corpus manifestation: nix-config
-  # nix-on-droid.nix:104 puts the bridge-coerced `den.policies.drop-user-to-host-on-droid` record in
-  # `den.default.includes`. Without this arm the record fell to translateAspect's static-aspect groundRec
-  # branch and its `fn` key aborted at the §2.2 three-branch key dispatch.
-  #
-  # PARTITION the records out of `__default`'s includes BEFORE translateAspect (a policy record must never
-  # become aspect content) and compile each through the SAME `compilePolicy` machinery as the kind-include
-  # arm (R3/R14 consistency — the kind-include precedent applies identically at this grain), gated on
-  # `{ host = false; }`: the `__default` radiation coord `__denDefault` itself gates on (ONE coord, not a
-  # per-kind fan-out — see above, a fan-out double-radiates at the user cell). v1 registers the record at
-  # every scope `den.default` radiates to ({host, user, home}) and fires it THERE; for the fleet-radiated
-  # default aspect the host-coord gate is the SAME firing set (ledger row u3: kind-scoped == scope-local
-  # here; board #57 unmoved — this arm adds no general scope-local mechanism).
-  #
-  # SCOPE-LOCAL FIRING (board #57, ledger u3, see the `policies` fold note below): a record that is ALSO a
-  # `den.policies.<name>` fires SOLELY via this `__default__policy__<i>` include arm — its fleet-wide
-  # `compiledPolicies` entry is REMOVED (`includeReferencedNames`, v1 register-on-include: a `den.policies`
-  # name fires only where INCLUDED). An inline-only record (an mkPolicy value never registered under
-  # `den.policies`, corpus-zero) fires here too — the removal set no-ops on a name with no global entry.
-  defaultIncludes = (v1Decls.default or { }).includes or [ ];
-  defaultPolicyRefs = builtins.filter isPolicyRef defaultIncludes;
-  defaultNonPolicyDecl =
-    (v1Decls.default or { })
-    // prelude.optionalAttrs ((v1Decls.default or { }) ? includes) {
-      includes = builtins.filter (r: !(isPolicyRef r)) defaultIncludes;
-    };
-  defaultIncludePolicies = builtins.listToAttrs (
-    prelude.imap0 (i: ref: {
-      name = "__default__policy__${toString i}";
-      value =
-        let
-          base = gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref);
-        in
-        base
-        // {
-          __condition = {
-            host = false;
-          }
-          // base.__condition;
-          # SCOPE-LOCAL FIRING (board #57, ledger u3): `den.default` radiates to v1's {host, user, home} =
-          # den-hoag's {host, user} (home folds into user; see the `__denDefault` radiation note below).
-          # `__firesAtKinds` pins that radiation set at dispatch (matching `__denDefault`'s `{ host }`-gate
-          # firing set) — closing even the corpus-zero host-nested-custom-kind residual the coord gate leaves.
-          __firesAtKinds = [
-            "host"
-            "user"
-          ];
-        }
-        # R2 tag propagation (default-include arm — corpus-zero, but parity-complete): a resolve policy
-        # riding `den.default.includes` would key synthetically too, so it needs the same source-ref stamp.
-        // resolveFamilyStamp ref;
-    }) defaultPolicyRefs
-  );
-
   # ── Aspect-include POLICY-RECORD arm, the REGULAR-ASPECT grain (#65, ledger u16 — v1 children.nix:70-72
   # parity, the THIRD and last include grain). v1 routes a `{ __isPolicy }` include to
   # `register-aspect-policy` at ANY walk depth (pin 11866c16 aspect/children.nix:70-72), registering it
@@ -1154,7 +1074,7 @@ let
   #
   # THE WALK: a STATIC collection over the surfaces every arrival path re-reads — the `den.aspects`
   # registry trees (the translateAspect path AND the dispatch-emitted path, which re-reads the SAME
-  # annotated tree off `_module.args.den`, ledger r) and the `__default` non-policy includes. Per value:
+  # annotated tree off `_module.args.den`, ledger r). Per value:
   # its `.includes` list elements (a policy record collects; an attrset recurses — the battery nesting)
   # and its nested/namespace attrset children (the annotate-walk guard: non-`__`, non-structural,
   # non-class, non-quirk — `den.aspects.<host>.<user>` sub-aspects, `core.systemd` namespace nodes).
@@ -1232,7 +1152,7 @@ let
       walked = prelude.foldl' go {
         recs = [ ];
         seen = { };
-      } (builtins.attrValues v1Aspects ++ [ defaultNonPolicyDecl ]);
+      } (builtins.attrValues v1Aspects);
       # per-NAME dedup (first occurrence wins — deterministic: attrNames order + list order), v1's
       # name-keyed registry posture. A nameless record never collects (it aborts named at the
       # normalizeList filter — v1's own `inherit (p) name` would throw there too).
@@ -1272,21 +1192,6 @@ let
         // familyStamps ref;
     }) aspectIncludeRecords
   );
-
-  defaultAspects =
-    if hasDefault then
-      { __default = translateAspect normalizeList isNestedAspectKey "__default" defaultNonPolicyDecl; }
-    else
-      { };
-  defaultPolicy =
-    if hasDefault then
-      {
-        __denDefault =
-          { host, ... }:
-          [ (declare.edge (resolveAspectRef aspectRec { name = "__default"; })) ];
-      }
-    else
-      { };
 
   # Name → the FULL compiled aspect record den-hoag's resolution consumes: the compiled content
   # (`aspects.<name>`) plus its `{ id_hash; name }` identity. `resolved-aspects.nix` uses an edge's
@@ -1506,7 +1411,6 @@ let
 
   aspects =
     builtins.mapAttrs (translateAspect normalizeList isNestedAspectKey) v1Aspects
-    // defaultAspects
     // compiledPolicies.conditionalAspects
     // kindIncludeAspects;
 
@@ -1516,25 +1420,28 @@ let
   # subtree fan-out filtered by `requiredEntityArgs`, schema.nix:157-199). A `den.policies.<name>` is a NAMED
   # DEFINITION; presence alone fires NOWHERE — it must be INCLUDED to function. So a policy NAME referenced
   # from an include is REMOVED from the fleet-wide compiled set (`includeReferencedNames`); its firing rides
-  # its `__kindInclude__<kind>__policy__<i>` / `__default__policy__<i>` arm ALONE, which `__firesAtKinds`
+  # its `__kindInclude__<kind>__policy__<i>` arm ALONE, which `__firesAtKinds`
   # confines to owner-kind nodes (Part 2). INVARIANT: an include-referenced policy fires via EXACTLY its
   # include arms. The removal set covers every arm-creating path — `expandRefs` (which hoists inline-aspect
-  # `.includes`) over every kind's raw includes, plus the default includes, plus the aspect-include records
+  # `.includes`) over every kind's raw includes, plus the aspect-include records
   # (`aspectIncludeRecords`, the #65 regular-aspect grain — a `den.policies` record nested in a regular
   # aspect's `.includes` fires via its `__aspectInclude__<name>` arm alone, corpus-zero) — via the SAME
   # `isPolicyRef` filter each arm builder uses, so the arm set and the removal set coincide. A policy `.name` is its
   # `den.policies` KEY (the bridge coercion, policy-type.nix); a reference-only inline record (no
-  # `den.policies.<name>`) yields a name `removeAttrs` no-ops on. The SHIM-SYNTHETIC globals (builtins.nix:
-  # fleet-context-enrich, user-to-host, host-to-users) are NOT include-referenced, so they SURVIVE as
-  # DELIBERATE compat mechanisms (the enrich fixpoint / the ambient os-user route) — verified: neither is a
-  # `.includes` reference (user-to-host/host-to-users ride `.excludes`, not scanned here).
+  # `den.policies.<name>`) yields a name `removeAttrs` no-ops on. The SHIM-SYNTHETIC `user-to-host` global
+  # (builtins.nix) now rides `defaults.includes` (the desugared `den.default` aspect, legacy/defaults.nix),
+  # so it IS include-referenced via `aspectIncludeRecords` and its ambient global entry is REMOVED here
+  # (single-fire — the include arm alone). The remaining shim globals (builtins.nix: fleet-context-enrich,
+  # host-to-users) are NOT include-referenced, so they SURVIVE as DELIBERATE compat mechanisms (the enrich
+  # fixpoint / the ambient os-user route) — verified: neither is a `.includes` reference (host-to-users
+  # rides `.excludes`, not scanned here).
   #
-  # The synthetic `__kindInclude__<kind>[__policy__<i> | __aspect__<i>]` / `__denDefault` /
-  # `__default__policy__<i>` names cannot collide with a compiled `den.policies.<name>` (nor a v1 aspect):
+  # The synthetic `__kindInclude__<kind>[__policy__<i> | __aspect__<i>]` / `__aspectInclude__<name>` names
+  # cannot collide with a compiled `den.policies.<name>` (nor a v1 aspect):
   # den reserves the `__` prefix for internal keys, and a v1 policy/aspect name is a user-authored
   # identifier that never uses it — so this namespace is disjoint from `compiledPolicies` (and each
-  # positional arm is disjoint within itself by index). `kindIncludePolicies` and `defaultIncludePolicies`
-  # are already flat name→policy sets.
+  # positional arm is disjoint within itself by index). `kindIncludePolicies` is already a flat
+  # name→policy set.
   includeReferencedNames =
     let
       kindPolicyRefs = prelude.concatMap (
@@ -1542,13 +1449,11 @@ let
       ) (builtins.attrNames ing.kindIncludes);
     in
     builtins.filter (n: n != null) (
-      map (r: r.name or null) (kindPolicyRefs ++ defaultPolicyRefs ++ aspectIncludeRecords)
+      map (r: r.name or null) (kindPolicyRefs ++ aspectIncludeRecords)
     );
   policies =
     (builtins.removeAttrs compiledPolicies.policies includeReferencedNames)
-    // defaultPolicy
     // kindIncludePolicies
-    // defaultIncludePolicies
     // aspectIncludePolicies;
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
