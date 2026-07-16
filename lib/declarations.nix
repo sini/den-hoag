@@ -40,6 +40,8 @@ let
       "inject"
       "configure"
       "delivery"
+      "reach-edge"
+      "reach-suppress"
     ];
     collection = [ "pipeOp" ];
     demand = [ "demand" ];
@@ -207,6 +209,19 @@ let
       )
     );
 
+  # `reach-edge { target; classFilter ? null }` — resolution: POSITIVE cross-scope reach-edge (spec §7.1
+  # class-scoped opt-in). `target` = bare node-id STRING; `classFilter` = predicate on the target's
+  # resolved-aspect nodes (null = all). Record shape matches reachEdgesOf (attributes/resolved-aspects.nix:111-116).
+  reach-edge =
+    { target, classFilter ? null }:
+    actions."reach-edge" { inherit target classFilter; };
+
+  # `reach-suppress { edge; when ? (_: true) }` — resolution: NEGATIVE edge removing the positive edge whose
+  # target == `edge` (node-id STRING), gated by `when scope`. Record shape matches reachSuppressOf (:120-124).
+  reach-suppress =
+    { edge, when ? (_: true) }:
+    actions."reach-suppress" { inherit edge when; };
+
   # `link { target }` — structural: an I-edge to an EXISTING entity node (annotates, never
   # creates/re-resolves). `target` denotes an entity node — an identity-law position (A2) — so it
   # is entry-checked EAGERLY, like `member`/`edge`. Selector fan-out is a POLICY-level idiom (a
@@ -286,6 +301,10 @@ actions
     link
     ;
   demand = demand';
+  # hyphenated verbs cannot ride the `inherit` above — assign explicitly so the custom ctors (carrying
+  # their defaults) SHADOW the raw dispatch.mkActions entries.
+  "reach-edge" = reach-edge;
+  "reach-suppress" = reach-suppress;
   # pipe.* operators re-exported from gen-pipe (map/filter/fold/scan/route/join/tee). They are
   # content-agnostic dataflow ops and carry no `__action` yet — Task 5's concern-quirks wraps
   # them as `pipeOp` collection declarations.
