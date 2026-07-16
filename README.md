@@ -102,13 +102,15 @@ are probe-time feed/compose commitments a value-conditional policy cannot make).
 ## Development
 
 ```sh
-ulimit -s unlimited                    # deep module-system evals exceed the 8 MB default stack
 nix-unit --flake ./ci#tests            # whole suite
 nix-unit --flake ./ci#tests.<suite>    # one suite
 ```
 
-The suite's HOAG evaluations are deep enough to overflow the default 8 MB C stack; raise it with
-`ulimit -s unlimited` (the `ci` pre-commit hook already does this). CI is unaffected.
+The suite runs within the default 8 MB C stack — no `ulimit` needed. The pure module system
+(`gen-merge`'s `evalModuleTree`) is depth-equivalent to nixpkgs `evalModules`, and the source-token
+guards scan whole files with `gen-prelude`'s backtracking-free `hasInfix` (nixpkgs `lib.hasInfix`'s
+`.*needle.*` regex recurses to depth ∝ string length and overflows the stack — the real cause of the
+`ulimit -s unlimited` that used to sit here).
 
 The library core (`lib/**`) is nixpkgs-lib-free — it uses `gen-prelude` for list/attr/string
 helpers. Only `ci/tests/**` may use nixpkgs `lib`.

@@ -86,7 +86,9 @@ frozen v1 pin is dev-time (the parity harness) only.
 
 ## Running the parity gates during migration
 
-See `lib/compat/parity/runbook.md`. In short: after each migration step, `ulimit -s unlimited` then
+See `lib/compat/parity/runbook.md`. In short: after each migration step run
 `nix-unit --flake ./parity#tests` (the whole harness) — the P1 edge-trace + P2 content gates must stay green,
 and the P6 ship gate (`parity-ledger-gate`) requires every remaining divergence to be classified in
-`ledger.md`. The full-fleet drv-hash gate runs dev-time against your real corpus (the ship-gate arm).
+`ledger.md`. The synthetic harness runs within the default 8 MB stack. The full-fleet drv-hash gate runs
+dev-time against your real corpus (the ship-gate arm); evaluating an entire live NixOS fleet is genuinely
+deep, so raise the stack (`ulimit -s unlimited`) for that arm only.

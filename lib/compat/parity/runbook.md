@@ -2,12 +2,12 @@
 
 The harness renders both arms (den v1 `edgeTrace` vs den-hoag `graph.edges`) into the frozen
 `T | P | S | M` trace (`edge-schema.md`) and diffs on the sort-key string. All commands run from the
-den-hoag repo; **`ulimit -s unlimited` first** (the dual-den module-system evals exceed the 8 MB stack).
+den-hoag repo. The synthetic harness runs within the default 8 MB stack — no `ulimit` needed. Only the
+real-fleet arm below (evaluating live `nixosConfigurations`) is deep enough to want `ulimit -s unlimited`.
 
 ## Run the suites
 
 ```
-ulimit -s unlimited
 nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-structural        # P1
 nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-trace-stability    # P4
 nix run github:nix-community/nix-unit -- --flake ./parity#tests.parity-first-divergent     # P5
@@ -33,7 +33,6 @@ read a git tree). See `feedback_stage_new_files`.
    an unstaged fixture is invisible and the harness silently uses the old set (this is the #1 gotcha).
 1. **Capture its diff.** Run the same shape the P1 suite uses (`resultOf`), as a one-off:
    ```
-   ulimit -s unlimited
    nix eval --impure --json --expr '
      let
        hoag = builtins.getFlake "path:/abs/den-hoag";
