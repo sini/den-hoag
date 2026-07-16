@@ -121,9 +121,6 @@ in
       containmentRelations ? { },
       classNames,
       classifyKey,
-      # Framework default-edge injector (spec §2 baseline, Task 3): `id -> [ { target; classFilter ? null } ]`,
-      # threaded to resolved-aspects' `reach`. Native default `(_: [ ])` ⇒ no default edges ⇒ reach unchanged.
-      defaultEdgeTargets ? (_: [ ]),
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // {
@@ -138,7 +135,6 @@ in
             allAspects
             directIncludes
             enrichContext
-            defaultEdgeTargets
             ;
         })
         resolved-aspects

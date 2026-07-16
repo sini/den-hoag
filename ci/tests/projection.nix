@@ -60,12 +60,11 @@ let
   };
 
   # ── COMPLETE-REACH driver (spec §Phase-2 synthetic-first): reach.compute over a STUB graph with INJECTED
-  #    default + opt-in edges (the reach-graph mkStub/defaultEdgeTargets approach), then projectClass over
-  #    the resulting reach — so the single-visit dedup + structural-descendant + edge closure are exercised
-  #    end-to-end (NOT a pre-built reach list). This is how the corpus terminal will behave once Phase 5
-  #    wires the real edges; here the edges are injected synthetically.
+  #    opt-in edges (the reach-graph mkStub approach), then projectClass over the resulting reach — so the
+  #    single-visit dedup + structural-descendant + edge closure are exercised end-to-end (NOT a pre-built
+  #    reach list). This is how the corpus terminal will behave once Phase 5 wires the real edges; here the
+  #    edges are injected synthetically.
   mkRa =
-    defaultEdgeTargets:
     import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
       inherit
         prelude
@@ -74,7 +73,7 @@ let
         select
         resolve
         ;
-    } { inherit defaultEdgeTargets; };
+    } { };
   # A reach-graph stub `self` (resolved-aspects / declarations / children).
   mkStub = graph: {
     get =
@@ -93,29 +92,27 @@ let
     __action = "reach-edge";
     inherit target classFilter;
   };
-  # projectClass over a COMPLETE reach: reach.compute (with the injected default edges) → the class slice.
+  # projectClass over a COMPLETE reach: reach.compute (over the opt-in edges) → the class slice.
   projectReach =
     {
-      defaultEdgeTargets ? (_: [ ]),
       graph,
       id,
       class,
     }:
-    projectOver ((mkRa defaultEdgeTargets).reach.compute (mkStub graph) id) class;
+    projectOver (mkRa.reach.compute (mkStub graph) id) class;
 
   # projectClass WITH the §2.2 totality pass (byte-identical to output-modules.nix's projectClass body:
   # `seq (assertKeysRegistered n)` per REACHED aspect before its slice) — for the reached-content totality
   # witness (a typo key on an aspect reached via an EDGE aborts NAMED, not just an own-node key).
   projectReachTotal =
     {
-      defaultEdgeTargets ? (_: [ ]),
       graph,
       id,
       class,
     }:
     prelude.concatMap (
       n: builtins.seq (assertKeysRegistered n) (map (e: e.module) (classSliceOf n class))
-    ) ((mkRa defaultEdgeTargets).reach.compute (mkStub graph) id);
+    ) (mkRa.reach.compute (mkStub graph) id);
 
   # ── ANCHOR fixture: the class-fold-subtree fleet (nixos host `igloo` + three hm user cells, each cell
   #    emitting a nixos (define-user) slice + a home-manager slice). NO reach edges (corpus has none until
@@ -255,15 +252,14 @@ in
       expected = [ "own" ]; # host-nixos's nixos slice excluded (no home-manager key).
     };
 
-    # (d) ORDER — projectClass preserves reach's canonical order exactly (own → descendant → default →
-    #     opt-in), each provider's slice in include order (projectClass is a straight concatMap over reach).
+    # (d) ORDER — projectClass preserves reach's canonical order exactly (own → descendant → opt-in),
+    #     each provider's slice in include order (projectClass is a straight concatMap over reach).
     test-synthetic-projection-order = {
       expr =
         let
           reachList = [
             (mkNode "O" { nixos.tag = "o"; }) # own
             (mkNode "Desc" { nixos.tag = "desc"; }) # descendant
-            (mkNode "Dflt" { nixos.tag = "dflt"; }) # default edge
             (mkNode "OptIn" { nixos.tag = "optin"; }) # opt-in edge
           ];
         in
@@ -271,13 +267,12 @@ in
       expected = [
         "o"
         "desc"
-        "dflt"
         "optin"
       ];
     };
 
     # ══ COMPLETE-REACH projection SEMANTICS (Task 3 — the terminal-content proofs, spec §6 intent) ══════
-    #    Drive the REAL reach.compute over a stub with INJECTED default + opt-in edges, then projectClass —
+    #    Drive the REAL reach.compute over a stub with INJECTED opt-in edges, then projectClass —
     #    proving the terminal (terminalModulesAt = projectClass) produces the RIGHT output on a complete
     #    reach (the fleet will match once Phase 5 wires the real corpus edges). These are the outcomes the
     #    spec §6 intent oracle names: spicetify ONCE, intel cpu+gpu BOTH, define-user nixos@host + hm@cell.

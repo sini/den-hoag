@@ -577,7 +577,7 @@ let
   # → opt-in edge + the framework default edge). So on the real fleet `reach` = the STRUCTURAL SUBTREE ONLY
   # — the emission half (baseline home content + host-aspects cross-class delivery) is MISSING until Phase 5,
   # and full-fleet byte/functional validation is Phase 6. Projection is therefore validated SYNTHETICALLY
-  # here (ci/tests/projection.nix injects the edges via defaultEdgeTargets/mkStub — the complete-reach
+  # here (ci/tests/projection.nix drives the edges through a synthetic reach graph — the complete-reach
   # semantics witnesses: spicetify-once, intel-both, define-user nixos@host+hm@cell). The fleet golden
   # suites that lose the emission content are MARKED PENDING (`# Phase 5: needs corpus edge producers`),
   # never faked green.

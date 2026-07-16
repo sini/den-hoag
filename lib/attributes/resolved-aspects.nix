@@ -28,14 +28,6 @@
   # the ctx handed to `forwardExpand` (seed + fixpoint expansion). A17: it must keep `resolvedAspects`
   # unforced at stamp — see the `ctx` binding in `compute` for the force-boundary law.
   enrichContext ? ({ bindings, ... }: bindings),
-  # FRAMEWORK DEFAULT EDGE (spec §2 baseline injection, F5). A function `id -> [ { target; classFilter ? null } ]`
-  # returning the per-node default reach-edges the framework injects — the seam through which baseline home
-  # content reaches every user cell WITHOUT an explicit opt-in (replacing den.default radiation; a baseline
-  # is not a special "shared" tier, just an ordinary positive edge the framework adds). `reach` unions these
-  # BEFORE the node's own declared (opt-in) edges (the merge_ord default-edge < opt-in precedence, Task 5).
-  # Native default `(_: [ ])` ⇒ NO default edges ⇒ `reach` is byte-identical to Task 2 (additive identity);
-  # Phase-5 wires the corpus baseline set (define-user/hostname/… — spec §2 F5) onto this arg.
-  defaultEdgeTargets ? (_: [ ]),
 }:
 let
   keyOf = aspects.key;
@@ -282,17 +274,9 @@ in
     compute =
       self: id:
       let
-        # Positive edges at a node: the FRAMEWORK default edges (baseline injection, Task 3) FIRST — the
-        # merge_ord default-edge < opt-in precedence (Task 5) — then the node's own DECLARED (opt-in) edges.
-        # `defaultEdgeTargets nid` is `[ { target; classFilter ? null } ]` (native `[ ]` ⇒ inert identity).
-        defaultEdgesAt =
-          nid:
-          map (e: {
-            inherit (e) target;
-            classFilter = e.classFilter or null;
-          }) (defaultEdgeTargets nid);
+        # Positive edges at a node: the node's own DECLARED (opt-in) reach-edges.
         positiveEdgesAt =
-          nid: defaultEdgesAt nid ++ reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
+          nid: reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
 
         # NEGATIVE-EDGE SUPPRESSION (spec §2 F3-exclude / u21). The suppressed-EDGE set at a node: the
         # `target`s named by every reach-suppress declaration whose scope predicate `when` HOLDS for the

@@ -31,9 +31,7 @@ let
     aspects
     select
     ;
-  # `ra` = the module with NATIVE instance args (defaultEdgeTargets = (_: [ ]) ⇒ no default edges). Task 3
-  # witnesses the default-edge PRIMITIVE by re-importing the module with a custom `defaultEdgeTargets`
-  # instance arg (`raWith` below), so `reach` folds those injected edges in.
+  # `ra` = the resolved-aspects module with native instance args.
   mkRa =
     instanceArgs:
     import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
@@ -46,7 +44,6 @@ let
         ;
     } instanceArgs;
   ra = mkRa { };
-  raWith = defaultEdgeTargets: mkRa { inherit defaultEdgeTargets; };
 
   # A synthetic resolution-action list: one positive reach-edge (class-scoped home-manager), one negative
   # reach-suppress (droid-gated), and unrelated actions (an `edge`/`drop` from the existing strata) the
@@ -131,8 +128,7 @@ let
     self;
   # keys of a reach result, for order/membership assertions.
   keysOf = nodes: map (n: n.key) nodes;
-  # reach over the NATIVE module instance (no default edges); reachKeysWith drives a specific instance
-  # (Task 3's raWith, carrying a custom defaultEdgeTargets).
+  # keys of a reach result over a given module instance; `reachKeys` drives the native `ra`.
   reachKeysOn =
     raInst: graph: id:
     keysOf (raInst.reach.compute (mkStub graph) id);
@@ -441,88 +437,6 @@ in
       };
     };
 
-    # ══ Task 3 — framework default-edge (baseline injection) witnesses ═════════════════════════════════
-    #    A `defaultEdgeTargets id` supplies per-node default reach-edges (the framework baseline seam). The
-    #    baseline graph carries a `baseline` node with an hm aspect; a user cell has NO declared reach-edge.
-
-    # ── (a) IDENTITY / additivity: with the NATIVE module (defaultEdgeTargets = (_: [ ])), a cell with no
-    #    declared edge reaches its own subtree ONLY — the default-edge seam is inert (Task 2 byte-unchanged). ──
-    test-default-edge-unset-identity = {
-      expr = reachKeys {
-        cell.resolved = [ nOwn ];
-        baseline.resolved = [ (mkNode "baseline-hm" { home-manager.tag = "base"; }) ];
-      } "cell";
-      expected = [ "cell-own" ]; # baseline NOT reached — no default edge injected.
-    };
-
-    # ── (b) INJECTION: defaultEdgeTargets injects a `cell → baseline` default edge on USER CELLS only. Each
-    #    cell's reach then includes the baseline's (class-filtered) aspects; a non-user node is unaffected. ──
-    test-default-edge-injects-baseline = {
-      expr =
-        let
-          # inject the baseline default edge on ids starting "cell" (the synthetic "is a user cell" test).
-          isCell = id: builtins.substring 0 4 id == "cell";
-          dget =
-            id:
-            if isCell id then
-              [
-                {
-                  target = "baseline";
-                  classFilter = "home-manager";
-                }
-              ]
-            else
-              [ ];
-          g = {
-            cellA.resolved = [ nOwn ];
-            host.resolved = [ nHostNixos ]; # a non-user node — must NOT get the baseline edge.
-            baseline.resolved = [
-              (mkNode "baseline-hm" { home-manager.tag = "base"; })
-              (mkNode "baseline-nixos" { nixos.tag = "bn"; }) # class-filtered OUT (home-manager edge).
-            ];
-          };
-          reachW = reachKeysOn (raWith dget);
-        in
-        {
-          cellHasOwn = builtins.elem "cell-own" (reachW g "cellA");
-          cellHasBaselineHm = builtins.elem "baseline-hm" (reachW g "cellA");
-          cellBaselineNixosFiltered = !(builtins.elem "baseline-nixos" (reachW g "cellA")); # F9.
-          hostUnaffected = reachW g "host"; # non-user ⇒ no default edge ⇒ own only.
-        };
-      expected = {
-        cellHasOwn = true;
-        cellHasBaselineHm = true;
-        cellBaselineNixosFiltered = true;
-        hostUnaffected = [ "host-nixos" ];
-      };
-    };
-
-    # ── (c) The default edge is an ORDINARY positive edge — single-visit dedups it against an OWN-include of
-    #    the SAME baseline aspect (a cell that already includes `baseline-hm` in its own subtree AND reaches
-    #    it via the default edge ⇒ the aspect appears ONCE). ──
-    test-default-edge-dedup-vs-own = {
-      expr =
-        let
-          dget = _: [
-            {
-              target = "baseline";
-              classFilter = null;
-            }
-          ];
-          shared = mkNode "baseline-hm" { home-manager.tag = "base"; };
-          g = {
-            cellA.resolved = [
-              nOwn
-              shared # own-include of the SAME key the default edge also reaches.
-            ];
-            baseline.resolved = [ shared ];
-          };
-          ks = reachKeysOn (raWith dget) g "cellA";
-        in
-        builtins.length (builtins.filter (k: k == "baseline-hm") ks);
-      expected = 1;
-    };
-
     # ══ Task 4 — negative-edge suppression (reach-suppress, u21 exclude) witnesses ═════════════════════
     #    A node declares a POSITIVE reach-edge E (→ "host") AND a reach-suppress { edge = "host"; when } —
     #    edge identity is the TARGET (Phase 1 has no separate edge-id). `when` is evaluated against the
@@ -602,113 +516,50 @@ in
     };
 
     # ══ Task 5 — canonical reach ordering (merge_ord determinism) witnesses ════════════════════════════
-    #    P-PROJECT merge_ord: own-subtree FIRST, then default-edge targets, then opt-in-edge targets, each
-    #    provider in include order. The Phase-2 class-slice merge relies on this for order-semantic content
-    #    (the zsh ZSH_HIGHLIGHT_HIGHLIGHTERS multiset, persistence entry order — ledger u24).
+    #    P-PROJECT merge_ord: own-subtree FIRST, then opt-in-edge targets, each provider in include order.
+    #    The Phase-2 class-slice merge relies on this for order-semantic content (the zsh
+    #    ZSH_HIGHLIGHT_HIGHLIGHTERS multiset, persistence entry order — ledger u24).
 
-    # ── (a) EXACT ORDER [O D P]: a cell with own aspect O, a DEFAULT edge → provider D, and an OPT-IN
-    #    (declared reach-edge) → provider P. reach keys = [ O, D, P ] (own first, default before opt-in). ──
+    # ── (a) EXACT ORDER [O P]: a cell with own aspect O and an OPT-IN (declared reach-edge) → provider P.
+    #    reach keys = [ O, P ] (own subtree first, then the opt-in-edge provider). ──
     test-reach-canonical-order = {
       expr =
         let
-          # default edge on the cell → node "dprov"; the cell also DECLARES an opt-in reach-edge → "pprov".
-          dget =
-            id:
-            if id == "cell" then
-              [
-                {
-                  target = "dprov";
-                  classFilter = null;
-                }
-              ]
-            else
-              [ ];
           g = {
             cell = {
               resolved = [ (mkNode "O" { home-manager.tag = "o"; }) ];
               edges = [ (reachEdgeAct "pprov" null) ]; # opt-in edge.
             };
-            dprov.resolved = [ (mkNode "D" { home-manager.tag = "d"; }) ];
             pprov.resolved = [ (mkNode "P" { home-manager.tag = "p"; }) ];
           };
         in
-        reachKeysOn (raWith dget) g "cell";
+        reachKeys g "cell";
       expected = [
         "O" # own subtree first
-        "D" # then the default-edge provider
         "P" # then the opt-in-edge provider
       ];
     };
 
-    # ── (b) PROVIDER in INCLUDE ORDER: each provider contributes its own resolved-aspects in list order,
-    #    and own-subtree multi-aspect order is preserved (forwardExpand order). ──
-    test-reach-provider-include-order = {
-      expr =
-        let
-          dget =
-            id:
-            if id == "cell" then
-              [
-                {
-                  target = "dprov";
-                  classFilter = null;
-                }
-              ]
-            else
-              [ ];
-          g = {
-            cell.resolved = [
-              (mkNode "O1" { home-manager.tag = "o1"; })
-              (mkNode "O2" { home-manager.tag = "o2"; })
-            ];
-            dprov.resolved = [
-              (mkNode "D1" { home-manager.tag = "d1"; })
-              (mkNode "D2" { home-manager.tag = "d2"; })
-            ];
-          };
-        in
-        reachKeysOn (raWith dget) g "cell";
-      expected = [
-        "O1"
-        "O2" # own, in include order
-        "D1"
-        "D2" # default provider, in include order
-      ];
-    };
-
-    # ── (c) STABLE across re-eval: reach is a pure list-accumulate with first-occurrence dedup — two
+    # ── (b) STABLE across re-eval: reach is a pure list-accumulate with first-occurrence dedup — two
     #    independent evaluations of the SAME reach return the byte-identical key sequence (deterministic,
     #    no set-iteration nondeterminism). ──
     test-reach-order-stable = {
       expr =
         let
-          dget =
-            id:
-            if id == "cell" then
-              [
-                {
-                  target = "dprov";
-                  classFilter = null;
-                }
-              ]
-            else
-              [ ];
           g = {
             cell = {
               resolved = [ (mkNode "O" { home-manager.tag = "o"; }) ];
               edges = [ (reachEdgeAct "pprov" null) ];
             };
-            dprov.resolved = [ (mkNode "D" { home-manager.tag = "d"; }) ];
             pprov.resolved = [ (mkNode "P" { home-manager.tag = "p"; }) ];
           };
-          once = reachKeysOn (raWith dget) g "cell";
-          twice = reachKeysOn (raWith dget) g "cell";
+          once = reachKeys g "cell";
+          twice = reachKeys g "cell";
         in
         once == twice
         &&
           once == [
             "O"
-            "D"
             "P"
           ];
       expected = true;

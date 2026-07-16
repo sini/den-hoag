@@ -46,7 +46,6 @@ let
   };
 
   mkRa =
-    defaultEdgeTargets:
     import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
       inherit
         prelude
@@ -55,7 +54,7 @@ let
         select
         resolve
         ;
-    } { inherit defaultEdgeTargets; };
+    } { };
   # A reach-graph stub `self` (resolved-aspects / declarations / children).
   mkStub = graph: {
     get =
@@ -74,15 +73,14 @@ let
     __action = "reach-edge";
     inherit target classFilter;
   };
-  # projectClass over a COMPLETE reach: reach.compute (with the injected default edges) → the class slice.
+  # projectClass over a COMPLETE reach: reach.compute (over the opt-in edges) → the class slice.
   projectReach =
     {
-      defaultEdgeTargets ? (_: [ ]),
       graph,
       id,
       class,
     }:
-    projectOver ((mkRa defaultEdgeTargets).reach.compute (mkStub graph) id) class;
+    projectOver (mkRa.reach.compute (mkStub graph) id) class;
 
   # every `tag` string reachable in a wrapped deferredModule (gen-aspects `{ imports = [ … ]; }` form).
   tags =
