@@ -36,7 +36,10 @@ in
   # The class this battery registers (R2). `resolveBucket` reads it for the route's `fromClass`.
   registersClasses = [ "os" ];
 
-  # The pure v1 → v1 desugar: register the `os` class (R2) + add the `os-to-host` route policy (R3).
+  # The pure v1 → v1 desugar: register the `os` class (R2). The `os-to-host` route (R3) is no longer a
+  # `den.policies` entry — it is EXPORTED as `routeInclude` and folded into `den.aspects.defaults.includes`
+  # (legacy/defaults.nix), so it reaches entities through the general kind-include path rather than the
+  # bespoke `den.default` radiation.
   desugar =
     v1:
     v1
@@ -48,48 +51,44 @@ in
           description = "Convenience class forwarding to both nixos and darwin (den v1 os-class battery)";
         };
       };
-      policies = (v1.policies or { }) // {
-        # R3 — os-class.nix:26-43: route os content to the host's class. v1's body is `{ host, ... }:`
-        # (host-required, gated by `resolveArgsSatisfied` — a canTake PRESENCE gate). The shim compiles it
-        # as a `__denCanTake = "host"` policy (compile.nix): its `{ host, ... }` formals are PRESERVED
-        # through compilation, so den-hoag's dispatch (a) fires it only where a host coordinate is in scope
-        # (host + user cells) and (b) fills the stratum-classification probe with a sentinel host — so the
-        # UNCONDITIONAL route emission classifies as RESOLUTION (a value-CONDITIONAL emission would produce
-        # nothing at the value-less probe and misclassify as enrich, then crash on firing).
-        #
-        # EXACT v1 value-gate (os-class.nix:26-43): v1 is
-        #   `lib.optional (host ? class && builtins.elem host.class [ "nixos" "darwin" ]) (route {…})`
-        # — a route ONLY for a host whose OS class is nixos or darwin, INERT otherwise. The shim reproduces
-        # it PROBE-SAFE by moving the gate from the EMISSION (which must be unconditional — a value-
-        # conditional body emits nothing at the value-less stratum probe → misclassifies as enrich → crashes
-        # on firing) to the `intoClass` FIELD (classification reads `__action`/stratum, not `intoClass`):
-        # the route record is always emitted, but its target is `host.class` iff `host.class ∈
-        # {nixos,darwin}`, else `null`. A `null` intoClass is the value-gate's INERT ARM — a DEFINED NO-OP
-        # delivery (dropped at materialization, compile.nix `__dropped`). So a classless/synthetic
-        # `user@host` home (no class), a null class, AND a non-OS class (e.g. wsl) are ALL inert, matching
-        # v1's elem-gate byte-for-byte — no divergence. (darwin routes once its output class is registered,
-        # M2; until then a darwin host aborts LOUDLY at resolveBucket — never a silent mis-fire.)
-        os-to-host = {
-          __denCanTake = "host";
-          fn =
-            { host, ... }:
-            [
-              (deliverLib.route {
-                fromClass = "os";
-                intoClass =
-                  if
-                    builtins.elem (host.class or null) [
-                      "nixos"
-                      "darwin"
-                    ]
-                  then
-                    host.class
-                  else
-                    null;
-                path = [ ];
-              })
-            ];
-        };
-      };
     };
+
+  # R3 — os-class.nix:26-43: route os content to the host's class. The route record is coerced into
+  # `den.aspects.defaults.includes` as `{ __isPolicy; name = "os-to-host"; fn }`; `compilePolicy` reads
+  # the fn's `{ host, ... }` formals as the gate (host-required — fires at host + user cells). The
+  # UNCONDITIONAL route emission classifies as RESOLUTION at concern-policies' value-less probe (the
+  # sentinel host has no `class`, so `intoClass` resolves to `null`, but the route record is still emitted).
+  #
+  # EXACT v1 value-gate (os-class.nix:26-43): v1 is
+  #   `lib.optional (host ? class && builtins.elem host.class [ "nixos" "darwin" ]) (route {…})`
+  # — a route ONLY for a host whose OS class is nixos or darwin, INERT otherwise. The shim reproduces
+  # it PROBE-SAFE by moving the gate from the EMISSION (which must be unconditional — a value-
+  # conditional body emits nothing at the value-less stratum probe → misclassifies as enrich → crashes
+  # on firing) to the `intoClass` FIELD (classification reads `__action`/stratum, not `intoClass`):
+  # the route record is always emitted, but its target is `host.class` iff `host.class ∈ {nixos,darwin}`,
+  # else `null`. A `null` intoClass is the value-gate's INERT ARM — a DEFINED NO-OP delivery (dropped at
+  # materialization). So a classless/synthetic `user@host` home (no class), a null class, AND a non-OS
+  # class (e.g. wsl) are ALL inert, matching v1's elem-gate byte-for-byte — no divergence. (darwin routes
+  # once its output class is registered; until then a darwin host aborts LOUDLY at resolveBucket.)
+  routeInclude = {
+    name = "os-to-host";
+    fn =
+      { host, ... }:
+      [
+        (deliverLib.route {
+          fromClass = "os";
+          intoClass =
+            if
+              builtins.elem (host.class or null) [
+                "nixos"
+                "darwin"
+              ]
+            then
+              host.class
+            else
+              null;
+          path = [ ];
+        })
+      ];
+  };
 }

@@ -120,6 +120,9 @@ let
 in
 {
   flake.tests.compat-include-identity = {
+    # NOTE: `defaults` trails every host's resolved-aspects list — the ambient built-in battery aspect
+    # (os-to-host route membership) radiated to every host via the kind-include, after the self-named /
+    # navigated includes.
     # F1: the nested-path leaf resolves under its PROVIDER key (not "<anon>"), content delivered.
     test-f1-single-nested-path = {
       expr = {
@@ -130,6 +133,7 @@ in
         keys = [
           "h1"
           "core/systemd/boot"
+          "defaults"
         ];
         delivered = 1;
       };
@@ -145,6 +149,7 @@ in
           "h2"
           "roles/default"
           "svc/openssh"
+          "defaults"
         ];
         delivered = 1;
       };
@@ -171,6 +176,7 @@ in
           "h4"
           "leafa"
           "leafb"
+          "defaults"
         ];
         delivered = 2;
       };
@@ -186,6 +192,7 @@ in
           "h4"
           "h4:include:0"
           "h4:include:1"
+          "defaults"
         ];
         delivered = 2;
       };
@@ -202,6 +209,7 @@ in
           "appA"
           "services/networking/nginx"
           "appB"
+          "defaults"
         ];
         delivered = 1;
       };

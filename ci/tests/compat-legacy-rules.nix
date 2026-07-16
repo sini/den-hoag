@@ -36,12 +36,25 @@ let
   r2Desugared = batteriesDesugar { };
   r2Compiled = denCompat.compile r2Desugared;
 
-  # ── R3 — os → host.class routing (os-class.nix:26-43), a FORMAL-PRESERVING canTake route ──────────────
-  # The compiled policy is `{ host, ... }@ctx:` — its formals ARE the canTake gate (den-hoag fires it only
-  # where a host coordinate is in scope). It routes os → the host's OS class (`host.class or null`).
-  r3RouteRec = r2Compiled.policies.os-to-host;
-  r3Route = r3RouteRec.fn; # the route body (the record's fn); routes os → the host's OS class
-  r3CanTake = r3RouteRec.__condition; # { host = false; } — the canTake condition, now DECLARED (compileCanTake retirement) rather than derived from a literal-formal lambda's functionArgs
+  # The coerced route records now ride `den.aspects.defaults.includes` (`{ __isPolicy; name; fn }`), and
+  # each compiles to an `__aspectInclude__<name>` policy (the general include arm). The route SHAPE
+  # assertions read the RAW record off the desugared tree (its fn is the exact route body); the compiled
+  # GATE reads `compilePolicy`'s `__condition` (the fn's formals) off the `__aspectInclude__` arm.
+  defaultsIncludeByName =
+    name:
+    builtins.head (
+      builtins.filter (r: (r.name or null) == name) (r2Desugared.aspects.defaults.includes or [ ])
+    );
+
+  # ── R3 — os → host.class routing (os-class.nix:26-43), a FORMAL-PRESERVING route via the include arm ───
+  # The coerced record's `{ host, ... }` formals become `compilePolicy`'s `__condition` (den-hoag fires it
+  # only where a host coordinate is in scope). It routes os → the host's OS class (`host.class or null`).
+  # `r3RouteRec` is the RAW desugared record (its `.name` is the membership check); `r3Route` reads the
+  # COMPILED arm's fn (`ctx: concatMap translateEffect …`) so its deliveries carry the `__dropped`
+  # materialization marker + resolved `sourceClass`/`targetClass` entries the shape assertions read.
+  r3RouteRec = defaultsIncludeByName "os-to-host";
+  r3Route = r2Compiled.policies.__aspectInclude__os-to-host.fn;
+  r3CanTake = r2Compiled.policies.__aspectInclude__os-to-host.__condition; # { host = false; } — compilePolicy's gate, the fn's formals
   r3ToNixos = r3Route {
     host = {
       name = "h";
@@ -105,9 +118,6 @@ let
     in
     builtins.length (builtins.filter (e: (e.source.collected.class or null) == "os") edges);
 
-  # ── R4 — den.default radiation (defaults.nix genAttrs [host user home]) + built-in membership ─────────
-  r4Compiled = denCompat.compileFull ruleWitnesses.R4.decls;
-
   # ── R5 — self-named-aspect auto-include (resolve-entity.nix:48-63) + SEVERABILITY ─────────────────────
   r5Decls = ruleWitnesses.R5.decls;
   # Full wiring (legacy set carries self-provide) → the self-named aspect auto-includes at its host.
@@ -119,7 +129,11 @@ let
   r5SeveredInclude = (severedWiring.compileFull r5Decls).include;
 
   # ── R6 — built-in battery aspects (os-user: user class + adapter-bearing user-to-host route) ──────────
-  r6UserRoute = r2Compiled.policies.user-to-host.fn;
+  # The COMPILED arm's fn (not the raw record's) so its deliveries carry the materialization markers the
+  # shape assertions read: `adaptArgs` on the compiled delivery, the resolved `targetClass` entry, and the
+  # `__dropped` inert-arm marker (added by translateEffect/translateDelivery at compile, absent on the raw
+  # route body). The raw record stays for the `.name` membership check (via `__aspectInclude__user-to-host`).
+  r6UserRoute = r2Compiled.policies.__aspectInclude__user-to-host.fn;
   r6RouteOut = r6UserRoute {
     user = {
       name = "alice";
@@ -336,20 +350,43 @@ in
     };
 
     # ── R4 ────────────────────────────────────────────────────────────────────────────────────────────
-    # den.default → the reserved __default aspect + the __denDefault radiation policy (compile core), and
-    # the built-in battery membership: after the batteries desugar → compile, the pinned membership policies
-    # (os-to-host, user-to-host) are STRUCTURALLY present in the compiled policy set (not read back from the
-    # battery's own declared name list — a structural check, not a tautology).
-    test-r4-radiation-and-membership = {
+    # den.default DESUGARS to a plain `den.aspects.defaults` aspect wired through `den.schema.{host,user}
+    # .includes` — the general kind-include path, NOT the bespoke `__default`/`__denDefault` radiation. The
+    # built-in battery routes (os-to-host, user-to-host) fold into `defaults.includes`.
+    test-default-desugars-to-defaults-aspect = {
+      # Read the DESUGARED v1 tree (the `desugar` output — the same view r2Desugared/r2Compiled use), not the
+      # `.den` config surface: the legacy desugar's `den.aspects.defaults` assembly + schema-include wiring +
+      # `den.default` drop live in the v1→v1 rewrite, materialized under `compileFull`, not on the raw config.
+      expr =
+        let
+          d = denCompat.legacy.defaults.desugar {
+            default.includes = [ ({ host, ... }: { nixos.foo = true; }) ];
+          };
+        in
+        {
+          hasDefaultsAspect = d.aspects ? defaults;
+          defaultDropped = !(d ? default);
+          hostWired = builtins.elem "defaults" (d.schema.host.includes or [ ]);
+          userWired = builtins.elem "defaults" (d.schema.user.includes or [ ]);
+          routesFolded = builtins.elem "os-to-host" (map (r: r.name or null) d.aspects.defaults.includes);
+        };
+      expected = {
+        hasDefaultsAspect = true;
+        defaultDropped = true;
+        hostWired = true;
+        userWired = true;
+        routesFolded = true;
+      };
+    };
+    # built-in battery membership: after the batteries desugar → compile, the pinned membership routes
+    # (os-to-host, user-to-host) ride `defaults.includes` and compile to their `__aspectInclude__<name>`
+    # policies — a structural check, not a tautology on the battery's declared name list.
+    test-r4-battery-membership = {
       expr = {
-        defaultAspect = r4Compiled.aspects ? __default;
-        radiationPolicy = r4Compiled.policies ? __denDefault;
-        osToHost = r2Compiled.policies ? os-to-host;
-        userToHost = r2Compiled.policies ? user-to-host;
+        osToHost = r2Compiled.policies ? __aspectInclude__os-to-host;
+        userToHost = r2Compiled.policies ? __aspectInclude__user-to-host;
       };
       expected = {
-        defaultAspect = true;
-        radiationPolicy = true;
         osToHost = true;
         userToHost = true;
       };
@@ -379,7 +416,7 @@ in
     test-r6-user-battery = {
       expr = {
         userClass = r2Compiled.classes ? user;
-        routePresent = r2Compiled.policies ? user-to-host;
+        routePresent = r2Compiled.policies ? __aspectInclude__user-to-host;
         adapterBearing = r6RouteDesc.adaptArgs != null;
         to = r6RouteDesc.targetClass.name;
       };

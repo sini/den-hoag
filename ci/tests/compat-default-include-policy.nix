@@ -2,24 +2,24 @@
 # v1 routes a `{ __isPolicy }` record in an aspect's `.includes` to `register-aspect-policy` — the FIRST
 # `processInclude` arm, never the aspect walk (den children.nix:70-72 @ 11866c16); the registered policy
 # fires scope-locally where registered (policy/default.nix:96-97). The corpus manifestation: nix-config
-# nix-on-droid.nix:104, `den.default.includes = [ den.policies.drop-user-to-host-on-droid ]` — the
-# bridge-coerced record fell to translateAspect's static-aspect groundRec branch, and its `fn` key
-# aborted at the §2.2 three-branch key dispatch. This suite pins the arm:
-#   (1) PARTITION — the record compiles to a `__default__policy__<i>` policy, NEVER `__default` aspect
-#       content (no `fn` leak, no `__isPolicy` element in the normalized includes);
-#   (2) GATE — the compiled policy's `__condition` is the `__default` radiation coord `{ host = false; }`
-#       PLUS `__firesAtKinds = [ "host" "user" ]` (board #57, ledger u3): it fires at every host + user
-#       cell, never a custom-kind scope — the SAME firing set v1's scope-local registration produces for
-#       the fleet-radiated default aspect. The `den.policies` registration's fleet-wide global is REMOVED
-#       (`includeReferencedNames`), so the record fires SOLELY via its `__default__policy__<i>` arm;
+# nix-on-droid.nix:104, `den.default.includes = [ den.policies.drop-user-to-host-on-droid ]`.
+#
+# `den.default` now DESUGARS into `den.aspects.defaults` (legacy/defaults.nix), so the record rides the
+# `defaults` aspect's `.includes` and fires via its `__aspectInclude__<name>` arm (the general regular-aspect
+# include grain), gated on the record fn's own formals. This suite pins the arm:
+#   (1) PARTITION — the record compiles to `__aspectInclude__<name>`, NEVER `defaults` aspect content (no
+#       `fn` leak, no `__isPolicy` element in the normalized includes);
+#   (2) GATE — the compiled policy's `__condition` is the record fn's formals (`{ host = false; }`, the v1
+#       required-coord presence gate); the `den.policies` registration's fleet-wide global is REMOVED
+#       (`includeReferencedNames`), so the record fires SOLELY via its `__aspectInclude__<name>` arm;
 #   (3) INERTNESS at class-A (the w3 declaration-level witness) — at a nixos-classed host ctx the
 #       corpus-shaped body takes its false branch and the compiled fn emits `[ ]`;
 #   (4) BEHAVIORAL — a nixos-only fleet carrying the record resolves crash-free (the corpus probe's
-#       class-A advance in miniature), with `__default` still radiating;
-#   (5) CLASS-B DEFERRAL PIN (negative) — at a droid-classed host the record's exclude-of-policy emission
-#       still hits the named `excludeOfPolicy` abort (class-B / board #50, explicitly NOT this rung); the
-#       fixture's record is INLINE-ONLY (never under `den.policies`), so the firing is attributable to
-#       THIS arm alone — also pinning the inline-only coverage (fires solely via `__default__policy__<i>`).
+#       class-A advance in miniature), with `defaults` still reaching both cells;
+#   (5) #72 exclude-family routing — at a droid-classed host the record's exclude-of-policy emission ROUTES
+#       through the staged pre-pass's exclude family (its corpus name ∈ the compat tag set), resolving
+#       crash-free; the fixture's record is INLINE-ONLY (never under `den.policies`), so the firing is
+#       attributable to THIS arm alone (fires solely via `__aspectInclude__<name>`).
 { denCompat, ... }:
 let
   keysAt = den: id: map (n: n.key) (den.structural.eval.get id "resolved-aspects");
@@ -51,10 +51,11 @@ let
       else
         [ ];
   };
+  aspectIncludeName = "__aspectInclude__drop-user-to-host-on-droid";
 
   # The corpus shape in miniature: a battery-ish static ref + the policy record, BOTH in
   # `den.default.includes`; the record ALSO under `den.policies` (the scope-local case: its global is
-  # REMOVED, so it fires solely via the `__default__policy__<i>` arm — board #57, ledger u3).
+  # REMOVED, so it fires solely via the `__aspectInclude__<name>` arm — includeReferencedNames).
   decls = {
     aspects.batteryish.nixos.marker = 1;
     policies.drop-user-to-host-on-droid = dropRec;
@@ -67,7 +68,7 @@ let
       users.alice = { };
     };
   };
-  c = denCompat.compile decls;
+  c = denCompat.compileFull decls;
   fleet = (denCompat.mkDen [ { config.den = decls; } ]).den;
 
   # Class-B pin fleet: a droid-classed host, the record INLINE-ONLY (not under `den.policies`).
@@ -91,54 +92,46 @@ let
 in
 {
   flake.tests.compat-default-include-policy = {
-    # (1) PARTITION: the record becomes a `__default__policy__0` POLICY; the `__default` aspect carries
+    # (1) PARTITION: the record becomes an `__aspectInclude__<name>` POLICY; the `defaults` aspect carries
     #     NO `fn` key and no `__isPolicy` element in its normalized includes (the record is not content).
+    #     The includes retain the static `batteryish` ref (the coerced route records are diverted too).
     test-record-partitioned-out = {
       expr = {
-        policy = c.policies ? __default__policy__0;
-        aspect = c.aspects ? __default;
-        noFnLeak = !(c.aspects.__default ? fn);
+        policy = c.policies ? ${aspectIncludeName};
+        aspect = c.aspects ? defaults;
+        noFnLeak = !(c.aspects.defaults ? fn);
         noPolicyInIncludes = builtins.all (i: !(builtins.isAttrs i && (i.__isPolicy or false))) (
-          c.aspects.__default.includes or [ ]
+          c.aspects.defaults.includes or [ ]
         );
-        includeCount = builtins.length (c.aspects.__default.includes or [ ]);
       };
       expected = {
         policy = true;
         aspect = true;
         noFnLeak = true;
         noPolicyInIncludes = true;
-        includeCount = 1;
       };
     };
-    # (2) GATE + SCOPE-LOCAL FIRING (board #57, ledger u3): `__condition = { host = false; }` — the
-    #     `__default` radiation coord (host + user cells, never a custom kind; the same mechanism
-    #     compat-surface pins for `__denDefault`) — PLUS `__firesAtKinds = [ "host" "user" ]` confining the
-    #     arm to the radiation kinds. The `den.policies.drop-on-droid` registration is ALSO include-referenced
-    #     (it rides `default.includes`), so its fleet-wide global is REMOVED — the record fires SOLELY via
-    #     this `__default__policy__0` arm (v1: a policy fires only where INCLUDED, not by `den.policies`
-    #     presence). This REPLACES the former double-fire (both-firings) precedent.
+    # (2) GATE + SCOPE-LOCAL FIRING: `__condition = { host = false; }` — the record fn's formals (the v1
+    #     required-coord presence gate). The `den.policies.drop-on-droid` registration is ALSO
+    #     include-referenced (it rides `default.includes`), so its fleet-wide global is REMOVED — the record
+    #     fires SOLELY via this `__aspectInclude__<name>` arm (v1: a policy fires only where INCLUDED, not by
+    #     `den.policies` presence).
     test-radiation-coord-and-scope-local = {
       expr = {
-        cond = c.policies.__default__policy__0.__condition;
-        firesAtKinds = c.policies.__default__policy__0.__firesAtKinds;
-        alsoCompiledFleetWide = c.policies ? drop-on-droid;
+        cond = c.policies.${aspectIncludeName}.__condition;
+        alsoCompiledFleetWide = c.policies ? drop-user-to-host-on-droid;
       };
       expected = {
         cond = {
           host = false;
         };
-        firesAtKinds = [
-          "host"
-          "user"
-        ];
         alsoCompiledFleetWide = false;
       };
     };
     # (3) INERTNESS at class-A (w3, declaration-level): at a nixos-classed host ctx the compiled fn's
     #     corpus-shaped body takes the false branch → `[ ]` (no declarations — the extra firing is inert).
     test-inert-at-nixos-ctx = {
-      expr = c.policies.__default__policy__0.fn {
+      expr = c.policies.${aspectIncludeName}.fn {
         host = {
           name = "h1";
           class = "nixos";
@@ -147,13 +140,13 @@ in
       expected = [ ];
     };
     # (4) BEHAVIORAL class-A advance: the nixos fleet carrying the record resolves crash-free at BOTH
-    #     cells (no §2.2 abort, no excludeOfPolicy), and `__default` still radiates to both.
+    #     cells (no §2.2 abort, no excludeOfPolicy), and `defaults` still reaches both.
     test-nixos-fleet-resolves = {
       expr = {
         hostOk = raOkAt fleet "host:h1";
         userOk = raOkAt fleet "user:alice@host:h1";
-        hostHasDefault = builtins.elem "__default" (keysAt fleet "host:h1");
-        userHasDefault = builtins.elem "__default" (keysAt fleet "user:alice@host:h1");
+        hostHasDefault = builtins.elem "defaults" (keysAt fleet "host:h1");
+        userHasDefault = builtins.elem "defaults" (keysAt fleet "user:alice@host:h1");
       };
       expected = {
         hostOk = true;
@@ -162,10 +155,10 @@ in
         userHasDefault = true;
       };
     };
-    # (5) #72 SUPERSEDES the class-B deferral pin: the record's exclude-of-POLICY emission now ROUTES
-    #     through the staged pre-pass's exclude family (its corpus name is in the compat tag set), so the
-    #     droid host RESOLVES crash-free — the suppression of `target-route` is consumed, never dropped
-    #     (the untagged case stays LOUD — compat-exclude-family.test-untagged-excluder-aborts).
+    # (5) #72 exclude-family routing: the record's exclude-of-POLICY emission ROUTES through the staged
+    #     pre-pass's exclude family (its corpus name is in the compat tag set), so the droid host RESOLVES
+    #     crash-free — the suppression of `target-route` is consumed, never dropped (the untagged case stays
+    #     LOUD — compat-exclude-family.test-untagged-excluder-aborts).
     test-droid-exclude-routes = {
       expr = raOkAt droidFleet "host:d1";
       expected = true;

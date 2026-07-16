@@ -45,7 +45,7 @@ let
   flipKeys = keysAt flip "host:h1";
   flipNixos = bucketAt flip "host:h1" "nixos";
 
-  # ── (1c) NO COLLISION: ONE aspect (__default) with TWO distinct bare-fn includes — BOTH fire (a shared
+  # ── (1c) NO COLLISION: ONE aspect (defaults) with TWO distinct bare-fn includes — BOTH fire (a shared
   #    "<include>" key would dedup-drop the second, leaving one). ───────────────────────────────────────
   twoInc =
     (denCompat.mkDen [
@@ -203,17 +203,13 @@ let
     ]).den;
   ucFiredAt =
     id:
-    let
-      ns = builtins.filter (n: n.key == "__default:include:0:include:0") (
-        gateFleet.structural.eval.get id "resolved-aspects"
-      );
-    in
-    # Task B — the gate now relocates UPSTREAM (`wrapGatedFn`): a GATED include returns a CLEAN `{ }` (no
-    # submodule-merge default name), a FIRED one returns the fn's `name = "du-fired"`. `content.name or null`
-    # discriminates robustly (host → `{ }` → null ≠ "du-fired" → gated; cell → "du-fired" → fired). Pre-Task-B
-    # `callGated` returned a submodule-merged `{ }` carrying the default `"<function body>"` name; the clean
-    # `{ }` is the same INERT delivery (host gets no content — verified), just without the merge scaffolding.
-    ns != [ ] && ((builtins.head ns).content.name or null) == "du-fired";
+    # The gate relocates UPSTREAM (`wrapGatedFn`): a GATED include returns a CLEAN `{ }` (no fired content),
+    # a FIRED one returns the fn's `name = "du-fired"`. Discriminate by the presence of a resolved node
+    # carrying that content name — host (gated) → no such node; cell (fired) → the node materializes. (The
+    # node's own key is a positional path under the typed `defaults` aspect, so match the content, not the key.)
+    builtins.any (n: (n.content.name or null) == "du-fired") (
+      gateFleet.structural.eval.get id "resolved-aspects"
+    );
 
   # ── (6b) hostname battery — REAL firing at a host node reading the STAMPED `host.hostName` (the field-
   #    coverage rung; the twin of `class`/`system`). The ACTUAL `bat.hostname` (batteries.nix, v1
@@ -350,7 +346,7 @@ in
     #     "<anon>" static aspect.
     test-flip-include-invoked = {
       expr = {
-        hasWrapped = builtins.elem "__default:include:0" flipKeys;
+        hasWrapped = builtins.elem "defaults:include:0" flipKeys;
         hasAnon = builtins.elem "<anon>" flipKeys;
       };
       expected = {
@@ -369,8 +365,8 @@ in
     test-two-includes-no-collision = {
       expr = {
         nixosCount = builtins.length (bucketAt twoInc "host:h1" "nixos");
-        key0 = builtins.elem "__default:include:0" (keysAt twoInc "host:h1");
-        key1 = builtins.elem "__default:include:1" (keysAt twoInc "host:h1");
+        key0 = builtins.elem "defaults:include:0" (keysAt twoInc "host:h1");
+        key1 = builtins.elem "defaults:include:1" (keysAt twoInc "host:h1");
       };
       expected = {
         nixosCount = 2;

@@ -1,11 +1,10 @@
 # den-compat LEGACY surface: `self-provide` (self-contained, tagged — the severance surface, §2.1).
 #
 # R5 (spec §10) — SELF-NAMED-ASPECT AUTO-INCLUDE. v1 `nix/lib/resolve-entity.nix:48-63`: when an
-# entity scope is named `n`, v1's `resolveEntity` injects a synthetic self-provide include —
-#
-#   • `n == "default"` and `den ? default`  →  include `den.default` (the __default aspect here);
-#   • else an aspect named `n` exists         →  inject `<self:${n}>` with body `ctx.${n}.aspect or { }`
-#     (the arg `n` marked non-required), i.e. include the aspect NAMED `n` at that entity's own scope.
+# entity scope is named `n`, v1's `resolveEntity` injects a synthetic self-provide include of the aspect
+# NAMED `n` at that entity's own scope (`<self:${n}>` with body `ctx.${n}.aspect or { }`, the arg `n`
+# marked non-required). The `default` special case is gone: `den.default` desugars into a plain `defaults`
+# aspect reaching entities via the kind-include (legacy/defaults.nix), not via this R5 self-provide.
 #
 # This is the mechanism by which `den.aspects.<host> = { nixos.… }` lands on the host NAMED `<host>`
 # (the dominant v1 idiom — a per-host aspect keyed by the host's own name). Without it, den-hoag's
@@ -26,11 +25,6 @@
   prelude,
   ...
 }:
-let
-  # The reserved compiled name of `den.default` (compile.nix `defaultAspects`): a `default`-named entity
-  # includes it, mirroring v1 resolve-entity.nix:49 (`n == "default" && den ? default`).
-  defaultAspectName = "__default";
-in
 {
   _denCompat.legacy = "self-provide";
 
@@ -49,11 +43,10 @@ in
     let
       aspects = compiled.aspects or { };
       registries = compiled.entities.registries or { };
-      hasDefault = aspects ? ${defaultAspectName};
       # The full aspect record den-hoag's resolution consumes: compiled content + its identity.
       mkFull = name: (aspects.${name} or { }) // aspectEntry name;
-      # One kind's self-named includes: for every registered instance whose name also names an aspect
-      # (or the `default` special case), a node-local include at that instance's own entry.
+      # One kind's self-named includes: for every registered instance whose name also names an aspect,
+      # a node-local include at that instance's own entry.
       perKind =
         kind:
         let
@@ -66,13 +59,6 @@ in
               {
                 at = reg.${name};
                 aspects = [ (mkFull name) ];
-              }
-            ]
-          else if name == "default" && hasDefault then
-            [
-              {
-                at = reg.${name};
-                aspects = [ (mkFull defaultAspectName) ];
               }
             ]
           else

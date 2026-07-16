@@ -208,9 +208,18 @@ let
               else if isPolicyRec rinc then
                 # a policy record rides RAW (its `fn` returns an effect list, never aspect content).
                 rinc
+              else if builtins.isFunction rinc || (builtins.isAttrs rinc && (rinc.__fn or null) != null) then
+                # a PARAMETRIC include (a bare fn, or a `{ __fn; name }` record — the unfree battery shape)
+                # rides RAW: the aspect type wraps a bare fn into a functor whose applicator merges
+                # UNCONDITIONALLY (throwing on a missing required coord) and BEFORE class-key grounding, so a
+                # v1-spelled body (`homeManager.…`) never grounds, and it would strip the `{ __fn }` record's
+                # own gate. Passing the raw value lets compile's `normalize` wrap it via `wrapGatedFn` — v1's
+                # canTake gate (missing coord ⇒ `{ }` inert) with `groundKeys` on the plain fn result.
+                rinc
               else if builtins.isAttrs rinc && builtins.isAttrs tinc then
-                # a STATIC aspect include — recurse so a policy record nested in ITS `.includes` (the battery
-                # shape `include.includes = [ { __isPolicy } ]`) is spliced raw too.
+                # a STATIC aspect include — recurse so a policy record / bare-fn nested in ITS `.includes`
+                # (the battery shape `include.includes = [ { __isPolicy } ]`, or a named sub-aspect carrying a
+                # parametric include) is spliced raw too.
                 restoreUnregistered tot tinc rinc
               else
                 tinc

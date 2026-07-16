@@ -311,9 +311,14 @@ in
       expr = builtins.attrNames roundTrip.den.registries.user;
       expected = [ "alice" ];
     };
+    # `defaults` is the ambient built-in battery aspect (os-to-host / user-to-host routes), assembled on
+    # every fleet through the legacy desugar (mkDen) — so it accompanies the fixture's own `system` aspect.
     test-roundtrip-aspect-registry = {
       expr = builtins.attrNames roundTrip.den.aspects;
-      expected = [ "system" ];
+      expected = [
+        "defaults"
+        "system"
+      ];
     };
     # the boundary entry's id_hash equals the entry mkDen independently stamps (identity coherence).
     test-roundtrip-id-coherent = {

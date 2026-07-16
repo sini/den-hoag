@@ -254,10 +254,10 @@ let
         adaptArgs = _: { };
       }
     ))
-    # os-class / os-user built-in forward instances: their route body emits a deliver descriptor.
+    # os-class / os-user built-in forward instances: their exported route body emits a deliver descriptor.
     (recordKind (
       builtins.head (
-        (bat.os-class.desugar { }).policies.os-to-host.fn {
+        bat.os-class.routeInclude.fn {
           host = {
             name = "h";
             class = "nixos";
@@ -267,7 +267,7 @@ let
     ))
     (recordKind (
       builtins.head (
-        (bat.os-user.desugar { }).policies.user-to-host.fn {
+        bat.os-user.routeInclude.fn {
           user = {
             name = "u";
           };

@@ -181,7 +181,12 @@ in
         nixosConfigs = builtins.attrNames (fleet.nixosConfigurations or { });
       };
       expected = {
-        resolved = [ "igloo" ];
+        # `defaults` = the ambient built-in battery aspect radiated to every host (the os-to-host route
+        # membership), alongside the self-named `igloo` aspect.
+        resolved = [
+          "igloo"
+          "defaults"
+        ];
         nixosConfigs = [ "igloo" ];
       };
     };

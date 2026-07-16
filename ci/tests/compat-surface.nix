@@ -15,7 +15,6 @@
 # suite exercises the v2 (compat) arm's ACCEPTANCE; the two-arm content/graph diff is Tasks 7–8.
 {
   denCompat,
-  denHoag,
   denHoagSrc,
   ...
 }:
@@ -156,34 +155,31 @@ let
     widget.w1 = { };
   };
 
-  # ── den.default THREE-KIND narrowing (v1 defaults.nix:15-19 radiates to {host,user,home}, NOT all
-  #    kinds). The synthesized `__denDefault` policy destructures `{ host, ... }`; den-hoag's dispatch
-  #    reads that as the canTake condition (`dispatch.fromFunctionMatch condition id ctx` = every REQUIRED
-  #    formal ∈ ctx), so it fires only at scopes carrying a `host` coordinate — host + user cells (a user
-  #    inherits its host) — and NEVER at a custom-kind scope (env/cluster carry only their own coordinate).
-  match = denHoag.internal.dispatch.fromFunctionMatch;
-  denDefaultCond = builtins.functionArgs defaultC.policies.__denDefault;
-  ent = k: {
-    id_hash = k;
-    name = k;
+  # ── den.default → `defaults` aspect via the kind-include, narrowed to {host,user} (v1 defaults.nix:15-19
+  #    radiates to {host,user,home}; den-hoag folds home→user). The desugar wires `defaults` into
+  #    `den.schema.{host,user}.includes` ONLY, so the `__kindInclude__{host,user}` arms carry it and their
+  #    `__firesAtKinds` confine it to those kinds — NEVER a custom kind (env/cluster). The schema-includes
+  #    membership lives in the legacy desugar's v1→v1 output (not the built config surface); the
+  #    resolved-aspects read at each scope proves the end-to-end reach + the custom-kind exclusion.
+  defaultV1 = {
+    hosts.x86_64-linux.axon = {
+      class = "nixos";
+      users.alice = { };
+    };
+    schema.env = {
+      parent = "host";
+    };
+    default.nixos.system.stateVersion = "25.11";
   };
-  # the dispatch decision at each scope-KIND's coordinate context (the negative test: custom kinds excluded
-  # WITHOUT needing a resolvable custom-kind node — a bare custom instance is unreachable from roots).
-  firesAt = coords: match denDefaultCond "id" coords;
-  # behavioral resolution (crash-free: host + user only): den.default reaches BOTH cells end-to-end.
-  defaultFleet =
-    (denCompat.mkDen [
-      {
-        config.den = {
-          hosts.x86_64-linux.axon = {
-            class = "nixos";
-            users.alice = { };
-          };
-          default.nixos.system.stateVersion = "25.11";
-        };
-      }
-    ]).den;
-  defaultKeysAt = id: map (n: n.key) (defaultFleet.structural.eval.get id "resolved-aspects");
+  defaultFixture = [ { config.den = defaultV1; } ];
+  defaultBuilt = denCompat.mkDen defaultFixture;
+  defaultDen = defaultBuilt.den;
+  # `defaults` is wired ONLY into host + user schema includes — never a custom kind (env). The kind-scope
+  # membership is the three-kind narrowing (v1 {host,user,home} → den-hoag {host,user}); `__firesAtKinds`
+  # on the `__kindInclude__{host,user}` arms enforces it at dispatch. The wiring is in the DESUGARED tree.
+  defaultDesugared = denCompat.legacy.defaults.desugar defaultV1;
+  schemaIncludesOf = kind: defaultDesugared.schema.${kind}.includes or [ ];
+  defaultKeysAt = id: map (n: n.key) (defaultDen.structural.eval.get id "resolved-aspects");
 
   mkAccept = id: {
     name = "test-accept-${id}";
@@ -262,55 +258,39 @@ in
         expr = (whenPlainC.policies ? guardByHost) && !(whenPlainC.aspects ? guardByHost);
         expected = true;
       };
-      # den.default → the reserved `__default` aspect + the `__denDefault` radiation policy.
+      # den.default DESUGARS to a plain `defaults` aspect (no reserved `__default`, no `__denDefault`).
       test-default-registers-aspect-and-policy = {
-        expr = (defaultC.aspects ? __default) && (defaultC.policies ? __denDefault);
+        expr = (defaultC.aspects ? defaults) && !(defaultC.aspects ? __default);
         expected = true;
       };
       # den.default's `homeManager` class key grounds to `home-manager` (the v1ClassKeyMap).
       test-default-grounds-home-manager = {
-        expr = builtins.elem "home-manager" (builtins.attrNames defaultC.aspects.__default);
+        expr = builtins.elem "home-manager" (builtins.attrNames defaultC.aspects.defaults);
         expected = true;
       };
-      # THREE-KIND NARROWING (v1 defaults.nix:15-19 = {host,user,home}, NOT all kinds): the `__denDefault`
-      # policy requires a `host` coordinate — den-hoag's canTake condition. So it fires at host + user cells
-      # and NEVER at a custom-kind scope.
-      test-default-guard-requires-host = {
-        expr = denDefaultCond;
+      # THREE-KIND NARROWING (v1 defaults.nix:15-19 = {host,user,home}, den-hoag {host,user}): `defaults` is
+      # wired ONLY into host + user schema includes — NEVER a custom kind (env). The `__kindInclude__{host,
+      # user}` arms' `__firesAtKinds` confine it at dispatch.
+      test-default-wired-into-host-user = {
+        expr = {
+          host = builtins.elem "defaults" (schemaIncludesOf "host");
+          user = builtins.elem "defaults" (schemaIncludesOf "user");
+        };
         expected = {
-          host = false;
+          host = true;
+          user = true;
         };
-      };
-      # the den-hoag DISPATCH DECISION (fromFunctionMatch) per scope-kind's coordinate context: fires at
-      # host and user (user inherits host), excluded at env/cluster (their own coordinate, no host). This is
-      # the fleet-level exclusion WITHOUT a resolvable custom-kind node (bare instances are unreachable).
-      test-default-fires-at-host = {
-        expr = firesAt { host = ent "axon"; };
-        expected = true;
-      };
-      test-default-fires-at-user = {
-        expr = firesAt {
-          host = ent "axon";
-          user = ent "alice";
-        };
-        expected = true;
       };
       test-default-excludes-custom-kinds = {
-        expr = [
-          (firesAt { env = ent "prod"; })
-          (firesAt { cluster = ent "k3s"; })
-        ];
-        expected = [
-          false
-          false
-        ];
+        expr = builtins.elem "defaults" (schemaIncludesOf "env");
+        expected = false;
       };
-      # behavioral end-to-end (crash-free host+user fleet): den.default RESOLVES at BOTH the host and the
-      # user cell — the positive half of the narrowing, through the full mkDen path.
+      # behavioral end-to-end (crash-free host+user fleet): the `defaults` aspect RESOLVES at BOTH the host
+      # and the user cell — the positive half of the narrowing, through the full mkDen path.
       test-default-reaches-host-and-user = {
         expr = [
-          (builtins.elem "__default" (defaultKeysAt "host:axon"))
-          (builtins.elem "__default" (defaultKeysAt "user:alice@host:axon"))
+          (builtins.elem "defaults" (defaultKeysAt "host:axon"))
+          (builtins.elem "defaults" (defaultKeysAt "user:alice@host:axon"))
         ];
         expected = [
           true

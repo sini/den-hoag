@@ -536,8 +536,8 @@ in
     #    them. This is the ambient's OWN severability witness (the H/I comparisons hold it constant).
     test-defaults-ambient-present = {
       expr = {
-        os = (ambientProbe ambientWiring) ? os-to-host;
-        user = (ambientProbe ambientWiring) ? user-to-host;
+        os = (ambientProbe ambientWiring) ? __aspectInclude__os-to-host;
+        user = (ambientProbe ambientWiring) ? __aspectInclude__user-to-host;
       };
       expected = {
         os = true;
@@ -546,8 +546,8 @@ in
     };
     test-defaults-ambient-severed = {
       expr = {
-        os = (ambientProbe bare) ? os-to-host;
-        user = (ambientProbe bare) ? user-to-host;
+        os = (ambientProbe bare) ? __aspectInclude__os-to-host;
+        user = (ambientProbe bare) ? __aspectInclude__user-to-host;
       };
       expected = {
         os = false;

@@ -27,11 +27,11 @@ let
 
   # R6 — os-user.nix `user-to-host`: route user content to the host's OS `users.users.<name>`,
   # injecting `osConfig = config` (the adapter-bearing route). v1's `{ user, host, ... }:` is a
-  # canTake presence gate on BOTH user AND host, compiled here as `__denCanTake = "user-host"`
-  # (compile.nix preserves the `{ user, host, ... }` formals): den-hoag fires it only at a user cell
-  # (both coordinates present), and the stratum probe's sentinel user+host make the UNCONDITIONAL
-  # route classify as RESOLUTION. `user.name` = v1's `user.userName` (den-hoag ctx canonicalizes to
-  # `.name`).
+  # presence gate on BOTH user AND host; the route record is coerced into `den.aspects.defaults.includes`
+  # as `{ __isPolicy; name = "user-to-host"; fn }`, and `compilePolicy` reads the fn's `{ user, host, ... }`
+  # formals as the gate (den-hoag fires it only at a user cell — both coordinates present). The
+  # UNCONDITIONAL route emission classifies as RESOLUTION at the value-less probe. `user.name` = v1's
+  # `user.userName` (den-hoag ctx canonicalizes to `.name`).
   #
   # NB: UNLIKE os-class's os-to-host, v1's user-to-host is UNCONDITIONAL — `intoClass = host.class`
   # with NO `elem host.class [nixos darwin]` gate (verified against the frozen pin) — so a user
@@ -43,9 +43,10 @@ let
   # Bound in the let (a cleaner desugar body). The eval-time provisioning of `den.policies.user-to-host`
   # (builtins.nix) reconstructs this SAME route value-identically off the shared `deliver.nix` surface —
   # NOT by importing this legacy battery (the single-legacy-import-site invariant, compat-legacy-severed).
-  # The desugar's `//` overwrite of the provisioned value is idempotent, so ONE firing either way.
+  # Because the coerced include carries `.name = "user-to-host"`, `includeReferencedNames` REMOVES that
+  # ambient global from the fleet-wide firing set → the route fires ONCE, via the include arm.
   userToHost = {
-    __denCanTake = "user-host";
+    name = "user-to-host";
     fn =
       { user, host, ... }:
       [
@@ -76,8 +77,7 @@ in
           description = "Lightweight user environment forwarding to OS users.users (den v1 os-user battery)";
         };
       };
-      policies = (v1.policies or { }) // {
-        user-to-host = userToHost;
-      };
     };
+
+  routeInclude = userToHost;
 }
