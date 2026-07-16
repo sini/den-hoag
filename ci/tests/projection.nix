@@ -26,93 +26,19 @@
   ...
 }:
 let
-  inherit (denHoag.internal)
-    prelude
-    resolve
-    classifyKey
-    scope
-    aspects
-    select
+  # Shared reach/projectClass driver bindings, hoisted to a `/_`-skipped module (see the harness header).
+  harness = import ./_lib/projection-harness.nix { inherit denHoag denHoagSrc; };
+  inherit (harness)
+    mkNode
+    mkStub
+    reachEdgeAct
+    projectOver
+    projectReach
+    projectReachTotal
+    tags
+    classSliceOf
+    assertKeysRegistered
     ;
-
-  # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, built with the base
-  # `classifyKey` (nixos/darwin/home-manager/k8s-manifests) — the same functions the assembly threads to
-  # `projectClass`.
-  cm =
-    import "${denHoagSrc}/lib/attributes/class-modules.nix"
-      {
-        inherit prelude resolve;
-      }
-      {
-        classNames = [ ];
-        inherit classifyKey;
-      };
-  inherit (cm) classSliceOf assertKeysRegistered;
-
-  # projectClass replicated over a STUB reach list (byte-identical to output-modules.nix's body — a pure
-  # class-slice fold over `reach id`). `reachList` stands in for `result.get id "reach"`.
-  projectOver =
-    reachList: class: prelude.concatMap (n: map (e: e.module) (classSliceOf n class)) reachList;
-
-  # A synthetic resolved-aspect node `{ key; content }` (the reach node shape).
-  mkNode = key: content: {
-    inherit key content;
-  };
-
-  # ── COMPLETE-REACH driver (spec §Phase-2 synthetic-first): reach.compute over a STUB graph with INJECTED
-  #    opt-in edges (the reach-graph mkStub approach), then projectClass over the resulting reach — so the
-  #    single-visit dedup + structural-descendant + edge closure are exercised end-to-end (NOT a pre-built
-  #    reach list). This is how the corpus terminal will behave once Phase 5 wires the real edges; here the
-  #    edges are injected synthetically.
-  mkRa =
-    import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
-      inherit
-        prelude
-        scope
-        aspects
-        select
-        resolve
-        ;
-    } { };
-  # A reach-graph stub `self` (resolved-aspects / declarations / children).
-  mkStub = graph: {
-    get =
-      id: attr:
-      if attr == "resolved-aspects" then
-        (graph.${id} or { }).resolved or [ ]
-      else if attr == "declarations" then
-        { actions.resolution = (graph.${id} or { }).edges or [ ]; }
-      else if attr == "children" then
-        (graph.${id} or { }).children or { }
-      else
-        throw "projection stub: unexpected attr ${attr}";
-    node = id: (graph.${id} or { }).node or { };
-  };
-  reachEdgeAct = target: classFilter: {
-    __action = "reach-edge";
-    inherit target classFilter;
-  };
-  # projectClass over a COMPLETE reach: reach.compute (over the opt-in edges) → the class slice.
-  projectReach =
-    {
-      graph,
-      id,
-      class,
-    }:
-    projectOver (mkRa.reach.compute (mkStub graph) id) class;
-
-  # projectClass WITH the §2.2 totality pass (byte-identical to output-modules.nix's projectClass body:
-  # `seq (assertKeysRegistered n)` per REACHED aspect before its slice) — for the reached-content totality
-  # witness (a typo key on an aspect reached via an EDGE aborts NAMED, not just an own-node key).
-  projectReachTotal =
-    {
-      graph,
-      id,
-      class,
-    }:
-    prelude.concatMap (
-      n: builtins.seq (assertKeysRegistered n) (map (e: e.module) (classSliceOf n class))
-    ) (mkRa.reach.compute (mkStub graph) id);
 
   # ── ANCHOR fixture: the class-fold-subtree fleet (nixos host `igloo` + three hm user cells, each cell
   #    emitting a nixos (define-user) slice + a home-manager slice). NO reach edges (corpus has none until
@@ -139,15 +65,6 @@ let
   ];
   igloo = "host:igloo";
   out = anchorFleet.den.output;
-
-  # every `tag` string reachable in a wrapped deferredModule (gen-aspects `{ imports = [ … ]; }` form).
-  tags =
-    m:
-    if builtins.isAttrs m then
-      (if m ? tag then [ m.tag ] else [ ])
-      ++ (if m ? imports then builtins.concatMap tags m.imports else [ ])
-    else
-      [ ];
 in
 {
   flake.tests.projection = {

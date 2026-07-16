@@ -7,89 +7,21 @@
 # retargeted compat producer — compile.nix's `translateEffect kind=="spawn"` classes-form arm); the producer
 # is exercised end-to-end in compat-batteries.nix (3b).
 #
-# The harness `let`-bindings (mkNode/mkStub/reachEdgeAct/mkRa/projectOver/projectReach/tags + the class-slice
-# import) are COPIED VERBATIM from projection.nix — they are non-exported locals there.
+# The reach/projectClass driver bindings come from the shared `_lib/projection-harness.nix`.
 {
   denHoag,
   denHoagSrc,
   ...
 }:
 let
-  inherit (denHoag.internal)
-    prelude
-    resolve
-    classifyKey
-    scope
-    aspects
-    select
+  # Shared reach/projectClass driver bindings, hoisted to a `/_`-skipped module (see the harness header).
+  harness = import ./_lib/projection-harness.nix { inherit denHoag denHoagSrc; };
+  inherit (harness)
+    mkNode
+    reachEdgeAct
+    projectReach
+    tags
     ;
-
-  # THE ONE per-aspect class-slice extraction (same functions the assembly threads to projectClass).
-  cm =
-    import "${denHoagSrc}/lib/attributes/class-modules.nix"
-      {
-        inherit prelude resolve;
-      }
-      {
-        classNames = [ ];
-        inherit classifyKey;
-      };
-  inherit (cm) classSliceOf;
-
-  # projectClass replicated over a reach list (a pure class-slice fold over `reach id`).
-  projectOver =
-    reachList: class: prelude.concatMap (n: map (e: e.module) (classSliceOf n class)) reachList;
-
-  # A synthetic resolved-aspect node `{ key; content }` (the reach node shape).
-  mkNode = key: content: {
-    inherit key content;
-  };
-
-  mkRa =
-    import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
-      inherit
-        prelude
-        scope
-        aspects
-        select
-        resolve
-        ;
-    } { };
-  # A reach-graph stub `self` (resolved-aspects / declarations / children).
-  mkStub = graph: {
-    get =
-      id: attr:
-      if attr == "resolved-aspects" then
-        (graph.${id} or { }).resolved or [ ]
-      else if attr == "declarations" then
-        { actions.resolution = (graph.${id} or { }).edges or [ ]; }
-      else if attr == "children" then
-        (graph.${id} or { }).children or { }
-      else
-        throw "projection stub: unexpected attr ${attr}";
-    node = id: (graph.${id} or { }).node or { };
-  };
-  reachEdgeAct = target: classFilter: {
-    __action = "reach-edge";
-    inherit target classFilter;
-  };
-  # projectClass over a COMPLETE reach: reach.compute (over the opt-in edges) → the class slice.
-  projectReach =
-    {
-      graph,
-      id,
-      class,
-    }:
-    projectOver (mkRa.reach.compute (mkStub graph) id) class;
-
-  # every `tag` string reachable in a wrapped deferredModule (gen-aspects `{ imports = [ … ]; }` form).
-  tags =
-    m:
-    if builtins.isAttrs m then
-      (if m ? tag then [ m.tag ] else [ ])
-      ++ (if m ? imports then builtins.concatMap tags m.imports else [ ])
-    else
-      [ ];
 
   # A host root with BOTH a home-manager aspect and a nixos-only aspect; an OPTED-IN cell (amy) carrying a
   # class-scoped home-manager reach-edge to it; a PLAIN cell (bob) with no edge. THE class-scoping is the F9
