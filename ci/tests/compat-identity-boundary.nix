@@ -7,6 +7,7 @@
 #   (c) boundary behaviour — a two-level `den.hosts.<sys>.<name>` path compiles to an entry-valued
 #       reference, and a raw string handed to a den-hoag entry position aborts named (A2), never rides.
 {
+  genPrelude,
   denCompat,
   denHoag,
   denHoagSrc,
@@ -46,7 +47,7 @@ let
     "flake-module.nix"
   ];
   readCore = f: builtins.readFile "${denHoagSrc}/lib/compat/${f}";
-  scopeStringOffenders = builtins.filter (f: nixpkgsLib.hasInfix "}:\${" (readCore f)) coreFiles;
+  scopeStringOffenders = builtins.filter (f: genPrelude.hasInfix "}:\${" (readCore f)) coreFiles;
 in
 {
   flake.tests.compat-identity-boundary = {

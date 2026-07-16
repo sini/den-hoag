@@ -10,12 +10,14 @@
 # full-fleet arm — the real nix-config corpus diff ∖ ledger — is the dev-time ship-gate (runbook.md), the
 # one arm that cannot run in den-hoag's own CI (it evaluates the corpus flake + crosses nixpkgs/nix-darwin).
 {
+  genPrelude,
   harness,
   nixpkgsLib,
   ...
 }:
 let
-  inherit (nixpkgsLib) hasPrefix hasInfix;
+  inherit (nixpkgsLib) hasPrefix;
+  inherit (genPrelude) hasInfix;
   inherit (harness) golden;
 
   fixtures = [

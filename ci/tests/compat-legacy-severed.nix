@@ -21,6 +21,7 @@
 # byte-identity. The CONTENT half (drv-hash equality of a severed vs full mkDen) rides Task 8's
 # `parity-content` (P2), which needs the two-arm harness to exist first — see parity/tests/ (Task 8).
 {
+  genPrelude,
   denHoag,
   denCompat,
   denHoagSrc,
@@ -294,7 +295,7 @@ let
     let
       t = builtins.readFile "${compatDir}/${rel}";
     in
-    lib.hasInfix "import ./legacy" t || lib.hasInfix "import ../legacy" t;
+    genPrelude.hasInfix "import ./legacy" t || genPrelude.hasInfix "import ../legacy" t;
   legacyImportSites = builtins.filter importsLegacy (topNix ++ legacyNix);
 in
 {

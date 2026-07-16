@@ -14,6 +14,7 @@
 #   (3) host-aspects — its `{ __isPolicy; fn }` include fires a REAL `den.lib.policy.spawn` (Task 3).
 #   (4) surface-totality ACCEPTS a `den.batteries` key (inert-by-reference, like `reservedKeys`).
 {
+  genPrelude,
   denCompat,
   denHoag,
   nixpkgsLib,
@@ -248,7 +249,7 @@ let
   unfWrapped =
     builtins.head
       (denCompat.compile { aspects.a.includes = [ unfreeInc ]; }).aspects.a.includes;
-  unfFires = ctx: nixpkgsLib.hasInfix "packages" (builtins.toJSON (unfWrapped ctx).nixos);
+  unfFires = ctx: genPrelude.hasInfix "packages" (builtins.toJSON (unfWrapped ctx).nixos);
   unfFleet =
     (denCompat.mkDen [
       {
@@ -305,7 +306,7 @@ let
         };
       }
     ]).den;
-  puHasWheel = id: nixpkgsLib.hasInfix "wheel" (builtins.toJSON (bucketAt puShapeFleet id "nixos"));
+  puHasWheel = id: genPrelude.hasInfix "wheel" (builtins.toJSON (bucketAt puShapeFleet id "nixos"));
 in
 {
   flake.tests.compat-batteries = {

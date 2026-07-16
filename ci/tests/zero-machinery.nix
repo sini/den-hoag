@@ -3,7 +3,12 @@
 # markers a review would flag: no `builtins.genericClosure`, no `lib.fix`/`prelude.fix`
 # fixpoint of its own. It is a TRIPWIRE, documented as a reviewer checklist — not a proof
 # (a bespoke `rec`-fold with none of these tokens would slip through; code review owns that).
-{ denHoagSrc, nixpkgsLib, ... }:
+{
+  genPrelude,
+  denHoagSrc,
+  nixpkgsLib,
+  ...
+}:
 let
   libFiles = [
     "default.nix"
@@ -44,7 +49,7 @@ let
     let
       t = read f;
     in
-    map (tok: "${f}:${tok}") (builtins.filter (tok: nixpkgsLib.hasInfix tok t) forbidden)
+    map (tok: "${f}:${tok}") (builtins.filter (tok: genPrelude.hasInfix tok t) forbidden)
   ) libFiles;
 in
 {

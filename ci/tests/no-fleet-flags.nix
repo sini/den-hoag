@@ -14,6 +14,7 @@
   denHoag,
   denHoagSrc,
   nixpkgsLib,
+  genPrelude,
   ...
 }:
 let
@@ -164,9 +165,9 @@ let
     let
       t = read f;
     in
-    map (tok: "${f}:${tok}") (builtins.filter (tok: nixpkgsLib.hasInfix tok t) fleetFlagTokens)
+    map (tok: "${f}:${tok}") (builtins.filter (tok: genPrelude.hasInfix tok t) fleetFlagTokens)
   ) scanned;
-  perClassRead = nixpkgsLib.hasInfix "classCfg.share.core" (read "attributes/output-modules.nix");
+  perClassRead = genPrelude.hasInfix "classCfg.share.core" (read "attributes/output-modules.nix");
 in
 {
   flake.tests.no-fleet-flags = {

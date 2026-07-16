@@ -12,13 +12,15 @@
 # EXCLUSIONS: `ci/tests/**` and `parity/**` may say anything (they TEST the shim); `lib/compat/**` is the
 # shim itself. Only the core file list below is scanned.
 {
+  genPrelude,
   denHoagSrc,
   nixpkgsLib,
   denCompat,
   ...
 }:
 let
-  inherit (nixpkgsLib) hasInfix hasSuffix;
+  inherit (nixpkgsLib) hasSuffix;
+  inherit (genPrelude) hasInfix;
 
   # ── the CORE file set — lib/ MINUS lib/compat/ (explicit + checked-in, like zero-machinery.nix: adding
   #    a core file forces a visible edit here, which is the point). KEEP IN SYNC with `find lib -name
