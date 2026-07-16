@@ -862,21 +862,23 @@ let
           })
         ]
     else if kind == "spawn" then
-      # A v1 `policy.spawn { classes }` (policy-effects.nix `spawn`) — a deferred home-projection spawn
-      # (the projected content sees fleet-wide pipe values, PR #623). A den-hoag `spawn` of the named
-      # classes with empty bindings; a null `classes` (v1's "default to the drain-site classes") desugars
-      # to `[ ]`, letting den-hoag's spawn wiring pick the class set. The producing-scope channel
-      # resolution is den-hoag's, not the shim's (Law C2). Surface acceptance here; the shared/isolated
-      # projection nuance is a Task 8 parity refinement, recorded in the ledger if it diverges.
+      # host-aspects projection (spec §7.1 / §6.2a): a v1 `policy.spawn { classes }` (the corpus host-aspects
+      # opt-in) retargets to N class-scoped `reach-edge`s — one per named class — from the FIRING cell to its
+      # OWN host root (`host:<name>`). The opted-in (user,host) cell then reaches its host's per-class aspects
+      # through the `reach` graph, class-filtered (grounded terminology — `homeManager` → `home-manager`). The
+      # old structural spawn payload was UNREAD (pure fleet enumeration), so the v1 host→cell home projection
+      # was missing; the reach-edge is the projection producer. A null `classes` desugars to `[ ]` (no edges).
+      # instantiate is a SEPARATE arm below (native per-cluster spawn — do NOT conflate).
       let
         cs = effect.value.classes or null;
       in
-      [
-        (declare.spawn {
-          classes = if cs == null then [ ] else cs;
-          bindings = { };
-        })
-      ]
+      map (
+        c:
+        declare.reach-edge {
+          target = "host:${ctx.host.name}";
+          classFilter = groundClassName c;
+        }
+      ) (if cs == null then [ ] else cs)
     else if kind == "pipe" then
       # A v1 `pipe.from name [stages]` → a collection-stratum `pipeOp` declaration: the deriving stages
       # fold left-to-right into a gen-pipe op DAG on the named channel, the delivery/site stages ride as

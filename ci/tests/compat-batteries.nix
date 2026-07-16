@@ -156,7 +156,14 @@ let
   spawnCompiled = denCompat.compile {
     policies.p = _ctx: [ (denHoag.policy.spawn { classes = [ "homeManager" ]; }) ];
   };
-  spawnDecls = spawnCompiled.policies.p.fn { };
+  # The retargeted spawn-arm (spec §7.1 / §6.2a) reads `ctx.host.name` to name the host root node — fire
+  # with a real host ctx (an empty ctx would throw). Grounds `homeManager` → `home-manager` (v1ClassKeyMap).
+  spawnDecls = spawnCompiled.policies.p.fn {
+    host = {
+      name = "h";
+      class = "nixos";
+    };
+  };
 
   # ── (5) unfree `__functor`: `den.batteries.unfree [ names ]` → a parametric `{ __fn }` aspect include. ─
   unfreeAspect = bat.unfree [ "steam" ];
@@ -550,15 +557,25 @@ in
         classes = [ "homeManager" ];
       };
     };
-    # (3b) that spawn effect compiles to a single `spawn` declaration (translateEffect kind == "spawn").
-    test-spawn-compiles-to-spawn-decl = {
-      expr = {
-        count = builtins.length spawnDecls;
-        action = (builtins.head spawnDecls).__action;
-      };
+    # (3b) that classes-form spawn effect RETARGETS to N class-scoped `reach-edge`s (spec §7.1 / §6.2a): one
+    #      per class, each reaching the firing cell's own host root (`host:<name>`), class-filtered (grounded
+    #      terminology — `homeManager` → `home-manager`). The old inert `spawn` payload was unread.
+    test-spawn-compiles-to-reach-edge = {
+      expr =
+        let
+          edge = builtins.head spawnDecls;
+        in
+        {
+          count = builtins.length spawnDecls;
+          action = edge.__action;
+          target = edge.target;
+          classFilter = edge.classFilter;
+        };
       expected = {
         count = 1;
-        action = "spawn";
+        action = "reach-edge";
+        target = "host:h";
+        classFilter = "home-manager";
       };
     };
 
