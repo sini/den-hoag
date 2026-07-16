@@ -23,6 +23,18 @@ let
   # Kind → stratum grouping (mkActions groups ARE the B2 strata). `collection`'s single kind is
   # `pipeOp` — the pipe.* op payload rides it; concern-quirks (Task 5) wraps the operators below
   # into `pipeOp` declarations.
+  # Some kinds ride the mkActions dispatch with the raw `actions.<kind>` constructor (no custom
+  # wrapper below), so their contract is stated here at the group site:
+  #   • `spawn`/`spawnShared`/`emit` — LATENT structural constructors: child-node creation
+  #     (`spawn`/`spawnShared`) and wire-entity-into-output (`emit`) are SUBSUMED by `member` fan-out
+  #     (§3c-UNIFIED), so nothing in the assembly consumes these kinds; they remain in the vocabulary
+  #     for surface totality.
+  #   • `enrich { key = val }` — a structural enrichment fact; its consumer is the enrichment
+  #     fixpoint in concern-policies.nix (A3 single-writer).
+  #   • `reroute { from; to }` — a resolution fact moving a class's collected content to another class;
+  #     consumed by attributes/class-modules.nix (`reroutes`).
+  #   • `inject { class; module }` — a resolution fact appending a module to a class bucket;
+  #     consumed by attributes/class-modules.nix (`injects`).
   groups = {
     structural = [
       "spawn"

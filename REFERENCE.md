@@ -85,6 +85,67 @@ r2-era reader may look for to what the assembly actually uses:
 `gen-dispatch`'s own exported names (`mkActions`, `dispatch`, …) stay as-is *behind* den-hoag's
 wrappers; the wrapper surface uses the grounded terms.
 
+## API Verb Catalog
+
+The two public verb surfaces. `declare.*` (`lib/declarations.nix`) is the native declaration-constructor
+vocabulary a policy body calls; `policy.*` (`lib/compat/policy-verbs.nix` + `lib/compat/deliver.nix`, wired
+in `flake.nix`) is the v1-compatible surface a den-corpus policy body calls. Every verb produces an INERT,
+tagged graph fact — never a callable effect (A1/A2). STRATUM is the mkActions group (structural | resolution
+| collection | demand); CONCERN on the compat table is the same axis in v1 words.
+
+### `declare.*` — declaration constructors (`lib/declarations.nix`)
+
+| verb | args | stratum | what it declares |
+| --- | --- | --- | --- |
+| `member` | `{ <dim> = entry; … }` (bare coords) or `{ coords; bindings ? {}; containTo ? null }` (wrapped) | structural | The SOLE resolve-family tuple (§3c-UNIFIED): a product CELL (bare) or a `containTo`-marked CONTAINMENT tuple carrying ctx `bindings` into an existing root. Coords entry-checked eagerly (A2). Accepted at membership-independent roots only (A5). |
+| `suppress` | `{ name }` | structural | Scope-local policy-suppression fact — names a v1 policy whose rules must not fire at this scope or descendants (the v1 `policy.exclude <policy>` constraint). `name` is a plain string, not an entity. |
+| `spawn` | `{ … }` | structural | LATENT (mkActions-generated, no consumer): child-node creation, subsumed by `member` fan-out. |
+| `spawnShared` | `{ … }` | structural | LATENT: non-isolated fan-out, subsumed by `member`. |
+| `emit` | `{ … }` | structural | LATENT: wire-entity-into-output, subsumed by `member` fan-out. |
+| `enrich` | `{ key = val; … }` | structural | Add enrichment key-values to the scope's context; consumed by the enrichment fixpoint (`lib/concern-policies.nix`, A3 single-writer). |
+| `link` | `{ target }` | structural | An I-edge to an EXISTING entity node (annotates, never creates/re-resolves). `target` entry-checked eagerly (A2); selector fan-out is a policy idiom, not constructor polymorphism. |
+| `edge` | `aspect` | resolution | An aspect-delivery edge onto this node. Aspect entry-checked eagerly. |
+| `drop` | `aspect` | resolution | Scope-level constraint pruning an aspect (and its include subtree) from the resolved set (§B4). |
+| `reroute` | `{ from; to }` | resolution | Moves a class's collected content to another class; consumed by `lib/attributes/class-modules.nix` (`reroutes`). |
+| `inject` | `{ class; module }` | resolution | Appends a module to a class bucket; consumed by `lib/attributes/class-modules.nix` (`injects`). |
+| `configure` | `{ of; set }` | resolution | Set values on a target entry (`of` entry-checked eagerly). |
+| `delivery` | `{ sourceClass; targetClass; module ? null; path ? []; mode; adaptArgs ? null; guard ? null; annotations ? {} }` | resolution | A v1 delivery-edge INTENT (external consumer's `deliver`/`route`/`provide`); the gen-edge record is rendered at the firing node by output-modules. `sourceClass`/`targetClass` entry-checked eagerly. |
+| `reach-edge` | `{ target; classFilter ? null }` | resolution | POSITIVE cross-scope reach-edge (spec §7.1). `target` = bare node-id STRING; `classFilter` = predicate on the target's resolved-aspect nodes (null = all). |
+| `reach-suppress` | `{ edge; when ? (_: true) }` | resolution | NEGATIVE edge removing the positive reach-edge whose `target == edge` (node-id STRING), gated by `when scope`. |
+| `demand` | `{ subject; … }` | demand | A subject entity plus the demand payload (`subject` entry-checked eagerly). |
+| `pipe.{map,filter,fold,scan,route,join,tee}` | per gen-pipe | collection | gen-pipe dataflow ops re-exported; concern-quirks wraps them into `pipeOp` collection declarations. |
+
+Note: `den.default` (v1 compat) desugars to a plain `den.aspects.defaults` aspect wired through
+`den.schema.{host,user}.includes` — it follows the SAME kernel kind-include path as any user aspect (the
+6.2b surface). There is NO bespoke `__default`/`__denDefault` radiation (that block was deleted).
+
+### `policy.*` + pipe — v1-compat vocabulary (`lib/compat/policy-verbs.nix`, `lib/compat/deliver.nix`)
+
+| verb | args | concern | notes |
+| --- | --- | --- | --- |
+| `include` | `aspect` | resolution | Lowers to `declare.edge` (via `compile.nix` translateEffect). |
+| `exclude` | `aspect` | resolution | Lowers to `declare.drop`. |
+| `mkPolicy` | `name: fn` | — | Named-policy record `{ __isPolicy; name; fn }` for use in includes. |
+| `resolve` | `{ bindings }` | structural | Fan-out; lowers to `member` (a cell tuple). `.shared` (non-isolated), `.to "kind" {…}` (root-target → `containTo`-marked `member`), `.withIncludes includes {…}`, `.shared.to`, `.to.withIncludes`. Only `resolve.to "<kind>" {…}` is corpus-exercised. |
+| `route` | `{ fromClass; intoClass; intoPath ? null; path ? null; reinstantiate ? false; guard ? null; adaptArgs ? null; __extra ? {} }` | resolution | **PERMANENT sugar** over `deliver` (`deliver.nix`). `intoPath`/`path` → `at` (both present aborts, §2.3); `reinstantiate = true` → `mode = "verbatim"`; `__extra.appendToParent` overlays the parent-target flag (#53c). Not replaced by `reroute`. |
+| `provide` | `{ class; module; path ? [] }` | resolution | **PERMANENT sugar** over a module-source `deliver` (`class` → `to`, `module` → `from.module`, `path` → `at`). Not replaced by `inject`. |
+| `deliver` | `{ from; to; at ? []; mode ? "merge"; guard ? null; adaptArgs ? null }` | resolution | The base delivery surface (`deliver.nix`); produces a `{ __delivery = true; … }` descriptor, compiled to a `delivery` declaration at fire time (Law C2). `from` = class name (route case) or `{ module }` (provide case). `mode` ∈ {merge \| nest \| verbatim}; verbatim on a module source aborts. |
+| `spawn` | `{ classes }` | structural | v1 home-projection fan-out verb (distinct from `declare.spawn`, which is a latent structural constructor). |
+| `instantiate` | `spec` | structural | v1 instantiate verb. |
+| `pipe.from` | `nameOrRef: stages` | collection | Heads a channel derivation; stages fold left-to-right (`pipe.nix` compilePipe). |
+| `pipe.filter` | `pred` | collection | Stage: keep matching values. |
+| `pipe.transform` | `fn` | collection | Stage: map values. |
+| `pipe.fold` | `fn init` | collection | Stage: left fold. |
+| `pipe.append` | `value` | collection | Stage: append a value. |
+| `pipe.for` | `fn` | collection | Stage: per-value branch. |
+| `pipe.withProvenance` | — | collection | Stage: carry provenance. |
+| `pipe.to` | `aspects` | collection | Stage: targeted delivery to specific aspects (spec name `pipe.target`). |
+| `pipe.as` | `targetPipeName` | collection | Stage: redirect to a different channel (spec name `pipe.channel`). |
+| `pipe.expose` | — | collection | Stage: data flows UP the P edge, child→parent (spec name `pipe.ascend`). |
+| `pipe.broadcast` | `pred` | collection | Stage: push-dual of expose — broadcast to matching scopes. |
+| `pipe.collect` | `pred` | collection | Stage: gather from scopes matching predicate (spec name `pipe.gather`). |
+| `pipe.collectAll` | `pred` | collection | Stage: collect across all matching scopes (no scope restriction). |
+
 ## Spec-vs-reality flags
 
 Two places where the shipped substrate differs from the r2 spec's placeholder names — resolved here,
