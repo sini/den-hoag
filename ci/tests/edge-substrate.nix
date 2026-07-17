@@ -62,8 +62,8 @@ let
     kinds = { };
     strataOrder = edgeStrata;
   };
-  # A pre-identity assembly INTENT (kind + typed endpoints + data). Distinct entityIds so the two
-  # endpoints get distinct assembly/instance ids.
+  # A pre-identity assembly INTENT (readable id + kind + typed endpoints + data). Distinct entityIds so
+  # the two endpoints get distinct assembly/instance ids.
   mkAsmIntent =
     {
       kind ? "reach",
@@ -72,9 +72,16 @@ let
       fromS ? { },
       toS ? { },
       data ? { },
+      # the intent's readable identity — the keyedValue source key (never a hash). A default keeps the
+      # existing scenarios id-bearing; the id oracles pass an explicit value.
+      id ? "intent:${kind}:${fromId}>${toId}",
     }:
     {
-      inherit kind data;
+      inherit
+        kind
+        data
+        id
+        ;
       from = {
         entityId = fromId;
         class = "nixos";
@@ -1381,30 +1388,94 @@ in
         )).success;
       expected = false;
     };
-    # an override changing `data` is applied BEFORE edgeId: the stamped edgeId annotation differs from
-    # the un-overridden assembly's (the override tier genuinely participates in identity).
-    test-assemble-override-changes-edgeId = {
+    # THE keyedValue SOURCE-KEY ORACLE: the assembled edge's trace SOURCE identity IS the intent's readable
+    # `id` — never a derived hash, and no sha256 rides the source or annotations (the placement-identity
+    # target root is a hash BY CONSTRUCTION, so the no-hash check is scoped to the region the source swap
+    # governs). An override rewrites `data`, never `id`, so the source key is INVARIANT under a data-only
+    # override — identity moved off the data fingerprint onto the producer-supplied id.
+    test-assemble-source-keyed-by-id = {
       expr =
         let
-          id =
+          recOf =
             overrides:
-            (builtins.head (assembleEdges {
+            builtins.head (assembleEdges {
               kinds = reachKinds;
               inherit overrides;
-              intents = [ (mkAsmIntent { data.port = 8080; }) ];
-            })).annotations.edgeId;
+              intents = [
+                (mkAsmIntent {
+                  id = "nest:outer/inner:slot";
+                  data.port = 8080;
+                })
+              ];
+            });
+          plain = recOf [ ];
+          overridden = recOf [
+            {
+              match = {
+                kind = "reach";
+              };
+              rewrite = {
+                port = 9090;
+              };
+            }
+          ];
+          entry = genEdge.traceEntryOf plain;
         in
-        (id [ ]) != (id [
-          {
-            match = {
-              kind = "reach";
-            };
-            rewrite = {
-              port = 9090;
-            };
-          }
-        ]);
-      expected = true;
+        {
+          traceArm = entry.source.arm;
+          traceKey = entry.source.key;
+          annotationsEmpty = entry.annotations == { };
+          # the source + annotations region carries NO 64-hex sha256 run (identity is the readable id).
+          sourceRegionHasNoHash =
+            builtins.match ".*[0-9a-f]{64}.*" (builtins.toJSON { inherit (entry) source annotations; }) == null;
+          # the override genuinely rewrote `data` (8080 → 9090) YET the source key is unchanged.
+          overrideChangedData = plain.source.value.value.port != overridden.source.value.value.port;
+          keyStableAcrossOverride = plain.source.value.key == overridden.source.value.key;
+        };
+      expected = {
+        traceArm = "value";
+        traceKey = "nest:outer/inner:slot";
+        annotationsEmpty = true;
+        sourceRegionHasNoHash = true;
+        overrideChangedData = true;
+        keyStableAcrossOverride = true;
+      };
+    };
+    # an intent WITHOUT `id` aborts at the definition-time id guard (NAMED), before the source key is
+    # ever forced — `id` is REQUIRED (it is the source identity key). mkAsmIntent supplies a default, so
+    # the probe strips it to witness the requirement.
+    test-assemble-intent-without-id-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (assembleEdges {
+            kinds = reachKinds;
+            intents = [ (builtins.removeAttrs (mkAsmIntent { }) [ "id" ]) ];
+          }) null
+        )).success;
+      expected = false;
+    };
+    # the source key IS the id, and NOTHING else: distinct ids → distinct source keys; the SAME id with
+    # DIFFERENT data → the SAME key (the source identity is data-independent — the whole point of the swap).
+    test-assemble-ids-key-the-source = {
+      expr =
+        let
+          keyOf =
+            id: data:
+            (genEdge.traceEntryOf (
+              builtins.head (assembleEdges {
+                kinds = reachKinds;
+                intents = [ (mkAsmIntent { inherit id data; }) ];
+              })
+            )).source.key;
+        in
+        {
+          distinctIds = keyOf "id:one" { } != keyOf "id:two" { };
+          sameIdDataIndependent = keyOf "id:x" { port = 1; } == keyOf "id:x" { port = 2; };
+        };
+      expected = {
+        distinctIds = true;
+        sameIdDataIndependent = true;
+      };
     };
     # a suppressing override (`rewrite = null`) drops the edge — a suppressed intent emits no record.
     test-assemble-override-suppresses = {

@@ -167,7 +167,12 @@ let
 
   # ── assembleEdges: override → two-level identity → fill-graph acyclicity → stamped record (§2.1) ──
   # SYNTHETIC-ONLY in this step: no live producer routes through here yet (a live producer arrives with
-  # later spec steps). An intent is `{ kind; from = { entityId; class; s ? {}; }; to = <same>; data ? {} }`.
+  # later spec steps). An intent is
+  #   `{ id; kind; from = { entityId; class; s ? {}; }; to = <same>; data ? {}; when; }`.
+  # `id` is a readable, stable, producer-supplied string (e.g. "family:<family>:<entity>",
+  # "nest:<outer>/<inner>:<slot>") — REQUIRED, read as the source key (never a hash). `when` is an
+  # optional demand-condition carried by producers, read at the demand step (this step neither reads
+  # nor defaults it).
   # Order (the reviewer-ratified §2.4 rider): overrides match the RAW intent (pre-normalization — "pre-hash
   # coordinates" are the as-declared coordinates), THEN identities are computed on the surviving intents.
   #
@@ -194,6 +199,10 @@ let
     let
       # unknown-kind guard (definition-time, named): every intent's kind must be a registered edge kind.
       unknownKinds = builtins.filter (i: !(kinds ? ${i.kind})) intents;
+      # id guard (definition-time, named): every intent must carry a readable `id` — it is the source
+      # identity key. A missing `id` is otherwise a bare attribute error the moment the source key is
+      # forced (uncatchable by tryEval); this makes the requirement observable and names the locus.
+      idlessIntents = builtins.filter (i: !(i ? id)) intents;
       # the override tier runs on the RAW intents; identities are computed on the survivors.
       survivors = applyOverrides {
         inherit overrides;
@@ -224,33 +233,22 @@ let
         {
           inherit from to;
           record = edge.edge {
-            # SYNTHETIC record: the intent's data is the value source; the target root is keyed by the
-            # `to` instanceId (the placement). A live producer's source/target arms arrive with later
-            # spec steps — here the record exists to carry the STAMPED kind + the frozen (T,P,S,M,K) key.
-            source = edge.sources.value (i.data or { });
+            # SYNTHETIC record: the intent's data is the value source, KEYED by the intent's readable
+            # `id` — the source identity that rides into the trace (a stable producer-supplied string,
+            # never a hash). The target root is keyed by the `to` instanceId (the placement). A live
+            # producer's source/target arms arrive with later spec steps — here the record carries the
+            # STAMPED kind + the frozen (T,P,S,M,K) key. The edge's derived identity is the source key,
+            # not an `annotations` stamp: gen-edge annotations are provenance/diagnostics, never read by
+            # materialize, and its `traceEntryOf` folds the SOURCE identity (this key) into the trace.
+            source = edge.sources.keyedValue {
+              key = i.id;
+              value = i.data or { };
+            };
             target = edge.targets.root {
               root = to.instanceId;
               class = i.to.class;
             };
             kind = i.kind;
-            # FORWARD CAVEAT (annotations = provenance ONLY, per gen-edge's contract): `edgeId` rides
-            # `annotations` here because this record is synthetic and inert. When live producers route
-            # through assembleEdges, TWO things follow. (1) gen-edge's `traceEntryOf` folds annotations
-            # into trace entries, so an identity sha256 would enter the trace goldens — and a `data`
-            # change then double-ripples the trace (via BOTH the source key AND the edgeId annotation),
-            # making golden churn opaque; the trace should carry the source identity, not the derived
-            # edgeId. (2) The moment a consumer reads `edgeId` SEMANTICALLY (dedup / query keying),
-            # `annotations` is the wrong home — gen-edge annotations are provenance/diagnostics, never
-            # read by materialize. Promote `edgeId` to a first-class field (or recompute it at the read
-            # site) before either happens.
-            annotations = {
-              edgeId = identity.edgeId {
-                inherit (i) kind;
-                fromInstanceId = from.instanceId;
-                toInstanceId = to.instanceId;
-                dataFingerprint = identity.dataFingerprint (i.data or { });
-              };
-            };
           };
         }
       ) survivors;
@@ -306,6 +304,8 @@ let
     in
     if unknownKinds != [ ] then
       throw "den.edges: assembleEdges intent names unknown kind '${(builtins.head unknownKinds).kind}' (not in the registry)"
+    else if idlessIntents != [ ] then
+      throw "den.edges: assembleEdges intent (kind '${(builtins.head idlessIntents).kind}') lacks a required `id` — the id is the source identity key (spec §2.1)"
     else
       # checkFillAcyclic runs once per assembly; a cycle aborts NAMED (identity module). `seq` forces the
       # check before the records are handed back, so a cyclic assembly aborts rather than emitting.
