@@ -46,6 +46,42 @@ by setting `den.interpret = { synthesize = …; rewalk = …; }` in a fleet modu
 `lib/attributes/output-modules.nix`. It rides `raw` (opaque functions), forced only when a legacy source
 is actually folded, never for a native fleet.
 
+## Typed-edge substrate laws (S1–S5, spec §2)
+
+The typed-edge substrate (vocabulary spec §2) shares one identity scheme, one edge-kind registry, and one
+pre-freeze override tier across both facets (link/merge and relation/derived). Every algorithm delegates to
+a named lib (Law A1): the identity hashes to `lib/identity.nix`, the registry/override/assembly to
+`lib/edges.nix` (a `mapAttrs` + validation for the registry; the identity module for the hashes; gen-edge's
+`edge` for the record), the acyclicity check to the identity module. den-hoag stays nixpkgs-lib-free.
+
+| Law | Statement | Delegates to | den-hoag file |
+| --- | --- | --- | --- |
+| **S1** | Two-level identity (spec §2.1, F5 nominal producer-ids) — `assemblyId = hash(entityId, class)` (content coordinate; class-share A18 keys here); `instanceId = hash(assemblyId, S)` (placement; `S` = the canonical STRUCTURAL fill map); `edgeId = hash(kind, from.instanceId, to.instanceId, dataFingerprint)`. Hashing is `sha256` of `builtins.toJSON` (attrs sort by key; LISTS preserve order — order-bearing coordinates like mount paths distinguish). | `lib/identity.nix` (`assemblyId`/`instanceId`/`edgeId`/`dataFingerprint`) | `lib/edges.nix` (`assembleEdges` composes them) |
+| **S2** | Fingerprint law (spec §2.1) — a FUNCTION VALUE anywhere in `S` or in edge `data` is REJECTED with a named throw (`den.identity: function value in …`); function-valued declaration fields (`provision`/`adapt`/`derive`/`when`/…) live in registries and are referenced from edge data BY NAME (`when` is a NAME string, fingerprinted like any scalar). PRODUCED VALUES never enter `S` — only the producing node's instanceId STRING does — so identity hashing can never force content. `S` is STRICT by contract (structural scalars are forced; forcing them is correct); the discipline is "never put content in `S`", not "hashing is lazy over `S`". | `lib/identity.nix` (`rejectFunctions`) | — |
+| **S3** | Strata-by-construction ctx scoping (spec §2.3/§5, A9) — the stratum order is DATA (`den.strata.insert.<name> = { after }`, dense insertion; see the Strata section). A rule declared at stratum *n* may read ONLY ctx facts of a STRICTLY LOWER stratum: a declared stratum→ctx-key map REPLACES a ≥-stratum ctx key with a NAMED THROW (not omitted — a replaced key aborts CATCHABLY when read, whereas attribute-missing escapes `tryEval`). The projection wraps ONLY the rule's FINAL dispatch produce; the value-less stratum PROBE keeps the RAW produce BY DESIGN (the probe is sentinel-only stratum detection, never a value channel). Seeded empty above structural ⇒ a no-op for every shipped rule. | `gen-dispatch` (phase order) + `gen-resolve` | `lib/declarations.nix` (`compileStrata`), `lib/concern-policies.nix` (`compileWithStrata`/`projectCtx`) |
+| **S4** | Override-before-freeze (spec §2.4) — framework NEW-substrate edge intents pass through `den.overrides` BEFORE `edgeId`. `match` = pre-hash coordinates `{ kind ?; from ?; to ?; data ? { <field> = v } }` compared against the RAW (as-declared) intent: `kind`/`from`/`to` by WHOLE VALUE, `data` PER-FIELD, an absent coordinate a wildcard; a `null` field value matches both an explicitly-null and an absent field (null≡absent, deliberate); NO function-valued matchers (structural data only — the selector-language upgrade is a later step). `rewrite` = a data-patch shallow-merged into `data` (`//`) or `null` = SUPPRESS. SINGLE-STEP: one pass per edge, FIRST match wins, the rewritten edge is NEVER re-matched. A malformed coordinate throws NAMED at definition time. | `lib/edges.nix` (`applyOverrides`) | — |
+| **S5** | Fill-graph acyclicity (spec §2.1) — the fill-reference graph (which producer-ids appear in whose `S`) is declared ACYCLIC, checked ONCE per assembly (`den.identity: structural-fill reference cycle …`). Nodes are PER INSTANCE, keyed by instanceId (computable pre-check — `S` never contains the node's own instanceId, so no hash regress): the check is the WELL-FOUNDEDNESS of identity computation over the declared nominal reference structure. A literal instanceId string leaf in `S` resolves directly; an entityId string leaf is instance-discriminating SUGAR — it resolves iff that entity has EXACTLY ONE instance in the assembly, else it aborts NAMED (ambiguous; resolving to all instances would re-derive the entity quotient and introduce false cycles). References feed ONLY the acyclicity check, never a hash, so the failure direction is a LOUD spurious abort (a string leaf coincidentally equal to an assembly id becomes a spurious fill edge, at worst an over-strict abort), NEVER a silent wrong identity. | `lib/identity.nix` (`checkFillAcyclic`) | `lib/edges.nix` (`assembleEdges` builds the graph) |
+
+**The edge-kind registry (`den.edges.<kind>`, spec §2.2).** One registry describes every typed-edge kind:
+`{ data ? null; requires ? null; produces ? null; discipline ? null; inverse ? null; closure ? false; stratum ? "resolution" }`. The framework pre-registers nine kinds with their strata — `contains`,
+`include`, `kindOf` (structural); `member`, `reach`, `reach-suppress` (resolution); `nest`, `defer`
+(**output** — a stratum the framework itself dense-inserts after `demand` through the SAME
+`den.strata.insert` machinery); and `demand` (the demand-stratum kind demand's `toEdges` stamps). A user
+registers beside them; re-registering a framework kind name aborts NAMED (`framework-reserved`); a
+`stratum` outside the compiled order aborts NAMED; `closure = true` with no `discipline` aborts NAMED
+(closure is legal only under a join-semilattice discipline — the laws themselves are validated by the
+disciplines registry, a later step). **Deferred (spec §2.2): per-kind `data` schema VALIDATION** — the
+registry STORES `data`; enforcing it against edge intents lands when live producers arrive
+(`assembleEdges` carries the deferral comment at the intent-validation site).
+
+**The kind-null-=-unlabeled rendering rule (spec §2.2, §6 risk register).** gen-edge's trace key is
+`(T, P, S, M[, K])` — target, path, source, mode, and the optional kind label `K`. An UN-LABELED edge
+(`kind = null`, gen-edge's default) renders the historical FOUR-component key byte-identically; a LABELED
+edge appends ` | <kind>` as the fifth component (and carries a `kind` field on its trace entry). So
+"legacy" is simply "un-stamped" — no enumerated legacy list exists anywhere. `demand` is the first live
+labeled kind (its `toEdges` records stamp `kind = "demand"`); the demand-free parity corpus is therefore
+byte-untouched. This is the extension-in-place by which the demand edge-identity scheme retires.
+
 ## Theory citations (§6)
 
 The libraries den-hoag delegates to carry the theory; the citations that matter at this layer:
@@ -129,7 +165,7 @@ Note: `den.default` (v1 compat) desugars to a plain `den.aspects.defaults` aspec
 | `resolve` | `{ bindings }` | structural | Fan-out; lowers to `member` (a cell tuple). `.shared` (non-isolated), `.to "kind" {…}` (root-target → `containTo`-marked `member`), `.withIncludes includes {…}`, `.shared.to`, `.to.withIncludes`. Only `resolve.to "<kind>" {…}` is corpus-exercised. |
 | `route` | `{ fromClass; intoClass; intoPath ? null; path ? null; reinstantiate ? false; guard ? null; adaptArgs ? null; __extra ? {} }` | resolution | **PERMANENT sugar** over `deliver` (`deliver.nix`). `intoPath`/`path` → `at` (both present aborts, §2.3); `reinstantiate = true` → `mode = "verbatim"`; `__extra.appendToParent` overlays the parent-target flag (#53c). Not replaced by `reroute`. |
 | `provide` | `{ class; module; path ? [] }` | resolution | **PERMANENT sugar** over a module-source `deliver` (`class` → `to`, `module` → `from.module`, `path` → `at`). Not replaced by `inject`. |
-| `deliver` | `{ from; to; at ? []; mode ? "merge"; guard ? null; adaptArgs ? null }` | resolution | The base delivery surface (`deliver.nix`); produces a `{ __delivery = true; … }` descriptor, compiled to a `delivery` declaration at fire time (Law C2). `from` = class name (route case) or `{ module }` (provide case). `mode` ∈ {merge | nest | verbatim}; verbatim on a module source aborts. |
+| `deliver` | `{ from; to; at ? []; mode ? "merge"; guard ? null; adaptArgs ? null }` | resolution | The base delivery surface (`deliver.nix`); produces a `{ __delivery = true; … }` descriptor, compiled to a `delivery` declaration at fire time (Law C2). `from` = class name (route case) or `{ module }` (provide case). `mode` ∈ {merge, nest, verbatim}; verbatim on a module source aborts. |
 | `spawn` | `{ classes }` | structural | v1 home-projection fan-out verb (distinct from `declare.spawn`, which is a latent structural constructor). |
 | `instantiate` | `spec` | structural | v1 instantiate verb. |
 | `pipe.from` | `nameOrRef: stages` | collection | Heads a channel derivation; stages fold left-to-right (`pipe.nix` compilePipe). |

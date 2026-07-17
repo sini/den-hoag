@@ -21,7 +21,7 @@ let
     applyOverrides
     assembleEdges
     ;
-  # gen-edge's frozen sort key (Task 1's public export) — to pin an assembled edge's ` | <kind>` component.
+  # gen-edge's frozen sort key (its public export) — to pin an assembled edge's ` | <kind>` component.
   inherit (denHoag.internal.edge) edgeSortKey;
   # the gen-edge lib itself — to construct un-stamped vs `demand`-stamped edges for the K-boundary pin.
   genEdge = denHoag.internal.edge;
@@ -774,9 +774,9 @@ in
         )).success;
       expected = false;
     };
-    # THE T5-AUTHOR INTERACTION: a user-inserted stratum carries a user edge-kind through the mount —
-    # `den.strata.insert.reify` + `den.edges.<k>.stratum = "reify"` compiles end-to-end (the compiled
-    # table's kind resolves to the inserted stratum, present in the compiled order).
+    # THE USER-STRATUM × USER-KIND INTERACTION: a user-inserted stratum carries a user edge-kind through
+    # the mount — `den.strata.insert.reify` + `den.edges.<k>.stratum = "reify"` compiles end-to-end (the
+    # compiled table's kind resolves to the inserted stratum, present in the compiled order).
     test-edges-user-stratum-user-kind = {
       expr =
         let
@@ -978,7 +978,7 @@ in
     # `from`/`to` match by WHOLE VALUE, not per-field: a partial `from = { entityId = "host:a"; }`
     # does NOT match an intent whose `from = { entityId = "host:a"; class = "nixos"; }` (they are
     # unequal records). This pins the whole-value contract so a future per-field `from`-matcher is a
-    # deliberate change, not a silent drift — protecting T6 edgeId stability.
+    # deliberate change, not a silent drift — protecting downstream edgeId stability.
     test-overrides-partial-from-no-match = {
       expr =
         (builtins.head (applyOverrides {
@@ -1010,7 +1010,7 @@ in
       expected = "reach";
     };
     # the assembled edge's gen-edge sort key ends in ` | <kind>` — the frozen (T,P,S,M,K) key, pinned
-    # from the den-hoag side (T1 semantics through the live gen-edge pin).
+    # from the den-hoag side (the kind-null-=-unlabeled rendering rule through the live gen-edge pin).
     test-assemble-sortkey-carries-kind = {
       expr =
         let

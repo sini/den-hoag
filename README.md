@@ -33,6 +33,14 @@ with `gen-demand`, and materializes output through `gen-edge` → `gen-bind` →
 `gen-flake` nixpkgs crossing, with `gen-class` tier-2 fixed-input core injection as the
 default fleet-build path.
 
+The **typed-edge substrate** (vocabulary spec §2, laws S1–S5 in `REFERENCE.md`) adds the
+two-level identity scheme (`assemblyId`/`instanceId`/`edgeId`, `lib/identity.nix`), the
+`den.edges.<kind>` registry + `den.overrides` pre-identity-freeze tier + `assembleEdges`
+pipeline (`lib/edges.nix`), and the user-extensible `den.strata` order with capability-scoped
+rule ctx. gen-edge edges carry an optional `kind` label — an un-labeled edge renders the
+historical `(T,P,S,M)` trace key byte-identically; a labeled one appends ` | <kind>` (`demand`
+is the first live labeled kind). Live producers rewire onto the substrate in later spec steps.
+
 Two binding laws govern the assembly:
 
 - **Law A1 (zero machinery).** No convergence, toposort, or product traversal is

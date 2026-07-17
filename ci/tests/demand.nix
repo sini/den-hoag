@@ -312,6 +312,18 @@ in
       expr = builtins.all (e: e.kind == "demand") edges;
       expected = true;
     };
+    # COMPOSITION: the demand edges fold into the fleet edge set (`edgesForRoot` = default-fold ++ fleet
+    # demand edges), so the frozen parity-oracle trace `den.graph.trace <root>` carries the stamped `kind`
+    # — the K component surfaces end-to-end, not only on the raw records.
+    test-graph-trace-carries-demand-kind = {
+      expr =
+        let
+          aRoot = builtins.head (builtins.attrNames denCascade.scopeRoots);
+          traceEntries = denCascade.graph.trace aRoot;
+        in
+        builtins.any (e: (e.kind or null) == "demand") traceEntries;
+      expected = true;
+    };
 
     # ── same-position tie-break (A12): pinned by producer identity ──
     # the two root (stratum-1) subjects come out provisionA (axon) before provisionB (prod), pinned by
