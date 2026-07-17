@@ -44,6 +44,7 @@ let
     "settings.nix"
     "projects.nix"
     "demand.nix"
+    "identity.nix"
     "graph-escape.nix"
     "attributes/default.nix"
     "attributes/structural.nix"

@@ -21,6 +21,10 @@
 }:
 let
   errors = import ./errors.nix;
+  # Two-level edge identity (assembly/instance/edge hashes + fill-graph acyclicity) — pure over the
+  # builtins, no gen dep (REFERENCE.md). Exposed through `internal` for the substrate suite; the
+  # substrate consumers reach it there.
+  identity = import ./identity.nix { inherit prelude; };
   entity = import ./entity.nix { inherit prelude schema merge; };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
@@ -1175,6 +1179,7 @@ in
       merge
       flake
       schema
+      identity
       ;
     # The A10 class-share build path (gen-class tier-2/tier-3), for the suite's parity/laziness scenarios.
     classShare = import ./output/class-share.nix { inherit prelude class errors; };
