@@ -176,6 +176,14 @@ let
   receiversLib = import ./receivers.nix {
     inherit prelude productsLib graph;
   };
+  # The nest-mode EXECUTION engine (§4.2 mode taxonomy): `executeNest { row; inner; ctx }` turns a compiled
+  # receives row + the inner entity's product face into a mode-tagged CONTRIBUTION the output fold places.
+  # The live-edge counterpart to receiversLib (which DECLARES + dispatches the graft-site rule); this
+  # EXECUTES it. Imported with `prelude` + `productsLib` (the receivers pattern) — per-fleet tables are
+  # passed at CALL time, so the engine holds no evaluators or tables.
+  nestLib = import ./nest.nix {
+    inherit prelude productsLib;
+  };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
@@ -1406,6 +1414,10 @@ in
     # The slot ≻ class dispatch (§4.2 F4), exposed flat for the suite's dispatch scenarios: `resolveReceiver
     # { compiledKinds; outerKind; slot; class }` runs the visible query over the kind-include graph.
     resolveReceiver = receiversLib.resolveReceiver;
+    # The nest-mode EXECUTION engine (§4.2 mode taxonomy), exposed flat for the suite's execution scenarios:
+    # `executeNest { row; inner; ctx }` dispatches on the resolved row's derived `mode` and returns that
+    # mode's contribution (Task 1: the content arm, grafted at the row's `at` path).
+    executeNest = nestLib.executeNest;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

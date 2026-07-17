@@ -6,6 +6,7 @@
 # See REFERENCE.md.
 {
   denHoag,
+  denCompat,
   ...
 }:
 let
@@ -351,6 +352,89 @@ let
       includes = [ ];
       receives.user = throw "shadowed row value forced — laziness violated";
     };
+  };
+
+  # ── the nest-mode EXECUTION engine seam (lib/nest.nix, §4.2 mode taxonomy) ──
+  # `executeNest { row; inner; ctx }` dispatches on the resolved row's DERIVED `mode` and returns that
+  # mode's contribution row (the Backpack content-vs-artifact distinction: a content contribution carries
+  # the raw module face, an artifact one carries a render thunk). Task 1 proves the CONTENT arm: the inner's
+  # ModulesInfo module list is grafted at the row's `at` path, placed exactly where the fold's nest edge
+  # would place it. Reached through the raw-gen-libs seam.
+  inherit (denHoag.internal) executeNest;
+
+  # the fold's `place` primitive as a LOCAL twin — output-modules.nix's `nestAtPath` (its own gen-edge
+  # `core.setAttrByPath` twin) is UN-EXPORTED, so the GRAFT-leg oracle wraps with a co-located 3-line copy;
+  # the executor performs the real wrap independently, which is what makes the leg non-circular.
+  nestAtPath =
+    path: value:
+    if path == [ ] then value else { ${builtins.head path} = nestAtPath (builtins.tail path) value; };
+
+  # a minimal CONTENT-mode row: consumes ModulesInfo (content), its `at` a paramPoint-first placement fn.
+  # `flatRow` grafts flat (`[]` ⇒ the []⇒flat convention); `nestedRow` grafts at the singular nixos-nested
+  # home-manager users path. Both compiled through the receivers registry so `mode` is DERIVED (F1), never
+  # hand-set — the executor reads the compiled field.
+  contentRows = receivers.compile {
+    rows = {
+      host.receives.flat = {
+        at = _point: _inner: [ ];
+        consumes = "ModulesInfo";
+      };
+      host.receives.nested = {
+        at = point: _inner: [
+          "home-manager"
+          "users"
+          point.name
+        ];
+        consumes = "ModulesInfo";
+      };
+    };
+    knownKinds = [ "host" ];
+    products = frameworkProducts;
+    renders = pureRenders;
+  };
+  flatRow = contentRows.host.receives.flat;
+  nestedRow = contentRows.host.receives.nested;
+
+  # ── THE ANCHOR fleet (denCompat.mkDen, the projection.nix corpus shape): a nixos host `igloo` with three
+  #    hm user cells, each emitting a home-manager slice. The executor's graft is proven byte-identically
+  #    against the LIVE fold's own placement of a cell's home-manager subtree. ──
+  anchorFleet = denCompat.mkDen [
+    {
+      den.hosts.x86_64-linux.igloo = {
+        class = "nixos";
+        users.tux = { };
+        users.pol = { };
+        users.amy = { };
+      };
+      den.schema.user.parent = "host";
+      den.aspects.hostc.nixos.tag = "nixos-host";
+      den.schema.host.includes = [ "hostc" ];
+      den.aspects.acct =
+        { user, ... }:
+        {
+          nixos.tag = "nixos-${user.name}";
+          home-manager.tag = "hm-${user.name}";
+        };
+      den.schema.user.includes = [ "acct" ];
+    }
+  ];
+  anchorOut = anchorFleet.den.output;
+  # the tux cell's OWN home-manager subtree (a ModulesInfo-shaped module list) — the payload the executor
+  # nests; `user:tux@host:igloo` is the cell scope id (host:igloo's descendant, projection.nix's topology).
+  tuxHmSubtree = anchorOut.classSubtreeAt "user:tux@host:igloo" "home-manager";
+  # a structural paramPoint HANDLE for the tux mount: name/kind/slot — NO content (§2.1 corollary). The row's
+  # `at` reads only `point.name` (the singular nixos-nested path `home-manager.users.<u>`).
+  tuxPoint = {
+    name = "tux";
+    kind = "user";
+    slot = "users";
+  };
+  # the inner face: `{ product; payload; }` + the structural fields the executor strips before calling `at`.
+  tuxInner = {
+    product = "ModulesInfo";
+    payload = tuxHmSubtree;
+    name = "tux";
+    kind = "user";
   };
 in
 {
@@ -975,6 +1059,111 @@ in
           class = "nixos";
         }).tag;
       expected = "b-user";
+    };
+
+    # ── §4.2 nest-mode EXECUTION (lib/nest.nix, the content arm + the anchor) ──
+    # the engine DISPATCHES on the resolved row's derived mode: a content-mode row returns a content
+    # contribution tagged `mode = "content"` (F1's canonical machine form read off the compiled row).
+    test-nest-content-dispatch = {
+      expr =
+        (executeNest {
+          row = flatRow;
+          inner = tuxInner;
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+        }).mode;
+      expected = "content";
+    };
+    # an unknown/unhandled mode aborts NAMED (the `den.nest:` register). Task 1 handles only content; a row
+    # wearing another mode (a hand-built compiled-shape row) hits the unknown-mode throw.
+    test-nest-unknown-mode-throw = {
+      expr = throws (executeNest {
+        row = flatRow // {
+          mode = "artifact";
+        };
+        inner = tuxInner;
+        ctx = {
+          paramPoint = tuxPoint;
+        };
+      });
+      expected = true;
+    };
+    # the consumes/product mismatch guard: `inner.product` must EXACTLY match `row.consumes` — a mismatch
+    # aborts NAMED, naming both products (the seam the single-step conversions consult replaces next task).
+    test-nest-consumes-mismatch-throw = {
+      expr = throws (executeNest {
+        row = flatRow; # consumes ModulesInfo
+        inner = tuxInner // {
+          product = "RawModulesInfo";
+        };
+        ctx = {
+          paramPoint = tuxPoint;
+        };
+      });
+      expected = true;
+    };
+    # LAZINESS: a poison thunk in the inner's payload is NOT forced by executeNest — the content contribution
+    # carries the module list lazily (the engine wires, never evaluates).
+    test-nest-content-laziness-poison = {
+      expr =
+        let
+          poisoned = tuxInner // {
+            payload = [ (throw "inner payload forced — nest laziness violated") ];
+          };
+          contribution = executeNest {
+            row = flatRow;
+            inner = poisoned;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+          };
+        in
+        # forcing the contribution's SHAPE (mode + attr names) must not force the poison module value.
+        {
+          inherit (contribution) mode;
+          hasModules = contribution ? modules;
+        };
+      expected = {
+        mode = "content";
+        hasModules = true;
+      };
+    };
+
+    # ══ THE ANCHOR — the executor's graft == the LIVE fold's own placement, byte-identically ═════════════
+    # (a) FLAT IDENTITY leg (the passthrough sanity leg, WEAK — NOT the fold anchor): for `at = _: _: [ ]`
+    #     (the []⇒flat convention), the content contribution's placed `modules` == the inner's raw module
+    #     list. Placement is the identity, so this only witnesses the passthrough, not the at-path wrap.
+    test-nest-anchor-flat-identity = {
+      expr =
+        (executeNest {
+          row = flatRow;
+          inner = tuxInner;
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+        }).modules == tuxHmSubtree;
+      expected = true;
+    };
+    # (b) THE GRAFT leg (the real oracle, non-circular): for the nixos-nested row
+    #     `at = point: _: [ "home-manager" "users" point.name ]` (singular path), the executor's grafted
+    #     `modules` == `map (nestAtPath [ "home-manager" "users" "tux" ]) (classSubtreeAt cellId "home-manager")`
+    #     — the fold's OWN placement of the cell's hm subtree, computed with the local nestAtPath twin. The
+    #     executor GENUINELY performs the at-path wrap; equality against the twin proves the graft is right.
+    test-nest-anchor-graft-eq-fold-placement = {
+      expr =
+        (executeNest {
+          row = nestedRow;
+          inner = tuxInner;
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+        }).modules == map (nestAtPath [
+          "home-manager"
+          "users"
+          "tux"
+        ]) tuxHmSubtree;
+      expected = true;
     };
   };
 }

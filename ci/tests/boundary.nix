@@ -50,6 +50,7 @@ let
     "products.nix"
     "renders.nix"
     "receivers.nix"
+    "nest.nix"
     "graph-escape.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
