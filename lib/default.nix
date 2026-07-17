@@ -176,6 +176,14 @@ let
   receiversLib = import ./receivers.nix {
     inherit prelude productsLib graph;
   };
+  # The output-families registry (den.outputs.<family>): the root-as-entity §4.4 rows — the fleet's
+  # TOP-LEVEL output faces (nixosConfigurations/darwinConfigurations/a user target) as validated DATA, one
+  # row per family. Mode derives via the products table; `render`/`params`/`requires` are name-checked
+  # against the per-fleet render rows / the axis registry / the products table. PER-FLEET compile (the
+  # render-name check reads the per-fleet render rows), invoked inside the mkDen closure like receivesTable.
+  outputsLib = import ./outputs.nix {
+    inherit prelude productsLib;
+  };
   # The nest-mode EXECUTION engine (§4.2 mode taxonomy): `executeNest { row; inner; ctx; conversions ? {};
   # renders ? {} }` turns a compiled receives row + the inner entity's product face into a mode-tagged
   # CONTRIBUTION the output fold places. The live-edge counterpart to receiversLib (which DECLARES + dispatches
@@ -427,6 +435,31 @@ let
         };
       };
 
+      # den.outputs.<family> — the output-families registry (§4.4). Each entry declares a top-level output
+      # face: `{ at; consumes; render ? null; params ? []; requires ? []; }` — the root-as-entity rule as data
+      # (the fleet's nixosConfigurations/darwinConfigurations/a user target). `raw` holds each record unmerged
+      # (its `at` is a function). Absent ⇒ a fleet declaring no output families. `at`/`consumes` are required;
+      # `render` names a registered render, `params` names a known axis (today `system`, over `den.systems`),
+      # `requires` names registered products.
+      outputsDecl = {
+        options.den.outputs = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Output-families registry: `<family> = { at; consumes; render ? null; params ? []; requires ? []; }` (§4.4).";
+        };
+      };
+
+      # den.systems — the axis-value surface (§4.4): a plain list of system strings, the domain of a family's
+      # `system` param. Empty (the default) ⇒ a fleet declaring no per-system axis; the params validation only
+      # reads the axis NAMES, so a `system`-param family compiles regardless of this list's contents.
+      systemsDecl = {
+        options.den.systems = merge.mkOption {
+          type = merge.types.listOf merge.types.str;
+          default = [ ];
+          description = "System axis values (§4.4): the domain of a family's `system` param, e.g. [ \"x86_64-linux\" ].";
+        };
+      };
+
       # den.overrides — the pre-identity-freeze match/rewrite tier (§2.4). An ordered list of
       # `{ match = { kind ?; from ?; to ?; data ? {}; }; rewrite = <data-patch> | null; }`: a framework
       # edge intent passes through BEFORE its edgeId, first match wins, `rewrite = null` suppresses.
@@ -624,6 +657,8 @@ let
           conversionsDecl
           rendersDecl
           kindsDecl
+          outputsDecl
+          systemsDecl
           overridesDecl
           demandKindsDecl
           demandContextDecl
@@ -1023,6 +1058,17 @@ let
         products = productsTable;
         renders = rendersRows;
       };
+      # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` rows, validated (mode
+      # derived via the products table; `render` checked against the render rows; `params` against the axis
+      # registry; `requires` against the products table). PER-FLEET (the render-name check reads `rendersRows`),
+      # following receivesTable's placement. `systems` carries `den.systems` (the `system` param's axis values)
+      # for the later per-system materialization; this step validates the axis NAMES.
+      outputsTable = outputsLib.compile {
+        registered = ent.config.den.outputs or { };
+        renders = rendersRows;
+        products = productsTable;
+        systems = ent.config.den.systems or [ ];
+      };
       # THE READ-THROUGH (spec §4.3): the render row supplies the BASE `{ evaluator; output }`; the
       # `den.classes.<name>.instantiation` D4 overlay STAYS ON TOP. Precedence law:
       # `classes.instantiation` ≻ render row ≻ nothing. The built-in nixos/darwin rows are always present in
@@ -1307,6 +1353,12 @@ let
         # rows, validated (mode derived from consumes; outer-kind/includes/render checked). The
         # dispatch-execution work walks these rows' `includes` for receiver inheritance.
         kinds = receivesTable;
+        # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` root-as-entity rows,
+        # validated (mode derived from consumes; render/params/requires checked). The face-materialization work
+        # reads these rows to surface each family at the flake root, superseding the render row's `output` field.
+        outputs = outputsTable;
+        # The system-axis values (§4.4): the domain of a family's `system` param (`den.systems`, default `[ ]`).
+        inherit (ent.config.den) systems;
         scopeRoots = scopeRoots;
         inherit structural;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
@@ -1412,6 +1464,10 @@ in
     # `receivers.compile { rows; knownKinds; products; renders }` validates the outer kind, derives each
     # row's mode via the products table, and checks includes/render names.
     receivers = receiversLib;
+    # The output-families registry (§4.4): the lib, for the suite's family-row compile + validation scenarios.
+    # `outputsLib.compile { registered; builtins ? {}; renders; products; systems }` derives each family's mode
+    # via the products table and checks consumes/render/params/requires.
+    inherit outputsLib;
     # The slot ≻ class dispatch (§4.2 F4), exposed flat for the suite's dispatch scenarios: `resolveReceiver
     # { compiledKinds; outerKind; slot; class }` runs the visible query over the kind-include graph.
     # `checkSingularDefinition { row; intents; mount }` is the §4.2 arity DEFINITION-TIME half (two

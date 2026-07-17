@@ -160,6 +160,42 @@ let
     )
   ];
 
+  # ── the output-families registry seam (lib/outputs.nix, §4.4) ──
+  # `outputsLib` = the lib. `compile { registered; renders; products; systems }` compiles the
+  # `den.outputs.<family>` rows: the `at` placement fn stored (registry-resident), `consumes` validated
+  # via the products table's `checkConsumes` (reused), `render`/`params`/`requires` name-checked. PER-FLEET
+  # (the `render` name check reads the per-fleet render rows). The framework seeding is a later task's
+  # compile arg (the `builtins` seam is left open here, defaulting `{ }`).
+  inherit (denHoag.internal) outputsLib;
+
+  # a well-formed families table: one `nixosConfigurations` family placing each member at `[ ]` (flat,
+  # host-keyed by the caller), consuming SystemInfo (artifact), rendered by the built-in nixos row, with a
+  # `system` param axis. Reads the framework products + the pure render rows.
+  goodOutputs = outputsLib.compile {
+    registered = {
+      nixosConfigurations = {
+        at = _point: e: [ e.name ];
+        consumes = "SystemInfo";
+        render = "nixos";
+        params = [ "system" ];
+      };
+    };
+    renders = pureRenders;
+    products = frameworkProducts;
+    systems = [ "x86_64-linux" ];
+  };
+
+  # a compile helper closing over the standard renders + products + systems, so each throw scenario varies
+  # only its rows.
+  compileOutputs =
+    registered:
+    outputsLib.compile {
+      inherit registered;
+      renders = pureRenders;
+      products = frameworkProducts;
+      systems = [ "x86_64-linux" ];
+    };
+
   # ── the receives registry seam (lib/receivers.nix, §4.2) ──
   # `receivers` = the lib. `compile { rows; knownKinds; products; renders }` compiles the
   # `den.kinds.<outerKind>.receives.<slot>` graft-site rows: every §4.2 field stored, mode derived via the
@@ -2195,6 +2231,219 @@ in
         ctx = poisonCtx;
       }) "forced-clean";
       expected = "forced-clean";
+    };
+
+    # ── §4.4 the output-families registry (den.outputs) ──
+    # a well-formed family row compiles: `at` is carried (a registry-resident placement fn), `consumes` is
+    # validated + stored, `render` names a built-in render row, `params` names the `system` axis, and the
+    # optional `requires` defaults to `[ ]`.
+    test-outputs-row-compiles = {
+      expr = {
+        hasFamily = goodOutputs ? nixosConfigurations;
+        atIsFn = builtins.isFunction goodOutputs.nixosConfigurations.at;
+        consumes = goodOutputs.nixosConfigurations.consumes;
+        render = goodOutputs.nixosConfigurations.render;
+        params = goodOutputs.nixosConfigurations.params;
+        requires = goodOutputs.nixosConfigurations.requires;
+      };
+      expected = {
+        hasFamily = true;
+        atIsFn = true;
+        consumes = "SystemInfo";
+        render = "nixos";
+        params = [ "system" ];
+        requires = [ ];
+      };
+    };
+    # F1 AS A CHECKED LAW (mirrored from receivers): a USER-declared `mode` field on a family row aborts
+    # NAMED — mode derives from consumes, so a user `mode` is a definition error (never silently absorbed).
+    test-outputs-mode-field-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+          consumes = "SystemInfo";
+          mode = "artifact";
+        };
+      });
+      expected = true;
+    };
+    # a family row declaring no `at` aborts NAMED — the `point: e: <path>` placement is required.
+    test-outputs-no-at-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          consumes = "SystemInfo";
+        };
+      });
+      expected = true;
+    };
+    # a family row declaring no `consumes` aborts NAMED — the product face is required.
+    test-outputs-no-consumes-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+        };
+      });
+      expected = true;
+    };
+    # `consumes` names an unregistered product → the products table's checkConsumes aborts NAMED (reused,
+    # not re-implemented).
+    test-outputs-consumes-unregistered-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+          consumes = "NopeInfo";
+        };
+      });
+      expected = true;
+    };
+    # `consumes` names a non-nestable product (ArgsInfo) → checkConsumes aborts NAMED (never a consumes).
+    test-outputs-consumes-non-nestable-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+          consumes = "ArgsInfo";
+        };
+      });
+      expected = true;
+    };
+    # `render` (when present) names a registered render row — an unregistered render aborts NAMED.
+    test-outputs-render-unregistered-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+          consumes = "SystemInfo";
+          render = "ghostrender";
+        };
+      });
+      expected = true;
+    };
+    # `params` names a KNOWN AXIS — today exactly `"system"`; an unknown axis aborts NAMED.
+    test-outputs-params-unknown-axis-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+          consumes = "SystemInfo";
+          params = [ "arch" ];
+        };
+      });
+      expected = true;
+    };
+    # `requires` names a registered product (shape-check only this task) — an unregistered product aborts
+    # NAMED. Consumption of requires arrives with a later task.
+    test-outputs-requires-unregistered-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+          consumes = "SystemInfo";
+          requires = [ "NopeInfo" ];
+        };
+      });
+      expected = true;
+    };
+    # LAZINESS: compiling a family never forces an UNRELATED family's `at` VALUE — a poison thunk in a
+    # sibling family's `at` must not fire when a good family is read (a registry holds functions as thunks).
+    test-outputs-laziness-poison = {
+      expr =
+        (compileOutputs {
+          good = {
+            at = _: e: [ e.name ];
+            consumes = "SystemInfo";
+            render = "nixos";
+          };
+          bad = {
+            at = throw "sibling family at forced — outputs laziness violated";
+            consumes = "SystemInfo";
+          };
+        }).good.consumes;
+      expected = "SystemInfo";
+    };
+
+    # ── §4.4 the `den.systems` axis surface ──
+    # `den.systems` is a plain list option (default `[ ]`), surfaced under the den output — the axis whose
+    # values the `system` param names. An unset fleet surfaces the empty default.
+    test-den-systems-default-empty = {
+      expr =
+        (denHoag.mkDen [
+          { config.den.schema.server.parent = null; }
+          { config.den.server.box1 = { }; }
+        ]).den.systems;
+      expected = [ ];
+    };
+    # a fleet declaring `den.systems` surfaces the declared list verbatim.
+    test-den-systems-declared = {
+      expr =
+        (denHoag.mkDen [
+          { config.den.schema.server.parent = null; }
+          {
+            config.den = {
+              server.box1 = { };
+              systems = [
+                "x86_64-linux"
+                "aarch64-darwin"
+              ];
+            };
+          }
+        ]).den.systems;
+      expected = [
+        "x86_64-linux"
+        "aarch64-darwin"
+      ];
+    };
+    # the per-fleet compile runs inside the mkDen closure: `den.outputs` surfaces the compiled families
+    # table. A fleet declaring a family with a `system` param whose axis values are `den.systems` compiles
+    # (the param axis validation reads the axis registry, not the values). The compiled row's `consumes` +
+    # `render` are validated against the per-fleet products/renders.
+    test-den-outputs-compiled-per-fleet = {
+      expr =
+        let
+          fleet = denHoag.mkDen [
+            { config.den.schema.server.parent = null; }
+            {
+              config.den = {
+                server.box1 = { };
+                systems = [ "x86_64-linux" ];
+                outputs.nixosConfigurations = {
+                  at = _point: e: [ e.name ];
+                  consumes = "SystemInfo";
+                  render = "nixos";
+                  params = [ "system" ];
+                };
+              };
+            }
+          ];
+        in
+        {
+          hasFamily = fleet.den.outputs ? nixosConfigurations;
+          consumes = fleet.den.outputs.nixosConfigurations.consumes;
+          render = fleet.den.outputs.nixosConfigurations.render;
+        };
+      expected = {
+        hasFamily = true;
+        consumes = "SystemInfo";
+        render = "nixos";
+      };
+    };
+    # a family declaring a `system` param whose render is unknown aborts NAMED at the per-fleet compile
+    # (proving the compile sits inside the closure, reading the fleet's own render rows).
+    test-den-outputs-per-fleet-render-throw = {
+      expr = throws (
+        builtins.deepSeq
+          (denHoag.mkDen [
+            { config.den.schema.server.parent = null; }
+            {
+              config.den = {
+                server.box1 = { };
+                outputs.nixosConfigurations = {
+                  at = _point: e: [ e.name ];
+                  consumes = "SystemInfo";
+                  render = "ghostrender";
+                };
+              };
+            }
+          ]).den.outputs
+          true
+      );
+      expected = true;
     };
   };
 }
