@@ -15,7 +15,7 @@ let
   # (a ctx key at a stratum ≥ the rule's is replaced by a named throw) can be witnessed synthetically.
   compileWithStrata = denHoag.internal.compilePoliciesWithStrata;
   # The edge-kind registry seam (lib/edges.nix): the compile fn + the framework pre-registration.
-  inherit (denHoag.internal) compileEdges edgeKinds;
+  inherit (denHoag.internal) compileEdges edgeKinds applyOverrides;
   # The seeded four-stratum order (structural < resolution < collection < demand).
   fourStrata = [
     "structural"
@@ -25,6 +25,23 @@ let
   ];
   # The order the registry validates against once the framework's `output` stratum is inserted.
   edgeStrata = fourStrata ++ [ "output" ];
+  # A pre-identity-freeze edge INTENT (the shape den.overrides matches on): kind + endpoints + data.
+  mkIntent =
+    {
+      kind ? "reach",
+      data ? { },
+    }:
+    {
+      inherit kind data;
+      from = {
+        entityId = "host:a";
+        class = "nixos";
+      };
+      to = {
+        entityId = "host:b";
+        class = "nixos";
+      };
+    };
   # A structural rule reading a structural ctx entry (`thing`) via a DECLARED record gate — the probe
   # fills the required `thing` coord with the value-less sentinel, observing the structural `link`.
   # The ctx projection wraps ONLY the FINAL dispatch produce, never the probe.
@@ -731,6 +748,181 @@ in
         kindStratum = "reify";
         inOrder = true;
       };
+    };
+
+    # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.2, before edgeId) ──
+    # no override touches an edge (empty list) → the intent passes through untouched.
+    test-overrides-empty-passthrough = {
+      expr = applyOverrides {
+        overrides = [ ];
+        edges = [ (mkIntent { data.port = 8080; }) ];
+      };
+      expected = [ (mkIntent { data.port = 8080; }) ];
+    };
+    # a matching rewrite shallow-merges its patch into the edge's `data` (`//` semantics).
+    test-overrides-rewrite-patches-data = {
+      expr =
+        (builtins.head (applyOverrides {
+          overrides = [
+            {
+              match = {
+                kind = "reach";
+              };
+              rewrite = {
+                port = 9090;
+              };
+            }
+          ];
+          edges = [ (mkIntent { data.port = 8080; }) ];
+        })).data;
+      expected = {
+        port = 9090;
+      };
+    };
+    # `rewrite = null` SUPPRESSES the edge entirely — a suppressed edge contributes nothing to output.
+    test-overrides-suppress-to-null = {
+      expr = applyOverrides {
+        overrides = [
+          {
+            match = {
+              kind = "reach";
+            };
+            rewrite = null;
+          }
+        ];
+        edges = [
+          (mkIntent { })
+          (mkIntent { kind = "member"; })
+        ];
+      };
+      expected = [ (mkIntent { kind = "member"; }) ];
+    };
+    # a `data` match compares PER-FIELD: an edge whose data carries the stated field value (plus others)
+    # matches; every stated field must equal.
+    test-overrides-match-data-per-field = {
+      expr =
+        (builtins.head (applyOverrides {
+          overrides = [
+            {
+              match = {
+                data = {
+                  when = "prod";
+                };
+              };
+              rewrite = {
+                tagged = true;
+              };
+            }
+          ];
+          edges = [
+            (mkIntent {
+              data = {
+                when = "prod";
+                port = 8080;
+              };
+            })
+          ];
+        })).data.tagged;
+      expected = true;
+    };
+    # a stated coordinate that does NOT equal the edge's is a non-match (the edge passes through).
+    test-overrides-nonmatch-passthrough = {
+      expr =
+        (builtins.head (applyOverrides {
+          overrides = [
+            {
+              match = {
+                kind = "member";
+              };
+              rewrite = {
+                touched = true;
+              };
+            }
+          ];
+          edges = [ (mkIntent { kind = "reach"; }) ];
+        })).data;
+      expected = { };
+    };
+    # SINGLE-STEP, first match wins, NO re-matching of the rewritten edge: the first entry rewrites
+    # `kind`-less data so it WOULD satisfy the second entry's `data` match — the second must NOT fire.
+    test-overrides-single-step-no-rematch = {
+      expr =
+        (builtins.head (applyOverrides {
+          overrides = [
+            {
+              match = {
+                kind = "reach";
+              };
+              rewrite = {
+                phase = "two";
+              };
+            }
+            {
+              match = {
+                data = {
+                  phase = "two";
+                };
+              };
+              rewrite = {
+                refired = true;
+              };
+            }
+          ];
+          edges = [ (mkIntent { }) ];
+        })).data;
+      # only the first entry's patch is present; the second never re-matches the rewritten edge.
+      expected = {
+        phase = "two";
+      };
+    };
+    # APPLIED BEFORE edgeId: a rewrite changing `data` changes the downstream edgeId (via the data
+    # fingerprint), so the override tier genuinely participates in identity.
+    test-overrides-changes-edgeId = {
+      expr =
+        let
+          e0 = mkIntent { data.port = 8080; };
+          e1 = builtins.head (applyOverrides {
+            overrides = [
+              {
+                match = {
+                  kind = "reach";
+                };
+                rewrite = {
+                  port = 9090;
+                };
+              }
+            ];
+            edges = [ e0 ];
+          });
+          idOf =
+            e:
+            identity.edgeId {
+              inherit (e) kind;
+              fromInstanceId = "f";
+              toInstanceId = "t";
+              dataFingerprint = identity.dataFingerprint e.data;
+            };
+        in
+        idOf e0 != idOf e1;
+      expected = true;
+    };
+    # a malformed override (a match coordinate outside {kind, from, to, data}) throws NAMED.
+    test-overrides-malformed-coordinate-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (applyOverrides {
+            overrides = [
+              {
+                match = {
+                  bogus = 1;
+                };
+                rewrite = { };
+              }
+            ];
+            edges = [ (mkIntent { }) ];
+          }) null
+        )).success;
+      expected = false;
     };
   };
 }

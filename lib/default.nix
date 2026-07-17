@@ -328,6 +328,19 @@ let
         };
       };
 
+      # den.overrides — the pre-identity-freeze match/rewrite tier (§2.2). An ordered list of
+      # `{ match = { kind ?; from ?; to ?; data ? {}; }; rewrite = <data-patch> | null; }`: a framework
+      # edge intent passes through BEFORE its edgeId, first match wins, `rewrite = null` suppresses.
+      # `raw` holds each record unmerged (its `match`/`rewrite` are structural data, `rewrite` maybe null).
+      # Absent ⇒ an override-free fleet (every framework edge intent passes through untouched).
+      overridesDecl = {
+        options.den.overrides = merge.mkOption {
+          type = merge.types.listOf merge.types.raw;
+          default = [ ];
+          description = "Pre-identity-freeze edge overrides: [ { match = { kind ?; from ?; to ?; data ? {}; }; rewrite = <patch> | null; } ] (§2.2).";
+        };
+      };
+
       # den.demandKinds.<name> — the demand-kind registry (§B demand stratum). Each entry declares a
       # gen-demand kind: `{ below ? []; resolve; dedupKey ? null; fold ? null; }` (functions, so `raw`
       # holds it unmerged); `below` names the kinds this one may cascade into (downward-only DAG,
@@ -507,6 +520,7 @@ let
           settingsDecl
           strataDecl
           edgesDecl
+          overridesDecl
           demandKindsDecl
           demandContextDecl
           nixpkgsDecl
@@ -1224,6 +1238,9 @@ in
     # pre-registered strata + framework strata inserts.
     compileEdges = edgesLib.compile;
     edgeKinds = edgesLib;
+    # The pre-identity-freeze override tier (§2.2): `applyOverrides { overrides; edges }` — the
+    # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
+    inherit (edgesLib) applyOverrides;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     inherit (concernAspects) classifyKey facets;

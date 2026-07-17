@@ -89,6 +89,61 @@ let
       }' (not in the compiled order)"
     else
       compiled;
+
+  # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.2) ──
+  # Framework-emitted NEW-substrate edge INTENTS (`{ kind; from; to; data ? {}; }`) pass through the
+  # override list BEFORE their edgeId is computed. An override is `{ match; rewrite; }`:
+  #   • `match` — an attrset of PRE-HASH coordinates `{ kind ?; from ?; to ?; data ? { <field> = v; } }`.
+  #     Every STATED coordinate must EQUAL the edge's (kind/from/to by whole value; `data` per-field);
+  #     an absent coordinate is a wildcard. Matchers are STRUCTURAL DATA ONLY — no function-valued
+  #     matchers (consistent with the fingerprint law; a selector-language upgrade is a later step).
+  #   • `rewrite` — an attrset data-patch shallow-merged into `data` (`//`), or `null` = SUPPRESS the
+  #     edge entirely (it contributes nothing downstream).
+  # SINGLE-STEP: one pass over the list per edge, FIRST match wins, the rewritten edge is NEVER
+  # re-matched (a rewrite that would satisfy a later entry's match does not re-fire).
+  matchCoords = [
+    "kind"
+    "from"
+    "to"
+    "data"
+  ];
+  matchesEdge =
+    match: edge:
+    builtins.all (
+      coord:
+      if coord == "data" then
+        builtins.all (f: (edge.data.${f} or null) == match.data.${f}) (builtins.attrNames match.data)
+      else
+        match.${coord} == (edge.${coord} or null)
+    ) (builtins.attrNames match);
+  applyOverrides =
+    {
+      overrides ? [ ],
+      edges,
+    }:
+    let
+      # definition-time totality: a match coordinate outside the closed set aborts NAMED.
+      badCoordsOf = o: builtins.filter (c: !(builtins.elem c matchCoords)) (builtins.attrNames o.match);
+      malformed = builtins.concatMap badCoordsOf overrides;
+      # first-match scan (no prelude findFirst — an inline recursive scan): returns the rewritten edge,
+      # or `null` to SUPPRESS, or the unchanged edge if nothing matches. Never re-matches a rewrite.
+      overrideEdge =
+        edge: os:
+        if os == [ ] then
+          edge
+        else
+          let
+            o = builtins.head os;
+          in
+          if matchesEdge o.match edge then
+            (if o.rewrite == null then null else edge // { data = (edge.data or { }) // o.rewrite; })
+          else
+            overrideEdge edge (builtins.tail os);
+    in
+    if malformed != [ ] then
+      throw "den.overrides: match coordinate '${builtins.head malformed}' is not one of ${builtins.toJSON matchCoords}"
+    else
+      builtins.filter (e: e != null) (map (e: overrideEdge e overrides) edges);
 in
 {
   inherit
@@ -96,5 +151,6 @@ in
     reservedNames
     frameworkStrataInserts
     compile
+    applyOverrides
     ;
 }
