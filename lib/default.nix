@@ -1418,8 +1418,10 @@ in
     # The nest-mode EXECUTION engine (§4.2 mode taxonomy), exposed flat for the suite's execution scenarios:
     # `executeNest { row; inner; ctx; conversions ? {}; renders ? {} }` dispatches on the resolved row's derived
     # `mode` and returns that mode's contribution — content (grafted at `at`), value (the prebuilt arm),
-    # artifact (rendered via `renders.${row.render}`), extend (the render's `extendsVia`).
-    executeNest = nestLib.executeNest;
+    # artifact (rendered via `renders.${row.render}`), extend (the render's `extendsVia`) — plus the §4.8
+    # provide/adapt riders. `bindArgs argEnv fnModule` is the pure functionArgs binder (adapt); `executeDefer
+    # { record }` produces the inert `{ mode = "defer"; needs; thenFn; }` record (§4.8 R6).
+    inherit (nestLib) executeNest bindArgs executeDefer;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

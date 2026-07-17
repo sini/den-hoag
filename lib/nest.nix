@@ -45,6 +45,48 @@ let
   # names) is forcible without forcing the payload.
   mkContribution = mode: extra: { inherit mode; } // extra;
 
+  # `bindArgs argEnv fnModule` (§4.8 adapt) — bind ONLY the functionArgs-declared args of a function-module,
+  # LAZILY. `intersectAttrs (functionArgs fnModule) argEnv` keeps exactly the args the fn DECLARES (a
+  # `{ osConfig, ... }:` module binds `osConfig`, an undeclared arg in `argEnv` is never selected, so it
+  # never forces); a non-`{…}:` fn (`_:`, empty functionArgs) binds nothing. The module is applied with the
+  # bound args — the `...` in a real class module swallows the rest the mount supplies. The BINDING at a live
+  # mount happens in the families step; this is the pure binder the `adaptEnv` rider is applied through.
+  # ArgsInfo (content-mode, non-nestable — `checkConsumes` blocks it as a `consumes`) is the arg-environment
+  # product vocabulary; `adapt` is its legal consumer.
+  bindArgs =
+    argEnv: fnModule: fnModule (builtins.intersectAttrs (builtins.functionArgs fnModule) argEnv);
+
+  # `executeDefer { record }` (§4.8 defer / R6) — the reconciled defer contract. `record` is
+  # `{ needs = [ paths ]; then = vals: config; }`; the contribution is the INERT `{ mode = "defer"; needs;
+  # thenFn; }` record — NO terminal consumer exists yet (the live mount arrives with the families work; there
+  # is NO mkMerge splice here). den-hoag ALREADY ships a deferred mechanism: a config-demanding aspect fn
+  # rides `deferredToThunk` → gen-bind's `__configThunk`, resolved at the producing scope at the terminal
+  # (output-modules.nix `deferredToThunk`, collections.nix `isConfigThunk`). Spec §4.8 R6 is THAT restriction
+  # made explicit: THIS record formalizes the same contract (`needs` = the resolved paths a `then` reads,
+  # `then` = the config producer). The families-step consumer either LOWERS this record onto the
+  # `__configThunk` path or RETIRES both into one — recorded here so no THIRD defer surface is built.
+  # `then` is a Nix keyword, so the record's field is read dynamically (`record.${"then"}`) and surfaced as
+  # the keyword-free `thenFn`. The EXECUTABLE check now: a `then` producing `options`/`imports` is ILLEGAL (a
+  # defer produces config, never options/imports) — a named throw fired when `thenFn` is APPLIED (so the
+  # record stays inert until a consumer applies it; forcing the record shape never fires it).
+  executeDefer =
+    { record }:
+    {
+      mode = "defer";
+      inherit (record) needs;
+      thenFn =
+        vals:
+        let
+          produced = record.${"then"} vals;
+        in
+        if produced ? options || produced ? imports then
+          throw "den.nest: a defer's `then` produced ${
+            if produced ? options then "options" else "imports"
+          } — a defer produces config only, never options/imports (§4.8 R6)"
+        else
+          produced;
+    };
+
   # `executeNest { row; inner; ctx; conversions ? { }; renders ? { } }` — the mode dispatch. `row` = a compiled
   # receives row (or one element of a `resolveReceiver` multi-winners list); `inner` = `{ product; payload; }`
   # (or the prebuilt `artifactRef` arm) plus the inner's structural FACE fields (name/kind/…); `ctx` =
@@ -130,44 +172,77 @@ let
       # proceeds under the row's mode; not found ⇒ the named mismatch throw. NO chain search — the MLIR-style
       # multi-hop materialization is rejected for determinism (a needed composite is its own registered pair).
       pairKey = "${inner.product}->${row.consumes}";
-    in
-    # VALUE mode (the prebuilt ArtifactRef arm, §4.1): an `inner` carrying the `artifactRef` wrapper is the
-    # short-circuited prebuilt value — injected VERBATIM, never evaluated, never converted (conversions never
-    # apply to the prebuilt arm; ArtifactRef acceptance at consumes = P is DEFINITIONAL). Checked FIRST, before
-    # the exact-match/conversion arms: the wrapper's `inner.product` is the `ArtifactRef <face>` name, which
-    # never equals the row's bare `consumes`, so those arms would misroute it. A wrapped-face MISMATCH
-    # (`artifactRef.product` ≠ the row's consumes) sets the `unrealizedCast` marker — a trace-visible node,
-    # NEVER an eval failure (§4.1 verbatim) — the value still rides verbatim.
-    if inner ? artifactRef then
-      mkContribution "value" (
-        {
-          at = atPath;
-          inherit (inner.artifactRef) value;
-        }
-        // (
-          if inner.artifactRef.product != row.consumes then
+
+      # the MODE contribution (before the cross-cutting riders): value / exact-match / conversion.
+      base =
+        # VALUE mode (the prebuilt ArtifactRef arm, §4.1): an `inner` carrying the `artifactRef` wrapper is the
+        # short-circuited prebuilt value — injected VERBATIM, never evaluated, never converted (conversions
+        # never apply to the prebuilt arm; ArtifactRef acceptance at consumes = P is DEFINITIONAL). Checked
+        # FIRST, before the exact-match/conversion arms: the wrapper's `inner.product` is the `ArtifactRef
+        # <face>` name, which never equals the row's bare `consumes`, so those arms would misroute it. A
+        # wrapped-face MISMATCH (`artifactRef.product` ≠ the row's consumes) sets the `unrealizedCast` marker —
+        # a trace-visible node, NEVER an eval failure (§4.1 verbatim) — the value still rides verbatim.
+        if inner ? artifactRef then
+          mkContribution "value" (
             {
-              # the prebuilt face does not match the row's consumes — an unrealized cast (a trace node), not a
-              # throw: the value is injected as-is and the mismatch is recorded for the trace to surface.
-              unrealizedCast = {
-                from = inner.artifactRef.product;
-                to = row.consumes;
-              };
+              at = atPath;
+              inherit (inner.artifactRef) value;
             }
-          else
-            { }
-        )
-      )
-    # EXACT MATCH: the inner's product face equals the row's `consumes` — graft directly under the row's mode.
-    else if inner.product == row.consumes then
-      graftMode inner.payload
-    # MISMATCH: consult the single-step conversion table for the (produces, consumes) pair. Found ⇒ materialize
-    # LAZILY through `via` and proceed under the row's mode; not found ⇒ the named throw naming both products.
-    else if conversions ? ${pairKey} then
-      graftMode (conversions.${pairKey}.via inner.payload)
-    else
-      throw "den.nest: inner produces '${inner.product}' but the receiver consumes '${row.consumes}' — no conversion (§4.1) registered for the pair '${pairKey}'";
+            // (
+              if inner.artifactRef.product != row.consumes then
+                {
+                  # the prebuilt face does not match the row's consumes — an unrealized cast (a trace node),
+                  # not a throw: the value is injected as-is and the mismatch is recorded for the trace.
+                  unrealizedCast = {
+                    from = inner.artifactRef.product;
+                    to = row.consumes;
+                  };
+                }
+              else
+                { }
+            )
+          )
+        # EXACT MATCH: the inner's product face equals the row's `consumes` — graft directly under the mode.
+        else if inner.product == row.consumes then
+          graftMode inner.payload
+        # MISMATCH: consult the single-step conversion table for the (produces, consumes) pair. Found ⇒
+        # materialize LAZILY through `via` and proceed under the row's mode; not found ⇒ the named throw.
+        else if conversions ? ${pairKey} then
+          graftMode (conversions.${pairKey}.via inner.payload)
+        else
+          throw "den.nest: inner produces '${inner.product}' but the receiver consumes '${row.consumes}' — no conversion (§4.1) registered for the pair '${pairKey}'";
+
+      # ── THE CROSS-CUTTING RIDERS (§4.8) — attach to the mode contribution on ANY mode ──
+      # PROVIDE: `row.provide = outer: attrs` supplies args crossed from the OUTER to the inner. The rider
+      # carries BOTH delivery arms of the SAME `provide ctx` result (LAZILY — `provide` is not forced at
+      # wiring): `specialArgs` (the extraSpecialArgs-style arm, for a crossing that exposes special args) and
+      # `argsModule` (the `_module.args` module arm, the fallback). Which arm a crossing uses is the caller's
+      # choice (the families step). THE RESTRICTION (§4.8): `_module.args` values are UNUSABLE in `imports`
+      # (the module system evaluates `imports` before `_module.args` is available) — so an arg a downstream
+      # module needs in ITS `imports` must ride the `specialArgs` arm. `ctx` is the outer's structural handle.
+      provideRider =
+        if row.provide or null == null then
+          { }
+        else
+          {
+            provideArgs =
+              let
+                args = row.provide ctx;
+              in
+              {
+                specialArgs = args;
+                argsModule = {
+                  _module.args = args;
+                };
+              };
+          };
+      # ADAPT: `row.adapt` is the arg ENVIRONMENT (§4.8) a function-module's declared args bind against. The
+      # rider carries the `adaptEnv` verbatim; the BINDING (`bindArgs adaptEnv fnModule`) happens at the mount
+      # (families), not here — so the rider is inert data, the argEnv never forced at wiring.
+      adaptRider = if row.adapt or null == null then { } else { adaptEnv = row.adapt; };
+    in
+    base // provideRider // adaptRider;
 in
 {
-  inherit executeNest;
+  inherit executeNest bindArgs executeDefer;
 }

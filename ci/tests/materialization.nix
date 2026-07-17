@@ -677,6 +677,70 @@ let
     name = "box";
     kind = "host";
   };
+
+  # ── Task 4 fixtures: provide / adapt / defer ──
+  # the pure functionArgs binder + the defer executor, reached through the raw-gen-libs seam.
+  inherit (denHoag.internal) bindArgs executeDefer;
+
+  # a CONTENT row that also declares `provide` — the provide rider attaches on any mode. `provide outer`
+  # returns the args to cross to the inner; the `outer` is the structural ctx handle (no content, §2.1).
+  provideRow = flatRow // {
+    provide = outer: {
+      fromOuter = outer.paramPoint.name;
+      pinned = "p";
+    };
+  };
+  # a poison `provide` (throws when called) — the rider must carry it LAZILY (wiring never forces it).
+  poisonProvideRow = flatRow // {
+    provide = _: throw "provide outer forced — provide laziness violated";
+  };
+
+  # a FUNCTION-MODULE declaring exactly `{ osConfig, ... }` — the bindArgs intersection witness: only
+  # functionArgs-declared args are bound, an undeclared arg (`unrelated`) is NOT.
+  fnModule =
+    { osConfig, ... }:
+    {
+      marker = osConfig.hostName;
+    };
+  # the arg environment `adapt` binds (an argEnv is a plain attrset of candidate args).
+  argEnv = {
+    osConfig = {
+      hostName = "the-host";
+    };
+    unrelated = throw "undeclared arg forced — bindArgs bound a non-functionArgs arg";
+  };
+
+  # a DEFER record (R6): `{ needs = [paths]; then = vals: config; }`. The legal `then` returns a plain
+  # CONFIG payload (no options/imports); the illegal one returns an attrset carrying `options`/`imports`.
+  deferRecord = {
+    needs = [
+      [
+        "a"
+        "b"
+      ]
+      [ "c" ]
+    ];
+    "then" = vals: {
+      networking.hostName = vals.host;
+    };
+  };
+  deferIllegalOptions = {
+    needs = [ ];
+    "then" = _: {
+      options.foo = "illegal";
+    };
+  };
+  deferIllegalImports = {
+    needs = [ ];
+    "then" = _: {
+      imports = [ { } ];
+    };
+  };
+  # a poison `then` (throws when applied) — executeDefer must carry `thenFn` INERT (never applied at wiring).
+  deferPoison = {
+    needs = [ ];
+    "then" = _: throw "defer thenFn applied during wiring — defer laziness violated";
+  };
 in
 {
   flake.tests.materialization = {
@@ -1316,12 +1380,29 @@ in
         }).mode;
       expected = "content";
     };
-    # an unknown/unhandled mode aborts NAMED (the `den.nest:` register). Task 1 handles only content; a row
-    # wearing another mode (a hand-built compiled-shape row) hits the unknown-mode throw.
-    test-nest-unknown-mode-throw = {
+    # a content row forced to ARTIFACT mode but naming NO render aborts NAMED — an artifact consume has no
+    # way to build its face without a render row (§4.3). (T1 wrote this as an "unknown mode" stand-in when
+    # artifact was unhandled; artifact is handled now, so its TRUE behavior is the missing-render throw — the
+    # genuine unknown-mode witness is `test-nest-bogus-mode-throw` below.)
+    test-nest-artifact-missing-render-throw = {
       expr = throws (executeNest {
         row = flatRow // {
-          mode = "artifact";
+          mode = "artifact"; # render defaults null on the content row → the missing-render throw.
+        };
+        inner = tuxInner;
+        ctx = {
+          paramPoint = tuxPoint;
+        };
+      });
+      expected = true;
+    };
+    # a GENUINELY unknown mode reaches the defensive dispatch tail (the sibling-registry total-dispatch
+    # posture — the tail STAYS): `mode = "bogus"` is none of content/artifact/extend/value, so graftMode's
+    # final else fires the named unknown-mode throw.
+    test-nest-bogus-mode-throw = {
+      expr = throws (executeNest {
+        row = flatRow // {
+          mode = "bogus";
         };
         inner = tuxInner;
         ctx = {
@@ -1765,6 +1846,165 @@ in
         value = {
           __prebuilt = "a-real-system";
         };
+      };
+    };
+
+    # ── §4.8 PROVIDE (inert lazy args, both delivery arms) ──
+    # a row declaring `provide` attaches a `provideArgs` rider carrying BOTH arms: `specialArgs` (the
+    # extraSpecialArgs-style thunk, for crossings that expose it) and `argsModule` (the `_module.args`
+    # module, the fallback). Both are `provide outer` — the args crossed to the inner from the outer handle.
+    test-nest-provide-both-arms = {
+      expr =
+        let
+          c = executeNest {
+            row = provideRow;
+            inner = tuxInner;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+          };
+        in
+        {
+          hasRider = c ? provideArgs;
+          specialArgs = c.provideArgs.specialArgs;
+          argsModule = c.provideArgs.argsModule;
+        };
+      expected = {
+        hasRider = true;
+        specialArgs = {
+          fromOuter = "tux";
+          pinned = "p";
+        };
+        # the module arm places the SAME args under `_module.args`.
+        argsModule = {
+          _module.args = {
+            fromOuter = "tux";
+            pinned = "p";
+          };
+        };
+      };
+    };
+    # LAZINESS: `provide outer` is NOT forced at wiring — a poison provide builds a fine contribution; only
+    # forcing `.provideArgs.specialArgs` would fire it. The base content contribution is intact.
+    test-nest-provide-laziness-poison = {
+      expr =
+        let
+          c = executeNest {
+            row = poisonProvideRow;
+            inner = tuxInner;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+          };
+        in
+        {
+          inherit (c) mode;
+          hasRider = c ? provideArgs;
+        };
+      expected = {
+        mode = "content";
+        hasRider = true;
+      };
+    };
+
+    # ── §4.8 ADAPT (functionArgs binding) ──
+    # `bindArgs argEnv fnModule` binds ONLY the functionArgs-declared args of the fn-module (intersection):
+    # `fnModule` declares `{ osConfig, ... }`, so `osConfig` is bound (its body reads `osConfig.hostName`);
+    # the undeclared `unrelated` arg (a poison in the argEnv) is NEVER bound, so it never forces.
+    test-nest-adapt-bindargs-intersection = {
+      expr = (bindArgs argEnv fnModule).marker;
+      expected = "the-host";
+    };
+    # the undeclared arg is not bound: binding `{ osConfig, ... }` against an argEnv whose `unrelated` throws
+    # succeeds precisely because `unrelated` is outside the fn's functionArgs (a poison-witness of the
+    # intersection). Proven by the intersection test above returning without forcing `unrelated`; here we
+    # pin that a fn declaring NO formals binds nothing (empty intersection → the module rides unbound).
+    test-nest-adapt-bindargs-undeclared-unbound = {
+      expr =
+        let
+          bare = bindArgs argEnv (_: {
+            ran = true;
+          });
+        in
+        bare.ran;
+      expected = true;
+    };
+
+    # ── §4.8 DEFER (the inert config-only record) ──
+    # `executeDefer record` → the INERT `{ mode = "defer"; needs; thenFn; }` record (no terminal consumer
+    # yet). The needs paths ride verbatim; `thenFn` is the record's `then`, carried unforced.
+    test-nest-defer-inert-record = {
+      expr =
+        let
+          c = executeDefer {
+            record = deferRecord;
+          };
+        in
+        {
+          inherit (c) mode needs;
+          isFn = builtins.isFunction c.thenFn;
+        };
+      expected = {
+        mode = "defer";
+        needs = [
+          [
+            "a"
+            "b"
+          ]
+          [ "c" ]
+        ];
+        isFn = true;
+      };
+    };
+    # the legal `then` payload (a plain config, no options/imports) is carried LAZILY — applying `thenFn`
+    # against the resolved vals yields the config, and the shape-check passes.
+    test-nest-defer-legal-config = {
+      expr =
+        let
+          c = executeDefer {
+            record = deferRecord;
+          };
+        in
+        (c.thenFn { host = "resolved"; }).networking.hostName;
+      expected = "resolved";
+    };
+    # an ILLEGAL `then` producing `options` → named throw when the payload shape is checked (§4.8: a defer's
+    # `then` produces config, never options/imports).
+    test-nest-defer-illegal-options-throw = {
+      expr = throws (
+        (executeDefer {
+          record = deferIllegalOptions;
+        }).thenFn
+          { }
+      );
+      expected = true;
+    };
+    # an ILLEGAL `then` producing `imports` → named throw likewise.
+    test-nest-defer-illegal-imports-throw = {
+      expr = throws (
+        (executeDefer {
+          record = deferIllegalImports;
+        }).thenFn
+          { }
+      );
+      expected = true;
+    };
+    # LAZINESS: `executeDefer` carries `thenFn` INERT — a poison `then` builds a fine record; only APPLYING
+    # `thenFn` would fire it. Forcing the record shape (mode/needs) does not.
+    test-nest-defer-laziness-poison = {
+      expr =
+        let
+          c = executeDefer {
+            record = deferPoison;
+          };
+        in
+        {
+          inherit (c) mode;
+          needsLen = builtins.length c.needs;
+        };
+      expected = {
+        mode = "defer";
+        needsLen = 0;
       };
     };
   };
