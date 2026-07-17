@@ -65,9 +65,53 @@ let
   # value-conditional excluder (the corpus's droid-gated route exclude) probes empty, so the DECLARED
   # tag is its only path. An omitted name that DOES emit `suppress` in the main run is caught LOUD
   # (attributes/structural.nix `excludeFamilyUntagged`).
-  compileWith =
-    sentinelFields: resolveFamilyNames: excludeFamilyNames: policies:
+  # The SEEDED strata config (§B2): the compiled stratum order with the stratum→ctx-key-groups map EMPTY
+  # above the structural stratum. Rule ctx today is entity BINDINGS — inherited/enriched/linked context
+  # (structural.nix attributes 1–3), ALL structural — so no ctx key belongs to a stratum above structural
+  # and the projection below is a NO-OP for every shipped rule (the 972-suite is the byte proof). The
+  # order threads from `den.strata` (declarations.compileStrata) via `compileWithStrata`; a caller that
+  # inserts a stratum and tags a ctx key to it gets the capability projection by construction.
+  seededStrataCfg = {
+    order = declare.strata;
+    ctxKeyStrata = { };
+  };
+
+  # `compileWithStrata { order; ctxKeyStrata } …` — the strata-aware compiler. `compileWith` is this with
+  # the seeded config, so every existing caller is byte-identical (empty map ⇒ identity projection).
+  compileWith = compileWithStrata seededStrataCfg;
+  compileWithStrata =
+    strataCfg: sentinelFields: resolveFamilyNames: excludeFamilyNames: policies:
     let
+      # Capability-scoped ctx (A9 stratification-by-construction, spec §5): a rule declared at stratum
+      # `ruleStratum` may read ONLY ctx facts of a STRICTLY LOWER stratum. A ctx key whose declared
+      # stratum is ≥ the rule's is REPLACED with a NAMED THROW (not omitted — a replaced key aborts
+      # CATCHABLY when read, diagnosing better than an attribute-missing read that escapes tryEval). The
+      # seeded map is empty above structural, so this is an identity map for every shipped rule.
+      stratumIndex = prelude.foldl' (acc: i: acc // { ${builtins.elemAt strataCfg.order i} = i; }) { } (
+        builtins.genList (i: i) (builtins.length strataCfg.order)
+      );
+      # key → its declared stratum (inverting the stratum→keys map); un-tagged keys are structural-safe.
+      ctxKeyStratum = prelude.foldl' (
+        acc: stratum:
+        prelude.foldl' (acc': key: acc' // { ${key} = stratum; }) acc (
+          strataCfg.ctxKeyStrata.${stratum} or [ ]
+        )
+      ) { } (builtins.attrNames (strataCfg.ctxKeyStrata or { }));
+      projectCtx =
+        ruleStratum: ctx:
+        let
+          r = stratumIndex.${ruleStratum};
+        in
+        builtins.mapAttrs (
+          key: v:
+          let
+            ks = ctxKeyStratum.${key} or null;
+          in
+          if ks != null && (stratumIndex.${ks} or (-1)) >= r then
+            throw "den.strata: ctx fact '${key}' is stratum '${ks}' ≥ rule stratum '${ruleStratum}'"
+          else
+            v
+        ) ctx;
       # A universal entry stand-in: passes requireEntry (has id_hash) so probing a policy that forwards ctx
       # entries into constructors succeeds without touching any real registry. `sentinelFields` enriches it
       # with caller-supplied coord fields. CEILING: a field must be TYPE-CORRECT NON-MATCHING — a string
@@ -88,6 +132,12 @@ let
 
       # The A4 stratum-check + owning-policy stamp (the single-group produce — byte-identical to the
       # pre-expansion path: one policy, one stratum, checked).
+      # The capability projection over a rule's base produce: the FINAL (dispatch) produce reads its ctx
+      # through `projectCtx stratum`, so a ≥-stratum ctx fact throws named when the body reads it. The
+      # PROBE keeps the RAW base produce (stratum-detection runs on the sentinel ctx, pre-projection).
+      projectedBase =
+        stratum: baseProduce: id: ctx:
+        baseProduce id (projectCtx stratum ctx);
       checkedProduce =
         name: baseProduce: id: ctx:
         map (a: a // { __policy = name; }) (declare.checkStratum name (baseProduce id ctx));
@@ -145,18 +195,23 @@ let
         else
           a;
 
-      # A single-group rule (the probe emitted → its stratum is observed directly).
-      mkSingle = name: condition: base: probeActs: {
-        inherit (base) nac priority overrides;
-        inherit condition;
-        produce = checkedProduce name base.produce;
-        identity = name;
-        group = declare.stratumOf (builtins.head probeActs);
-        __isEnrich = prelude.all (
-          a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich"
-        ) probeActs;
-        __pipeOps = builtins.filter (a: (a.__action or null) == "pipeOp") probeActs;
-      };
+      # A single-group rule (the probe emitted → its stratum is observed directly). The FINAL produce
+      # projects its ctx at the observed group, so a ≥-stratum ctx fact is capability-scoped out.
+      mkSingle =
+        name: condition: base: probeActs:
+        let
+          group = declare.stratumOf (builtins.head probeActs);
+        in
+        {
+          inherit (base) nac priority overrides;
+          inherit condition group;
+          produce = checkedProduce name (projectedBase group base.produce);
+          identity = name;
+          __isEnrich = prelude.all (
+            a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich"
+          ) probeActs;
+          __pipeOps = builtins.filter (a: (a.__action or null) == "pipeOp") probeActs;
+        };
 
       # The expansion sub-rules (empty or throwing probe): one per covered stratum {structural,
       # resolution, collection}, each keeping only its-stratum declarations. The `__policy` stamp carries
@@ -167,13 +222,15 @@ let
       # emission data, not a compose op — and no compiled policy declares overrides.
       mkExpanded =
         name: condition: base:
-        let
-          produce = stampProduce name base.produce;
-        in
         map (s: {
           inherit (base) nac priority overrides;
           inherit condition;
+          # Each sub-rule projects its ctx at ITS stratum `s` (the FINAL produce), so a value-conditional
+          # policy's structural/resolution/collection sub-rules are each capability-scoped by construction.
           produce =
+            let
+              produce = stampProduce name (projectedBase s base.produce);
+            in
             id: ctx: builtins.filter (a: declare.stratumOf a == s) (map (assertCovered name) (produce id ctx));
           identity = "${name}#${s}";
           group = s;
@@ -292,5 +349,5 @@ in
   # pre-configurable behavior for every existing caller (native fleets, the unit suites driving
   # `internal.compilePolicies`); a native fleet's resolve-family policies are DETECTED, not tagged.
   compile = compileWith { } [ ] [ ];
-  inherit compileWith;
+  inherit compileWith compileWithStrata;
 }

@@ -9,6 +9,27 @@
 }:
 let
   inherit (denHoag.internal) identity;
+  inherit (denHoag) declare;
+  # The strata-aware policy compiler seam (concern-policies.compileWithStrata): compile with an
+  # explicit stratum order + a stratum→ctx-key-groups map, so the capability-scoped ctx projection
+  # (a ctx key at a stratum ≥ the rule's is replaced by a named throw) can be witnessed synthetically.
+  compileWithStrata = denHoag.internal.compilePoliciesWithStrata;
+  # The seeded four-stratum order (structural < resolution < collection < demand).
+  fourStrata = [
+    "structural"
+    "resolution"
+    "collection"
+    "demand"
+  ];
+  # A structural rule reading a structural ctx entry (`thing`) via a DECLARED record gate — the probe
+  # fills the required `thing` coord with the value-less sentinel, observing the structural `link`.
+  # The ctx projection wraps ONLY the FINAL dispatch produce, never the probe.
+  linkFoo = {
+    __condition = {
+      thing = false;
+    };
+    fn = ctx: [ (declare.link { target = ctx.thing; }) ];
+  };
 
   # A minimal, well-formed structural fill: scalars + a list coordinate + a nested producer-id string.
   s0 = {
@@ -290,6 +311,206 @@ in
           }) null
         )).success;
       expected = false;
+    };
+    # a diamond (a→b, a→c, b→d, c→d) is ACYCLIC — the classic false-positive trap.
+    test-fill-acyclic-diamond = {
+      expr = identity.checkFillAcyclic {
+        a = [
+          "b"
+          "c"
+        ];
+        b = [ "d" ];
+        c = [ "d" ];
+        d = [ ];
+      };
+      expected = null;
+    };
+    # a referenced id absent from the map is a LEAF (or [ ]) — not an error.
+    test-fill-missing-ref-is-leaf = {
+      expr = identity.checkFillAcyclic {
+        a = [ "ghost" ];
+      };
+      expected = null;
+    };
+
+    # ── den.strata: the compiled stratum order (spec §5) ──
+    # the seeded order with NO inserts is exactly structural < resolution < collection < demand
+    # (the byte-identity anchor — every existing stratum consumer reads THIS list).
+    test-strata-seeded-order = {
+      expr = declare.compileStrata { inserts = { }; };
+      expected = [
+        "structural"
+        "resolution"
+        "collection"
+        "demand"
+      ];
+    };
+    # a single insert places its stratum immediately after its anchor (dense insertion).
+    test-strata-single-insert = {
+      expr = declare.compileStrata {
+        inserts.output = {
+          after = "demand";
+        };
+      };
+      expected = [
+        "structural"
+        "resolution"
+        "collection"
+        "demand"
+        "output"
+      ];
+    };
+    # an insert after an interior anchor lands immediately after it, not at the end.
+    test-strata-interior-insert = {
+      expr = declare.compileStrata {
+        inserts.reify = {
+          after = "resolution";
+        };
+      };
+      expected = [
+        "structural"
+        "resolution"
+        "reify"
+        "collection"
+        "demand"
+      ];
+    };
+    # two inserts after the SAME anchor order lexicographically by name (deterministic).
+    test-strata-same-anchor-lexicographic = {
+      expr = declare.compileStrata {
+        inserts.aaa = {
+          after = "resolution";
+        };
+        inserts.zzz = {
+          after = "resolution";
+        };
+      };
+      expected = [
+        "structural"
+        "resolution"
+        "aaa"
+        "zzz"
+        "collection"
+        "demand"
+      ];
+    };
+    # a chained insert (after another insert) resolves once its anchor is placed.
+    test-strata-chained-insert = {
+      expr = declare.compileStrata {
+        inserts.mid = {
+          after = "demand";
+        };
+        inserts.tip = {
+          after = "mid";
+        };
+      };
+      expected = [
+        "structural"
+        "resolution"
+        "collection"
+        "demand"
+        "mid"
+        "tip"
+      ];
+    };
+    # an insert name colliding with an existing stratum is a definition-time throw.
+    test-strata-duplicate-name-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (declare.compileStrata {
+            inserts.resolution = {
+              after = "structural";
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # an insert naming an unknown `after` anchor is a definition-time throw.
+    test-strata-unknown-after-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (declare.compileStrata {
+            inserts.output = {
+              after = "nowhere";
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+
+    # ── capability-scoped rule ctx (spec §5 / A9 stratification-by-construction) ──
+    # SEEDED projection is a no-op: with an empty stratum→ctx-key map, the structural rule reading its
+    # structural ctx entry produces normally (the 972-suite is the fleet-wide byte proof; this pins it
+    # at the compiler seam directly).
+    test-ctx-scoping-seeded-noop = {
+      expr =
+        let
+          c = compileWithStrata {
+            order = fourStrata;
+            ctxKeyStrata = { };
+          } { } [ ] [ ] { foo = linkFoo; };
+          rule = builtins.head c.policy;
+        in
+        map (a: a.__action) (
+          rule.produce "n" {
+            thing = {
+              id_hash = "t";
+              name = "t";
+            };
+          }
+        );
+      expected = [ "link" ];
+    };
+    # THE TRIPWIRE (synthetic, never a corpus path): a ctx key DECLARED at a stratum ≥ the rule's own
+    # stratum is REPLACED with a named throw — reading it inside the body aborts CATCHABLY (replaced,
+    # not attribute-missing, so tryEval+deepSeq catches it). `link` is structural; tagging its ctx key
+    # `thing` at the RESOLUTION stratum (structural < resolution) fires the throw at dispatch.
+    test-ctx-scoping-tripwire-throws = {
+      expr =
+        let
+          c = compileWithStrata {
+            order = fourStrata;
+            ctxKeyStrata.resolution = [ "thing" ];
+          } { } [ ] [ ] { foo = linkFoo; };
+          rule = builtins.head c.policy;
+        in
+        (builtins.tryEval (
+          builtins.deepSeq (rule.produce "n" {
+            thing = {
+              id_hash = "t";
+              name = "t";
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # …and a ctx key at a stratum STRICTLY BELOW the rule's is passed through untouched. `member` is
+    # structural too, but here the tagged key belongs to a stratum below a RESOLUTION rule: an `edge`
+    # rule (resolution) reading a STRUCTURAL-tagged ctx key produces normally (structural < resolution).
+    test-ctx-scoping-lower-stratum-ok = {
+      expr =
+        let
+          edgeFoo = {
+            __condition = {
+              asp = false;
+            };
+            fn = ctx: [ (declare.edge ctx.asp) ];
+          };
+          c = compileWithStrata {
+            order = fourStrata;
+            ctxKeyStrata.structural = [ "asp" ];
+          } { } [ ] [ ] { foo = edgeFoo; };
+          rule = builtins.head c.policy;
+        in
+        map (a: a.__action) (
+          rule.produce "n" {
+            asp = {
+              id_hash = "a";
+              name = "a";
+            };
+          }
+        );
+      expected = [ "edge" ];
     };
   };
 }

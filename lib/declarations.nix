@@ -58,12 +58,83 @@ let
     collection = [ "pipeOp" ];
     demand = [ "demand" ];
   };
-  strata = [
+  # The SEED stratum order (§B2). The order is DATA: `compileStrata` folds name-keyed dense insertions
+  # onto this seed, so a new stratum enters by declaration, never by editing this list (REFERENCE.md).
+  seedStrata = [
     "structural"
     "resolution"
     "collection"
     "demand"
   ];
+
+  # `compileStrata { inserts }` → the total stratum order. Each `inserts.<name> = { after; }` places
+  # `<name>` densely — immediately after its `after` anchor. Determinism (REFERENCE.md): inserts are
+  # placed lexicographically by name, and an insert whose anchor is itself an insert resolves once that
+  # anchor is placed (a ready-set fixpoint over the lex-ordered names); multiple inserts after the same
+  # anchor keep lexicographic order. A name colliding with an existing stratum, or an `after` that never
+  # resolves (unknown / cyclic), aborts NAMED at definition time.
+  compileStrata =
+    {
+      inserts ? { },
+    }:
+    let
+      names = builtins.sort (a: b: a < b) (builtins.attrNames inserts);
+      anchorOf = n: inserts.${n}.after;
+      # duplicate-name guard: an insert may not shadow a seeded stratum.
+      dupes = builtins.filter (n: builtins.elem n seedStrata) names;
+      # A ready insert = one whose anchor is already in the order and which is not yet placed. Placing
+      # the lexicographically-first ready insert immediately after its anchor's contiguous same-anchor
+      # run gives forward-lex order for same-anchor siblings.
+      indexOf =
+        order: x:
+        builtins.head (
+          builtins.filter (i: builtins.elemAt order i == x) (builtins.genList (i: i) (builtins.length order))
+        );
+      insertAfterRun =
+        order: name: anchor:
+        let
+          len = builtins.length order;
+          # scan past the anchor and any already-placed inserts that share this anchor (they sort before
+          # `name`, being placed lex-ascending) — `name` lands after that contiguous run.
+          start = indexOf order anchor;
+          runEnd = prelude.foldl' (
+            j: k:
+            if k > j && k < len && (inserts.${builtins.elemAt order k}.after or null) == anchor then k else j
+          ) start (builtins.genList (i: i) len);
+          before = builtins.genList (i: builtins.elemAt order i) (runEnd + 1);
+          after = builtins.genList (i: builtins.elemAt order (runEnd + 1 + i)) (len - (runEnd + 1));
+        in
+        before ++ [ name ] ++ after;
+      step =
+        state:
+        let
+          ready = builtins.filter (n: builtins.elem (anchorOf n) state.order) state.pending;
+        in
+        if ready == [ ] then
+          state
+        else
+          let
+            name = builtins.head ready;
+          in
+          step {
+            order = insertAfterRun state.order name (anchorOf name);
+            pending = builtins.filter (n: n != name) state.pending;
+          };
+      final = step {
+        order = seedStrata;
+        pending = names;
+      };
+    in
+    if dupes != [ ] then
+      throw "den.strata: insert '${builtins.head dupes}' shadows an existing stratum — insert names must be fresh"
+    else if final.pending != [ ] then
+      throw "den.strata: insert '${builtins.head final.pending}' names an unknown `after` anchor '${anchorOf (builtins.head final.pending)}' (unknown or cyclic)"
+    else
+      final.order;
+
+  # The compiled order with ZERO inserts is byte-identical to the seed — every existing stratum consumer
+  # (`kindToStratum`, the gen-resolve schedule feed) reads THIS list (the 972-suite is the proof).
+  strata = compileStrata { inserts = { }; };
 
   actions = dispatch.mkActions groups;
 
@@ -90,7 +161,8 @@ let
   # Static kind → stratum map — the errors.mixedStratum naming and structural.nix's vocabulary
   # interface consume it (the inverse of `groups`).
   kindToStratum = prelude.foldl' (
-    acc: stratum: prelude.foldl' (acc': kind: acc' // { ${kind} = stratum; }) acc groups.${stratum}
+    acc: stratum:
+    prelude.foldl' (acc': kind: acc' // { ${kind} = stratum; }) acc (groups.${stratum} or [ ])
   ) { } strata;
 
   # A2 identity law: an entry-typed position takes a registry entry (id_hash), never a string.
@@ -225,13 +297,19 @@ let
   # class-scoped opt-in). `target` = bare node-id STRING; `classFilter` = predicate on the target's
   # resolved-aspect nodes (null = all). Record shape matches reachEdgesOf (attributes/resolved-aspects.nix:111-116).
   reach-edge =
-    { target, classFilter ? null }:
+    {
+      target,
+      classFilter ? null,
+    }:
     actions."reach-edge" { inherit target classFilter; };
 
   # `reach-suppress { edge; when ? (_: true) }` — resolution: NEGATIVE edge removing the positive edge whose
   # target == `edge` (node-id STRING), gated by `when scope`. Record shape matches reachSuppressOf (:120-124).
   reach-suppress =
-    { edge, when ? (_: true) }:
+    {
+      edge,
+      when ? (_: true),
+    }:
     actions."reach-suppress" { inherit edge when; };
 
   # `link { target }` — structural: an I-edge to an EXISTING entity node (annotates, never
@@ -294,6 +372,8 @@ actions
 // {
   inherit
     strata
+    seedStrata
+    compileStrata
     stratumOf
     kindOf
     kindToStratum

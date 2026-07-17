@@ -299,6 +299,19 @@ let
         };
       };
 
+      # den.strata.insert.<name> = { after = "<existing>"; } — the stratum-order extension surface
+      # (spec §5). Each name-keyed insert places a NEW stratum densely after its `after` anchor; the
+      # compiled order (declarations.compileStrata) becomes the stratum order every consumer reads.
+      # `raw` holds each `{ after }` record unmerged. Absent ⇒ the seeded order
+      # (structural < resolution < collection < demand), byte-identical.
+      strataDecl = {
+        options.den.strata.insert = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Stratum-order inserts: `<name> = { after = \"<existing stratum>\"; }` — dense insertion after the anchor (spec §5).";
+        };
+      };
+
       # den.demandKinds.<name> — the demand-kind registry (§B demand stratum). Each entry declares a
       # gen-demand kind: `{ below ? []; resolve; dedupKey ? null; fold ? null; }` (functions, so `raw`
       # holds it unmerged); `below` names the kinds this one may cascade into (downward-only DAG,
@@ -476,6 +489,7 @@ let
           contentClassDecl
           linearizationDecl
           settingsDecl
+          strataDecl
           demandKindsDecl
           demandContextDecl
           nixpkgsDecl
@@ -688,12 +702,24 @@ let
       ) { } rootScopeKinds;
       linkTarget = entry: entryNodeIndex.${entry.id_hash} or null;
 
+      # The compiled stratum order (spec §5): the seeded four with each `den.strata.insert.<name>` placed
+      # densely after its anchor. Zero inserts ⇒ the seeded order, byte-identical. Threaded into policy
+      # compilation as the capability-scoped ctx projection's stratum order (the ctx-key map is seeded
+      # empty, so the projection is a no-op for the native/corpus fleet — rule ctx is all-structural).
+      compiledStrata = declare.compileStrata { inserts = ent.config.den.strata.insert or { }; };
+
       # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
       # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
       # `probeSentinelFields` (native default `{ }`) configures the value-less stratum probe's sentinel;
       # `resolveFamilyNames` (native default `[ ]`, R2) stamps the resolve-family tag on the named policies.
       policiesRules =
-        concernPolicies.compileWith ent.config.den.probeSentinelFields ent.config.den.resolveFamilyNames
+        concernPolicies.compileWithStrata
+          {
+            order = compiledStrata;
+            ctxKeyStrata = { };
+          }
+          ent.config.den.probeSentinelFields
+          ent.config.den.resolveFamilyNames
           ent.config.den.excludeFamilyNames
           ent.config.den.policies;
 
@@ -1070,6 +1096,8 @@ let
         cells = product.cells theFleet;
         inherit dimKinds;
         linearization = lin;
+        # The compiled stratum order (spec §5): the seeded four + `den.strata.insert` dense insertions.
+        strata = compiledStrata;
         scopeRoots = scopeRoots;
         inherit structural;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
@@ -1146,6 +1174,10 @@ in
     # the resolve-family tag set defaults to `[ ]` here (the R2 knob is a fleet-level `den.resolveFamilyNames`
     # option, not a unit-suite concern). `compileWith` is the full 4-arg form default.nix threads.
     compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ] [ ];
+    # The strata-aware compiler (Task 3): compile with an explicit stratum order + stratum→ctx-key map,
+    # so the capability-scoped ctx projection is exercisable from the suite (the seeded config = the
+    # byte-identical no-op the fleet path uses). `compilePoliciesWithStrata { order; ctxKeyStrata } sentinel rf ef`.
+    compilePoliciesWithStrata = concernPolicies.compileWithStrata;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     inherit (concernAspects) classifyKey facets;
