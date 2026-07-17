@@ -15,7 +15,9 @@ let
   # structural; member/reach/reach-suppress resolution (selector-driven membership targets a later
   # stratum per §2.3, and literal declared membership rides the same kind harmlessly); nest/defer are
   # OUTPUT — a stratum the framework itself registers through the den.strata dense-insertion mechanism
-  # after `demand` (the seed stays the shipped four; the framework dogfoods the extension).
+  # after `demand` (the seed stays the shipped four; the framework dogfoods the extension). `demand` is
+  # the demand-stratum edge kind demand's `toEdges` stamps — the first live labeled kind (its records
+  # cite this registry row).
   preRegisteredStrata = {
     contains = "structural";
     include = "structural";
@@ -25,6 +27,7 @@ let
     reach-suppress = "resolution";
     nest = "output";
     defer = "output";
+    demand = "demand";
   };
   reservedNames = builtins.attrNames preRegisteredStrata;
 

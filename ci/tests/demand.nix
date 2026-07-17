@@ -305,6 +305,13 @@ in
       expr = builtins.all (e: e.source ? value) edges;
       expected = true;
     };
+    # DEMAND RETIRES BY EXTENSION (spec §2.2): both toEdges arms stamp the `demand` edge kind — the first
+    # live labeled kind. Every demand edge (provider + consumer) carries `kind = "demand"`, so its trace
+    # key gains the K component; an un-stamped (legacy) edge is unchanged (pinned in edge-substrate).
+    test-edges-stamp-demand-kind = {
+      expr = builtins.all (e: e.kind == "demand") edges;
+      expected = true;
+    };
 
     # ── same-position tie-break (A12): pinned by producer identity ──
     # the two root (stratum-1) subjects come out provisionA (axon) before provisionB (prod), pinned by

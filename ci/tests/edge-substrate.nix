@@ -23,6 +23,8 @@ let
     ;
   # gen-edge's frozen sort key (Task 1's public export) — to pin an assembled edge's ` | <kind>` component.
   inherit (denHoag.internal.edge) edgeSortKey;
+  # the gen-edge lib itself — to construct un-stamped vs `demand`-stamped edges for the K-boundary pin.
+  genEdge = denHoag.internal.edge;
   # A minimal registered-kind table for the assembly scenarios (reach is a framework kind).
   reachKinds = compileEdges {
     kinds = { };
@@ -619,8 +621,9 @@ in
     };
 
     # ── den.edges: the edge-kind registry (spec §2.2) ──
-    # the framework pre-registers exactly the 8 kinds with their strata (contains/include/kindOf
-    # structural; member/reach/reach-suppress resolution; nest/defer output).
+    # the framework pre-registers the kinds with their strata (contains/include/kindOf structural;
+    # member/reach/reach-suppress resolution; nest/defer output; demand — the demand-stratum live kind
+    # demand's toEdges stamps).
     test-edges-preregistered-strata = {
       expr = edgeKinds.preRegisteredStrata;
       expected = {
@@ -632,6 +635,7 @@ in
         reach-suppress = "resolution";
         nest = "output";
         defer = "output";
+        demand = "demand";
       };
     };
     # the framework's own `output` stratum enters through the den.strata insertion mechanism.
@@ -1172,5 +1176,35 @@ in
       });
       expected = 1;
     };
+
+    # ── the legacy/non-legacy K boundary (spec §2.2, demand retires by extension) ──
+    # an UN-STAMPED edge (a reach-path legacy edge builds one with no kind) renders the historical
+    # FOUR-component (T,P,S,M) key; a `demand`-STAMPED edge renders FIVE, appending ` | demand`. Pinned
+    # from the den-hoag side so the K extension is visible without reaching into gen-edge's own suite.
+    test-K-boundary-unstamped-vs-demand =
+      let
+        base = {
+          source = genEdge.sources.value 1;
+          target = genEdge.targets.root {
+            root = "R";
+            class = "nixos";
+          };
+        };
+        legacyKey = edgeSortKey (genEdge.edge base);
+        demandKey = edgeSortKey (genEdge.edge (base // { kind = "demand"; }));
+      in
+      {
+        expr = {
+          legacyComponents = builtins.length (builtins.split " \\| " legacyKey);
+          demandComponents = builtins.length (builtins.split " \\| " demandKey);
+          demandExtendsLegacy = demandKey == legacyKey + " | demand";
+        };
+        # split yields 2n-1 list elements for n components (n-1 separators interleaved): 4 → 7, 5 → 9.
+        expected = {
+          legacyComponents = 7;
+          demandComponents = 9;
+          demandExtendsLegacy = true;
+        };
+      };
   };
 }

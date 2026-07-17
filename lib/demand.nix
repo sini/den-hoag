@@ -154,6 +154,9 @@ in
                   key
                 ];
               };
+              # the demand edge kind — the first live labeled kind (the typed-edge K component; an
+              # un-labeled edge is unchanged, see REFERENCE.md). Cites the pre-registered `demand` row.
+              kind = "demand";
             }
           ) byKey
         ) resolution.resources
@@ -166,6 +169,8 @@ in
             root = idHash;
             class = "wiring";
           };
+          # the demand edge kind (K component) — the wiring arm, stamped like the resource arm above.
+          kind = "demand";
         }
       ) resolution.wiring;
     in
