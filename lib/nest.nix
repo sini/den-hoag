@@ -22,7 +22,6 @@
 # inside a contribution's lazy fields. See REFERENCE.md.
 {
   prelude,
-  productsLib,
 }:
 let
   # nest a module at an attr path — the fold's `place` (gen-edge `core.setAttrByPath`; output-modules.nix's
@@ -40,42 +39,90 @@ let
   # path. The map keeps each module a thunk (nestAtPath does not force), so the placement is lazy.
   placeSlice = at: slice: if at == [ ] then slice else map (nestAtPath at) slice;
 
-  # `executeNest { row; inner; ctx }` — the mode dispatch. `row` = a compiled receives row (or one element
-  # of a `resolveReceiver` multi-winners list); `inner` = `{ product; payload; }` plus the inner's structural
-  # FACE fields (name/kind/…); `ctx` = structural handles ONLY (§2.1 corollary — name/kind/slot/ids/
-  # paramPoint, NO content). The engine reads the row's DERIVED `mode` (F1) and hands the payload lazily into
+  # `mkContribution mode extra` — every arm's contribution is `{ mode; } // <arm fields>`, so the mode tag
+  # is written ONCE and the arms differ only in their payload fields. The arm fields carry the LAZY faces
+  # (the placed modules / the injected value / the render thunk), so a contribution's shape (mode + attr
+  # names) is forcible without forcing the payload.
+  mkContribution = mode: extra: { inherit mode; } // extra;
+
+  # `executeNest { row; inner; ctx; conversions ? { } }` — the mode dispatch. `row` = a compiled receives row
+  # (or one element of a `resolveReceiver` multi-winners list); `inner` = `{ product; payload; }` (or the
+  # prebuilt `artifactRef` arm) plus the inner's structural FACE fields (name/kind/…); `ctx` = structural
+  # handles ONLY (§2.1 corollary — name/kind/slot/ids/paramPoint, NO content); `conversions` = the compiled
+  # single-step conversion table (den.conversions, §4.1), threaded at CALL time (the receivers pattern — the
+  # engine holds no tables). The engine reads the row's DERIVED `mode` (F1) and hands the payload lazily into
   # the arm's contribution — it may not force `inner.payload` during wiring.
   executeNest =
     {
       row,
       inner,
       ctx,
+      conversions ? { },
     }:
     let
       # the inner's STRUCTURAL face handed to `at` — the payload STRIPPED (§2.1: `at` sees structure, never
       # the produced content). `ctx.paramPoint` is the placement's first argument (the paramPoint handle).
       innerFace = removeAttrs inner [ "payload" ];
       atPath = row.at ctx.paramPoint innerFace;
+
+      # CONTENT dispatch on a payload already known to be the row's mode (post-conversion or exact-match): the
+      # graft is over the derived `mode`. `content` places the module list at `at`; a non-content mode under
+      # this seam is unhandled (artifact/extend arrive next tasks — leave the seam marked). `payload` is the
+      # (possibly converted) module list.
+      graftMode =
+        payload:
+        if row.mode == "content" then
+          # CONTENT mode: the module list grafted at `at` — flat for `at = [ ]`, wrapped under the path
+          # otherwise. The caller places the contribution; the engine performs only the pure at-path wrap.
+          mkContribution "content" {
+            at = atPath;
+            modules = placeSlice atPath payload;
+          }
+        else
+          throw "den.nest: unhandled receive mode '${row.mode}' — the mode-execution engine handles no such arm";
+
+      # THE CONVERSIONS CONSULT (§4.1): on a (produces, consumes) mismatch, EXACTLY ONE single-step lookup in
+      # the compiled table (`"<from>-><to>"`). Found ⇒ `via` applied LAZILY to the payload, the contribution
+      # proceeds under the row's mode; not found ⇒ the named mismatch throw. NO chain search — the MLIR-style
+      # multi-hop materialization is rejected for determinism (a needed composite is its own registered pair).
+      pairKey = "${inner.product}->${row.consumes}";
     in
-    # THE CONSUMES/PRODUCT MISMATCH GUARD: the inner's product face must EXACTLY match the row's `consumes`.
-    # A mismatch aborts NAMED, naming both products. THE SEAM: the single-step conversion registry
-    # (den.conversions, §4.1) consult REPLACES this hard throw for a registered (produces, consumes) pair —
-    # a mismatch with a conversion materializes through its `via`; only an unregistered mismatch throws. That
-    # consult is the next step; here every mismatch is an error.
-    if inner.product != row.consumes then
-      throw "den.nest: inner produces '${inner.product}' but the receiver consumes '${row.consumes}' — no conversion (§4.1) registered for the pair"
-    # CONTENT mode: the inner's ModulesInfo module list grafted at the `at` path. The contribution carries the
-    # PLACED modules (`placeSlice atPath inner.payload`) — flat for `at = [ ]`, wrapped under the path
-    # otherwise — plus the `at` path as provenance. The caller places the contribution; the engine performs
-    # only the pure at-path wrap (nestAtPath), never a module eval.
-    else if row.mode == "content" then
-      {
-        mode = "content";
-        at = atPath;
-        modules = placeSlice atPath inner.payload;
-      }
+    # VALUE mode (the prebuilt ArtifactRef arm, §4.1): an `inner` carrying the `artifactRef` wrapper is the
+    # short-circuited prebuilt value — injected VERBATIM, never evaluated, never converted (conversions never
+    # apply to the prebuilt arm; ArtifactRef acceptance at consumes = P is DEFINITIONAL). Checked FIRST, before
+    # the exact-match/conversion arms: the wrapper's `inner.product` is the `ArtifactRef <face>` name, which
+    # never equals the row's bare `consumes`, so those arms would misroute it. A wrapped-face MISMATCH
+    # (`artifactRef.product` ≠ the row's consumes) sets the `unrealizedCast` marker — a trace-visible node,
+    # NEVER an eval failure (§4.1 verbatim) — the value still rides verbatim.
+    if inner ? artifactRef then
+      mkContribution "value" (
+        {
+          at = atPath;
+          inherit (inner.artifactRef) value;
+        }
+        // (
+          if inner.artifactRef.product != row.consumes then
+            {
+              # the prebuilt face does not match the row's consumes — an unrealized cast (a trace node), not a
+              # throw: the value is injected as-is and the mismatch is recorded for the trace to surface.
+              unrealizedCast = {
+                from = inner.artifactRef.product;
+                to = row.consumes;
+              };
+            }
+          else
+            { }
+        )
+      )
+    # EXACT MATCH: the inner's product face equals the row's `consumes` — graft directly under the row's mode.
+    else if inner.product == row.consumes then
+      graftMode inner.payload
+    # MISMATCH: consult the single-step conversion table for the (produces, consumes) pair. Found ⇒ materialize
+    # LAZILY through `via` and proceed under the row's mode; not found ⇒ the named throw naming both products.
+    else if conversions ? ${pairKey} then
+      graftMode (conversions.${pairKey}.via inner.payload)
     else
-      throw "den.nest: unhandled receive mode '${row.mode}' — the mode-execution engine handles no such arm";
+      throw "den.nest: inner produces '${inner.product}' but the receiver consumes '${row.consumes}' — no conversion (§4.1) registered for the pair '${pairKey}'";
 in
 {
   inherit executeNest;

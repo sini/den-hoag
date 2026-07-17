@@ -114,6 +114,13 @@ in
     aspectName: key:
     fail "aspect key (§2.2)" "aspect `${aspectName}` declares key `${key}`, which is neither a facet, a registered class, nor a quirk channel";
 
+  # §4.1 the prebuilt-arm exclusivity: an aspect declaring `artifact` (the value-mode prebuilt face) may
+  # carry no non-empty class content — the prebuilt IS the materialized face, so class buckets alongside it
+  # are contradictory. Names the aspect and the offending class key.
+  artifactBucketsNonEmpty =
+    aspectName: classKey:
+    fail "prebuilt arm (§4.1)" "aspect `${aspectName}` declares `artifact` (the value-mode prebuilt face) AND non-empty class content `${classKey}` — a prebuilt arm's class buckets must be empty; declare one or the other";
+
   # A13 class-tag ambiguity: a null-class scope emitting class-shaped (config-demanding) content —
   # the producing scope binds no class to resolve the contribution's `config` against, so the class
   # tag is undecidable. den detects this at the emission it owns (a null producing class + a deferred

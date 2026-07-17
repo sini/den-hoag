@@ -27,6 +27,9 @@ let
   # The shared class + channel keySemantics builder. The SAME class + channel vocabulary feeds
   # this concern AND every other consumer of the aspect schema, so no channel key falls to freeform.
   keySemanticsLib = import ./key-semantics.nix { inherit prelude; };
+  # The deferredModule SHAPE helper — the one peel/emptiness rule (class-modules `classSliceOf` uses it too).
+  # `artifactExclusive` reads it to decide whether a class content key is a real declaration or an empty no-op.
+  inherit (import ./module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
   # §B4a reverse injection — declared on the aspect submodule (not inside a parametric body).
   # `raw` holds either a literal `[ aspectRef … ]` or a single gen-select selector unmerged.
   neededByModule =
@@ -76,6 +79,23 @@ let
       };
     };
 
+  # The PREBUILT ARM (§4.1 value mode) — an aspect declaring `artifact = <value>` carries a prebuilt,
+  # already-elaborated face injected VERBATIM at its receiver (never re-evaluated by den). A facet (§2.2),
+  # NOT a nested aspect: declaring it a facet keeps it out of the class/channel branches so `classifyKey`
+  # routes it as behaviour, not content. `raw` holds the value unmerged (opaque). Its EXCLUSIVITY with class
+  # content is `artifactExclusive` (below): a prebuilt aspect's class buckets must be EMPTY. `null` (the
+  # default) marks an aspect with no prebuilt arm. SYNTHETIC-ONLY for now — the consumer arrives with the
+  # nest families; the surface + the exclusivity throw exist so a corpus can declare a prebuilt aspect today.
+  artifactModule =
+    { ... }:
+    {
+      options.artifact = merge.mkOption {
+        type = merge.types.raw;
+        default = null;
+        description = "Prebuilt arm (§4.1 value mode): an already-elaborated face injected verbatim; its class buckets must be empty (artifactExclusive).";
+      };
+    };
+
   # Aspect identity (A2) — a content-stable id_hash derived from the structural `key`, so den-hoag
   # aspects are identity-law entries usable by gen-settings (mkSchema/resolveAll route by id_hash) and
   # by `ref` (E6 requires an id_hash-bearing target). Same key ⇒ same id_hash (dedup-coherent with the
@@ -113,6 +133,12 @@ let
       settings = {
         category = "facet";
         module = settingsModule;
+      };
+      # the prebuilt-arm facet (§4.1 value mode) — a sibling of settings/neededBy; declaring it a facet keeps
+      # it out of the class/channel branches so classifyKey won't reject it as an unregistered content key.
+      artifact = {
+        category = "facet";
+        module = artifactModule;
       };
       # a MODULE (declares `options.id_hash` AND `config.id_hash` off `config.key`) — NOT a bare option.
       id_hash = {
@@ -152,6 +178,7 @@ let
     "name"
     "description"
     "key"
+    "artifact" # the §4.1 prebuilt-arm facet — behaviour (a value injection), not class content
     "id_hash" # injected by idModule — a structural facet, not content
   ];
   # §2.2 three-branch key dispatch — an aspect key is a declared facet, a registered output class, a
@@ -173,12 +200,39 @@ let
         cat = keySemantics.${key}.category or null;
       in
       if cat != null then cat else errors.unknownAspectKey aspectName key;
+
+  # §4.1 THE PREBUILT-ARM EXCLUSIVITY: an aspect declaring `artifact` (the value-mode prebuilt face) must
+  # carry NO class content — "its class buckets must be empty; declaring both throws named". A pure decision
+  # over an aspect's own CONTENT (the resolved-aspect `content` attrset, or a raw aspect declaration): if
+  # `artifact` is present (non-null), every content key that `classifyKey` routes to a `class` category must
+  # have an EMPTY deferredModule body (`isEmptyDeferredModule` — the same peel/emptiness rule `classSliceOf`
+  # uses, so an all-empty class default from gen-aspects' materialization is NOT a real declaration). A single
+  # non-empty class key alongside `artifact` aborts NAMED. Returns `true` on the clean case (a truthy sentinel
+  # the caller may `seq`); an aspect with NO `artifact` is trivially exclusive. Total + pure (Law A1) — no
+  # fixpoint, just a filter over the content keys. `content.name` frames the abort (a synthetic/degenerate
+  # node with no populated name falls back to a key-only label, never a raw missing-attribute throw).
+  artifactExclusive =
+    content:
+    let
+      hasArtifact = (content.artifact or null) != null;
+      aspectName = content.name or "<unnamed>";
+      keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
+      # the content keys that are real (non-empty) class declarations — the buckets that must be empty.
+      classKeys = builtins.filter (
+        k: classifyKey aspectName k == "class" && !(isEmptyDeferredModule content.${k})
+      ) keys;
+    in
+    if hasArtifact && classKeys != [ ] then
+      errors.artifactBucketsNonEmpty aspectName (builtins.head classKeys)
+    else
+      true;
 in
 {
   inherit
     cnf
     aspectSchema
     classifyKey
+    artifactExclusive
     facets
     ;
 }

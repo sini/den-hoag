@@ -176,13 +176,13 @@ let
   receiversLib = import ./receivers.nix {
     inherit prelude productsLib graph;
   };
-  # The nest-mode EXECUTION engine (§4.2 mode taxonomy): `executeNest { row; inner; ctx }` turns a compiled
-  # receives row + the inner entity's product face into a mode-tagged CONTRIBUTION the output fold places.
-  # The live-edge counterpart to receiversLib (which DECLARES + dispatches the graft-site rule); this
-  # EXECUTES it. Imported with `prelude` + `productsLib` (the receivers pattern) — per-fleet tables are
-  # passed at CALL time, so the engine holds no evaluators or tables.
+  # The nest-mode EXECUTION engine (§4.2 mode taxonomy): `executeNest { row; inner; ctx; conversions ? {} }`
+  # turns a compiled receives row + the inner entity's product face into a mode-tagged CONTRIBUTION the output
+  # fold places. The live-edge counterpart to receiversLib (which DECLARES + dispatches the graft-site rule);
+  # this EXECUTES it. The per-fleet conversion table is passed at CALL time (the receivers pattern), so the
+  # engine holds no tables.
   nestLib = import ./nest.nix {
-    inherit prelude productsLib;
+    inherit prelude;
   };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
@@ -1114,7 +1114,7 @@ let
         inherit
           (attributesLib.mkClassSlice {
             classNames = effectiveClassNames;
-            inherit (denAspects) classifyKey;
+            inherit (denAspects) classifyKey artifactExclusive;
           })
           classSliceOf
           assertKeysRegistered
@@ -1425,7 +1425,9 @@ in
     inherit (edgesLib) applyOverrides assembleEdges;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
-    inherit (concernAspects) classifyKey facets;
+    # `artifactExclusive` (§4.1) is the pure prebuilt-arm buckets-empty check, for the suite's exclusivity
+    # scenarios (also fired at the projection terminal via mkClassSlice's assertKeysRegistered).
+    inherit (concernAspects) classifyKey facets artifactExclusive;
     # The quirks concern's composer + class-relative read, for the suite's channel scenarios.
     inherit (concernQuirks) compose consumeAt;
     # Settings/linearization builders + the raw gen-settings/gen-algebra surfaces, for the suite's

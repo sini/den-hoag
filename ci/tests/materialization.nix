@@ -436,6 +436,144 @@ let
     name = "tux";
     kind = "user";
   };
+
+  # ── Task 2 fixtures: value mode + the conversions consult ──
+  # an ARTIFACT-consuming row (consumes SystemInfo → artifact mode): the row a prebuilt `ArtifactRef
+  # SystemInfo` value satisfies (value-mode acceptance) and the target of the conversions consult.
+  artifactRow =
+    (receivers.compile {
+      rows = {
+        host.receives.sys = {
+          at = _point: _inner: [ "sys" ];
+          consumes = "SystemInfo";
+          render = "nixos";
+        };
+      };
+      knownKinds = [ "host" ];
+      products = frameworkProducts;
+      renders = pureRenders;
+    }).host.receives.sys;
+
+  # the VALUE-mode inner — the prebuilt arm (§4.1 ArtifactRef wrapper): `inner.product` is the wrapper name
+  # (`ArtifactRef <face>`, so modeOf reads value), `inner.artifactRef = { product = <wrapped face>; value; }`
+  # carries the underlying face + the prebuilt value (injected verbatim, never evaluated by den).
+  cleanValueInner = {
+    product = "ArtifactRef SystemInfo";
+    artifactRef = {
+      product = "SystemInfo"; # matches the row's consumes → definitional acceptance, no unrealizedCast.
+      value = {
+        __prebuilt = "a-real-system";
+      };
+    };
+    name = "box";
+    kind = "host";
+  };
+  # a WRAPPED-FACE MISMATCH (ArtifactRef Q at consumes = P): the value is STILL injected verbatim (never an
+  # eval failure), but the contribution carries the `unrealizedCast` marker — a trace-visible node (§4.1).
+  mismatchValueInner = cleanValueInner // {
+    product = "ArtifactRef HmInfo";
+    artifactRef = {
+      product = "HmInfo"; # ≠ the row's consumes (SystemInfo) → unrealizedCast marker, NOT a throw.
+      value = {
+        __prebuilt = "a-real-hm";
+      };
+    };
+  };
+
+  # a compiled single-step conversion table for the consult: RawModulesInfo → ModulesInfo, `via` a tagging
+  # transform (proves the payload flows THROUGH via, and that via is applied lazily). The pair keys the
+  # (produces, consumes) mismatch the flat content row (`consumes ModulesInfo`) hits when fed RawModulesInfo.
+  nestConversions = compileConversions {
+    conversions = {
+      "RawModulesInfo->ModulesInfo" = {
+        via = mods: map (m: m // { __converted = true; }) mods;
+      };
+    };
+  };
+  # a RawModulesInfo inner feeding the flat content row (consumes ModulesInfo) — the (RawModulesInfo,
+  # ModulesInfo) mismatch the consult resolves. Its payload is a single trivial module.
+  rawInner = tuxInner // {
+    product = "RawModulesInfo";
+    payload = [ { __seed = true; } ];
+  };
+
+  # ── Task 2 fixtures: the entity-side `artifact` facet + the buckets-empty exclusivity throw ──
+  # the pure exclusivity decision fn — an aspect declaring `artifact` (the prebuilt arm) must carry NO
+  # non-empty class content key (§4.1: "its class buckets must be empty — declaring both throws named").
+  inherit (denHoag.internal) artifactExclusive;
+
+  # a fleet with a WELL-FORMED artifact aspect (declares `artifact`, no class content) — the surface exists,
+  # the exclusivity holds, so the fleet builds. Synthetic (a `unit` kind, collect-level).
+  artifactOkFleet = denHoag.mkDen [
+    { config.den.schema.unit.parent = null; }
+    {
+      config.den = {
+        unit.u1 = { };
+        aspects.prebuilt.artifact = {
+          __prebuilt = "a-face";
+        };
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.include = [
+          {
+            at = config.den.unit.u1;
+            aspects = [ config.den.aspects.prebuilt ];
+          }
+        ];
+      }
+    )
+  ];
+  # a fleet DECLARING BOTH — `artifact` AND a non-empty `nixos` class content key on the same aspect: the
+  # exclusivity throw must fire when the fleet output is forced (the terminal per-aspect totality gate).
+  artifactBothFleet = denHoag.mkDen [
+    { config.den.schema.unit.parent = null; }
+    {
+      config.den = {
+        unit.u1 = {
+          class = "nixos";
+        };
+        contentClass.unit = "nixos";
+        aspects.prebuilt = {
+          artifact = {
+            __prebuilt = "a-face";
+          };
+          nixos.marker = "n"; # a REAL class content key alongside artifact → the both-declared throw.
+        };
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.include = [
+          {
+            at = config.den.unit.u1;
+            aspects = [ config.den.aspects.prebuilt ];
+          }
+        ];
+      }
+    )
+  ];
+  # force a fleet's terminal output enough to trigger the per-aspect totality gate (which fires the
+  # exclusivity check). `deepSeq` over the class-modules projection at the offending node.
+  forceArtifactGate =
+    fleet:
+    let
+      out = fleet.den.output;
+    in
+    builtins.deepSeq (out.projectClass "unit:u1" "nixos") true;
+
+  # ── Task 2 fixture: a genuine CROSS-MODULE conversions same-pair collision ──
+  # two modules registering `den.conversions."A->B"` with DIFFERENT `via` → the module system's unique-merge
+  # conflict at `den.conversions."SystemInfo->RawModulesInfo".via` (the raw type never last-wins on non-equal
+  # records). Forced by compiling the conversions table off the fleet config.
+  collisionFleet = denHoag.mkDen [
+    { config.den.schema.unit.parent = null; }
+    { config.den.conversions."SystemInfo->RawModulesInfo".via = a: a; }
+    { config.den.conversions."SystemInfo->RawModulesInfo".via = b: [ b ]; }
+  ];
 in
 {
   flake.tests.materialization = {
@@ -1119,14 +1257,15 @@ in
             };
           };
         in
-        # forcing the contribution's SHAPE (mode + attr names) must not force the poison module value.
+        # forcing the contribution's SHAPE — mode + the module LIST SPINE (`builtins.length`, which walks the
+        # list without forcing any element) — must not force the poison module value.
         {
           inherit (contribution) mode;
-          hasModules = contribution ? modules;
+          moduleCount = builtins.length contribution.modules;
         };
       expected = {
         mode = "content";
-        hasModules = true;
+        moduleCount = 1;
       };
     };
 
@@ -1163,6 +1302,187 @@ in
           "users"
           "tux"
         ]) tuxHmSubtree;
+      expected = true;
+    };
+
+    # ── §4.1 VALUE mode (the prebuilt ArtifactRef arm) ──
+    # a clean unwrap: `inner.artifactRef.product` MATCHES the row's consumes (definitional acceptance) → a
+    # value contribution carrying the prebuilt value verbatim, NO unrealizedCast, at the row's `at` path.
+    test-nest-value-clean-unwrap = {
+      expr =
+        let
+          c = executeNest {
+            row = artifactRow;
+            inner = cleanValueInner;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+          };
+        in
+        {
+          inherit (c) mode value;
+          at = c.at;
+          hasCast = c ? unrealizedCast;
+        };
+      expected = {
+        mode = "value";
+        value = {
+          __prebuilt = "a-real-system";
+        };
+        at = [ "sys" ];
+        hasCast = false;
+      };
+    };
+    # a WRAPPED-FACE MISMATCH (ArtifactRef HmInfo at consumes = SystemInfo): the value is STILL injected
+    # verbatim (NOT an eval failure — conversions never apply to the prebuilt arm), and the contribution
+    # carries the `unrealizedCast` marker (a trace-visible node, §4.1).
+    test-nest-value-mismatch-marker = {
+      expr =
+        let
+          c = executeNest {
+            row = artifactRow;
+            inner = mismatchValueInner;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+          };
+        in
+        {
+          inherit (c) mode value;
+          hasCast = c ? unrealizedCast;
+        };
+      expected = {
+        mode = "value";
+        value = {
+          __prebuilt = "a-real-hm";
+        };
+        hasCast = true;
+      };
+    };
+    # LAZINESS: the value arm's `value` is carried lazily — a poison prebuilt is not forced by wiring.
+    test-nest-value-laziness-poison = {
+      expr =
+        (executeNest {
+          row = artifactRow;
+          inner = cleanValueInner // {
+            artifactRef = {
+              product = "SystemInfo";
+              value = throw "prebuilt value forced — value-arm laziness violated";
+            };
+          };
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+        }).mode;
+      expected = "value";
+    };
+
+    # ── §4.1 the single-step CONVERSIONS consult (replaces the exact-match throw at a registered pair) ──
+    # a (RawModulesInfo, ModulesInfo) mismatch WITH a registered conversion: `via` materializes the payload
+    # and the contribution proceeds under the row's mode (content). The via tag proves the payload flowed
+    # THROUGH via; the content graft (flat row) still places it.
+    test-nest-conversion-found = {
+      expr =
+        let
+          c = executeNest {
+            row = flatRow; # consumes ModulesInfo
+            inner = rawInner; # produces RawModulesInfo
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+            conversions = nestConversions;
+          };
+        in
+        {
+          inherit (c) mode;
+          converted = map (m: m.__converted or false) c.modules;
+        };
+      expected = {
+        mode = "content";
+        converted = [ true ];
+      };
+    };
+    # a mismatch with NO registered conversion → the named throw stays (single-step: an empty table finds
+    # nothing, so the throw fires exactly as before the consult).
+    test-nest-conversion-not-found-throw = {
+      expr = throws (executeNest {
+        row = flatRow;
+        inner = rawInner;
+        ctx = {
+          paramPoint = tuxPoint;
+        };
+        conversions = { }; # no pair registered → mismatch throw.
+      });
+      expected = true;
+    };
+    # LAZINESS: via-application is lazy — a poison payload with a matching conversion is not forced by wiring.
+    test-nest-conversion-lazy-via = {
+      expr =
+        (executeNest {
+          row = flatRow;
+          inner = rawInner // {
+            payload = throw "payload forced — conversion via applied eagerly";
+          };
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+          conversions = nestConversions;
+        }).mode;
+      expected = "content";
+    };
+
+    # ── §4.1 the entity-side `artifact` facet + the buckets-empty exclusivity ──
+    # `artifact` is a declared FACET (a keySemantics facet-category key, sibling of settings/neededBy), so
+    # classifyKey routes it as "facet" — a fleet aspect declaring only `artifact` builds (no class content).
+    test-artifact-facet-well-formed = {
+      expr = forceArtifactGate artifactOkFleet;
+      expected = true;
+    };
+    # DECLARING BOTH — `artifact` AND a non-empty class content key on one aspect → the exclusivity throw
+    # fires (§4.1: the prebuilt arm's class buckets must be empty; declaring both throws named).
+    test-artifact-buckets-both-throw = {
+      expr = throws (forceArtifactGate artifactBothFleet);
+      expected = true;
+    };
+    # the pure decision fn directly: `artifactExclusive` on a synthetic aspect content carrying `artifact` +
+    # a non-empty class key throws; carrying `artifact` alone (or a class key alone) passes.
+    test-artifact-exclusive-pure = {
+      expr = {
+        both = throws (artifactExclusive {
+          artifact = {
+            __prebuilt = "x";
+          };
+          nixos = {
+            imports = [ { marker = "n"; } ];
+          };
+          name = "a";
+        });
+        artifactOnly = artifactExclusive {
+          artifact = {
+            __prebuilt = "x";
+          };
+          name = "a";
+        };
+        classOnly = artifactExclusive {
+          nixos = {
+            imports = [ { marker = "n"; } ];
+          };
+          name = "a";
+        };
+      };
+      expected = {
+        both = true;
+        artifactOnly = true; # passes → returns its truthy sentinel.
+        classOnly = true;
+      };
+    };
+
+    # ── §4.1 the cross-module conversions same-pair collision ──
+    # two modules registering `den.conversions."A->B"` with different `via` → the module system's unique-merge
+    # conflict fires at the `.via` key (the raw type never last-wins on non-equal records). Forcing the
+    # fleet's own compiled conversion table (`den.conversions`) triggers the merge of the colliding key.
+    test-conversions-cross-module-collision = {
+      expr = throws (builtins.deepSeq collisionFleet.den.conversions true);
       expected = true;
     };
   };

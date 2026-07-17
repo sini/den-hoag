@@ -19,6 +19,11 @@
 {
   classNames,
   classifyKey,
+  # §4.1 the prebuilt-arm exclusivity (concern-aspects `artifactExclusive`): a pure per-aspect check that an
+  # aspect declaring `artifact` carries no non-empty class content. Threaded into `assertKeysRegistered` (the
+  # per-aspect totality gate forced at the projection terminal), so a malformed prebuilt aspect aborts on the
+  # eval path. Defaults to the identity pass (`_: true`), so a caller not threading it is byte-identical.
+  artifactExclusive ? (_: true),
 }:
 let
   emptyBuckets = prelude.genAttrs classNames (_: [ ]);
@@ -83,7 +88,12 @@ let
       aspectName = content.name or "<unnamed>";
       keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
     in
-    prelude.foldl' (acc: k: builtins.seq (classifyKey aspectName k) acc) null keys;
+    # §4.1: alongside the §2.2 key totality, force the prebuilt-arm EXCLUSIVITY over this aspect's content —
+    # an aspect declaring `artifact` with non-empty class content aborts NAMED here (the same per-aspect,
+    # terminal-forced gate). Inert (the identity pass) for the default `artifactExclusive`.
+    builtins.seq (artifactExclusive content) (
+      prelude.foldl' (acc: k: builtins.seq (classifyKey aspectName k) acc) null keys
+    );
 
   # One resolved aspect's class-bucket contributions: iterate its content keys (skipping the module
   # system's own `_`-prefixed keys), and collect each `class` key's slice (via `classSliceOf` — THE ONE

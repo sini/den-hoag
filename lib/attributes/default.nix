@@ -187,9 +187,12 @@ in
     {
       classNames,
       classifyKey,
+      # §4.1 the prebuilt-arm exclusivity (concern-aspects `artifactExclusive`), forced inside
+      # `assertKeysRegistered` at the projection terminal. Defaults to the identity pass — inert unless threaded.
+      artifactExclusive ? (_: true),
     }:
     let
-      cm = classModules { inherit classNames classifyKey; };
+      cm = classModules { inherit classNames classifyKey artifactExclusive; };
     in
     {
       inherit (cm) classSliceOf assertKeysRegistered;
