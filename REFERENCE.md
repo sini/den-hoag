@@ -176,6 +176,131 @@ Value equality is by the dedup key's `toJSON` serialization — STRUCTURAL value
 collapse; a function-valued contribution is unconvertible and fails). It is OPT-IN: the default
 `ordered-list` discipline is unchanged, and a caller may override `dedup`.
 
+## Materialization registries (`den.products`/`den.conversions`/`den.renders`/`den.kinds`, spec §4)
+
+The materialization facet is the read-through side of the pipeline: products/renders/receivers are
+QUERIED, not folded. Four registries describe it, each a `mapAttrs` + validation (Law A1, mirroring the
+edge/discipline registries); the dispatch rests on the gen-graph labeled-query calculus (`lib/receivers.nix`
+imports the gen-graph lib). den-hoag stays nixpkgs-lib-free.
+
+**Typed products (`den.products.<name>`, spec §4.1) — `lib/products.nix`.** A product NAMES a typed
+materialization payload and the MODE its receiver consumes it in (the Bazel-provider reading — a typed
+carrier flowing producer→consumer). The product→mode derivation is a TOTAL function over the nestable
+products (F1's canonical machine form). The framework pre-registers the table:
+
+| product | mode | note |
+| --- | --- | --- |
+| `ModulesInfo` | content | universal default — unevaluated module list |
+| `RawModulesInfo` | content | raw module list, no re-eval by the receiver |
+| `SystemInfo` / `HmInfo` / `DroidInfo` / `NixidyEnvInfo` / `ShellInfo` / `TerranixInfo` / `HiveInfo` | artifact | artifact faces (HiveInfo = a collector's built aggregate) |
+| `EvalHandleInfo` | extend | extendModules handle; legal only under a render declaring `extendsVia` |
+| `ArgsInfo` | content (`nestable = false`) | the arg-environment payload; NEVER a `consumes` |
+
+`ArgsInfo` realizes the spec's "(non-nestable)" marker as `content` mode with `nestable = false` (a mode is
+still derivable, but a non-nestable name at a `consumes` position aborts NAMED). The `mode` set is closed —
+`{ content artifact extend value }`; re-registering a framework name, or declaring an out-of-set mode,
+aborts NAMED. **The `ArtifactRef` WRAPPER (value mode).** `ArtifactRef P` is not a table row: it is the
+PREBUILT ARM of any row consuming artifact-face `P` — a production short-circuit stamps `ArtifactRef <face>`
+as the product name of the prebuilt value, injected verbatim, never evaluated by den. It is recognized
+STRUCTURALLY by the `ArtifactRef ` prefix (so `modeOf "ArtifactRef P" = "value"`), and that prefix is a
+RESERVED product-name namespace — a user product named `ArtifactRef …` aborts NAMED (else it would be
+silently misclassified as the wrapper). `ArtifactRef` literally in a `consumes` aborts NAMED (same rule as a
+non-nestable product). `checkConsumes` is the pure definition-time gate receivers reuse (unregistered /
+non-nestable / literal-ArtifactRef all throw there). **Deferred:** the payload gen-schema RECORDS — this
+registry holds names + modes; the payload schemas arrive with mode execution.
+
+**Conversions (`den.conversions."<from>-><to>"`, spec §4.1) — `lib/products.nix`.** A conversion `{ via = fn; }`
+materializes a `from`-typed product into a `to`-typed one at a (produces, consumes) mismatch. SINGLE-STEP:
+no transitive chain search (the MLIR-style multi-hop materialization is rejected for determinism — a needed
+composite is registered explicitly as its own pair). Uniqueness is GLOBAL per (from, to) pair BY KEYING:
+the registry is one attrset keyed by the pair string, so two registrations of the same pair are the SAME
+key — a genuine cross-module collision surfaces as the module system's unique-merge conflict at
+`den.conversions."<pair>".via` (the raw type never last-wins on non-equal records → `defined multiple times` at that key path), never a silent shadow. The compile gate enforces KEY WELL-FORMEDNESS: each key
+splits on `->` into EXACTLY two non-empty faces, and NEITHER face is an `ArtifactRef` — conversions NEVER
+apply to the prebuilt arm (an `ArtifactRef P` accepted by a `consumes = P` row is DEFINITIONAL, no
+`"ArtifactRef P->P"` lookup; a wrapped-face mismatch is an unrealized-cast, converting it would force the
+prebuilt value). A missing `via`, a malformed key, or an ArtifactRef endpoint each abort NAMED.
+
+**Renders (`den.renders.<name>`, spec §4.3) — `lib/renders.nix`.** A render NAMES how a class materializes.
+It is the D7 PROMOTION of the shipped `{ evaluator; output }` instantiation record into a full registry row:
+
+| field | role |
+| --- | --- |
+| `evaluator` | the ONE nixpkgs crossing (`{ modules, specialArgs } -> system`), inert data |
+| `provision` | per-render provisioning data (pkgs/system/specialArgs/…), supplied as data, never a module injection |
+| `adapt` | binds only functionArgs-declared args, lazily |
+| `face` | builds the artifact from an eval |
+| `produces` | the product this render emits (validated ∈ the products table) |
+| `requires` | the products it consumes (each validated ∈ the products table; definition-time CONSUMPTION arrives with the families work) |
+| `params` | the finite axes — `params ? [ ]` here (NO phantom `["system"]` axis until the axis-validation work lands); names-only in this step |
+| `extendsVia` | the extend-mode capability flag (stored; consumed by extend mode later) |
+| `compatibleWith` | the compatibility predicate (stored) |
+| `output` | the flake-parts target the built systems mount at (D7 field, KEPT; a later families registry supersedes it) |
+
+The compile is PER-FLEET (invoked inside the mkDen closure): the built-in `nixos`/`darwin` rows derive their
+evaluators from the fleet's OWN `den.nixpkgs`/`den.darwin` inputs (null input ⇒ null evaluator ⇒ the
+nixpkgs-free `collect` fallback), so the lib holds compile + validation and NEVER the evaluators. These
+built-in rows are THE single source of the instantiation base — the old separate defaults tier is DELETED.
+**The precedence law (read-through):** `classes.instantiation` ≻ renders row ≻ nothing. `instantiationOf`
+reads the row's `{ evaluator; output }` as the BASE, with the `den.classes.<name>.instantiation` D4 overlay
+on top (a class setting its own `instantiate` overrides everything). The built-in rows are byte-identical to
+the deleted defaults, so the promotion is transparent — a fleet declaring nothing is unchanged.
+
+**Receives (`den.kinds.<outerKind>.receives.<slot>`, spec §4.2) — `lib/receivers.nix`.** The graft-site rule
+as DATA on the outer kind. A row is
+`{ at; consumes; arity ? "many"; render ? null; provide ? null; adapt ? null; identity ? null; shape ? null; multiplicity ? "error"; }`.
+`at` is `point: inner: [ …path ]` (paramPoint-first placement). The MODE is DERIVED — `row.mode = modeOf consumes` (F1's canonical machine form; the mode names are a docs/trace taxonomy, never a field). **F1 as a
+checked law:** a user-declared `mode` field aborts NAMED. `consumes` passes `checkConsumes` (the products-
+table gate). `render` names a registered render AND is legal ONLY on an artifact-mode row (render IS the
+artifact eval — a render on a content-mode `consumes` aborts NAMED). `arity ∈ { many singular }` (the
+singular live-edge enforcement is the mode-execution work's — two predicate-differing edges into one
+singular mount both firing throws), `multiplicity ∈ { error multi }` — out-of-domain aborts NAMED. **The
+hook-scoping corollary (the row contract):** `at` receives STRUCTURAL handles only (the paramPoint + the
+inner's structural face), never resolved graph state; `identity`/`provide`/`adapt` results are LAZY (the
+S-hashing law — a produced value never enters the structural fill, only the producing node's structural
+reference does). Duplicate slot rows are impossible by attrset construction.
+
+**The kind-include relation (`den.kinds.<kind>.includes`).** `includes` is a list of KIND NAMES — receiver
+inheritance BETWEEN KINDS (kind B including kind A inherits ALL of A's receives rows). It sits on the KIND
+ENTRY (a sibling of `receives`), never on a receives row — inheritance is a kind→kind relation, and the
+dispatch lowers one include-set per kind. It is the receives-registry's OWN relation (NOT v1 schema
+`.includes` — aspect-content — nor `ent.meta.parent` — containment). A row-level `includes` aborts NAMED
+pointing up ("lives on `den.kinds.<kind>`, not on a receives row"); an unknown include target aborts NAMED.
+**The reserved kind name `kinds`.** A kind mounts at `options.den.<kindName>`, so a kind literally named
+`kinds` would collide with the framework `den.kinds` concern option — a fleet declaring one aborts NAMED at
+kind discovery.
+
+**The dispatch (spec §4.2 ruling F4) — `resolveReceiver { compiledKinds; outerKind; slot; class }`.** The
+slot ≻ class lookup executed as NAME RESOLUTION (Néron et al. 2015 — resolution as a reachability query over
+a scope graph; the visible declarations are the nearest un-shadowed ones). It is a REAL gen-graph VISIBLE
+query over the kind-include graph, no hand-rolled walk: `graph.labeledFrom { include = k: …includes; }`
+lowers the graph; `graph.query { follow = regex.parse "include*"; where = <row-presence>; mode = "visible"; groupBy = <constant slot>; }` finds the nearest carrying kind(s). Nearest-wins is the default prefix-wins
+word order (a proper prefix beats its extensions). The mechanics:
+
+- **Two-phase slot ≻ class.** Resolve the `receives.<slot>` rows first; on EMPTY (not on ambiguity), fall
+  back to `receives.<class>` rows. The containment slot kind beats the inner's class kind — cuda (class
+  `nixos`, slot `vm`) fires `receives.vm`, the class row never misroutes it.
+- **Inheritance + shadowing.** An included kind's row is inherited; the outer kind's own row (nearer) SHADOWS
+  an inherited one.
+- **Diamond node-dedup.** Per-path enumeration answers a diamond-reachable kind once PER PATH with equal-rank
+  words; the visible answers are deduped BY NODE (first-occurrence, nearest-first order preserved) before the
+  precedence check, else a legal diamond throws a false ambiguity.
+- **The unanimous-multi rule.** A tie of DISTINCT carrying kinds at the winning depth aborts NAMED naming ALL
+  the tied kinds — UNLESS every tied row declares `multiplicity = "multi"` (then they coexist, all returned
+  visible-ordered). The opt-out must be UNANIMOUS: a tied set that DISAGREES (some `multi`, some `error`) is
+  its own named error (else the outcome would hinge on visible-order position).
+- **Legal null + laziness.** No rows anywhere returns `null` — a LEGAL no-receiver result (mode execution
+  decides its meaning). Only the WINNER's row value is forced — a reachable-but-shadowed loser's row value
+  stays a thunk (`where` probes row PRESENCE, attr names, never the value).
+
+**Forward (the materialization facet's remaining work).** Mode EXECUTION realizes the four modes on the live
+nest edges — `content` (one shared fixpoint), `artifact` (isolated inner eval, the forcing boundary),
+`extend` (extendModules, legal under a render's `extendsVia`), `value` (the prebuilt arm) — together with
+`provide`/`adapt` argument crossing, the deferred pocket, and the singular-arity live-edge enforcement. The
+root entity, output families, and collector aggregates are receiver-dispatched like every other outer and
+arrive with the same work. Should per-edge dispatch profile hot, a per-fleet resolver-hoist seam
+(`mkReceiverResolver`, closing the dispatch once over one fleet's compiled kinds) is the natural addition.
+
 ## Theory citations (§6)
 
 The libraries den-hoag delegates to carry the theory; the citations that matter at this layer:
@@ -207,6 +332,13 @@ The libraries den-hoag delegates to carry the theory; the citations that matter 
 - **Disciplines: static order declarations — Kastens, "Ordered attribute grammars" (Acta Informatica
   1980).** The `order` records (tiers + within-tier rank) are static evaluation-order declarations over the
   attribute schedule.
+- **Dispatch: name resolution as reachability — Néron, Tolmach, Visser & Wachsmuth, "A Theory of Name
+  Resolution" (ESOP 2015).** `resolveReceiver` is name resolution over a scope graph: the kind-include
+  relation is the include-edge relation, and the slot ≻ class lookup is a visible-declarations query
+  (nearest un-shadowed) via gen-graph's `visible` mode. `den.kinds.<kind>.includes` is receiver inheritance.
+- **Materialization: typed providers — Bazel's provider model.** Products are typed carriers flowing
+  producer→consumer (a render `produces` / a receiver `consumes`); the mode is derived from the product, and
+  conversions are the single-step materializations bridging a (produces, consumes) mismatch.
 
 ## Grounded terminology (r2 / v1 → graph-native)
 
