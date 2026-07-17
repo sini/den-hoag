@@ -3,8 +3,9 @@
 # placement (the paramPoint-first path), the product it `consumes` (from which its MODE is derived — F1's
 # canonical machine form), its `arity`/`multiplicity`, and the `render`/`provide`/`adapt`/`identity`/`shape`
 # hooks. This is the Bazel-provider reading once more: a slot is a typed consumer, and `consumes` names the
-# product face it accepts. This task is DECLARATION + VALIDATION; the dispatch EXECUTION (the slot ≻ class
-# lookup as a visible query over `kindOf include*`) is the mode-execution work. See REFERENCE.md.
+# product face it accepts. Registry compile + validation live here alongside the slot ≻ class DISPATCH
+# (`resolveReceiver`, a visible query over `kindOf include*`); the mode EXECUTION on live nest edges is a
+# later step. See REFERENCE.md.
 #
 # THE KIND-INCLUDE RELATION IS BORN HERE (Néron et al. 2015 name resolution — an include edge in the scope
 # graph): `den.kinds.<kind>.includes` is a list of KIND NAMES — the receiver-inheritance relation BETWEEN
@@ -22,6 +23,7 @@
 {
   prelude,
   productsLib,
+  graph,
 }:
 let
   # `arity` domain (spec §4.2): `many` (the default) or `singular`. The singular live-edge enforcement (two
@@ -134,7 +136,103 @@ let
       throw "den.kinds: receives table on unknown outer kind '${builtins.head unknownOuter}' (not a registered kind)"
     else
       prelude.mapAttrs entryOf rows;
+
+  # ── THE DISPATCH (spec §4.2 ruling F4): slot ≻ class as a gen-graph VISIBLE query ─────────────────────
+  # `resolveReceiver { compiledKinds; outerKind; slot; class }` executes the graft-site lookup: the outer
+  # kind's own rows first, inherited rows via kind-includes with NEAREST-WINS, the containment SLOT kind
+  # taking precedence over the inner's CLASS kind, an equal-precedence tie a definition-time throw (unless
+  # the winning row declares `multiplicity = "multi"`). The walk is a REAL gen-graph query over the
+  # kind-include graph — no hand-rolled closure. Néron et al. 2015: name resolution as a reachability query
+  # over a scope graph, the visible declarations = the nearest un-shadowed ones.
+  #
+  # `resolveKey outerKind key` finds the nearest kind(s) carrying `receives.<key>`, upward over `include*`:
+  #   • kindGraph lowers the receiver-inheritance relation: one include-set per KIND (the kind-include field).
+  #   • `where` gates a kind as an ANSWER only when it carries the key — LOAD-BEARING: without it the
+  #     depth-0 outer kind (nullable `include*`) always answers, row or not, and nothing inherits.
+  #   • `groupBy = _: key` forces the CONSTANT single group so every carrying kind competes for nearest-wins;
+  #     the default per-node grouping would put each kind in its own group and never shadow anything.
+  #   • nearest-wins is the DEFAULT endOfPath = -1 prefix-wins word order (a proper prefix beats its
+  #     extensions) — the single-label alphabet makes label ranking inert, so order.labels stays unset.
+  # `res.visible` = the nearest carrying kind(s) (equal-rank ties included = the ambiguity set); depth-0
+  # self answers first when it carries the row.
+  resolveKey =
+    compiledKinds: outerKind: key:
+    let
+      kindGraph = graph.labeledFrom {
+        include = k: compiledKinds.${k}.includes or [ ];
+      };
+      res = graph.query {
+        graph = kindGraph;
+        from = outerKind;
+        follow = graph.regex.parse "include*";
+        where = k: (compiledKinds.${k}.receives or { }) ? ${key};
+        mode = "visible";
+        groupBy = _: key;
+      };
+      # DIAMOND DEDUP: per-path enumeration answers a diamond-reachable kind ONCE PER PATH with equal-rank
+      # words; dedup the visible answers by NODE before the equal-precedence check, else a legal diamond
+      # throws a false ambiguity. First-occurrence dedup preserves the visible (nearest-first) node order.
+      dedupNodes = builtins.foldl' (
+        acc: a: if builtins.elem a.node acc then acc else acc ++ [ a.node ]
+      ) [ ] res.visible;
+    in
+    dedupNodes;
+
+  # `resolveReceiver { compiledKinds; outerKind; slot; class }` — the slot ≻ class two-phase resolution.
+  # Resolve the `receives.<slot>` rows first; on EMPTY, fall back to `receives.<class>` rows. A tie of two
+  # DISTINCT carrying kinds at the winning depth (after the node-dedup) throws NAMED, unless ALL tied rows
+  # declare `multiplicity = "multi"` (then they coexist — all returned, visible-ordered); a tied set that
+  # DISAGREES on multiplicity is its own named error (the opt-out must be unanimous, else the outcome would
+  # hinge on visible-order position). An unknown outer kind throws; no rows anywhere returns `null` — a
+  # LEGAL no-receiver result (mode execution decides its meaning). Pure + total.
+  resolveReceiver =
+    {
+      compiledKinds,
+      outerKind,
+      slot,
+      class,
+    }:
+    if !(compiledKinds ? ${outerKind}) then
+      throw "den.kinds: resolveReceiver on unknown outer kind '${outerKind}'"
+    else
+      let
+        rowFor = key: kind: compiledKinds.${kind}.receives.${key};
+        # slot phase, then class phase on empty (the F4 fallback).
+        slotKinds = resolveKey compiledKinds outerKind slot;
+        classKinds = resolveKey compiledKinds outerKind class;
+        phase =
+          if slotKinds != [ ] then
+            {
+              key = slot;
+              kinds = slotKinds;
+            }
+          else
+            {
+              key = class;
+              kinds = classKinds;
+            };
+        winners = map (rowFor phase.key) phase.kinds;
+        # the multi opt-out must be UNANIMOUS across the tied set — otherwise the outcome would depend on
+        # visible-order position (whichever tied row sorts first). ALL tied rows declaring `multi` ⇒ they
+        # coexist (all returned, visible-ordered); ANY declaring `error` (the default) ⇒ ambiguity; a set
+        # that DISAGREES (some multi, some error) is its own named error (never silently resolved either way).
+        multiFlags = map (w: (w.multiplicity or "error") == "multi") winners;
+        allMulti = builtins.all (x: x) multiFlags;
+        anyMulti = builtins.any (x: x) multiFlags;
+      in
+      if phase.kinds == [ ] then
+        null
+      else if builtins.length phase.kinds == 1 then
+        builtins.head winners
+      else if allMulti then
+        winners
+      else if anyMulti then
+        # some-but-not-all (allMulti already excluded above)
+        throw
+          "den.kinds: equal-precedence receivers disagree on multiplicity: ${builtins.toJSON phase.kinds} — all tied rows must declare multiplicity = \"multi\" to coexist"
+      else
+        throw "den.kinds: ambiguous receiver for '${outerKind}.receives.${phase.key}' — kinds ${builtins.toJSON phase.kinds} carry it at equal precedence; disambiguate or declare multiplicity = \"multi\"";
 in
 {
-  inherit compile;
+  inherit compile resolveReceiver;
 }

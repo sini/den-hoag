@@ -167,11 +167,14 @@ let
   # instantiation record into a full §4.3 registry row. PER-FLEET compile (the built-in nixos/darwin
   # evaluators close over the fleet's own nixpkgs/darwin inputs) — invoked inside the mkDen closure.
   rendersLib = import ./renders.nix { inherit prelude; };
-  # The receives registry (den.kinds.<outerKind>.receives.<slot>): the graft-site rows, validated (§4.2).
+  # The receives registry (den.kinds.<outerKind>.receives.<slot>): the graft-site rows, validated (§4.2), +
+  # the slot ≻ class dispatch (§4.2 F4) executed as a gen-graph visible query over the kind-include graph.
   # Mode derives via the products table; the outer-kind + includes + render names are checked. PER-FLEET
   # compile (the render-name check reads the per-fleet render rows) — invoked inside the mkDen closure.
+  # `graph` is the gen-graph lib (the labeled-query calculus) — threaded from the UNSHADOWED outer-scope arg
+  # here, the same seam productsLib rides (the mkDen-local `graph = graphEscape {…}` shadow is deeper in).
   receiversLib = import ./receivers.nix {
-    inherit prelude productsLib;
+    inherit prelude productsLib graph;
   };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
@@ -1400,6 +1403,9 @@ in
     # `receivers.compile { rows; knownKinds; products; renders }` validates the outer kind, derives each
     # row's mode via the products table, and checks includes/render names.
     receivers = receiversLib;
+    # The slot ≻ class dispatch (§4.2 F4), exposed flat for the suite's dispatch scenarios: `resolveReceiver
+    # { compiledKinds; outerKind; slot; class }` runs the visible query over the kind-include graph.
+    resolveReceiver = receiversLib.resolveReceiver;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

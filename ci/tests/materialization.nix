@@ -201,6 +201,157 @@ let
       products = frameworkProducts;
       renders = pureRenders;
     };
+
+  # ── dispatch fixtures (§4.2 F4) ──
+  # resolveReceiver consumes an already-COMPILED kinds table verbatim (it reads `.receives`/`.includes`
+  # structure and returns the matched row), so the witnesses hand-build compiled-shape kind entries whose
+  # rows carry a `tag` marker to identify which row fired. The gen-graph lib is threaded through
+  # resolveReceiver itself; the includes here declare the receiver-inheritance edges the query walks.
+  inherit (denHoag.internal) resolveReceiver;
+  row = tag: { inherit tag; };
+
+  # (1)+(2) the CUDA kind: a slot row `vm`, a class row `nixos`, a `user` slot row, all on ONE kind.
+  cudaKinds = {
+    cortex = {
+      includes = [ ];
+      receives = {
+        vm = row "vm-row";
+        nixos = row "nixos-row";
+        user = row "user-row";
+      };
+    };
+  };
+  # (3) inheritance: b includes a; a carries receives.user.
+  inheritKinds = {
+    a = {
+      includes = [ ];
+      receives.user = row "a-user";
+    };
+    b = {
+      includes = [ "a" ];
+      receives = { };
+    };
+  };
+  # b shadows a's row with its own receives.user.
+  shadowKinds = {
+    a = {
+      includes = [ ];
+      receives.user = row "a-user";
+    };
+    b = {
+      includes = [ "a" ];
+      receives.user = row "b-user";
+    };
+  };
+  # (4) ambiguity: b includes a1+a2, both carry receives.user, b carries none.
+  ambiguousKinds = {
+    a1 = {
+      includes = [ ];
+      receives.user = row "a1-user";
+    };
+    a2 = {
+      includes = [ ];
+      receives.user = row "a2-user";
+    };
+    b = {
+      includes = [
+        "a1"
+        "a2"
+      ];
+      receives = { };
+    };
+  };
+  # the same, but both rows opt into multiplicity = "multi" (both return, no throw).
+  multiKinds = {
+    a1 = {
+      includes = [ ];
+      receives.user = row "a1-user" // {
+        multiplicity = "multi";
+      };
+    };
+    a2 = {
+      includes = [ ];
+      receives.user = row "a2-user" // {
+        multiplicity = "multi";
+      };
+    };
+    b = {
+      includes = [
+        "a1"
+        "a2"
+      ];
+      receives = { };
+    };
+  };
+  # a tied set that DISAGREES on multiplicity: a1 declares multi, a2 declares error (the default). The
+  # opt-out must be UNANIMOUS, so this is a named error regardless of visible-order position. Two variants
+  # with the tied kinds swapped pin that the outcome does NOT flip on order (the order-flip WAS the bug).
+  mixedMultiKinds = {
+    a1 = {
+      includes = [ ];
+      receives.user = row "a1-user" // {
+        multiplicity = "multi";
+      };
+    };
+    a2 = {
+      includes = [ ];
+      receives.user = row "a2-user"; # default multiplicity = "error"
+    };
+    b = {
+      includes = [
+        "a1"
+        "a2"
+      ];
+      receives = { };
+    };
+  };
+  # the same disagreement with the include order reversed (a2 first) — must ALSO throw.
+  mixedMultiKindsSwapped = mixedMultiKinds // {
+    b = {
+      includes = [
+        "a2"
+        "a1"
+      ];
+      receives = { };
+    };
+  };
+  # (5) diamond: b includes a1+a2, both include c, row on c ONLY.
+  diamondKinds = {
+    c = {
+      includes = [ ];
+      receives.user = row "c-user";
+    };
+    a1 = {
+      includes = [ "c" ];
+      receives = { };
+    };
+    a2 = {
+      includes = [ "c" ];
+      receives = { };
+    };
+    b = {
+      includes = [
+        "a1"
+        "a2"
+      ];
+      receives = { };
+    };
+  };
+  # (8) laziness: b INCLUDES a (a is graph-REACHABLE, not orphaned), b carries receives.user (wins at depth
+  # 0), and a's receives.user VALUE throws — a reachable-but-SHADOWED row. Resolving b.user must return b's
+  # row WITHOUT forcing a's value: `where` probes attr PRESENCE (names) and the result forces only the
+  # winner, so a shadowed loser's value stays a thunk. This pins the property against a force-non-winners
+  # regression (a graph-unreachable poison could not).
+  poisonKinds = {
+    b = {
+      includes = [ "a" ];
+      receives.user = row "b-user";
+    };
+    a = {
+      includes = [ ];
+      receives.user = throw "shadowed row value forced — laziness violated";
+    };
+  };
 in
 {
   flake.tests.materialization = {
@@ -676,6 +827,154 @@ in
         ]
       );
       expected = true;
+    };
+
+    # ── §4.2 F4 THE DISPATCH: slot ≻ class as a gen-graph visible query ──
+    # (1) THE CUDA WITNESS: an outer kind carrying `receives.vm` (a slot row) AND `receives.nixos` (a class
+    # row); an inner of class nixos in slot `vm` resolves the VM row — the class row must NOT fire (slot beats
+    # class). `tag` distinguishes the resolved row.
+    test-dispatch-cuda-slot-beats-class = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = cudaKinds;
+          outerKind = "cortex";
+          slot = "vm";
+          class = "nixos";
+        }).tag;
+      expected = "vm-row";
+    };
+    # the same outer kind, an inner in slot `user` (a user row present) resolves the user row.
+    test-dispatch-cuda-user-slot = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = cudaKinds;
+          outerKind = "cortex";
+          slot = "user";
+          class = "nixos";
+        }).tag;
+      expected = "user-row";
+    };
+    # (2) CLASS FALLBACK: a slot with no row anywhere + a `receives.<class>` row present → the class row.
+    test-dispatch-class-fallback = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = cudaKinds;
+          outerKind = "cortex";
+          slot = "ghostslot";
+          class = "nixos";
+        }).tag;
+      expected = "nixos-row";
+    };
+    # (3) INHERITANCE: kind B includes kind A; A carries `receives.user`; resolving against B finds A's row.
+    test-dispatch-inheritance = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = inheritKinds;
+          outerKind = "b";
+          slot = "user";
+          class = "nixos";
+        }).tag;
+      expected = "a-user";
+    };
+    # B declaring its OWN `receives.user` SHADOWS A's — B's row is returned (nearest-wins).
+    test-dispatch-inheritance-shadow-wins = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = shadowKinds;
+          outerKind = "b";
+          slot = "user";
+          class = "nixos";
+        }).tag;
+      expected = "b-user";
+    };
+    # (4) AMBIGUITY: B includes A1+A2, both carrying `receives.user`, B carries none → named throw naming
+    # BOTH A1 and A2 (equal-precedence tie after node-dedup).
+    test-dispatch-ambiguity-throw = {
+      expr = throws (resolveReceiver {
+        compiledKinds = ambiguousKinds;
+        outerKind = "b";
+        slot = "user";
+        class = "nixos";
+      });
+      expected = true;
+    };
+    # with `multiplicity = "multi"` on ALL tied rows, both return in visible order (no throw).
+    test-dispatch-multiplicity-multi = {
+      expr = map (r: r.tag) (resolveReceiver {
+        compiledKinds = multiKinds;
+        outerKind = "b";
+        slot = "user";
+        class = "nixos";
+      });
+      expected = [
+        "a1-user"
+        "a2-user"
+      ];
+    };
+    # a tied set DISAGREEING on multiplicity (one multi, one error) → named throw; the opt-out is unanimous.
+    test-dispatch-multiplicity-mixed-throw = {
+      expr = throws (resolveReceiver {
+        compiledKinds = mixedMultiKinds;
+        outerKind = "b";
+        slot = "user";
+        class = "nixos";
+      });
+      expected = true;
+    };
+    # the SAME disagreement with the tied kinds in reversed include order ALSO throws — the outcome does not
+    # flip on visible-order position (the order-flip was the pre-unanimous bug).
+    test-dispatch-multiplicity-mixed-throw-swapped = {
+      expr = throws (resolveReceiver {
+        compiledKinds = mixedMultiKindsSwapped;
+        outerKind = "b";
+        slot = "user";
+        class = "nixos";
+      });
+      expected = true;
+    };
+    # (5) DIAMOND: B includes A1+A2, both include C, row on C ONLY → resolves C's row, NO throw (per-path
+    # enumeration answers C twice with equal-rank words; the node-dedup prevents a false ambiguity).
+    test-dispatch-diamond = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = diamondKinds;
+          outerKind = "b";
+          slot = "user";
+          class = "nixos";
+        }).tag;
+      expected = "c-user";
+    };
+    # (6) NO RECEIVER → null (a LEGAL return — the caller's no-receiver case).
+    test-dispatch-no-receiver-null = {
+      expr = resolveReceiver {
+        compiledKinds = cudaKinds;
+        outerKind = "cortex";
+        slot = "ghostslot";
+        class = "ghostclass";
+      };
+      expected = null;
+    };
+    # unknown outer kind → named throw.
+    test-dispatch-unknown-outer-throw = {
+      expr = throws (resolveReceiver {
+        compiledKinds = cudaKinds;
+        outerKind = "nope";
+        slot = "vm";
+        class = "nixos";
+      });
+      expected = true;
+    };
+    # (8) LAZINESS: resolving one slot never forces an UNRELATED kind's row VALUE. A poison thunk in a
+    # sibling kind's row value must not fire — `where` probes row PRESENCE (attr names), never the value.
+    test-dispatch-laziness-poison = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = poisonKinds;
+          outerKind = "b";
+          slot = "user";
+          class = "nixos";
+        }).tag;
+      expected = "b-user";
     };
   };
 }
