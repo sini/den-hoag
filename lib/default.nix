@@ -163,6 +163,10 @@ let
   # compile + mode-set/reserved validation (§4.1). Materialization reads modes off the compiled table;
   # receivers call `checkConsumes` at a consumes position. Pure Law A1 (mapAttrs + validation).
   productsLib = import ./products.nix { inherit prelude; };
+  # The render registry (den.renders): the D7 promotion of the shipped `{ evaluator; output }`
+  # instantiation record into a full §4.3 registry row. PER-FLEET compile (the built-in nixos/darwin
+  # evaluators close over the fleet's own nixpkgs/darwin inputs) — invoked inside the mkDen closure.
+  rendersLib = import ./renders.nix { inherit prelude; };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
@@ -377,6 +381,20 @@ let
         };
       };
 
+      # den.renders.<name> — the render registry (§4.3, the D7 promotion). Each entry declares how a class
+      # materializes: `{ evaluator ? null; provision ? null; adapt ? null; face ? null; produces ? null;
+      # requires ? []; params ? []; extendsVia ? null; compatibleWith ? null; output ? null; }`. `raw`
+      # holds each record unmerged (its `evaluator`/`provision`/`adapt` are functions). The built-in
+      # nixos/darwin rows are seeded PER-FLEET from `den.nixpkgs`/`den.darwin`; a user row registers beside
+      # them. Absent ⇒ a fleet with only the built-in system faces.
+      rendersDecl = {
+        options.den.renders = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Render registry: `<name> = { evaluator ? null; produces ? null; requires ? []; params ? []; output ? null; … }` (§4.3).";
+        };
+      };
+
       # den.overrides — the pre-identity-freeze match/rewrite tier (§2.4). An ordered list of
       # `{ match = { kind ?; from ?; to ?; data ? {}; }; rewrite = <data-patch> | null; }`: a framework
       # edge intent passes through BEFORE its edgeId, first match wins, `rewrite = null` suppresses.
@@ -572,6 +590,7 @@ let
           disciplinesDecl
           productsDecl
           conversionsDecl
+          rendersDecl
           overridesDecl
           demandKindsDecl
           demandContextDecl
@@ -951,23 +970,26 @@ let
       # bridge). The instantiation is NOT a core constant — a new system class (droid, or anything a user
       # invents) is a pure declaration needing zero edits here or in gen-flake.
       #
-      # The nixos/darwin rows are DEFAULT declarations (D4, overridable — existing fleets unchanged): each derives its
-      # evaluator from the supplied `den.nixpkgs`/`den.darwin` input (null input ⇒ null evaluator ⇒ the
-      # nixpkgs-free `collect` terminal, den-hoag's pure path). A `den.classes.<name>.instantiation`
-      # override wins over the default; a class setting its own `instantiate` overrides everything.
-      defaultInstantiations = {
-        nixos = {
-          evaluator = if npkgs == null then null else npkgs.lib.nixosSystem;
-          output = "nixosConfigurations";
-        };
-        darwin = {
-          evaluator = if ndarwin == null then null else ndarwin.lib.darwinSystem;
-          output = "darwinConfigurations";
-        };
+      # The compiled render table (§4.3, the D7 promotion) — the SINGLE source of the built-in nixos/darwin
+      # instantiation rows: seeded PER-FLEET from `npkgs`/`ndarwin` (the null-input ⇒ null-evaluator ⇒
+      # nixpkgs-free `collect` derivation lives in renders.nix `builtinRows`), plus the fleet's `den.renders`
+      # registrations, validated (produces/requires against the products table). The evaluators close over
+      # the fleet's own inputs, so the compile is invoked HERE — inside the closure, after the input reads.
+      rendersRows = rendersLib.compile {
+        registered = ent.config.den.renders or { };
+        inherit npkgs ndarwin;
+        products = productsTable;
       };
+      # THE READ-THROUGH (spec §4.3): the render row supplies the BASE `{ evaluator; output }`; the
+      # `den.classes.<name>.instantiation` D4 overlay STAYS ON TOP. Precedence law:
+      # `classes.instantiation` ≻ render row ≻ nothing. The built-in nixos/darwin rows are always present in
+      # `rendersRows`, so a fleet declaring nothing reads them unchanged — the promotion is transparent (the
+      # else arm is `{ }`: a class name with no render row and no classes.instantiation is un-crossed, the
+      # nixpkgs-free `collect` default). See REFERENCE.md.
       instantiationOf =
         name:
-        (defaultInstantiations.${name} or { }) // (ent.config.den.classes.${name}.instantiation or { });
+        (if rendersRows ? ${name} then { inherit (rendersRows.${name}) evaluator output; } else { })
+        // (ent.config.den.classes.${name}.instantiation or { });
       classDecls = prelude.genAttrs effectiveClassNames (
         name:
         let
@@ -1235,6 +1257,9 @@ let
         products = productsTable;
         # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated.
         conversions = conversionsTable;
+        # The compiled render table (§4.3, the D7 promotion): the built-in nixos/darwin rows (seeded
+        # per-fleet from den.nixpkgs/den.darwin) + the fleet's `den.renders` registrations, validated.
+        renders = rendersRows;
         scopeRoots = scopeRoots;
         inherit structural;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
@@ -1332,6 +1357,10 @@ in
     products = productsLib;
     compileProducts = productsLib.compile;
     compileConversions = productsLib.compileConversions;
+    # The render registry (§4.3, the D7 promotion): the lib, for the suite's per-fleet compile + validation
+    # scenarios. `renders.compile { registered; npkgs; ndarwin; products }` seeds the built-in nixos/darwin
+    # rows and validates produces/requires against the compiled products table.
+    renders = rendersLib;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

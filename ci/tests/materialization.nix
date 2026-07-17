@@ -65,6 +65,99 @@ let
       };
     };
   };
+
+  # ── the renders registry seam (lib/renders.nix, §4.3) ──
+  # `renders` = the lib (its compile + validation). `compile { registered; npkgs; ndarwin; products; }` is
+  # PER-FLEET — the built-in nixos/darwin evaluators close over the fleet's own nixpkgs/darwin inputs, so
+  # the lib holds compile + validation and NEVER the evaluators themselves. The compiled table is what the
+  # read-through reads.
+  inherit (denHoag.internal) renders;
+
+  # a fake `{ modules, specialArgs } -> system` evaluator (the declared-instantiation.nix precedent): tags
+  # + reflects, proving a crossing routes THROUGH the declared evaluator without a real nixpkgs.
+  fakeEval = args: { __fakeCrossed = true; } // args;
+
+  # the built-in rows on the PURE path (npkgs/ndarwin absent) — null evaluators, the collect fallback. This
+  # is the built-in instantiation base the read-through reads directly; produces = SystemInfo (artifact).
+  pureRenders = renders.compile {
+    registered = { };
+    npkgs = null;
+    ndarwin = null;
+    products = frameworkProducts;
+  };
+
+  # a user render row (a synthetic system face) beside the built-ins, resolving its `produces` against the
+  # framework products table.
+  userRenders = renders.compile {
+    registered = {
+      fakesys = {
+        evaluator = fakeEval;
+        produces = "SystemInfo";
+        output = "fakeConfigurations";
+      };
+    };
+    npkgs = null;
+    ndarwin = null;
+    products = frameworkProducts;
+  };
+
+  # ── the D7 read-through witnesses (through mkDen) ──
+  # (a) the OVERLAY-WINS witness: a fleet promoting the nixos render row AND declaring
+  # `classes.nixos.instantiation.evaluator` — the classes.instantiation overlay must win over the row
+  # (precedence: classes.instantiation ≻ render row ≻ nothing). Mirrors declared-instantiation.nix's corpus.
+  overlayFleet = denHoag.mkDen [
+    { config.den.schema.server.parent = null; }
+    {
+      config.den = {
+        server.box1 = { };
+        contentClass.server = "nixos";
+        aspects.srv.nixos.marker = "n";
+        classes.nixos.instantiation.evaluator = fakeEval;
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.include = [
+          {
+            at = config.den.server.box1;
+            aspects = [ config.den.aspects.srv ];
+          }
+        ];
+      }
+    )
+  ];
+
+  # (b) the user-row D7 witness: a fleet declaring a NEW system class with a `den.renders.<class>` row (a
+  # fake evaluator), whose content class routes through the promoted registry to a class terminal — the D7
+  # path exercised through the NEW registry (synthetic, collect-level, no real build).
+  userRowFleet = denHoag.mkDen [
+    { config.den.schema.box.parent = null; }
+    {
+      config.den = {
+        box.node1 = { };
+        contentClass.box = "fakeclass";
+        classes.fakeclass = { };
+        renders.fakeclass = {
+          evaluator = fakeEval;
+          produces = "SystemInfo";
+          output = "fakeConfigurations";
+        };
+        aspects.a.fakeclass.marker = "m";
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.include = [
+          {
+            at = config.den.box.node1;
+            aspects = [ config.den.aspects.a ];
+          }
+        ];
+      }
+    )
+  ];
 in
 {
   flake.tests.materialization = {
@@ -257,6 +350,118 @@ in
           };
         };
       });
+      expected = true;
+    };
+
+    # ── §4.3 the renders registry (D7 promoted) ──
+    # the built-in nixos/darwin rows are present in the compiled table (the framework's system-class defaults).
+    test-renders-builtins-present = {
+      expr = (pureRenders ? nixos) && (pureRenders ? darwin);
+      expected = true;
+    };
+    # PER-FLEET derivation: on the pure path (no nixpkgs/darwin input) the built-in evaluators are null —
+    # the nixpkgs-free collect fallback (den-hoag's pure path).
+    test-renders-builtins-pure-null-evaluator = {
+      expr = {
+        nixos = pureRenders.nixos.evaluator;
+        darwin = pureRenders.darwin.evaluator;
+      };
+      expected = {
+        nixos = null;
+        darwin = null;
+      };
+    };
+    # the built-in rows produce SystemInfo (both artifact-mode faces per the products table) and carry their
+    # D7 `output` field (the flake-parts target the built systems mount at).
+    test-renders-builtins-produces-and-output = {
+      expr = {
+        nixosProduces = pureRenders.nixos.produces;
+        nixosOutput = pureRenders.nixos.output;
+        darwinOutput = pureRenders.darwin.output;
+      };
+      expected = {
+        nixosProduces = "SystemInfo";
+        nixosOutput = "nixosConfigurations";
+        darwinOutput = "darwinConfigurations";
+      };
+    };
+    # a user render row registers beside the built-ins with its declared evaluator + output.
+    test-renders-user-row = {
+      expr = {
+        hasEvaluator = builtins.isFunction userRenders.fakesys.evaluator;
+        output = userRenders.fakesys.output;
+      };
+      expected = {
+        hasEvaluator = true;
+        output = "fakeConfigurations";
+      };
+    };
+    # a render row whose `produces` names an unregistered product aborts NAMED.
+    test-renders-produces-unregistered-throw = {
+      expr = throws (
+        renders.compile {
+          registered = {
+            bad = {
+              evaluator = fakeEval;
+              produces = "NopeInfo";
+            };
+          };
+          npkgs = null;
+          ndarwin = null;
+          products = frameworkProducts;
+        }
+      );
+      expected = true;
+    };
+    # a render row whose `requires` names an unregistered product aborts NAMED (shape-checked at compile;
+    # definition-time CONSUMPTION arrives with the families work).
+    test-renders-requires-unregistered-throw = {
+      expr = throws (
+        renders.compile {
+          registered = {
+            bad = {
+              evaluator = fakeEval;
+              requires = [ "NopeInfo" ];
+            };
+          };
+          npkgs = null;
+          ndarwin = null;
+          products = frameworkProducts;
+        }
+      );
+      expected = true;
+    };
+    # a render row whose `params` axis is not a name (a non-string) aborts NAMED (axes are names only here;
+    # axis validation arrives with the families/root work).
+    test-renders-params-non-name-throw = {
+      expr = throws (
+        renders.compile {
+          registered = {
+            bad = {
+              evaluator = fakeEval;
+              params = [ 42 ];
+            };
+          };
+          npkgs = null;
+          ndarwin = null;
+          products = frameworkProducts;
+        }
+      );
+      expected = true;
+    };
+
+    # ── the D7 read-through (the behavior-adjacent edit) ──
+    # (a) OVERLAY WINS: a fleet promoting the nixos render row AND declaring classes.nixos.instantiation.
+    # evaluator — the classes.instantiation overlay wins over the render row (precedence law:
+    # classes.instantiation ≻ render row ≻ nothing). The fake evaluator's tag proves the OVERRIDE crossed.
+    test-renders-read-through-overlay-wins = {
+      expr = overlayFleet.nixosConfigurations.box1.__fakeCrossed or false;
+      expected = true;
+    };
+    # (b) USER-ROW D7: a fleet's new system class routes through its den.renders row's fake evaluator to a
+    # class terminal — the D7 path exercised through the NEW registry (synthetic, collect-level).
+    test-renders-read-through-user-row = {
+      expr = userRowFleet.outputs.fakeConfigurations.node1.__fakeCrossed or false;
       expected = true;
     };
   };

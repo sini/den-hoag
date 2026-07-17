@@ -48,6 +48,7 @@ let
     "identity.nix"
     "edges.nix"
     "products.nix"
+    "renders.nix"
     "graph-escape.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
@@ -90,10 +91,21 @@ let
   #                             below), not shim vocabulary.
   #   bare `provides`/`forwards` — English verbs ("a policy body forwards its ctx", "Task 2 provides the
   #                             builder"); the SHIM surfaces are caught by `forwardTo` + `self-provide`.
+  #   `compatibleWith`/`compatible`/`compatibility` — the §4.3 render `compatibleWith` field + its prose;
+  #                             a real product-face predicate, not the shim. It happens to contain the
+  #                             `compat` substring, so the word-family is stripped before the scan (bare
+  #                             `compat`, `compat/`, `denCompat` stay caught — `compatible` has no `/` or
+  #                             `den` neighbor that the shim vocabulary needs).
+  compatibleFamily = [
+    "compatibleWith"
+    "compatibility"
+    "compatible"
+  ];
+  stripCompatible = t: builtins.replaceStrings compatibleFamily (map (_: "") compatibleFamily) t;
   tokenOffenders = builtins.concatMap (
     f:
     let
-      t = readCore f;
+      t = stripCompatible (readCore f);
     in
     map (tok: "${f}:${tok}") (builtins.filter (tok: hasInfix tok t) forbiddenTokens)
   ) coreFiles;
