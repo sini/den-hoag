@@ -158,7 +158,7 @@ let
   # The merge-discipline registry (den.disciplines): compile + laws-ladder validation (§5). The closure
   # gate (edges.nix) validates a closure kind's discipline against the compiled table; the framework
   # instance names are reserved here for the merge orders declared in later steps. Pure Law A1.
-  concernDisciplines = import ./concern-disciplines.nix { inherit prelude; };
+  concernDisciplines = import ./concern-disciplines.nix { inherit prelude algebra; };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;

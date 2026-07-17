@@ -81,22 +81,32 @@ let
   # ── ONE LAWFUL SYNTHETIC PER LADDER CLASS (all four sampler branches execute) ────────────────────
   # ordered-monoid: list concatenation — associative with `[ ]` identity, NOT commutative (order-bearing,
   #   exactly the settings-layer / neron discipline shape the framework instances declare in later steps).
-  # commutative-monoid: attrset-union over DISJOINT keys — associative + a `{ }` identity + commutative
-  #   when the sample keys never collide, but NOT idempotent on multi-key values (distinguishes it from a
-  #   semilattice: it is sampled commutatively over disjoint singletons).
+  # commutative-monoid: per-key NUMERIC SUM merge — commutative + associative + a `{ }` identity, and
+  #   GENUINELY NOT idempotent (`{k=1}·{k=1} == {k=2} != {k=1}`), so it is a true commutative monoid that
+  #   is NOT a semilattice (the distinguishing witness the ladder needs — a `//` union would be idempotent
+  #   and collapse the rung distinction).
   # join-semilattice: attrset-of-unit union (`//` over presence attrsets) — genuinely ACI (idempotent
   #   `a // a == a`, commutative + associative on unit values); the LAWFUL twin of the unlawful `a ++ b`.
   # shadow: attrset `//` last-wins over OVERLAPPING keys — Leijen's scoped-label record merge.
+  # per-key numeric-sum merge: over the key union, add the two contributions (absent ⇒ 0).
+  sumMerge =
+    a: b:
+    builtins.listToAttrs (
+      map (k: {
+        name = k;
+        value = (a.${k} or 0) + (b.${k} or 0);
+      }) (builtins.attrNames (a // b))
+    );
   lawfulInstances = {
     ord-append = {
       laws = "ordered-monoid";
       empty = [ ];
       combine = a: b: a ++ b;
     };
-    comm-disjoint = {
+    comm-sum = {
       laws = "commutative-monoid";
       empty = { };
-      combine = a: b: a // b;
+      combine = sumMerge;
     };
     join-unit = {
       laws = "join-semilattice";
@@ -120,12 +130,13 @@ let
       [ 2 ]
       [ 1 ]
     ];
-    # DISJOINT singleton attrsets (+ empty) sampled commutatively — no key collision, so union commutes.
-    comm-disjoint = [
+    # numeric attrsets (+ empty) with SHARED keys — so the per-key sum accumulates (commutativity +
+    # associativity witnessed on overlapping keys; the repeated `{ k = 1; }` witnesses non-idempotence).
+    comm-sum = [
       { }
-      { a = 1; }
-      { b = 2; }
-      { c = 3; }
+      { k = 1; }
+      { k = 2; }
+      { k = 1; }
     ];
     # presence attrsets (unit values) — `//` is idempotent on them (`{a={};} // {a={};} == {a={};}`).
     join-unit = [
@@ -140,26 +151,61 @@ let
       { k = 2; }
       { k = 3; }
     ];
+    # settings-layers (the framework instance, §2.7): record LAYERS folded last-wins-per-field. Incl. the
+    # empty record + overlapping-field layers (so associativity + identity are witnessed on a real
+    # cascade; the fold is NOT commutative — a later layer overrides an earlier at a shared field — so
+    # ordered-monoid, checked here, is exactly right).
+    settings-layers = [
+      { }
+      { level = "info"; }
+      {
+        level = "warn";
+        tcp = 80;
+      }
+      { level = "info"; }
+    ];
   };
 
-  # THE HARNESS OVER THE COMPILED TABLE: register the lawful synthetics on `den.disciplines`, take the
-  # COMPILED table back, and run `checkLaws` over EVERY registered entry using its declared sample set.
+  # THE HARNESS OVER THE COMPILED TABLE: `checkTable samplesMap table` runs `checkLaws` over EVERY entry
+  # in a compiled discipline table, using that discipline's declared sample set. A registered discipline
+  # with NO declared samples is a harness gap — caught LOUD (the sample map must cover the table), which
+  # is what stops a future instance from riding in unchecked. Parameterized over the sample map so the
+  # orphan-discipline teeth (below) can prove the gap actually throws.
+  checkTable =
+    samplesMap: table:
+    builtins.mapAttrs (
+      name: entry:
+      checkLaws {
+        inherit name;
+        inherit (entry) laws empty combine;
+        samples =
+          samplesMap.${name}
+            or (throw "property-laws: registered discipline '${name}' has no sample set — add one beside its instance");
+      }
+    ) table;
+  # register the lawful synthetics on `den.disciplines`, take the COMPILED table back, and check it.
   # Iterating the compiled table (not `lawfulInstances` directly) is the AC: a framework instance
   # registered in a later step is covered automatically the moment it (and its samples) are added.
   compiledTable = (denHoag.mkDen [ { config.den.disciplines = lawfulInstances; } ]).den.disciplines;
-  # every compiled discipline checked against its sample set — a discipline with no declared samples is
-  # a harness gap, caught LOUD here (the sample map must cover the table).
-  checkedTable = builtins.mapAttrs (
-    name: entry:
-    checkLaws {
-      inherit name;
-      inherit (entry) laws empty combine;
-      samples =
-        lawfulSamples.${name}
-          or (throw "property-laws: registered discipline '${name}' has no sample set — add one beside its instance");
-    }
-  ) compiledTable;
+  checkedTable = checkTable lawfulSamples compiledTable;
   allLawful = builtins.all (v: v == true) (builtins.attrValues checkedTable);
+
+  # THE COVERAGE TEETH: a compiled table carrying an ORPHAN discipline (registered, but with no sample
+  # set in the map) MUST throw when the harness reaches it — this is the exact mechanism T3+ rides
+  # (`or (throw …)` degrading to `or [ ]` would keep the suite green while silently skipping a discipline).
+  orphanTableThrows =
+    (builtins.tryEval (
+      builtins.deepSeq (checkTable lawfulSamples (
+        compiledTable
+        // {
+          orphan = {
+            laws = "join-semilattice";
+            empty = { };
+            combine = a: b: a // b;
+          };
+        }
+      )) null
+    )).success;
 
   # ── TEETH PER LADDER CLASS: a deliberately UNLAWFUL synthetic per branch FAILS the check ─────────
   # each is a `checkLaws` call that MUST throw the named violation — `tryEval success` is false.
@@ -183,10 +229,9 @@ let
       }) null
     )).success;
 
-  # ordered-monoid teeth: a non-associative combine (right-biased subtraction of list heads is not assoc).
-  # `combine a b = if b == [] then a else b` — last-non-empty-wins is associative but NOT identity-lawful
-  # on the LEFT (empty·x = x, but x·empty = x too… so pick a genuine non-associative op): drop-left, where
-  # `a·b = tail(a) ++ b` — (a·b)·c != a·(b·c) because the tail is taken at different depths.
+  # ordered-monoid teeth: a NON-ASSOCIATIVE combine — drop-left `a·b = tail(a) ++ b`. It fails
+  # associativity because the head-drop bites at different depths: `([1,2]·[3])·[4] = [3,4]` but
+  # `[1,2]·([3]·[4]) = [2,4]`. Declared ordered-monoid, so the associativity check trips.
   teeth-ordered = teethFor {
     name = "bad-ordered";
     laws = "ordered-monoid";
@@ -250,16 +295,25 @@ in
       expr = allLawful;
       expected = true;
     };
-    # the table the harness checked is exactly the four registered synthetics (the iteration is real —
-    # it reads the compiled table, not the raw fixture) — a self-documenting coverage pin.
+    # the table the harness checked is the four registered synthetics PLUS the seeded framework instance
+    # (`settings-layers`) — the iteration is real (it reads the COMPILED table, which the framework seeds,
+    # not the raw fixture) — a self-documenting coverage pin that grows as framework instances land.
     test-lawful-table-coverage = {
       expr = builtins.sort (a: b: a < b) (builtins.attrNames checkedTable);
       expected = [
-        "comm-disjoint"
+        "comm-sum"
         "join-unit"
         "ord-append"
+        "settings-layers"
         "shadow-lastwins"
       ];
+    };
+    # THE COVERAGE TEETH: an orphan discipline in the table (registered, no sample set) makes the harness
+    # THROW — proving the sample-map cover is enforced, not silently skipped (the mechanism every later
+    # framework instance rides: it must land its samples or the suite goes red).
+    test-coverage-orphan-discipline-throws = {
+      expr = orphanTableThrows;
+      expected = false;
     };
     # each ladder branch's lawful synthetic passes standalone (the four branches all return true —
     # associativity+identity / +commutativity / +idempotence / right-absorption).
@@ -275,10 +329,10 @@ in
     };
     test-lawful-commutative-monoid = {
       expr = checkLaws (
-        lawfulInstances.comm-disjoint
+        lawfulInstances.comm-sum
         // {
-          name = "comm-disjoint";
-          samples = lawfulSamples.comm-disjoint;
+          name = "comm-sum";
+          samples = lawfulSamples.comm-sum;
         }
       );
       expected = true;
