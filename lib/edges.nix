@@ -42,9 +42,9 @@ let
   # A registry entry's canonical fields (spec §2.2). `data` is the per-kind edge-data schema; `requires`/
   # `produces` are the product typing (relation/derived kinds; unused by nest, whose typing derives from
   # its endpoint registries); `discipline` names the algebraic laws; `inverse` enables reverse queries;
-  # `closure` is legal ONLY under a join-semilattice discipline (validated by the disciplines registry).
+  # `closure` is legal ONLY under a join-semilattice discipline (validated against the disciplines registry).
   entryOf =
-    name: raw:
+    disciplines: name: raw:
     let
       e = {
         data = raw.data or null;
@@ -56,22 +56,32 @@ let
         stratum = raw.stratum or preRegisteredStrata.${name} or "resolution";
       };
     in
-    # closure is a capability gated on an algebraic law: a closure kind without a declared discipline has
-    # no laws to validate it (the disciplines registry owns that check). Abort NAMED rather than admit an
-    # unlawful closure.
+    # closure is a capability gated on an algebraic law (spec §2.2: a closure kind is legal ONLY under a
+    # join-semilattice discipline — idempotence is what makes the reachable-set fixpoint converge). A
+    # closure kind with no discipline has no laws to validate it (the degenerate case); a closure kind
+    # naming a discipline that is absent from the registry, or whose laws are not join-semilattice, is
+    # unlawful. Abort NAMED in each case rather than admit an unlawful closure.
     if e.closure && e.discipline == null then
       throw "den.edges: kind '${name}' declares closure = true with no discipline — closure requires a declared discipline; discipline laws are validated by the disciplines registry"
+    else if e.closure && !(disciplines ? ${e.discipline}) then
+      throw "den.edges: kind '${name}' declares closure = true with discipline '${e.discipline}', which is not in the disciplines registry — closure requires a registered join-semilattice discipline"
+    else if e.closure && disciplines.${e.discipline}.laws != "join-semilattice" then
+      throw "den.edges: kind '${name}' declares closure = true with discipline '${e.discipline}' (laws '${
+        disciplines.${e.discipline}.laws
+      }') — closure is legal ONLY under a join-semilattice discipline"
     else
       e;
 
-  # `compile { kinds; strataOrder }` → the validated compiled kind table (a `mapAttrs` + validation fold,
-  # mirroring concern-classes' compile shape). Pre-registered kinds seed the table; a user kind merges
-  # beside them. Re-registering a framework kind name aborts NAMED; a `stratum` outside the compiled order
-  # aborts NAMED.
+  # `compile { kinds; strataOrder; disciplines }` → the validated compiled kind table (a `mapAttrs` +
+  # validation fold, mirroring concern-classes' compile shape). Pre-registered kinds seed the table; a
+  # user kind merges beside them. Re-registering a framework kind name aborts NAMED; a `stratum` outside
+  # the compiled order aborts NAMED. `disciplines` is the COMPILED disciplines registry (spec §5): the
+  # closure gate validates a closure kind's discipline against it (present + join-semilattice laws).
   compile =
     {
       kinds ? { },
       strataOrder,
+      disciplines ? { },
     }:
     let
       strataSet = prelude.genAttrs strataOrder (_: true);
@@ -83,7 +93,7 @@ let
           stratum = preRegisteredStrata.${n};
         })
         // kinds;
-      compiled = prelude.mapAttrs entryOf allRaw;
+      compiled = prelude.mapAttrs (entryOf disciplines) allRaw;
       # every entry's stratum must name a stratum in the compiled order.
       stratumOffenders = builtins.filter (n: !(strataSet ? ${compiled.${n}.stratum})) (
         builtins.attrNames compiled

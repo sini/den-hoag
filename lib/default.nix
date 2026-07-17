@@ -155,6 +155,10 @@ let
   # crossing (lib/output/terminal.nix) — den-hoag stays nixpkgs-free by defaulting classes to the
   # `collect` terminal (nixpkgs-free), with `crossNixos` available for a real build.
   concernClasses = import ./concern-classes.nix { inherit prelude bind; };
+  # The merge-discipline registry (den.disciplines): compile + laws-ladder validation (§5). The closure
+  # gate (edges.nix) validates a closure kind's discipline against the compiled table; the framework
+  # instance names are reserved here for the merge orders declared in later steps. Pure Law A1.
+  concernDisciplines = import ./concern-disciplines.nix { inherit prelude; };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
@@ -327,6 +331,20 @@ let
           type = merge.types.lazyAttrsOf merge.types.raw;
           default = { };
           description = "Edge-kind registry: `<kind> = { data ? null; requires ? null; produces ? null; discipline ? null; inverse ? null; closure ? false; stratum ? \"resolution\"; }` (§2.2).";
+        };
+      };
+
+      # den.disciplines.<name> — the merge-discipline registry (§5). Each entry declares the algebra a
+      # merge site obeys: `{ laws; empty; combine; dedup ? null; order ? null; }` — `laws` names the
+      # ladder class (ordered-monoid / commutative-monoid / join-semilattice / shadow), `empty`/`combine`
+      # are the identity + binary operation. `raw` holds each record unmerged (its `combine` is a
+      # function). Absent ⇒ a fleet with no registered disciplines (the framework instances land in later
+      # steps). The registry DESCRIBES disciplines; the closure edge-gate reads the compiled table.
+      disciplinesDecl = {
+        options.den.disciplines = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Merge-discipline registry: `<name> = { laws; empty; combine; dedup ? null; order ? null; }` (§5).";
         };
       };
 
@@ -522,6 +540,7 @@ let
           settingsDecl
           strataDecl
           edgesDecl
+          disciplinesDecl
           overridesDecl
           demandKindsDecl
           demandContextDecl
@@ -754,12 +773,21 @@ let
             inserts = userStrataInserts // edgesLib.frameworkStrataInserts;
           };
 
+      # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
+      # (laws ladder, reserved-name). The framework instances (the three shipped merge orders) land in
+      # later steps; a native fleet registers none, so the table is empty. The closure edge-gate reads it.
+      disciplinesTable = concernDisciplines.compile {
+        disciplines = ent.config.den.disciplines or { };
+      };
+
       # The compiled edge-kind table (§2.2): the framework-pre-registered vocabulary UNION the fleet's
       # `den.edges` registrations, validated (reserved-name, closure-gate, stratum ∈ the compiled order).
-      # Threaded to the kernel via `den.edges`, mirroring how `classesByName` rides `den.classConfigs`.
+      # The closure gate validates a closure kind's discipline against `disciplinesTable` (present +
+      # join-semilattice laws). Threaded to the kernel via `den.edges`, mirroring `classesByName`.
       edgeKindTable = edgesLib.compile {
         kinds = ent.config.den.edges or { };
         strataOrder = compiledStrata;
+        disciplines = disciplinesTable;
       };
 
       # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
@@ -1155,6 +1183,9 @@ let
         strata = compiledStrata;
         # The compiled edge-kind table (§2.2): framework vocabulary + `den.edges` registrations, validated.
         edges = edgeKindTable;
+        # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
+        # (laws ladder). Empty for a fleet registering none (the framework instances land in later steps).
+        disciplines = disciplinesTable;
         scopeRoots = scopeRoots;
         inherit structural;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
@@ -1240,6 +1271,10 @@ in
     # pre-registered strata + framework strata inserts.
     compileEdges = edgesLib.compile;
     edgeKinds = edgesLib;
+    # The merge-discipline registry compile (§5) + the lib (its `reservedNames`/`lawClasses`), for the
+    # suite's laws-ladder validation scenarios. `compileDisciplines { disciplines }`.
+    compileDisciplines = concernDisciplines.compile;
+    disciplines = concernDisciplines;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

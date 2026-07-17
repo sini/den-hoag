@@ -21,6 +21,28 @@ let
     applyOverrides
     assembleEdges
     ;
+  # The disciplines registry seam (lib/concern-disciplines.nix): the compile fn (laws-ladder
+  # validation) + the framework-reserved instance names. The closure gate reads the COMPILED table.
+  inherit (denHoag.internal)
+    compileDisciplines
+    disciplines
+    ;
+  # A compiled disciplines registry the closure scenarios validate against: a join-semilattice
+  # entry (the ONLY laws a closure kind may name) beside an ordered-monoid one (the wrong-laws foil).
+  closureDisciplines = compileDisciplines {
+    disciplines = {
+      set-union = {
+        laws = "join-semilattice";
+        empty = [ ];
+        combine = a: b: a ++ b;
+      };
+      layers = {
+        laws = "ordered-monoid";
+        empty = { };
+        combine = a: b: a // b;
+      };
+    };
+  };
   # gen-edge's frozen sort key (its public export) — to pin an assembled edge's ` | <kind>` component.
   inherit (denHoag.internal.edge) edgeSortKey;
   # the gen-edge lib itself — to construct un-stamped vs `demand`-stamped edges for the K-boundary pin.
@@ -715,8 +737,10 @@ in
         )).success;
       expected = false;
     };
-    # closure = true WITH a declared discipline compiles (the entry carries closure + discipline).
-    test-edges-closure-with-discipline-ok = {
+    # closure = true naming a discipline that EXISTS in the registry AND declares join-semilattice laws
+    # compiles (the entry carries closure + discipline). This is the §2.2 closure rule: closure is legal
+    # ONLY under a join-semilattice discipline (idempotent set-semantics — the reachable-set fixpoint).
+    test-edges-closure-with-semilattice-discipline-ok = {
       expr =
         (compileEdges {
           kinds.aclClosure = {
@@ -725,8 +749,43 @@ in
             stratum = "resolution";
           };
           strataOrder = edgeStrata;
+          disciplines = closureDisciplines;
         }).aclClosure.closure;
       expected = true;
+    };
+    # closure = true naming a REGISTERED discipline whose laws are NOT join-semilattice aborts NAMED —
+    # an ordered-monoid discipline has no idempotence, so its fixpoint need not converge (§2.2 rule).
+    test-edges-closure-wrong-laws-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileEdges {
+            kinds.aclClosure = {
+              closure = true;
+              discipline = "layers";
+              stratum = "resolution";
+            };
+            strataOrder = edgeStrata;
+            disciplines = closureDisciplines;
+          }) null
+        )).success;
+      expected = false;
+    };
+    # closure = true naming a discipline that is NOT in the compiled registry aborts NAMED — the laws
+    # cannot be validated against an absent discipline (the closure gate reads the registry).
+    test-edges-closure-unregistered-discipline-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileEdges {
+            kinds.aclClosure = {
+              closure = true;
+              discipline = "nowhere";
+              stratum = "resolution";
+            };
+            strataOrder = edgeStrata;
+            disciplines = closureDisciplines;
+          }) null
+        )).success;
+      expected = false;
     };
     # a `stratum` outside the compiled order aborts NAMED.
     test-edges-unknown-stratum-throws = {
@@ -799,6 +858,147 @@ in
         kindStratum = "reify";
         inOrder = true;
       };
+    };
+
+    # ── den.disciplines: the merge-discipline registry + laws ladder (spec §5) ──
+    # A discipline names the ALGEBRA a merge site obeys — the laws ladder (ordered-monoid ⊂
+    # commutative-monoid ⊂ join-semilattice, plus shadow) gates the capabilities that need those laws
+    # (closure needs idempotence). The registry compiles + validates; the framework instance names are
+    # reserved. Mirrors the edge-kind registry (one mapAttrs + validation fold).
+    #
+    # the framework-reserved instance names (the three shipped merge orders declared in later steps).
+    test-disciplines-reserved-names = {
+      expr = disciplines.reservedNames;
+      expected = [
+        "settings-layers"
+        "collections-neron"
+        "reach-closure"
+      ];
+    };
+    # a well-formed entry compiles with the §5 field defaults: dedup/order absent ⇒ null.
+    test-disciplines-compile-defaults = {
+      expr =
+        let
+          t = compileDisciplines {
+            disciplines.set-union = {
+              laws = "join-semilattice";
+              empty = [ ];
+              combine = a: b: a ++ b;
+            };
+          };
+        in
+        {
+          laws = t.set-union.laws;
+          empty = t.set-union.empty;
+          dedup = t.set-union.dedup;
+          order = t.set-union.order;
+        };
+      expected = {
+        laws = "join-semilattice";
+        empty = [ ];
+        dedup = null;
+        order = null;
+      };
+    };
+    # `combine` may be a FUNCTION — a registry holds functions; the fingerprint law bans them from EDGE
+    # DATA only, never from a registry entry. The compiled entry carries the combine by reference.
+    test-disciplines-combine-is-function = {
+      expr =
+        let
+          t = compileDisciplines {
+            disciplines.set-union = {
+              laws = "join-semilattice";
+              empty = [ ];
+              combine = a: b: a ++ b;
+            };
+          };
+        in
+        builtins.isFunction t.set-union.combine
+        &&
+          t.set-union.combine [ 1 ] [ 2 ] == [
+            1
+            2
+          ];
+      expected = true;
+    };
+    # laws OUTSIDE the ladder abort NAMED (the ladder is closed: ordered-monoid / commutative-monoid /
+    # join-semilattice / shadow).
+    test-disciplines-unknown-laws-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileDisciplines {
+            disciplines.weird = {
+              laws = "group";
+              empty = [ ];
+              combine = a: b: a ++ b;
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # a missing `empty` aborts NAMED (the identity element is required for every laws class).
+    test-disciplines-missing-empty-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileDisciplines {
+            disciplines.noEmpty = {
+              laws = "join-semilattice";
+              combine = a: b: a ++ b;
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # a missing `combine` aborts NAMED (the binary operation is required for every laws class).
+    test-disciplines-missing-combine-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileDisciplines {
+            disciplines.noCombine = {
+              laws = "join-semilattice";
+              empty = [ ];
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # re-registering a framework-reserved instance name aborts NAMED (same posture as a reserved edge
+    # kind — the framework vocabulary is not user-overridable; the instances themselves land in later steps).
+    test-disciplines-reserved-name-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileDisciplines {
+            disciplines.settings-layers = {
+              laws = "ordered-monoid";
+              empty = { };
+              combine = a: b: a // b;
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # END-TO-END: the fleet exposes the compiled discipline table on `den.disciplines` (empty for a fleet
+    # registering none — the framework instances land in later steps, user registrations join here).
+    test-disciplines-fleet-output = {
+      expr = (denHoag.mkDen [ ]).den ? disciplines;
+      expected = true;
+    };
+    # a user registration rides through the mount onto `den.disciplines` (the compiled entry present).
+    test-disciplines-fleet-user-registration = {
+      expr =
+        let
+          d = denHoag.mkDen [
+            {
+              config.den.disciplines.myUnion = {
+                laws = "join-semilattice";
+                empty = [ ];
+                combine = a: b: a ++ b;
+              };
+            }
+          ];
+        in
+        d.den.disciplines.myUnion.laws;
+      expected = "join-semilattice";
     };
 
     # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.4, before edgeId) ──
