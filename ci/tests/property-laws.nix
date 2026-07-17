@@ -174,9 +174,17 @@ let
       [ "a" ]
     ];
     # reach-closure (the framework instance, §1/§2): resolved-aspect NODE lists (keyed by `.key`) folded by
-    # append-then-first-occurrence-dedup — a JOIN-SEMILATTICE (idempotent: re-reaching a node collapses).
-    # Each sample is KEY-UNIQUE (so identity `combine [] x == x` holds — the closure keeps a key once); the
-    # empty list + a repeated whole-list sample witness identity + idempotence (`combine x x == x`).
+    # append-then-first-occurrence-dedup — a JOIN-SEMILATTICE over the key-SET the list induces (idempotent:
+    # re-reaching a node collapses). Two caveats the sample set encodes deliberately:
+    #   • COMMUTATIVITY holds only UP TO THE KEY-SET QUOTIENT — on the raw list carrier `combine [a] [b] =
+    #     [a b] ≠ [b a]`, so the samples are OVERLAP-CLOSED (every non-empty pair shares key `a`, making
+    #     `combine x y` and `combine y x` key-set-equal AND list-equal here); adding a key-DISJOINT pair
+    #     (e.g. `[{c}]`) would RED the harness's commutativity check — the list order would differ.
+    #   • each sample is KEY-UNIQUE not for identity (identity `combine [] x == x` holds for ANY list) but
+    #     for PRODUCTION FIDELITY: production contributions are key-unique upstream (own-node dedup in
+    #     `applyConstraints`), whereas this restated combine keeps within-operand duplicate keys, so a
+    #     within-operand dup sample would diverge from the live fold the value-agreement pin checks.
+    # The empty list + a repeated whole-list sample witness identity + idempotence (`combine x x == x`).
     reach-closure = [
       [ ]
       [ { key = "a"; } ]
@@ -317,9 +325,9 @@ in
       expr = allLawful;
       expected = true;
     };
-    # the table the harness checked is the four registered synthetics PLUS the seeded framework instance
-    # (`settings-layers`) — the iteration is real (it reads the COMPILED table, which the framework seeds,
-    # not the raw fixture) — a self-documenting coverage pin that grows as framework instances land.
+    # the table the harness checked is the four registered synthetics PLUS the three seeded framework
+    # instances (settings-layers / collections-neron / reach-closure) — the iteration is real (it reads the
+    # COMPILED table, which the framework seeds, not the raw fixture) — a self-documenting coverage pin.
     test-lawful-table-coverage = {
       expr = builtins.sort (a: b: a < b) (builtins.attrNames checkedTable);
       expected = [

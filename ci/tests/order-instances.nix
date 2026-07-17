@@ -388,6 +388,32 @@ let
     c3.resolved = [ nAcct ];
   };
   threeCellsKeys = map (n: n.key) (raReach.compute (reachStub threeCellsGraph) "host");
+
+  # THE COMBINED WITNESS — both halves of `appliesTo` in ONE fixture (the seen/nodes divergence): two
+  # cells BOTH carry `acct` (a STRUCTURAL duplicate key) AND a reach-edge target ALSO carries `acct`. The
+  # structural multiplicity is KEPT (count 2 — dedup NEVER applies to structural), yet the structural keys
+  # STILL seed `seen`, so the EDGE occurrence of `acct` is DROPPED (dedup gates the reach-edge tier). One
+  # graph pins: structural multiplicity preserved + edge dedup active + the seen-set spanning both.
+  combinedGraph = {
+    host = {
+      resolved = [ ];
+      children = {
+        c1 = { };
+        c2 = { };
+      };
+      edges = [
+        {
+          __action = "reach-edge";
+          target = "ext";
+          classFilter = null;
+        }
+      ];
+    };
+    c1.resolved = [ nAcct ]; # structural `acct` (occurrence 1)
+    c2.resolved = [ nAcct ]; # structural `acct` (occurrence 2 — multiplicity kept)
+    ext.resolved = [ nAcct ]; # edge `acct` — DROPPED (its key is already in the structural seen-set)
+  };
+  combinedKeys = map (n: n.key) (raReach.compute (reachStub combinedGraph) "host");
 in
 {
   flake.tests.order-instances = {
@@ -608,9 +634,10 @@ in
     };
     # THE COMBINE VALUE-AGREEMENT (the standing pin, here against a RESTATED combine — the proof the
     # restatement matches production): folding the instance combine from the structural seed over the edge
-    # contribution reproduces the live reach list (structural verbatim, edge first-occurrence deduped).
+    # contribution reproduces the live reach — WHOLE-NODE equality (not just keys — the nodes are plain
+    # data), so a content divergence is caught too (structural verbatim, edge first-occurrence deduped).
     test-reach-oracle-combine-value-agreement = {
-      expr = map (n: n.key) reachFoldedViaInstance == reachKeys;
+      expr = reachFoldedViaInstance == reachNodes;
       expected = true;
     };
 
@@ -632,6 +659,14 @@ in
           "acct"
         ];
       };
+    };
+    # THE COMBINED WITNESS: structural duplicate `acct` (two cells) + an edge target ALSO carrying `acct`.
+    # The two STRUCTURAL occurrences survive (count 2 — dedup never applies to the structural subtree), but
+    # the EDGE occurrence is DROPPED (its key is already in the structural-seeded seen-set) — both halves of
+    # `dedup.appliesTo = [ "reach-edge" ]` and the seen/nodes divergence in one graph.
+    test-golden-reach-structural-multiplicity-with-edge = {
+      expr = builtins.length (builtins.filter (k: k == "acct") combinedKeys);
+      expected = 2;
     };
   };
 }

@@ -138,10 +138,13 @@ let
       # exporting one is not warranted for a declaration-only instance. This restates the EDGE-closure
       # algebra: append `b`, keeping only its not-yet-seen keys (first-occurrence dedup by `.key`). The
       # PROOF CHAIN certifying it matches production is threefold: (i) the property harness law-checks the
-      # restatement (associativity + identity + idempotence on key-unique node lists); (ii) the ORDER
-      # ORACLE asserts the live reach attribute's order matches the declared tiers; (iii) the VALUE-
-      # AGREEMENT pin folds this combine over the live structural + edge components and reproduces the
-      # live reach list. Together they certify the restatement IS the production algebra.
+      # restatement (associativity + identity + commutativity + idempotence) — note commutativity holds
+      # only UP TO THE KEY-SET QUOTIENT: on the raw list carrier `combine [a] [b] = [a b] ≠ [b a]`, but the
+      # closure's semantic value is the key-SET it induces, on which union commutes (the join-semilattice
+      # is over key-sets, the list is a canonical-order representative); (ii) the ORDER ORACLE asserts the
+      # live reach attribute's order matches the declared tiers; (iii) the VALUE-AGREEMENT pin folds this
+      # combine over the live structural + edge components and reproduces the live reach list. Together
+      # they certify the restatement IS the production algebra.
       combine =
         a: b:
         let
