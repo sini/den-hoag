@@ -40,7 +40,9 @@ let
   # A registry entry's canonical fields (spec §5). `laws` names the ladder class (REQUIRED); `empty` +
   # `combine` are the identity + binary operation the laws constrain (REQUIRED). `dedup` (`{ key; keep;
   # appliesTo }`) and `order` (`{ tiers; withinTier ? null; tieBreak ? null }`) are the collapse + total-
-  # order declarations a merge instance may carry; absent ⇒ null.
+  # order declarations a merge instance may carry; absent ⇒ null. Their SUB-SHAPE is passed through
+  # unvalidated here — the sub-field checks land with the framework instance declarations that populate
+  # them (the instances are the only writers of dedup/order in this step).
   entryOf =
     name: raw:
     let

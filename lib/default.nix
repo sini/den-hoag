@@ -1267,7 +1267,8 @@ in
     # byte-identical no-op the fleet path uses). `compilePoliciesWithStrata { order; ctxKeyStrata } sentinel rf ef`.
     compilePoliciesWithStrata = concernPolicies.compileWithStrata;
     # The edge-kind registry compile (§2.2) + the framework pre-registration, for the suite's
-    # registration/validation scenarios. `compileEdges { kinds; strataOrder }`; `edgeKinds` = the
+    # registration/validation scenarios. `compileEdges { kinds; strataOrder; disciplines ? {} }` (the
+    # `disciplines` arm is the compiled disciplines table the closure gate reads); `edgeKinds` = the
     # pre-registered strata + framework strata inserts.
     compileEdges = edgesLib.compile;
     edgeKinds = edgesLib;

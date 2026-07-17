@@ -29,17 +29,27 @@ let
     ;
   # A compiled disciplines registry the closure scenarios validate against: a join-semilattice
   # entry (the ONLY laws a closure kind may name) beside an ordered-monoid one (the wrong-laws foil).
+  # set-union is a LAWFUL join-semilattice carrier — attrset-of-unit union: `//` over presence-only
+  # attrsets is genuinely ACI (idempotent `a // a == a`, commutative + associative on unit values). The
+  # `a ++ b` list-append that LOOKS like set-union is non-idempotent (`[1]++[1] != [1]`); the property
+  # harness designates it the canonical unlawful teeth example, so it is deliberately NOT used here.
   closureDisciplines = compileDisciplines {
     disciplines = {
       set-union = {
         laws = "join-semilattice";
-        empty = [ ];
-        combine = a: b: a ++ b;
+        empty = { };
+        combine = a: b: a // b;
       };
       layers = {
         laws = "ordered-monoid";
         empty = { };
-        combine = a: b: a // b;
+        combine =
+          a: b:
+          a
+          // b
+          // {
+            order = (a.order or [ ]) ++ (b.order or [ ]);
+          };
       };
     };
   };
@@ -875,15 +885,16 @@ in
         "reach-closure"
       ];
     };
-    # a well-formed entry compiles with the §5 field defaults: dedup/order absent ⇒ null.
+    # a well-formed entry compiles with the §5 field defaults: dedup/order absent ⇒ null. The carrier is
+    # the LAWFUL attrset-of-unit join-semilattice (`//` over presence attrsets, genuinely ACI).
     test-disciplines-compile-defaults = {
       expr =
         let
           t = compileDisciplines {
             disciplines.set-union = {
               laws = "join-semilattice";
-              empty = [ ];
-              combine = a: b: a ++ b;
+              empty = { };
+              combine = a: b: a // b;
             };
           };
         in
@@ -895,30 +906,31 @@ in
         };
       expected = {
         laws = "join-semilattice";
-        empty = [ ];
+        empty = { };
         dedup = null;
         order = null;
       };
     };
     # `combine` may be a FUNCTION — a registry holds functions; the fingerprint law bans them from EDGE
-    # DATA only, never from a registry entry. The compiled entry carries the combine by reference.
+    # DATA only, never from a registry entry. The compiled entry carries the combine by reference (here
+    # the lawful attrset-union carrier: `{ a = {}; } // { b = {}; }` is the two-element presence set).
     test-disciplines-combine-is-function = {
       expr =
         let
           t = compileDisciplines {
             disciplines.set-union = {
               laws = "join-semilattice";
-              empty = [ ];
-              combine = a: b: a ++ b;
+              empty = { };
+              combine = a: b: a // b;
             };
           };
         in
         builtins.isFunction t.set-union.combine
         &&
-          t.set-union.combine [ 1 ] [ 2 ] == [
-            1
-            2
-          ];
+          t.set-union.combine { a = { }; } { b = { }; } == {
+            a = { };
+            b = { };
+          };
       expected = true;
     };
     # laws OUTSIDE the ladder abort NAMED (the ladder is closed: ordered-monoid / commutative-monoid /
@@ -943,7 +955,7 @@ in
           builtins.deepSeq (compileDisciplines {
             disciplines.noEmpty = {
               laws = "join-semilattice";
-              combine = a: b: a ++ b;
+              combine = a: b: a // b;
             };
           }) null
         )).success;
@@ -991,14 +1003,64 @@ in
             {
               config.den.disciplines.myUnion = {
                 laws = "join-semilattice";
-                empty = [ ];
-                combine = a: b: a ++ b;
+                empty = { };
+                combine = a: b: a // b;
               };
             }
           ];
         in
         d.den.disciplines.myUnion.laws;
       expected = "join-semilattice";
+    };
+    # THE DISCIPLINE × CLOSURE-KIND INTERACTION through the mount: a user discipline (join-semilattice)
+    # registered on `den.disciplines` beside a closure edge kind naming it compiles end-to-end — the
+    # closure gate reads the COMPILED disciplines table threaded from the same fleet eval. Precedent:
+    # test-edges-user-stratum-user-kind (the user-stratum × user-kind mount interaction).
+    test-disciplines-mount-closure-gate-ok = {
+      expr =
+        let
+          d = denHoag.mkDen [
+            {
+              config.den.disciplines.reachSet = {
+                laws = "join-semilattice";
+                empty = { };
+                combine = a: b: a // b;
+              };
+              config.den.edges.reachClose = {
+                closure = true;
+                discipline = "reachSet";
+                stratum = "resolution";
+              };
+            }
+          ];
+        in
+        d.den.edges.reachClose.closure;
+      expected = true;
+    };
+    # …and the NEGATIVE: a closure kind naming a REGISTERED discipline whose laws are not join-semilattice
+    # aborts NAMED through the mount (the wrong-laws gate fires on the threaded table, not just a bare
+    # compile) — the framework's closure rule holds at the fleet boundary.
+    test-disciplines-mount-closure-wrong-laws-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq
+            (denHoag.mkDen [
+              {
+                config.den.disciplines.orderedLayers = {
+                  laws = "ordered-monoid";
+                  empty = { };
+                  combine = a: b: a // b;
+                };
+                config.den.edges.badClose = {
+                  closure = true;
+                  discipline = "orderedLayers";
+                  stratum = "resolution";
+                };
+              }
+            ]).den.edges
+            null
+        )).success;
+      expected = false;
     };
 
     # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.4, before edgeId) ──
