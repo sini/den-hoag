@@ -176,11 +176,12 @@ let
   receiversLib = import ./receivers.nix {
     inherit prelude productsLib graph;
   };
-  # The nest-mode EXECUTION engine (§4.2 mode taxonomy): `executeNest { row; inner; ctx; conversions ? {} }`
-  # turns a compiled receives row + the inner entity's product face into a mode-tagged CONTRIBUTION the output
-  # fold places. The live-edge counterpart to receiversLib (which DECLARES + dispatches the graft-site rule);
-  # this EXECUTES it. The per-fleet conversion table is passed at CALL time (the receivers pattern), so the
-  # engine holds no tables.
+  # The nest-mode EXECUTION engine (§4.2 mode taxonomy): `executeNest { row; inner; ctx; conversions ? {};
+  # renders ? {} }` turns a compiled receives row + the inner entity's product face into a mode-tagged
+  # CONTRIBUTION the output fold places. The live-edge counterpart to receiversLib (which DECLARES + dispatches
+  # the graft-site rule); this EXECUTES it. The per-fleet conversion table (§4.1) AND render table (§4.3, the
+  # artifact evaluator/face + the extend `extendsVia`) are passed at CALL time (the receivers pattern) — a
+  # static registry cannot hold the per-fleet evaluator, so the engine holds no tables or evaluators.
   nestLib = import ./nest.nix {
     inherit prelude;
   };
@@ -1415,8 +1416,9 @@ in
     # { compiledKinds; outerKind; slot; class }` runs the visible query over the kind-include graph.
     resolveReceiver = receiversLib.resolveReceiver;
     # The nest-mode EXECUTION engine (§4.2 mode taxonomy), exposed flat for the suite's execution scenarios:
-    # `executeNest { row; inner; ctx }` dispatches on the resolved row's derived `mode` and returns that
-    # mode's contribution (Task 1: the content arm, grafted at the row's `at` path).
+    # `executeNest { row; inner; ctx; conversions ? {}; renders ? {} }` dispatches on the resolved row's derived
+    # `mode` and returns that mode's contribution — content (grafted at `at`), value (the prebuilt arm),
+    # artifact (rendered via `renders.${row.render}`), extend (the render's `extendsVia`).
     executeNest = nestLib.executeNest;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.

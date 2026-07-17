@@ -45,19 +45,22 @@ let
   # names) is forcible without forcing the payload.
   mkContribution = mode: extra: { inherit mode; } // extra;
 
-  # `executeNest { row; inner; ctx; conversions ? { } }` — the mode dispatch. `row` = a compiled receives row
-  # (or one element of a `resolveReceiver` multi-winners list); `inner` = `{ product; payload; }` (or the
-  # prebuilt `artifactRef` arm) plus the inner's structural FACE fields (name/kind/…); `ctx` = structural
-  # handles ONLY (§2.1 corollary — name/kind/slot/ids/paramPoint, NO content); `conversions` = the compiled
-  # single-step conversion table (den.conversions, §4.1), threaded at CALL time (the receivers pattern — the
-  # engine holds no tables). The engine reads the row's DERIVED `mode` (F1) and hands the payload lazily into
-  # the arm's contribution — it may not force `inner.payload` during wiring.
+  # `executeNest { row; inner; ctx; conversions ? { }; renders ? { } }` — the mode dispatch. `row` = a compiled
+  # receives row (or one element of a `resolveReceiver` multi-winners list); `inner` = `{ product; payload; }`
+  # (or the prebuilt `artifactRef` arm) plus the inner's structural FACE fields (name/kind/…); `ctx` =
+  # structural handles ONLY (§2.1 corollary — name/kind/slot/ids/paramPoint, NO content); `conversions` = the
+  # compiled single-step conversion table (den.conversions, §4.1); `renders` = the compiled render table
+  # (den.renders, §4.3, holding each render's evaluator/face/extendsVia). Both tables are threaded at CALL time
+  # (the receivers pattern — the engine holds no tables or evaluators). The engine reads the row's DERIVED
+  # `mode` (F1) and hands the payload lazily into the arm's contribution — it may not force `inner.payload`
+  # (nor call an evaluator / extendsVia) during wiring.
   executeNest =
     {
       row,
       inner,
       ctx,
       conversions ? { },
+      renders ? { },
     }:
     let
       # the inner's STRUCTURAL face handed to `at` — the payload STRIPPED (§2.1: `at` sees structure, never
@@ -65,10 +68,10 @@ let
       innerFace = removeAttrs inner [ "payload" ];
       atPath = row.at ctx.paramPoint innerFace;
 
-      # CONTENT dispatch on a payload already known to be the row's mode (post-conversion or exact-match): the
-      # graft is over the derived `mode`. `content` places the module list at `at`; a non-content mode under
-      # this seam is unhandled (artifact/extend arrive next tasks — leave the seam marked). `payload` is the
-      # (possibly converted) module list.
+      # graftMode dispatches on a payload already known to be the row's mode (post-conversion or exact-match).
+      # `content` places the module list at `at`; `artifact` renders the inner through the row's render (the
+      # ISOLATED INNER EVAL, the forcing boundary — REFERENCE.md §4.2 forward); `extend` extends the inner's
+      # handle through the render's `extendsVia` capability. `payload` is the (possibly converted) inner payload.
       graftMode =
         payload:
         if row.mode == "content" then
@@ -78,6 +81,47 @@ let
             at = atPath;
             modules = placeSlice atPath payload;
           }
+        else if row.mode == "artifact" then
+          # ARTIFACT mode: the render row (`renders.${row.render}`) crosses the inner's modules in ISOLATION —
+          # the render call is the SOLE FORCING BOUNDARY (REFERENCE.md §4.2: "artifact — isolated inner eval,
+          # the forcing boundary"). The eval is `renderRow.evaluator payload`; `face` projects it to the placed
+          # artifact (`face eval`), or a NULL face means the eval ITSELF is the artifact. The `artifact` field
+          # is a THUNK — the evaluator is never called during wiring, only when the mount consumer forces it.
+          # `renderRow.provision`/`adapt` stay SHAPE-ONLY here (the provisioning-data + arg-crossing wiring is
+          # the families/provide-adapt work) — the artifact arm reads only evaluator + face. A null `row.render`
+          # is a MISSING-RENDER throw (an artifact consume has no way to build its face without a render row).
+          if row.render == null then
+            throw "den.nest: '${row.consumes}' is artifact-mode but the receives row names no render — an artifact consume needs a render row to build its face (§4.3)"
+          else
+            let
+              renderRow = renders.${row.render};
+            in
+            mkContribution "artifact" {
+              at = atPath;
+              artifact =
+                let
+                  eval = renderRow.evaluator payload;
+                in
+                if renderRow.face != null then renderRow.face eval else eval;
+            }
+        else if row.mode == "extend" then
+          # EXTEND mode: legal ONLY when the consulted render declares `extendsVia` (§4.3 — the capability lives
+          # on the render row). A null `row.render`, or a render without `extendsVia`, is the MISSING-CAPABILITY
+          # throw. The `extended` field is a THUNK wrapping `extendsVia` applied to the inner's EvalHandleInfo
+          # payload (the extendModules handle) — the capability is never called during wiring.
+          let
+            renderRow = if row.render == null then null else renders.${row.render};
+            extendsVia = if renderRow == null then null else renderRow.extendsVia;
+          in
+          if extendsVia == null then
+            throw "den.nest: '${row.consumes}' is extend-mode but its render ${
+              if row.render == null then "reference is null" else "'${row.render}' declares no extendsVia"
+            } — extend is legal only under a render declaring the extendsVia capability (§4.3)"
+          else
+            mkContribution "extend" {
+              at = atPath;
+              extended = extendsVia payload;
+            }
         else
           throw "den.nest: unhandled receive mode '${row.mode}' — the mode-execution engine handles no such arm";
 

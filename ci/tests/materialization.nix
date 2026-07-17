@@ -574,6 +574,109 @@ let
     { config.den.conversions."SystemInfo->RawModulesInfo".via = a: a; }
     { config.den.conversions."SystemInfo->RawModulesInfo".via = b: [ b ]; }
   ];
+
+  # ── Task 3 fixtures: artifact + extend modes (render-row consult) ──
+  # a compiled render table with FAKE evaluators (the declared-instantiation fakeEval pattern): `arti`
+  # renders an artifact via its evaluator + a `face` projection; `artiNoFace` renders with a null face (the
+  # eval IS the artifact); `ext` declares the `extendsVia` capability (a fake handle-extender); `extNoCap`
+  # is an extend target with NO extendsVia (the missing-capability throw path). Registered beside the
+  # built-ins (produces = SystemInfo, an artifact face — the products table types it).
+  nestRenders = renders.compile {
+    registered = {
+      arti = {
+        evaluator = mods: {
+          __fakeCrossed = true;
+          modules = mods;
+        };
+        face = eval: {
+          __face = true;
+          inherit eval;
+        };
+        produces = "SystemInfo";
+      };
+      artiNoFace = {
+        evaluator = mods: {
+          __fakeCrossed = true;
+          modules = mods;
+        };
+        produces = "SystemInfo";
+      };
+      ext = {
+        extendsVia = handle: {
+          __extended = handle;
+        };
+        produces = "SystemInfo";
+      };
+      extNoCap = {
+        produces = "SystemInfo";
+      };
+    };
+    npkgs = null;
+    ndarwin = null;
+    products = frameworkProducts;
+  };
+
+  # ARTIFACT-mode receives rows (consumes SystemInfo → artifact mode), naming the fake render. `artiFaceRow`
+  # projects through `face`; `artiNoFaceRow` has a null-face render (eval IS the artifact). `at = [ "sys" ]`.
+  mkArtifactRow =
+    renderName:
+    (receivers.compile {
+      rows = {
+        host.receives.sys = {
+          at = _point: _inner: [ "sys" ];
+          consumes = "SystemInfo";
+          render = renderName;
+        };
+      };
+      knownKinds = [ "host" ];
+      products = frameworkProducts;
+      renders = nestRenders;
+    }).host.receives.sys;
+  artiFaceRow = mkArtifactRow "arti";
+  artiNoFaceRow = mkArtifactRow "artiNoFace";
+
+  # an artifact-mode inner: produces SystemInfo directly (exact-match → artifact arm), its payload the
+  # module list the render's evaluator crosses in isolation (the forcing boundary).
+  artiInner = {
+    product = "SystemInfo";
+    payload = [ { __seed = "m"; } ];
+    name = "box";
+    kind = "host";
+  };
+
+  # EXTEND-mode receives rows (consumes EvalHandleInfo → extend mode). `extRow` names the `ext` render (has
+  # extendsVia); `extNoCapRow` names `extNoCap` (no extendsVia → missing-capability throw); `extNullRenderRow`
+  # names no render at all (render = null → the same missing-capability path, criterion 4). An extend-mode row
+  # MAY name a render (its extendsVia is read there) — the receivers validation permits render on artifact OR
+  # extend rows (relaxed this task; the executor needs the render reference for the extendsVia consult).
+  mkExtendRow =
+    renderName:
+    (receivers.compile {
+      rows = {
+        host.receives.h = {
+          at = _point: _inner: [ "ext" ];
+          consumes = "EvalHandleInfo";
+        }
+        // (if renderName == null then { } else { render = renderName; });
+      };
+      knownKinds = [ "host" ];
+      products = frameworkProducts;
+      renders = nestRenders;
+    }).host.receives.h;
+  extRow = mkExtendRow "ext";
+  extNoCapRow = mkExtendRow "extNoCap";
+  extNullRenderRow = mkExtendRow null;
+
+  # an extend-mode inner: produces EvalHandleInfo, its payload the extendModules handle the render's
+  # `extendsVia` capability extends (lazily).
+  extInner = {
+    product = "EvalHandleInfo";
+    payload = {
+      __handle = "an-eval-handle";
+    };
+    name = "box";
+    kind = "host";
+  };
 in
 {
   flake.tests.materialization = {
@@ -1484,6 +1587,185 @@ in
     test-conversions-cross-module-collision = {
       expr = throws (builtins.deepSeq collisionFleet.den.conversions true);
       expected = true;
+    };
+
+    # ── §4.2/§4.3 ARTIFACT mode (the render-row consult, isolated inner eval) ──
+    # the artifact arm renders the inner through the row's render (`renders.${row.render}`): the evaluator
+    # crosses the inner's modules and `face` projects the eval to the artifact. The fake evaluator's
+    # `__fakeCrossed` tag + the `__face` projection prove the crossing routed through the render row.
+    test-nest-artifact-render-face = {
+      expr =
+        let
+          c = executeNest {
+            row = artiFaceRow;
+            inner = artiInner;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+            renders = nestRenders;
+          };
+        in
+        {
+          inherit (c) mode;
+          at = c.at;
+          artifact = c.artifact;
+        };
+      expected = {
+        mode = "artifact";
+        at = [ "sys" ];
+        # face projects the eval: `{ __face = true; eval = <the crossed eval>; }`.
+        artifact = {
+          __face = true;
+          eval = {
+            __fakeCrossed = true;
+            modules = [ { __seed = "m"; } ];
+          };
+        };
+      };
+    };
+    # a NULL-FACE render: the eval itself IS the artifact (no projection). The contribution's `artifact` is
+    # the raw crossed eval.
+    test-nest-artifact-null-face = {
+      expr =
+        (executeNest {
+          row = artiNoFaceRow;
+          inner = artiInner;
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+          renders = nestRenders;
+        }).artifact;
+      expected = {
+        __fakeCrossed = true;
+        modules = [ { __seed = "m"; } ];
+      };
+    };
+    # LAZINESS: the evaluator is NOT called during wiring — a poison evaluator (throws when called) builds a
+    # fine contribution; only forcing `.artifact` would fire it. Forcing the SHAPE (mode) does not.
+    test-nest-artifact-laziness-poison = {
+      expr =
+        let
+          poisonRenders = nestRenders // {
+            arti = nestRenders.arti // {
+              evaluator = _: throw "evaluator called during wiring — artifact laziness violated";
+            };
+          };
+        in
+        (executeNest {
+          row = artiFaceRow;
+          inner = artiInner;
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+          renders = poisonRenders;
+        }).mode;
+      expected = "artifact";
+    };
+
+    # ── §4.2/§4.3 EXTEND mode (legal only under a render's extendsVia) ──
+    # the extend arm wraps the render's `extendsVia` capability applied to the inner's EvalHandleInfo payload
+    # (the extendModules handle), LAZILY. The fake `extendsVia` records the extension in `__extended`.
+    test-nest-extend-under-capability = {
+      expr =
+        let
+          c = executeNest {
+            row = extRow;
+            inner = extInner;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+            renders = nestRenders;
+          };
+        in
+        {
+          inherit (c) mode;
+          at = c.at;
+          extended = c.extended;
+        };
+      expected = {
+        mode = "extend";
+        at = [ "ext" ];
+        extended = {
+          __extended = {
+            __handle = "an-eval-handle";
+          };
+        };
+      };
+    };
+    # a render with NO `extendsVia` (extNoCap) → the missing-capability throw (`den.nest:` register): extend
+    # is legal ONLY when the consulted render declares the capability.
+    test-nest-extend-no-capability-throw = {
+      expr = throws (executeNest {
+        row = extNoCapRow;
+        inner = extInner;
+        ctx = {
+          paramPoint = tuxPoint;
+        };
+        renders = nestRenders;
+      });
+      expected = true;
+    };
+    # an extend-mode row naming NO render (render = null) → the same missing-capability path (criterion 4:
+    # the extend arm needs a render reference to find the extendsVia; a null render is the missing capability).
+    test-nest-extend-null-render-throw = {
+      expr = throws (executeNest {
+        row = extNullRenderRow;
+        inner = extInner;
+        ctx = {
+          paramPoint = tuxPoint;
+        };
+        renders = nestRenders;
+      });
+      expected = true;
+    };
+    # LAZINESS: the extend handle capability is NOT called during wiring — a poison `extendsVia` (throws when
+    # called) builds a fine contribution; only forcing `.extended` would fire it.
+    test-nest-extend-laziness-poison = {
+      expr =
+        let
+          poisonRenders = nestRenders // {
+            ext = nestRenders.ext // {
+              extendsVia = _: throw "extendsVia called during wiring — extend laziness violated";
+            };
+          };
+        in
+        (executeNest {
+          row = extRow;
+          inner = extInner;
+          ctx = {
+            paramPoint = tuxPoint;
+          };
+          renders = poisonRenders;
+        }).mode;
+      expected = "extend";
+    };
+
+    # ── THE CARRIED WITNESS (value acceptance is mode-independent, §4.1) ──
+    # a value-inner (`inner ? artifactRef`) against a row whose mode is NOT content (here artifact mode)
+    # STILL succeeds as value — definitional acceptance is mode-independent (the prebuilt arm short-circuits
+    # before any mode dispatch). `artiFaceRow` is an artifact-mode row; the clean prebuilt SystemInfo value
+    # rides through as a value contribution regardless.
+    test-nest-value-mode-independent = {
+      expr =
+        let
+          c = executeNest {
+            row = artiFaceRow; # artifact mode
+            inner = cleanValueInner; # a prebuilt ArtifactRef SystemInfo
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+            renders = nestRenders;
+          };
+        in
+        {
+          inherit (c) mode value;
+        };
+      expected = {
+        mode = "value";
+        value = {
+          __prebuilt = "a-real-system";
+        };
+      };
     };
   };
 }

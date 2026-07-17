@@ -78,8 +78,12 @@ let
       throw "den.kinds: receives row '${outerKind}.receives.${slot}' declares multiplicity '${multiplicity}' — one of ${builtins.toJSON multiplicities}"
     else if render != null && !(renders ? ${render}) then
       throw "den.kinds: receives row '${outerKind}.receives.${slot}' names unregistered render '${render}'"
-    else if render != null && mode != "artifact" then
-      throw "den.kinds: '${outerKind}.receives.${slot}' declares render '${render}' but consumes '${consumes}' is ${mode}-mode — render applies to artifact-mode consumption only"
+    # `render` names the render row the executor consults: for an ARTIFACT-mode row its evaluator/face builds
+    # the artifact; for an EXTEND-mode row its `extendsVia` capability extends the inner (§4.3 — extendsVia
+    # lives on the render row, so an extend consume needs a render reference too). A CONTENT/VALUE-mode row
+    # names no render (those modes materialize without a render call), so `render` there is a definition error.
+    else if render != null && mode != "artifact" && mode != "extend" then
+      throw "den.kinds: '${outerKind}.receives.${slot}' declares render '${render}' but consumes '${consumes}' is ${mode}-mode — render applies to artifact-mode and extend-mode consumption only"
     else
       {
         inherit (raw) at;
