@@ -49,6 +49,7 @@ let
     "edges.nix"
     "products.nix"
     "renders.nix"
+    "receivers.nix"
     "graph-escape.nix"
     "attributes/default.nix"
     "attributes/structural.nix"

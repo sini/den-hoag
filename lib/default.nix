@@ -167,6 +167,12 @@ let
   # instantiation record into a full §4.3 registry row. PER-FLEET compile (the built-in nixos/darwin
   # evaluators close over the fleet's own nixpkgs/darwin inputs) — invoked inside the mkDen closure.
   rendersLib = import ./renders.nix { inherit prelude; };
+  # The receives registry (den.kinds.<outerKind>.receives.<slot>): the graft-site rows, validated (§4.2).
+  # Mode derives via the products table; the outer-kind + includes + render names are checked. PER-FLEET
+  # compile (the render-name check reads the per-fleet render rows) — invoked inside the mkDen closure.
+  receiversLib = import ./receivers.nix {
+    inherit prelude productsLib;
+  };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
@@ -395,6 +401,20 @@ let
         };
       };
 
+      # den.kinds.<outerKind> — the receives registry (§4.2). Each entry carries `receives.<slot> = { at;
+      # consumes; arity ? "many"; render ? null; provide ? null; adapt ? null; identity ? null; shape ?
+      # null; multiplicity ? "error"; includes ? []; }` — the graft-site rule as data on the outer kind.
+      # `raw` holds each record unmerged (its `at`/`provide`/`adapt`/`identity` are functions). Absent ⇒ a
+      # fleet declaring no receives rows. `den.kinds` is a FRAMEWORK concern option — a kind may not be
+      # named `kinds` (entity.nix guards the collision at kind discovery).
+      kindsDecl = {
+        options.den.kinds = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Receives registry: `<outerKind>.receives.<slot> = { at; consumes; arity ? \"many\"; multiplicity ? \"error\"; includes ? []; … }` (§4.2).";
+        };
+      };
+
       # den.overrides — the pre-identity-freeze match/rewrite tier (§2.4). An ordered list of
       # `{ match = { kind ?; from ?; to ?; data ? {}; }; rewrite = <data-patch> | null; }`: a framework
       # edge intent passes through BEFORE its edgeId, first match wins, `rewrite = null` suppresses.
@@ -591,6 +611,7 @@ let
           productsDecl
           conversionsDecl
           rendersDecl
+          kindsDecl
           overridesDecl
           demandKindsDecl
           demandContextDecl
@@ -980,6 +1001,16 @@ let
         inherit npkgs ndarwin;
         products = productsTable;
       };
+      # The compiled receives table (§4.2): the fleet's `den.kinds.<outerKind>.receives.<slot>` graft-site
+      # rows, validated (mode derived via the products table; outer-kind + includes checked against the
+      # registered kinds; `render` checked against the render rows). PER-FLEET (the render-name check reads
+      # `rendersRows`, which compiles here), following the render read-through's placement.
+      receivesTable = receiversLib.compile {
+        rows = ent.config.den.kinds or { };
+        knownKinds = builtins.attrNames ent.kinds;
+        products = productsTable;
+        renders = rendersRows;
+      };
       # THE READ-THROUGH (spec §4.3): the render row supplies the BASE `{ evaluator; output }`; the
       # `den.classes.<name>.instantiation` D4 overlay STAYS ON TOP. Precedence law:
       # `classes.instantiation` ≻ render row ≻ nothing. The built-in nixos/darwin rows are always present in
@@ -1260,6 +1291,10 @@ let
         # The compiled render table (§4.3, the D7 promotion): the built-in nixos/darwin rows (seeded
         # per-fleet from den.nixpkgs/den.darwin) + the fleet's `den.renders` registrations, validated.
         renders = rendersRows;
+        # The compiled receives table (§4.2): the fleet's `den.kinds.<outerKind>.receives.<slot>` graft-site
+        # rows, validated (mode derived from consumes; outer-kind/includes/render checked). The
+        # dispatch-execution work walks these rows' `includes` for receiver inheritance.
+        kinds = receivesTable;
         scopeRoots = scopeRoots;
         inherit structural;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
@@ -1361,6 +1396,10 @@ in
     # scenarios. `renders.compile { registered; npkgs; ndarwin; products }` seeds the built-in nixos/darwin
     # rows and validates produces/requires against the compiled products table.
     renders = rendersLib;
+    # The receives registry (§4.2): the lib, for the suite's graft-site row compile + validation scenarios.
+    # `receivers.compile { rows; knownKinds; products; renders }` validates the outer kind, derives each
+    # row's mode via the products table, and checks includes/render names.
+    receivers = receiversLib;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

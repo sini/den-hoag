@@ -38,11 +38,18 @@ let
       };
       sch = probe.config.den.schema;
     in
-    prelude.genAttrs sch._kindNames (kindName: {
-      parent = sch._topology.${kindName}.parent;
-      contentClass = null;
-      dim = kindName;
-    });
+    # A kind's option mount lands at `options.den.<kindName>` (build below), so a kind literally named
+    # `kinds` would collide with the framework `den.kinds` receives-registry concern option — abort NAMED
+    # at discovery. (This is the ONE reserved concern-option name guarded here; other latent concern-name
+    # collisions are out of scope.)
+    if builtins.elem "kinds" sch._kindNames then
+      throw "den.kinds is a framework concern option — a kind may not be named 'kinds'"
+    else
+      prelude.genAttrs sch._kindNames (kindName: {
+        parent = sch._topology.${kindName}.parent;
+        contentClass = null;
+        dim = kindName;
+      });
 
   # Discover the declared quirk channel NAMES the same freeform-probe way `discoverKinds` reads
   # the schema: a schema-less tree freeform-absorbs every `den.*` config the user modules set and

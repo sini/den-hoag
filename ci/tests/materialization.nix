@@ -158,6 +158,49 @@ let
       }
     )
   ];
+
+  # ── the receives registry seam (lib/receivers.nix, §4.2) ──
+  # `receivers` = the lib. `compile { rows; knownKinds; products; renders }` compiles the
+  # `den.kinds.<outerKind>.receives.<slot>` graft-site rows: every §4.2 field stored, mode derived via the
+  # products table's `modeOf`/`checkConsumes`, the outer-kind + includes + render names validated. Dispatch
+  # EXECUTION is later; this is declaration + validation.
+  inherit (denHoag.internal) receivers;
+
+  # a well-formed receives table: one outer kind `host` with a `vms` slot consuming SystemInfo (artifact),
+  # rendered by the built-in nixos row; `at` is the paramPoint-first placement fn.
+  goodReceives = receivers.compile {
+    rows = {
+      host.receives.vms = {
+        at = _point: inner: [
+          "vms"
+          inner.name
+        ];
+        consumes = "SystemInfo";
+        render = "nixos";
+      };
+    };
+    knownKinds = [
+      "host"
+      "vm"
+    ];
+    products = frameworkProducts;
+    renders = pureRenders;
+  };
+
+  # a compile helper closing over the standard known-kinds + products + renders, so each throw scenario
+  # varies only its rows.
+  compileRows =
+    rows:
+    receivers.compile {
+      inherit rows;
+      knownKinds = [
+        "host"
+        "vm"
+        "app"
+      ];
+      products = frameworkProducts;
+      renders = pureRenders;
+    };
 in
 {
   flake.tests.materialization = {
@@ -462,6 +505,176 @@ in
     # class terminal — the D7 path exercised through the NEW registry (synthetic, collect-level).
     test-renders-read-through-user-row = {
       expr = userRowFleet.outputs.fakeConfigurations.node1.__fakeCrossed or false;
+      expected = true;
+    };
+
+    # ── §4.2 the receives registry (declaration + validation) ──
+    # a well-formed row compiles: the slot lives under its outer kind, `at` is carried (function), and the
+    # field set is present.
+    test-receivers-row-compiles = {
+      expr = {
+        hasSlot = goodReceives.host.receives ? vms;
+        atIsFn = builtins.isFunction goodReceives.host.receives.vms.at;
+        consumes = goodReceives.host.receives.vms.consumes;
+      };
+      expected = {
+        hasSlot = true;
+        atIsFn = true;
+        consumes = "SystemInfo";
+      };
+    };
+    # F1: the compiled row's `mode` is DERIVED from consumes (the products table modeOf) — SystemInfo is an
+    # artifact face. `mode` is the only mode surface (the mode names are a docs/trace taxonomy, never a field).
+    test-receivers-mode-derived = {
+      expr = goodReceives.host.receives.vms.mode;
+      expected = "artifact";
+    };
+    # field defaults per §4.2: arity defaults "many", multiplicity defaults "error".
+    test-receivers-field-defaults = {
+      expr = {
+        arity = goodReceives.host.receives.vms.arity;
+        multiplicity = goodReceives.host.receives.vms.multiplicity;
+      };
+      expected = {
+        arity = "many";
+        multiplicity = "error";
+      };
+    };
+    # F1 AS A CHECKED LAW: a USER-declared `mode` field on a row aborts NAMED — mode derives from consumes.
+    test-receivers-mode-field-throw = {
+      expr = throws (compileRows {
+        host.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "SystemInfo";
+          mode = "artifact";
+        };
+      });
+      expected = true;
+    };
+    # `consumes` names an unregistered product → the products table's checkConsumes aborts NAMED (reused, not
+    # re-implemented).
+    test-receivers-consumes-unregistered-throw = {
+      expr = throws (compileRows {
+        host.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "NopeInfo";
+        };
+      });
+      expected = true;
+    };
+    # `consumes` names a non-nestable product (ArgsInfo) → checkConsumes aborts NAMED (never a consumes).
+    test-receivers-consumes-non-nestable-throw = {
+      expr = throws (compileRows {
+        host.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "ArgsInfo";
+        };
+      });
+      expected = true;
+    };
+    # a receives table on an UNKNOWN outer kind aborts NAMED.
+    test-receivers-unknown-outer-kind-throw = {
+      expr = throws (compileRows {
+        nope.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "SystemInfo";
+        };
+      });
+      expected = true;
+    };
+    # THE KIND-INCLUDE RELATION: `includes` is a list of KIND NAMES on the KIND ENTRY (a sibling of
+    # `receives`) — the receiver-inheritance relation the dispatch query walks. A known kind resolves.
+    test-receivers-includes-known = {
+      expr =
+        (compileRows {
+          host = {
+            includes = [ "vm" ];
+            receives.vms = {
+              at = _: i: [ i.name ];
+              consumes = "SystemInfo";
+            };
+          };
+        }).host.includes;
+      expected = [ "vm" ];
+    };
+    # a kind-entry `includes` naming an unknown kind aborts NAMED.
+    test-receivers-includes-unknown-throw = {
+      expr = throws (compileRows {
+        host = {
+          includes = [ "ghost" ];
+          receives.vms = {
+            at = _: i: [ i.name ];
+            consumes = "SystemInfo";
+          };
+        };
+      });
+      expected = true;
+    };
+    # `includes` on a receives ROW (the kind/row confusion) aborts NAMED — inheritance is kind→kind, so
+    # includes lives on the kind entry, never on a row.
+    test-receivers-includes-on-row-throw = {
+      expr = throws (compileRows {
+        host.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "SystemInfo";
+          includes = [ "vm" ];
+        };
+      });
+      expected = true;
+    };
+    # `arity` outside { many singular } aborts NAMED.
+    test-receivers-arity-domain-throw = {
+      expr = throws (compileRows {
+        host.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "SystemInfo";
+          arity = "some";
+        };
+      });
+      expected = true;
+    };
+    # `multiplicity` outside { error multi } aborts NAMED.
+    test-receivers-multiplicity-domain-throw = {
+      expr = throws (compileRows {
+        host.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "SystemInfo";
+          multiplicity = "loud";
+        };
+      });
+      expected = true;
+    };
+    # `render` (when present) names a registered render row — an unregistered render aborts NAMED.
+    test-receivers-render-unregistered-throw = {
+      expr = throws (compileRows {
+        host.receives.vms = {
+          at = _: i: [ i.name ];
+          consumes = "SystemInfo";
+          render = "ghostrender";
+        };
+      });
+      expected = true;
+    };
+    # `render` is legal ONLY on an artifact-mode row — a render on a content-mode consumes (ModulesInfo)
+    # aborts NAMED (render IS the artifact eval; there is no artifact to render in content mode).
+    test-receivers-render-non-artifact-throw = {
+      expr = throws (compileRows {
+        host.receives.mods = {
+          at = _: i: [ i.name ];
+          consumes = "ModulesInfo";
+          render = "nixos";
+        };
+      });
+      expected = true;
+    };
+    # THE KIND-NAMED-'kinds' GUARD (the mount reserved-name edge): a fleet declaring a kind literally named
+    # `kinds` collides with the framework `den.kinds` concern option — aborts NAMED at kind discovery.
+    test-kind-named-kinds-throw = {
+      expr = throws (
+        denHoag.mkDen [
+          { config.den.schema.kinds.parent = null; }
+        ]
+      );
       expected = true;
     };
   };
