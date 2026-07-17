@@ -118,10 +118,24 @@ let
   build =
     { userModules, denMeta }:
     let
+      # THE UNIVERSAL `outputs` FIELD (§4.4/§7 output-family opt-in): every entity may opt into an output
+      # family via `den.<kind>.<name>.outputs.<family> = { <field> = <value>; }`. gen-schema instance
+      # registries are STRICT (an undeclared instance field aborts NAMED), so the field is DECLARED as a
+      # per-kind schema option (the same posture the shim uses for `class`/`system`/`hostName`) — a `raw`
+      # attrset, default `{ }`, so a fleet that opts nobody in is byte-identical (the entry carries an empty
+      # `outputs`). den-side; id_hash is name-derived, so declaring the field does NOT perturb entity identity.
+      outputsFieldModules = prelude.mapAttrsToList (kindName: _: {
+        config.den.schema.${kindName}.options.outputs = schema.mkOption {
+          type = schema.types.raw;
+          default = { };
+          description = "Output-family opt-ins: `<family> = { <field> = <value>; }` (§4.4/§7).";
+        };
+      }) denMeta;
       tree = merge.evalModuleTree {
         modules = [
           { options.den.schema = schema.mkSchemaOption { }; }
         ]
+        ++ outputsFieldModules
         # one instance registry per declared kind, referencing the evaluated kind value:
         ++ prelude.mapAttrsToList (kindName: _: {
           options.den.${kindName} = schema.mkInstanceRegistry tree.config.den.schema.${kindName} { };

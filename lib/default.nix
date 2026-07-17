@@ -1098,6 +1098,64 @@ let
         products = productsTable;
         systems = ent.config.den.systems or [ ];
       };
+      # REQUIRES CONSUMPTION (§4.4): each family's `requires` (∪ its render's `requires`) must be SATISFIABLE
+      # at the graft site — the products a member can supply there. The graft-site available set is the
+      # family's own `consumes` (what its members produce) UNION the family's render `produces` (the artifact
+      # face the render emits). A required product outside that set aborts NAMED (`checkRequires`). The
+      # built-ins carry `requires = [ ]` (vacuous), so this is byte-neutral for them. deepSeq'd into the
+      # `outputsTable` surface below so the check fires when the families table is forced.
+      requiresChecked = builtins.mapAttrs (
+        family: row:
+        let
+          renderRequires =
+            if row.render != null && rendersRows ? ${row.render} then
+              rendersRows.${row.render}.requires or [ ]
+            else
+              [ ];
+          renderProduces =
+            if row.render != null && rendersRows ? ${row.render} then
+              prelude.optional (
+                rendersRows.${row.render}.produces or null != null
+              ) rendersRows.${row.render}.produces
+            else
+              [ ];
+          available = [ row.consumes ] ++ renderProduces;
+        in
+        outputsLib.checkRequires {
+          inherit family available;
+          requires = (row.requires or [ ]) ++ renderRequires;
+        }
+      ) outputsTable;
+
+      # THE ENTITY-LEVEL OPT-INS (§4.4/§7): each entity's `den.<kind>.<name>.outputs.<family>` opt-in
+      # elaborated to an inert record `{ family; entity; data }`, the render-declared required fields (the
+      # family's `params`) definition-time-checked (`checkOptIn` — missing → named throw, never silent). NO
+      # EDGE EMISSION: the family nest edge for an opted-in entity arrives with the live-producer sub-plan;
+      # this surfaces the elaboration records only. An entity opting into an UNKNOWN family aborts NAMED (a
+      # family must be registered in `outputsTable` for its params to be known). Absent for every entity ⇒
+      # `[ ]` (byte-neutral — a fleet that opts nobody in surfaces no records).
+      optIns = prelude.concatMap (
+        kindName:
+        prelude.concatMap (
+          name:
+          let
+            entry = ent.registries.${kindName}.${name};
+            entOptIns = entry.outputs or { };
+          in
+          map (
+            family:
+            if !(outputsTable ? ${family}) then
+              throw "den.outputs: entity '${name}' opts into unregistered family '${family}' — register it in den.outputs"
+            else
+              outputsLib.checkOptIn {
+                inherit family;
+                params = outputsTable.${family}.params or [ ];
+                entity = name;
+                optIn = entOptIns.${family};
+              }
+          ) (builtins.attrNames entOptIns)
+        ) (builtins.attrNames ent.registries.${kindName})
+      ) (builtins.attrNames ent.registries);
       # THE READ-THROUGH (spec §4.3): the render row supplies the BASE `{ evaluator; output }`; the
       # `den.classes.<name>.instantiation` D4 overlay STAYS ON TOP. Precedence law:
       # `classes.instantiation` ≻ render row ≻ nothing. The built-in nixos/darwin rows are always present in
@@ -1431,8 +1489,14 @@ let
         kinds = receivesTable;
         # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` root-as-entity rows
         # (framework-seeded + `den.outputs`), validated (mode derived from consumes; render/params/requires
-        # checked). The face-materialization work reads these rows to surface each family at the flake root.
-        outputs = outputsTable;
+        # checked). Forcing this surface deep-forces the REQUIRES CONSUMPTION check (`requiresChecked`), so an
+        # unsatisfiable `requires` aborts NAMED when the families table is read. The face-materialization work
+        # reads these rows to surface each family at the flake root.
+        outputs = builtins.seq (builtins.deepSeq requiresChecked null) outputsTable;
+        # THE ENTITY-LEVEL OPT-INS (§4.4/§7): the elaborated `den.<kind>.<name>.outputs.<family>` records
+        # `{ family; entity; data }`, each definition-time-checked against the family's render-declared required
+        # fields (its params). Inert this task — the family nest edge arrives with the live-producer sub-plan.
+        inherit optIns;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/

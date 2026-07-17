@@ -218,6 +218,15 @@ let
     renders = pureRenders;
   };
 
+  # ── the requires / params / opt-in seams (§4.4, Task 5) ──
+  # `checkRequires { family; requires; available }` — the definition-time consumption of a family's (∪ its
+  # render's) `requires`: each required product must be SATISFIABLE at the graft site (∈ `available`), else a
+  # named throw. `fanParams { family; params; systems }` — the per-param cartesian fan (today the `system`
+  # axis over `den.systems`). `checkOptIn { family; params; optIn; entity }` — an entity's family opt-in must
+  # supply a value for each render-declared required field (= the family's `params`); missing → named throw,
+  # valid → the elaboration record. Reached through the outputs lib.
+  inherit (outputsLib) checkRequires fanParams checkOptIn;
+
   # ── the receives registry seam (lib/receivers.nix, §4.2) ──
   # `receivers` = the lib. `compile { rows; knownKinds; products; renders }` compiles the
   # `den.kinds.<outerKind>.receives.<slot>` graft-site rows: every §4.2 field stored, mode derived via the
@@ -2683,6 +2692,178 @@ in
         };
         nixosAlias = { };
       };
+    };
+
+    # ── §4.4 REQUIRES consumption (the deferred definition-time check lands) ──
+    # a family whose `requires` names a product SATISFIABLE at the graft site (∈ available) passes — returns
+    # the required set unchanged (the §4.4 "Required fields are render-declared and definition-time-checked").
+    test-outputs-requires-satisfied = {
+      expr = checkRequires {
+        family = "customConfigurations";
+        requires = [ "SystemInfo" ];
+        available = [
+          "SystemInfo"
+          "HmInfo"
+        ];
+      };
+      expected = [ "SystemInfo" ];
+    };
+    # a family requiring a product NOT satisfiable at the graft site aborts NAMED (naming the family + the
+    # missing product) — the unsatisfied-requires throw the spec sentence promised.
+    test-outputs-requires-unsatisfied-throw = {
+      expr = throws (checkRequires {
+        family = "customConfigurations";
+        requires = [ "TerranixInfo" ];
+        available = [ "SystemInfo" ];
+      });
+      expected = true;
+    };
+    # the built-in families carry `requires = [ ]` (no behavior change — an empty requires is vacuously
+    # satisfiable). The face pins already prove the built-ins are unperturbed; this pins the empty case.
+    test-outputs-requires-empty-vacuous = {
+      expr = checkRequires {
+        family = "nixosConfigurations";
+        requires = [ ];
+        available = [ ];
+      };
+      expected = [ ];
+    };
+
+    # ── §4.4 PARAMS fan-out (the declared cartesian at the family level) ──
+    # a family with `params = [ "system" ]` + `den.systems = [ x86_64-linux aarch64-linux ]` fans to a
+    # per-system paramPoint set (the devShells shape) — one entry per system, each carrying the axis value.
+    test-outputs-params-fan = {
+      expr = map (p: p.system) (fanParams {
+        family = "devShells";
+        params = [ "system" ];
+        systems = [
+          "x86_64-linux"
+          "aarch64-linux"
+        ];
+      });
+      expected = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+    };
+    # a family with NO params (`params = [ ]`) fans to a SINGLE paramPoint carrying no axis — the degenerate
+    # fan (one face, no per-system split), so a system-agnostic family surfaces once.
+    test-outputs-params-no-fan-single = {
+      expr = builtins.length (fanParams {
+        family = "nixosConfigurations";
+        params = [ ];
+        systems = [
+          "x86_64-linux"
+          "aarch64-linux"
+        ];
+      });
+      expected = 1;
+    };
+
+    # ── §4.4/§7 the entity-level OPT-IN declaration ──
+    # a VALID opt-in supplying every render-declared required field (= the family's params) compiles to the
+    # elaboration RECORD `{ family; entity; data }` — the family + entity + the structural opt-in data (NO
+    # edge emission this task; the family nest edge for opted-in entities arrives with the live-producer work).
+    test-outputs-optin-valid-record = {
+      expr = checkOptIn {
+        family = "homeConfigurations";
+        params = [ "system" ];
+        entity = "sini";
+        optIn = {
+          system = "x86_64-linux";
+        };
+      };
+      expected = {
+        family = "homeConfigurations";
+        entity = "sini";
+        data = {
+          system = "x86_64-linux";
+        };
+      };
+    };
+    # an opt-in MISSING a render-declared required field aborts NAMED (quoting the field + the family) — the
+    # §4.4 "never silent": a params-carrying family needs a value for each param.
+    test-outputs-optin-missing-field-throw = {
+      expr = throws (checkOptIn {
+        family = "homeConfigurations";
+        params = [ "system" ];
+        entity = "sini";
+        optIn = { }; # no `system` supplied → the missing-field throw.
+      });
+      expected = true;
+    };
+    # a family naming NO render and NO params accepts an EMPTY opt-in `{ }` (nothing required) — the record
+    # carries empty data.
+    test-outputs-optin-empty-valid = {
+      expr =
+        (checkOptIn {
+          family = "flakeConfigurations";
+          params = [ ];
+          entity = "u1";
+          optIn = { };
+        }).data;
+      expected = { };
+    };
+
+    # ── §4.4/§7 the opt-in read reaches the mkDen closure (the entity instance field) ──
+    # `den.<kind>.<name>.outputs.<family>` surfaces on the entity registry entry (the framework declares a
+    # universal `outputs` option per kind) and the mkDen closure elaborates it: a user opting into a family
+    # with the required field surfaces the elaboration record under `den.outputs.optIns`.
+    test-outputs-optin-in-fleet = {
+      expr =
+        let
+          fleet = denHoag.mkDen [
+            { config.den.schema.user.parent = null; }
+            {
+              config.den = {
+                systems = [ "x86_64-linux" ];
+                outputs.homeConfigurations = {
+                  at = _point: e: [ e.name ];
+                  consumes = "HmInfo";
+                  render = "nixos";
+                  params = [ "system" ];
+                };
+                user.sini.outputs.homeConfigurations = {
+                  system = "x86_64-linux";
+                };
+              };
+            }
+          ];
+        in
+        map (r: {
+          inherit (r) family entity;
+          system = r.data.system;
+        }) fleet.den.optIns;
+      expected = [
+        {
+          family = "homeConfigurations";
+          entity = "sini";
+          system = "x86_64-linux";
+        }
+      ];
+    };
+    # an entity opt-in MISSING the render-declared field aborts NAMED at the mkDen closure (the definition-time
+    # check fires per-fleet, quoting the field + family).
+    test-outputs-optin-in-fleet-missing-throw = {
+      expr = throws (
+        builtins.deepSeq
+          (denHoag.mkDen [
+            { config.den.schema.user.parent = null; }
+            {
+              config.den = {
+                outputs.homeConfigurations = {
+                  at = _point: e: [ e.name ];
+                  consumes = "HmInfo";
+                  render = "nixos";
+                  params = [ "system" ];
+                };
+                user.sini.outputs.homeConfigurations = { }; # no `system` → the missing-field throw.
+              };
+            }
+          ]).den.optIns
+          true
+      );
+      expected = true;
     };
   };
 }

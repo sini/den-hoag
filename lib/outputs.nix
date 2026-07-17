@@ -172,6 +172,79 @@ let
       );
     };
 
+  # ── REQUIRES CONSUMPTION (spec §4.4, the deferred definition-time check): a family's `requires` (∪ its
+  # render's `requires`) names the products it CONSUMES; each must be SATISFIABLE at the graft site — present
+  # in the `available` product set the fold can supply there. `checkRequires { family; requires; available }`
+  # returns the required set unchanged when satisfied, else aborts NAMED (naming the family + the first missing
+  # product) — the §4.4 sentence "Required fields are render-declared and definition-time-checked" realized.
+  # An empty `requires` is vacuously satisfiable (the built-ins). This is the CONSUMPTION half of the shape
+  # check the render/family compile already did — a registered product that is simply not producible HERE.
+  checkRequires =
+    {
+      family,
+      requires ? [ ],
+      available ? [ ],
+    }:
+    let
+      availableSet = prelude.genAttrs available (_: true);
+      missing = builtins.filter (p: !(availableSet ? ${p})) requires;
+    in
+    if missing != [ ] then
+      throw "den.outputs: family '${family}' requires product '${builtins.head missing}' but it is not satisfiable at the graft site — no producer supplies it there"
+    else
+      requires;
+
+  # ── PARAMS FAN-OUT (spec §4.4): a family's `params` are the finite axes its face materializes over — today
+  # the `system` axis, whose values are `den.systems`. `fanParams { family; params; systems }` produces the
+  # declared CARTESIAN at the family level: one paramPoint per axis-value tuple. With `params = [ "system" ]`
+  # the fan is one entry per system (the devShells shape, `{ system = <sys>; }` each); with `params = [ ]` the
+  # fan is the DEGENERATE single face (`[ { } ]` — a system-agnostic family surfaces once). Today the sole
+  # axis is `system`, so the fan is one-dimensional; a multi-axis cartesian is a later generality (one axis
+  # registry entry per axis). DEDUP-PER-PARAMPOINT — the instanceId wiring that dedups a member materialized
+  # at the same paramPoint twice rides the live-producer sub-plan; here the fan is the pure axis enumeration.
+  fanParams =
+    {
+      family,
+      params ? [ ],
+      systems ? [ ],
+    }:
+    if params == [ ] then
+      [ { } ]
+    else if params == [ "system" ] then
+      map (s: { system = s; }) systems
+    else
+      # unreachable while `system` is the sole axis (the family compile rejects an unknown axis); the named
+      # throw guards a future axis reaching here before its fan is wired.
+      throw
+        "den.outputs: family '${family}' declares params ${builtins.toJSON params} — only the 'system' axis fans today";
+
+  # ── THE ENTITY-LEVEL OPT-IN (spec §4.4/§7): an entity opts into a family via `den.<kind>.<name>.outputs.
+  # <family> = { <field> = <value>; }`. The render-declared REQUIRED FIELDS an opt-in must supply are the
+  # family's `params` (the axes the render fans over — the "render genuinely needs" set, e.g. a
+  # homeConfigurations family requiring `system`). `checkOptIn { family; params; entity; optIn }` validates
+  # the opt-in supplies a value for EACH param (missing → named throw quoting the field + family, NEVER
+  # silent), and returns the elaboration RECORD `{ family; entity; data }` — the family + entity + the
+  # structural opt-in data. A family naming no render and no params requires nothing, so an empty opt-in
+  # `{ }` is valid. NO EDGE EMISSION: the family nest edge for an opted-in entity arrives with the
+  # live-producer sub-plan; this produces the inert elaboration record only.
+  checkOptIn =
+    {
+      family,
+      params ? [ ],
+      entity,
+      optIn ? { },
+    }:
+    let
+      missing = builtins.filter (p: !(optIn ? ${p})) params;
+    in
+    if missing != [ ] then
+      throw "den.outputs: entity '${entity}' opts into family '${family}' but supplies no '${builtins.head missing}' — the render-declared required field (a family param) is missing (never silent)"
+    else
+      {
+        inherit family entity;
+        data = optIn;
+      };
+
   # `compile { registered; builtins ? { }; renders; products; systems }` → the validated compiled families
   # table (a `mapAttrs` + validation, Law A1 — the receivers/renders template). The framework `builtins`
   # families (the built-in nixosConfigurations/darwinConfigurations seeded by `builtinFamilies`) seed the
@@ -199,6 +272,9 @@ in
     compile
     toReceives
     builtinFamilies
+    checkRequires
+    fanParams
+    checkOptIn
     axes
     ;
 }
