@@ -251,10 +251,13 @@ as DATA on the outer kind. A row is
 `{ at; consumes; arity ? "many"; render ? null; provide ? null; adapt ? null; identity ? null; shape ? null; multiplicity ? "error"; }`.
 `at` is `point: inner: [ …path ]` (paramPoint-first placement). The MODE is DERIVED — `row.mode = modeOf consumes` (F1's canonical machine form; the mode names are a docs/trace taxonomy, never a field). **F1 as a
 checked law:** a user-declared `mode` field aborts NAMED. `consumes` passes `checkConsumes` (the products-
-table gate). `render` names a registered render AND is legal ONLY on an artifact-mode row (render IS the
-artifact eval — a render on a content-mode `consumes` aborts NAMED). `arity ∈ { many singular }` (the
-singular live-edge enforcement is the mode-execution work's — two predicate-differing edges into one
-singular mount both firing throws), `multiplicity ∈ { error multi }` — out-of-domain aborts NAMED. **The
+table gate). `render` names a registered render AND is legal ONLY on an artifact-mode OR extend-mode row — an
+artifact row consults the render's `evaluator`/`face` to build its face, an extend row consults the render's
+`extendsVia` capability (spec §4.3 — `extendsVia` lives on the render row, so an extend consume needs a render
+reference too); a `render` on a content-mode or value-mode `consumes` aborts NAMED. `arity ∈ { many singular }`
+(the singular live-edge enforcement runs at BOTH depths, see Nest-mode execution below — two predicate-
+differing edges into one singular mount both firing throws), `multiplicity ∈ { error multi }` — out-of-domain
+aborts NAMED. **The
 hook-scoping corollary (the row contract):** `at` receives STRUCTURAL handles only (the paramPoint + the
 inner's structural face), never resolved graph state; `identity`/`provide`/`adapt` results are LAZY (the
 S-hashing law — a produced value never enters the structural fill, only the producing node's structural
@@ -293,13 +296,120 @@ word order (a proper prefix beats its extensions). The mechanics:
   decides its meaning). Only the WINNER's row value is forced — a reachable-but-shadowed loser's row value
   stays a thunk (`where` probes row PRESENCE, attr names, never the value).
 
-**Forward (the materialization facet's remaining work).** Mode EXECUTION realizes the four modes on the live
-nest edges — `content` (one shared fixpoint), `artifact` (isolated inner eval, the forcing boundary),
-`extend` (extendModules, legal under a render's `extendsVia`), `value` (the prebuilt arm) — together with
-`provide`/`adapt` argument crossing, the deferred pocket, and the singular-arity live-edge enforcement. The
-root entity, output families, and collector aggregates are receiver-dispatched like every other outer and
-arrive with the same work. Should per-edge dispatch profile hot, a per-fleet resolver-hoist seam
-(`mkReceiverResolver`, closing the dispatch once over one fleet's compiled kinds) is the natural addition.
+## Nest-mode execution (spec §4.2/§4.3/§4.8) — `lib/nest.nix`
+
+Mode EXECUTION realizes the receives rows on the live nest edges: `resolveReceiver` (above) DECLARES + picks
+the graft-site row; `executeNest` EXECUTES it, turning a compiled row + the inner entity's product face into a
+mode-tagged CONTRIBUTION the fold places. It is a `mode` dispatch + pure attrset assembly per arm — no
+fixpoint, no gen-graph walk (the dispatch already ran). `nest.nix` is NIXPKGS-FREE (the sole nixpkgs crossing
+stays `output/terminal.nix` — the engine wires module faces without evaluating them); the per-fleet product /
+conversion / render tables are threaded at CALL time (the receivers pattern — the engine holds no tables or
+evaluators).
+
+**The executor contract — `executeNest { row; inner; ctx; conversions ? {}; renders ? {} }`.** `row` is a
+compiled receives row (or one element of a `resolveReceiver` multi-winners list); `inner` is
+`{ product; payload; }` (or the prebuilt `artifactRef` arm) plus the inner's structural FACE fields
+(name/kind/…); `ctx` carries STRUCTURAL handles ONLY (the §2.1 corollary — name/kind/slot/ids/paramPoint, NO
+content). THE LAZINESS LAW: the engine may not force `inner.payload` (nor call an evaluator / `extendsVia` /
+`provide` / `adapt`) during wiring — a contribution's shape (mode + attr names) is forcible while every
+payload-bearing field stays a thunk. **The `at` call convention:** `at = point: inner: [ …path ]` returns ONE
+path (`[]` ⇒ FLAT, a root merge); `point` is the structural paramPoint HANDLE; the executor STRIPS the payload
+before calling `at` (`removeAttrs inner [ "payload" ]`), so `at` sees the inner's structural face, never its
+content. The engine builds the contribution; the CALLER places it (the live mount + families/collectors
+consume the contributions and arrive with the families work).
+
+Each mode returns exactly its contribution row (`mkContribution mode extra`, so the mode tag is written once):
+
+| mode | contribution | lazy fields |
+| --- | --- | --- |
+| content | `{ mode = "content"; at = <path>; modules = [ … ]; }` | each placed module |
+| artifact | `{ mode = "artifact"; at; artifact = <thunk>; }` | `artifact` (the render call) |
+| extend | `{ mode = "extend"; at; extended = <thunk>; }` | `extended` (the `extendsVia` call) |
+| value | `{ mode = "value"; at; value = <verbatim>; unrealizedCast ? <marker>; }` | `value` |
+| defer | `{ mode = "defer"; needs = [ paths ]; thenFn; }` — INERT record | `thenFn` |
+| (provide rider) | `provideArgs = { specialArgs = <thunk>; argsModule = <module>; }` | both |
+| (adapt rider) | `adaptEnv = <argEnv>` | the bindings (bound at the mount) |
+
+**Per-mode laws.**
+
+- **content — one shared fixpoint.** The inner's `ModulesInfo` module list grafted at the `at` path (`[]` ⇒
+  flat, else each module nested under the path via the fold's own `nestAtPath`/`placeSlice` primitive). THE
+  ANCHOR (the sub-plan's oracle): the executor's GRAFT equals the live fold's own placement, byte-identically,
+  on the projection fixture — the honest half is PLACEMENT (the executor genuinely performs the at-path wrap; a
+  wrong wrap fails the leg); the reach-based gather stays the fold's, not the executor's.
+- **artifact — isolated inner eval, the sole forcing boundary.** The render row (`renders.${row.render}`)
+  crosses the inner's modules in ISOLATION — the render call is the sole point the inner is forced. The eval is
+  `renderRow.evaluator payload`; `face` projects it (`face eval`), or a NULL `face` means the eval ITSELF is
+  the artifact. A null `row.render` on an artifact consume aborts NAMED (an artifact has no way to build its
+  face without a render). `provision`/`adapt` on the render row stay data (the provisioning + arg-crossing
+  wiring is the families step).
+- **extend — legal only under `extendsVia`.** The `extended` thunk wraps the consulted render's `extendsVia`
+  capability applied to the inner's `EvalHandleInfo` payload (the extendModules handle). Legal ONLY when the
+  render declares `extendsVia`; a null `row.render` OR a render without `extendsVia` is ONE named
+  missing-capability throw (`extendsVia` lives on the render row, §4.3).
+- **value — the prebuilt arm, injected verbatim.** An `inner` carrying the `artifactRef` wrapper is the
+  prebuilt value: injected VERBATIM, never evaluated, never converted (ArtifactRef acceptance at `consumes = P`
+  is DEFINITIONAL, and value acceptance is MODE-INDEPENDENT — it short-circuits before any mode dispatch, so a
+  prebuilt value satisfies an artifact-mode row too). A wrapped-face MISMATCH (`artifactRef.product ≠ consumes`)
+  sets the `unrealizedCast` trace marker — a trace-visible node, NEVER an eval failure. The entity-side surface
+  is `aspects.<name>.artifact = <value>` (a facet-category key, routed as behaviour by `classifyKey`); its
+  EXCLUSIVITY law (`artifactExclusive`): a prebuilt aspect's class buckets must be EMPTY — declaring `artifact`
+  alongside non-empty class content aborts NAMED (fired at the projection terminal). Synthetic until the
+  families provide a consumer.
+
+**The conversions consult (spec §4.1).** On a (produces, consumes) mismatch the executor does EXACTLY ONE
+single-step lookup in the compiled conversion table (`"<from>-><to>"`): found ⇒ `via` applied LAZILY to the
+payload, the contribution proceeds under the row's mode; not found ⇒ a named mismatch throw. NO chain search
+(the MLIR-style multi-hop materialization is rejected for determinism — a needed composite is its own
+registered pair). Conversions NEVER apply to the prebuilt arm (value acceptance is definitional). A
+cross-module registration of the same `"<from>-><to>"` pair with a differing `via` surfaces as the module
+system's unique-merge conflict at the `.via` key (the `raw` type never last-wins on non-equal records).
+
+**The cross-cutting riders (spec §4.8) — attach to the mode contribution on ANY mode.**
+
+- **provide.** `row.provide = outer: attrs` supplies args crossed from the OUTER to the inner. The rider
+  carries BOTH delivery arms of the SAME `provide ctx` result, LAZILY: `specialArgs` (the extraSpecialArgs-
+  style arm, for a crossing that exposes special args) and `argsModule = { _module.args = args; }` (the
+  fallback). Which arm a crossing uses is the caller's choice (the families step). THE RESTRICTION: `_module.args`
+  values are UNUSABLE in `imports` (the module system evaluates `imports` before `_module.args` is available),
+  so an arg a downstream module needs in ITS `imports` must ride the `specialArgs` arm.
+- **adapt.** `row.adapt` is the arg ENVIRONMENT; the `adaptEnv` rider carries it verbatim (the BINDING happens
+  at the mount, the families step). `bindArgs argEnv fnModule` is the pure binder — `intersectAttrs` over
+  `builtins.functionArgs` binds ONLY the args the function-module DECLARES, lazily (a `{ osConfig, ... }:`
+  module binds `osConfig`; an undeclared arg in `argEnv` is never selected, so it never forces; a non-pattern
+  `_:` fn binds nothing). `ArgsInfo` (content-mode, non-nestable — `checkConsumes` blocks it as a `consumes`)
+  is the arg-environment product vocabulary; `adapt` is its legal consumer.
+- **defer.** `executeDefer { record }` lowers the R6 record `{ needs = [ paths ]; then = vals: config; }` to
+  the INERT contribution `{ mode = "defer"; needs; thenFn; }` — no terminal consumer yet (no `mkMerge` splice).
+  `then` is a Nix KEYWORD, so the record's field is a QUOTED/DYNAMIC field (`{ "then" = …; }` / `record.${"then"}`),
+  never bare, surfaced as the keyword-free `thenFn`. The one executable check: a `then` producing `options`/
+  `imports` aborts NAMED (a defer produces config only) — fired when `thenFn` is APPLIED, so the record stays
+  inert until a consumer applies it. THE `__configThunk` RELATIONSHIP: den-hoag already ships a deferred
+  mechanism (a config-demanding aspect fn rides `deferredToThunk` → gen-bind's `__configThunk`, resolved at the
+  producing scope at the terminal); R6 formalizes the same contract, so the families consumer either LOWERS
+  this record onto the `__configThunk` path or RETIRES both into one — never a third defer surface.
+
+**Singular arity at both depths (spec §4.2).** "Two predicate-differing edges into one singular mount both
+firing throws" is enforced at BOTH depths, one pure check per phase where its data lives:
+
+- **definition-time — `receivers.checkSingularDefinition { row; intents; mount }`** (the `den.kinds:` register).
+  Over the UNCONDITIONAL intents (no `when`): two unconditional intents into a singular mount are a static
+  double-mount that can never be legal, so they abort NAMED before the identity freeze. A CONDITIONAL intent
+  (carrying a `when`) may never co-fire, so it PASSES and defers to wiring.
+- **wiring-time — `nest.checkSingular { row; edges; mount }`** (the `den.nest:` register). Over the LIVE edge
+  set (post-`when`, the fired edges): a singular mount with more than one live edge aborts NAMED, naming the
+  mount + every live edge id.
+
+`arity = "many"` never throws at either depth. RETURN-CONTRACT asymmetry: `checkSingular` returns the post-
+`when` live set on the singular path but the input `edges` unchanged on the `many` path (the `when` filter is a
+singular-arity concern only); `checkSingularDefinition` returns `intents` unfiltered on every pass path (it
+inspects the unconditional subset only to decide the throw, never to reshape the result).
+
+**Forward.** The live mount + output families + collector aggregates consume these contributions and are
+receiver-dispatched like every other outer, arriving with the families work; the root entity is one such
+outer. `unrealizedCast`'s row/slot locus is decided when the trace consumer lands. Should per-edge dispatch
+profile hot, a per-fleet resolver-hoist seam (`mkReceiverResolver`, closing the dispatch once over one fleet's
+compiled kinds) is the natural addition.
 
 ## Theory citations (§6)
 
