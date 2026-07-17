@@ -68,9 +68,10 @@ a named lib (Law A1): the identity hashes to `lib/identity.nix`, the registry/ov
 (**output** — a stratum the framework itself dense-inserts after `demand` through the SAME
 `den.strata.insert` machinery); and `demand` (the demand-stratum kind demand's `toEdges` stamps). A user
 registers beside them; re-registering a framework kind name aborts NAMED (`framework-reserved`); a
-`stratum` outside the compiled order aborts NAMED; `closure = true` with no `discipline` aborts NAMED
-(closure is legal only under a join-semilattice discipline — the laws themselves are validated by the
-disciplines registry, a later step). **Deferred (spec §2.2): per-kind `data` schema VALIDATION** — the
+`stratum` outside the compiled order aborts NAMED; `closure = true` is validated against the disciplines
+registry — the named `discipline` must EXIST there and declare `laws == "join-semilattice"` (no
+discipline, an unregistered one, or a wrong-laws one each abort NAMED; closure is legal only under a
+join-semilattice discipline, see the Disciplines section below). **Deferred (spec §2.2): per-kind `data` schema VALIDATION** — the
 registry STORES `data`; enforcing it against edge intents lands when live producers arrive
 (`assembleEdges` carries the deferral comment at the intent-validation site).
 
@@ -88,6 +89,90 @@ synthetic record's `annotations` (inert, provenance-only). When live producers r
 would enter trace goldens and a `data` change would double-ripple the trace (source key AND edgeId); and
 gen-edge annotations are provenance/diagnostics never read by materialize, so a consumer keying on `edgeId`
 semantically (dedup/query) needs it as a first-class field or recomputed at the read site.
+
+## Disciplines and merge orders (`den.disciplines`, spec §5/§6)
+
+**The registry.** `den.disciplines.<name> = { laws; empty; combine; dedup ? null; order ? null; }` names
+the ALGEBRA a merge site obeys — an identity (`empty`) and a binary operation (`combine`) constrained by a
+`laws` class. `compile` is one `mapAttrs` + validation (Law A1, mirroring the class/edge registries): a
+missing `empty`/`combine` or an out-of-ladder `laws` aborts NAMED; the framework instance names
+(`settings-layers` / `collections-neron` / `reach-closure`) are reserved (a user re-registration aborts,
+the `den.edges` posture) and the framework itself seeds them. A `combine` value is a FUNCTION — a registry
+holds functions freely; the fingerprint law bans functions from EDGE DATA only, never from a registry.
+
+**The laws ladder + what each class GATES.** A subsumption chain — ordered-monoid ⊂ commutative-monoid ⊂
+join-semilattice, plus `shadow` off the chain:
+
+| `laws` | laws | gates |
+|---|---|---|
+| `ordered-monoid` | associativity + identity | order-BEARING merges (last-wins-per-field / pinned sequence) |
+| `commutative-monoid` | + commutativity | order-FREEDOM (ACI minus idempotence) |
+| `join-semilattice` | + idempotence (ACI) | fixpoint CLOSURE — `closure = true` on an edge kind is legal ONLY under a registered join-semilattice discipline (idempotence is what makes a reachable-set iteration converge — the Datafun restriction) |
+| `shadow` | right-absorption (last-wins on overlapping keys) | Leijen scoped-label record merge |
+
+**DECLARE, not rewire (the architecture).** The three shipped folds are NOT re-wired through a shared
+engine. Each is DECLARED as a discipline instance whose `combine` REFERENCES the same algebra its
+production fold applies (the fold stays in its owning gen lib — Law A1). A declaration is proven to match
+production by a THREE-LEG chain: (i) the property harness law-checks the `{ empty; combine }` against its
+declared `laws` (with teeth — an unlawful synthetic per class RED); (ii) an ORDER ORACLE asserts the live
+fold's order matches the declared `order.tiers`; (iii) a VALUE-AGREEMENT pin folds the instance's own
+`combine` over the live components and reproduces the live value. So a drifted-but-lawful `combine`
+reference is caught by (iii), a re-ordered fold by (ii), a false `laws` claim by (i). The `engine` field
+names the production fold NOMINALLY (the fold-ENGINE leg, a reference — never a re-wire).
+
+**The three instances.**
+
+| instance | `laws` | `order.tiers` | `withinTier` / `tieBreak` | `dedup` | `engine` |
+|---|---|---|---|---|---|
+| `settings-layers` | ordered-monoid | `[schema-default, contains, slice, policy]` | `linearization` / — | — | `gen-algebra record.foldLayersTraced` |
+| `collections-neron` | ordered-monoid | `[neron]` | `traversal:neron` / `a12` | — | `gen-pipe run (B5 pinned-sequence ordered fold)` |
+| `reach-closure` | join-semilattice | `[structural, reach-edge]` | `traversal:subtree-dfs` / — | `{ key = aspect-ident; keep = first; appliesTo = [reach-edge] }` | `reach in-attribute ordered fold (resolved-aspects)` |
+
+**B5 as the canonical form.** `collections-neron`'s `engine` (gen-pipe `run`, the B5 pinned-sequence
+ordered fold) is the canonical merge form: every join-semilattice fold IS a valid ordered fold (an
+idempotent-commutative combine folded in the pinned traversal order agrees with its unordered value), so an
+ordered discipline is the general shape and a stronger-laws channel refines it in place. Stronger laws are
+per-new-channel OPT-IN — a channel adopts `semilattice-set` (below) by DECLARING it; an existing instance
+never silently gains stronger laws (the risk-register #6 golden pins the current laws).
+
+**`combine`-by-reference.** `settings-layers`'s combine is `algebra.record.foldLayers { strategies = {}; layers = [a b]; }` — the SAME gen-algebra unit `gen-settings.resolveAll` applies (its per-aspect strategies
+instantiate a strategy-indexed family of monoids; the declared combine samples the all-`replace`
+representative, exact because replace/append/recursive are each associative per field).
+`collections-neron`'s combine/init are the COMPILED channel record's `.combine`/`.init` by value.
+`reach-closure`'s combine is a documented RESTATEMENT (append-then-first-occurrence-dedup by `.key` — the
+edge-closure algebra; the fold is let-bound in the reach attribute, no separable unit), certified by the
+same three-leg chain. In every case the registry's algebra IS the production unit, and a drift is caught by
+the value pins.
+
+**The reach dedup-key ruling (declaration-only, no migration).** `reach-closure.dedup.key` STAYS
+`aspect-ident`: the key→id_hash migration is VACUOUS because `id_hash = hashString "den-aspect:${key}"` is a
+bijection of the key (concern-aspects.nix), so the seen-set is extensionally identical under either — and
+Shape B's path-bearing keys already de-collided the nested same-leaf-name shape. `dedup.appliesTo` is
+`[reach-edge]` and NEVER structural: the structural-subtree component emits per-provider multiplicity
+VERBATIM (distinct descendant scopes are distinct ctx-eval results — the u24 content-loss exemption) and
+seeds the seen-set; dedup gates the edge closure only.
+
+**The `shadow` HALF-CHECK precondition (before any real shadow instance).** The property harness's `shadow`
+check verifies RIGHT-ABSORPTION only (`combine a b == b` on overlapping keys — total absorption); it does
+NOT verify that `a`'s UNIQUE keys survive (the samples carry a full-overlap contract). Before any REAL
+shadow instance registers, the check must be strengthened: a per-shared-key clause (`∀ k ∈ keys a ∩ keys b: (combine a b).k == b.k`) AND a disjoint-survival clause (`a`'s unique keys present in `combine a b`) — the
+two halves of Leijen's scoped-label merge.
+
+**The provenanceWord vocabulary (order-rendering, forward note).** A merge order renders as the word
+`(tier(edgeKind), withinTierRank, A12(rank, id_hash, emissionIndex))` — the tier of the layer's edge kind,
+its within-tier rank, and the A12 same-position tie-break triple (aspect rank 0 before policy rank 1, then
+the producer's id_hash, then its own emission index). This is the ORDER-RENDERING vocabulary the `order`
+records declare; its TRACE rendering (a per-layer provenance word in the output goldens) arrives with the
+output-facet work — the declarations here are the vocabulary that consumes.
+
+**The `semilattice-set` opt-in channel class (gen-pipe E10 landed).** A quirk channel declaring
+`den.quirks.<name>.channel.merge = "semilattice-set"` gets the idempotent set-union merge: duplicate
+contribution VALUES collapse (dedup by `==`), so re-contributing a present value is a no-op — the
+join-semilattice ACI laws. It is realized as gen-pipe channel-construction defaults (value-keyed
+first-occurrence dedup on the ordered append); the result order is FIRST-OCCURRENCE (pinned-order stable).
+Value equality is by the dedup key's `toJSON` serialization — STRUCTURAL values only (`1` and `1.0` do not
+collapse; a function-valued contribution is unconvertible and fails). It is OPT-IN: the default
+`ordered-list` discipline is unchanged, and a caller may override `dedup`.
 
 ## Theory citations (§6)
 
@@ -108,6 +193,18 @@ The libraries den-hoag delegates to carry the theory; the citations that matter 
   and the fixpoint is unique and arrival-path independent.
 - **Edge algebra — `delivery-edge-unification` §2 (internal).** The `(S,T,P,M)` edge rule and corollaries
   1–3 fix "every content move is one edge; isolation is edge absence; reinstantiate is a mode".
+- **Disciplines: join-semilattice fixpoints — Arntzenius & Krishnaswami, "Datafun" (ICFP 2016).** A
+  monotone fixpoint's carrier is restricted to a join-semilattice — idempotence is what makes the
+  reachable-set iteration converge. `reach-closure`'s `join-semilattice` laws and the `closure = true`
+  edge-gate are this restriction.
+- **Disciplines: ACI convergence — Shapiro, Preguiça, Baquero & Zawirski, "Conflict-free Replicated Data
+  Types" (SSS 2011).** A CRDT is the convergent instance of an associative-commutative-idempotent merge;
+  the `semilattice-set` channel class (gen-pipe E10) is that algebra.
+- **Disciplines: the `shadow` merge — Leijen, "Extensible records with scoped labels" (TFP 2005).** The
+  scoped-label last-wins record merge — right-absorption on overlapping keys with disjoint-key survival.
+- **Disciplines: static order declarations — Kastens, "Ordered attribute grammars" (Acta Informatica
+  1980).** The `order` records (tiers + within-tier rank) are static evaluation-order declarations over the
+  attribute schedule.
 
 ## Grounded terminology (r2 / v1 → graph-native)
 

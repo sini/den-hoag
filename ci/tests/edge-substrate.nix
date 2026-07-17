@@ -876,7 +876,7 @@ in
     # (closure needs idempotence). The registry compiles + validates; the framework instance names are
     # reserved. Mirrors the edge-kind registry (one mapAttrs + validation fold).
     #
-    # the framework-reserved instance names (the three shipped merge orders declared in later steps).
+    # the framework-reserved instance names (the three shipped merge orders the framework seeds).
     test-disciplines-reserved-names = {
       expr = disciplines.reservedNames;
       expected = [

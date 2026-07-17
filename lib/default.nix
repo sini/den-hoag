@@ -157,7 +157,7 @@ let
   concernClasses = import ./concern-classes.nix { inherit prelude bind; };
   # The merge-discipline registry (den.disciplines): compile + laws-ladder validation (§5). The closure
   # gate (edges.nix) validates a closure kind's discipline against the compiled table; the framework
-  # instance names are reserved here for the merge orders declared in later steps. Pure Law A1.
+  # instance names are reserved here; the framework seeds the three shipped merge orders. Pure Law A1.
   concernDisciplines = import ./concern-disciplines.nix { inherit prelude algebra pipe; };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
@@ -338,8 +338,8 @@ let
       # merge site obeys: `{ laws; empty; combine; dedup ? null; order ? null; }` — `laws` names the
       # ladder class (ordered-monoid / commutative-monoid / join-semilattice / shadow), `empty`/`combine`
       # are the identity + binary operation. `raw` holds each record unmerged (its `combine` is a
-      # function). Absent ⇒ a fleet with no registered disciplines (the framework instances land in later
-      # steps). The registry DESCRIBES disciplines; the closure edge-gate reads the compiled table.
+      # function). Absent ⇒ a fleet registering no USER disciplines (the framework instances are always
+      # seeded). The registry DESCRIBES disciplines; the closure edge-gate reads the compiled table.
       disciplinesDecl = {
         options.den.disciplines = merge.mkOption {
           type = merge.types.lazyAttrsOf merge.types.raw;
@@ -774,8 +774,8 @@ let
           };
 
       # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
-      # (laws ladder, reserved-name). The framework instances (the three shipped merge orders) land in
-      # later steps; a native fleet registers none, so the table is empty. The closure edge-gate reads it.
+      # (laws ladder, reserved-name). The framework seeds the three shipped merge orders (settings-layers /
+      # collections-neron / reach-closure); a user registration joins beside them. The closure edge-gate reads it.
       disciplinesTable = concernDisciplines.compile {
         disciplines = ent.config.den.disciplines or { };
       };
@@ -1184,7 +1184,7 @@ let
         # The compiled edge-kind table (§2.2): framework vocabulary + `den.edges` registrations, validated.
         edges = edgeKindTable;
         # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
-        # (laws ladder). Empty for a fleet registering none (the framework instances land in later steps).
+        # (laws ladder): the framework merge-order instances seeded, plus any user registration.
         disciplines = disciplinesTable;
         scopeRoots = scopeRoots;
         inherit structural;

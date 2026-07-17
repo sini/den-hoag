@@ -9,7 +9,7 @@
 #
 # The harness is TEST MACHINERY (the sampler lives here, not in lib/ — the kernel declares algebras, it
 # does not sample them). It ITERATES the compiled `den.disciplines` table, so every registered
-# discipline (the framework instances landing in later steps included) is covered automatically; the
+# discipline (the seeded framework instances + any user registration) is covered automatically; the
 # per-discipline sample sets are declared beside the fixtures that exercise them.
 #
 # SAMPLES are structural values only (lists / attrsets / strings) compared by `==` — a function-valued
@@ -80,7 +80,7 @@ let
 
   # ── ONE LAWFUL SYNTHETIC PER LADDER CLASS (all four sampler branches execute) ────────────────────
   # ordered-monoid: list concatenation — associative with `[ ]` identity, NOT commutative (order-bearing,
-  #   exactly the settings-layer / neron discipline shape the framework instances declare in later steps).
+  #   exactly the settings-layers / collections-neron discipline shape the framework instances declare).
   # commutative-monoid: per-key NUMERIC SUM merge — commutative + associative + a `{ }` identity, and
   #   GENUINELY NOT idempotent (`{k=1}·{k=1} == {k=2} != {k=1}`), so it is a true commutative monoid that
   #   is NOT a semilattice (the distinguishing witness the ladder needs — a `//` union would be idempotent
