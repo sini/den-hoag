@@ -1174,7 +1174,7 @@ in
     # the resolve-family tag set defaults to `[ ]` here (the R2 knob is a fleet-level `den.resolveFamilyNames`
     # option, not a unit-suite concern). `compileWith` is the full 4-arg form default.nix threads.
     compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ] [ ];
-    # The strata-aware compiler (Task 3): compile with an explicit stratum order + stratum→ctx-key map,
+    # The strata-aware compiler (spec §5): compile with an explicit stratum order + stratum→ctx-key map,
     # so the capability-scoped ctx projection is exercisable from the suite (the seeded config = the
     # byte-identical no-op the fleet path uses). `compilePoliciesWithStrata { order; ctxKeyStrata } sentinel rf ef`.
     compilePoliciesWithStrata = concernPolicies.compileWithStrata;

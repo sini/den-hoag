@@ -133,7 +133,7 @@ let
       final.order;
 
   # The compiled order with ZERO inserts is byte-identical to the seed — every existing stratum consumer
-  # (`kindToStratum`, the gen-resolve schedule feed) reads THIS list (the 972-suite is the proof).
+  # (`kindToStratum`, the gen-resolve schedule feed) reads THIS list (the full suite is the proof).
   strata = compileStrata { inserts = { }; };
 
   actions = dispatch.mkActions groups;

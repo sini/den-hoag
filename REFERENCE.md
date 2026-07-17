@@ -129,7 +129,7 @@ Note: `den.default` (v1 compat) desugars to a plain `den.aspects.defaults` aspec
 | `resolve` | `{ bindings }` | structural | Fan-out; lowers to `member` (a cell tuple). `.shared` (non-isolated), `.to "kind" {…}` (root-target → `containTo`-marked `member`), `.withIncludes includes {…}`, `.shared.to`, `.to.withIncludes`. Only `resolve.to "<kind>" {…}` is corpus-exercised. |
 | `route` | `{ fromClass; intoClass; intoPath ? null; path ? null; reinstantiate ? false; guard ? null; adaptArgs ? null; __extra ? {} }` | resolution | **PERMANENT sugar** over `deliver` (`deliver.nix`). `intoPath`/`path` → `at` (both present aborts, §2.3); `reinstantiate = true` → `mode = "verbatim"`; `__extra.appendToParent` overlays the parent-target flag (#53c). Not replaced by `reroute`. |
 | `provide` | `{ class; module; path ? [] }` | resolution | **PERMANENT sugar** over a module-source `deliver` (`class` → `to`, `module` → `from.module`, `path` → `at`). Not replaced by `inject`. |
-| `deliver` | `{ from; to; at ? []; mode ? "merge"; guard ? null; adaptArgs ? null }` | resolution | The base delivery surface (`deliver.nix`); produces a `{ __delivery = true; … }` descriptor, compiled to a `delivery` declaration at fire time (Law C2). `from` = class name (route case) or `{ module }` (provide case). `mode` ∈ {merge \| nest \| verbatim}; verbatim on a module source aborts. |
+| `deliver` | `{ from; to; at ? []; mode ? "merge"; guard ? null; adaptArgs ? null }` | resolution | The base delivery surface (`deliver.nix`); produces a `{ __delivery = true; … }` descriptor, compiled to a `delivery` declaration at fire time (Law C2). `from` = class name (route case) or `{ module }` (provide case). `mode` ∈ {merge | nest | verbatim}; verbatim on a module source aborts. |
 | `spawn` | `{ classes }` | structural | v1 home-projection fan-out verb (distinct from `declare.spawn`, which is a latent structural constructor). |
 | `instantiate` | `spec` | structural | v1 instantiate verb. |
 | `pipe.from` | `nameOrRef: stages` | collection | Heads a channel derivation; stages fold left-to-right (`pipe.nix` compilePipe). |
@@ -145,6 +145,40 @@ Note: `den.default` (v1 compat) desugars to a plain `den.aspects.defaults` aspec
 | `pipe.broadcast` | `pred` | collection | Stage: push-dual of expose — broadcast to matching scopes. |
 | `pipe.collect` | `pred` | collection | Stage: gather from scopes matching predicate (spec name `pipe.gather`). |
 | `pipe.collectAll` | `pred` | collection | Stage: collect across all matching scopes (no scope restriction). |
+
+## Strata (`den.strata`, spec §5)
+
+The stratum order is DATA. The SEEDED order is `structural < resolution < collection < demand`; a fleet
+extends it through the module surface:
+
+```nix
+den.strata.insert.<name> = { after = "<existing stratum>"; };
+```
+
+Each name-keyed insert places a NEW stratum DENSELY — immediately after its `after` anchor
+(`lib/declarations.nix` `compileStrata`). The compiled order is what every consumer reads (`kindToStratum`,
+the gen-resolve schedule feed, edge-kind `stratum` validation); with zero inserts it is byte-identical to
+the seed. Determinism: inserts are placed lexicographically by name, so multiple inserts after the SAME
+anchor keep lexicographic order; an insert whose `after` is itself an insert resolves once that anchor is
+placed (a ready-set fixpoint over the lex-ordered names). A name colliding with an existing stratum, or an
+`after` that never resolves (unknown or cyclic), aborts NAMED at definition time. The framework's own
+`output` stratum is registered through THIS mechanism (inserted after `demand`).
+
+**Capability-scoped rule ctx (A9 stratification-by-construction).** A rule declared at stratum *n* may read
+ONLY ctx facts of a STRICTLY LOWER stratum. The compiler (`lib/concern-policies.nix` `compileWithStrata`)
+carries a DECLARED stratum→ctx-key-groups map; a ctx key whose declared stratum is ≥ the rule's own is
+REPLACED with a NAMED THROW (not omitted — a replaced key aborts CATCHABLY when the body reads it, whereas an
+attribute-missing read escapes `tryEval`). The projection wraps ONLY the rule's FINAL (dispatch) produce; the
+value-less stratum PROBE keeps the RAW base produce BY DESIGN — the probe is sentinel-only stratum detection,
+never a value channel, so projecting it would conflate the two. The seeded ctx-key map is empty above the
+structural stratum (today's rule ctx is entity BINDINGS — inherited/enriched/linked context — all
+structural), so the projection is a no-op for every shipped rule.
+
+**Documented tension.** Once a ctx key carries a ≥-structural stratum tag, per-phase EXPANSION (the
+value-conditional policy split into one sub-rule per covered stratum) and a body that READS that tagged key
+become mutually exclusive: a sub-rule at a stratum below the key's would throw on the read. Such a rule must
+therefore be a DECLARED-stratum rule (a record `{ __condition; fn }` fixing its single stratum), not an
+expansion policy — the honest consequence of making ctx capability-scoped.
 
 ## Spec-vs-reality flags
 

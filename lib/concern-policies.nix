@@ -68,7 +68,7 @@ let
   # The SEEDED strata config (§B2): the compiled stratum order with the stratum→ctx-key-groups map EMPTY
   # above the structural stratum. Rule ctx today is entity BINDINGS — inherited/enriched/linked context
   # (structural.nix attributes 1–3), ALL structural — so no ctx key belongs to a stratum above structural
-  # and the projection below is a NO-OP for every shipped rule (the 972-suite is the byte proof). The
+  # and the projection below is a NO-OP for every shipped rule (the full suite is the byte proof). The
   # order threads from `den.strata` (declarations.compileStrata) via `compileWithStrata`; a caller that
   # inserts a stratum and tags a ctx key to it gets the capability projection by construction.
   seededStrataCfg = {
@@ -91,11 +91,14 @@ let
         builtins.genList (i: i) (builtins.length strataCfg.order)
       );
       # key → its declared stratum (inverting the stratum→keys map); un-tagged keys are structural-safe.
+      # A stratum name in the map that is absent from the compiled order aborts NAMED at build time — an
+      # untagged silent pass would defeat the projection.
       ctxKeyStratum = prelude.foldl' (
         acc: stratum:
-        prelude.foldl' (acc': key: acc' // { ${key} = stratum; }) acc (
-          strataCfg.ctxKeyStrata.${stratum} or [ ]
-        )
+        if !(stratumIndex ? ${stratum}) then
+          throw "den.strata: ctxKeyStrata names unknown stratum '${stratum}' (not in the compiled order)"
+        else
+          prelude.foldl' (acc': key: acc' // { ${key} = stratum; }) acc (strataCfg.ctxKeyStrata.${stratum})
       ) { } (builtins.attrNames (strataCfg.ctxKeyStrata or { }));
       projectCtx =
         ruleStratum: ctx:
@@ -107,7 +110,7 @@ let
           let
             ks = ctxKeyStratum.${key} or null;
           in
-          if ks != null && (stratumIndex.${ks} or (-1)) >= r then
+          if ks != null && stratumIndex.${ks} >= r then
             throw "den.strata: ctx fact '${key}' is stratum '${ks}' ≥ rule stratum '${ruleStratum}'"
           else
             v

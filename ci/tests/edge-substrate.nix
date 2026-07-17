@@ -437,10 +437,45 @@ in
         )).success;
       expected = false;
     };
+    # a cyclic insert PAIR (each `after` names the other — neither anchor ever resolves) is a
+    # definition-time throw (the "unknown or cyclic" arm of the same guard, pinned distinctly).
+    test-strata-cyclic-inserts-throw = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (declare.compileStrata {
+            inserts.a = {
+              after = "b";
+            };
+            inserts.b = {
+              after = "a";
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # END-TO-END through the OPTION mount: a fleet setting `den.strata.insert` surfaces the compiled
+    # order on the `den.strata` output (the seeded four with the insert placed densely after its anchor).
+    test-strata-option-mount-order = {
+      expr =
+        (denHoag.mkDen [
+          {
+            config.den.strata.insert.reify = {
+              after = "resolution";
+            };
+          }
+        ]).den.strata;
+      expected = [
+        "structural"
+        "resolution"
+        "reify"
+        "collection"
+        "demand"
+      ];
+    };
 
     # ── capability-scoped rule ctx (spec §5 / A9 stratification-by-construction) ──
     # SEEDED projection is a no-op: with an empty stratum→ctx-key map, the structural rule reading its
-    # structural ctx entry produces normally (the 972-suite is the fleet-wide byte proof; this pins it
+    # structural ctx entry produces normally (the full suite is the fleet-wide byte proof; this pins it
     # at the compiler seam directly).
     test-ctx-scoping-seeded-noop = {
       expr =
