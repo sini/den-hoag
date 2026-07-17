@@ -1316,6 +1316,10 @@ in
       schema
       identity
       ;
+    # The raw gen-graph lib (labeled-query calculus — the regular-path-query surface), role-named the
+    # genEdge way so the seam register reads uniformly and the bare name doesn't collide with den's own
+    # graph escape-hatch vocabulary (graphEscape / den.graph).
+    genGraph = graph;
     # The A10 class-share build path (gen-class tier-2/tier-3), for the suite's parity/laziness scenarios.
     classShare = import ./output/class-share.nix { inherit prelude class errors; };
   };
