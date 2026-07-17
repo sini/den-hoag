@@ -1414,14 +1414,22 @@ in
     receivers = receiversLib;
     # The slot ≻ class dispatch (§4.2 F4), exposed flat for the suite's dispatch scenarios: `resolveReceiver
     # { compiledKinds; outerKind; slot; class }` runs the visible query over the kind-include graph.
-    resolveReceiver = receiversLib.resolveReceiver;
+    # `checkSingularDefinition { row; intents; mount }` is the §4.2 arity DEFINITION-TIME half (two
+    # unconditional intents into a singular mount abort NAMED before the identity freeze).
+    inherit (receiversLib) resolveReceiver checkSingularDefinition;
     # The nest-mode EXECUTION engine (§4.2 mode taxonomy), exposed flat for the suite's execution scenarios:
     # `executeNest { row; inner; ctx; conversions ? {}; renders ? {} }` dispatches on the resolved row's derived
     # `mode` and returns that mode's contribution — content (grafted at `at`), value (the prebuilt arm),
     # artifact (rendered via `renders.${row.render}`), extend (the render's `extendsVia`) — plus the §4.8
     # provide/adapt riders. `bindArgs argEnv fnModule` is the pure functionArgs binder (adapt); `executeDefer
-    # { record }` produces the inert `{ mode = "defer"; needs; thenFn; }` record (§4.8 R6).
-    inherit (nestLib) executeNest bindArgs executeDefer;
+    # { record }` produces the inert `{ mode = "defer"; needs; thenFn; }` record (§4.8 R6). `checkSingular
+    # { row; edges; mount }` is the §4.2 arity WIRING-TIME half (the live edge set, post-`when`).
+    inherit (nestLib)
+      executeNest
+      bindArgs
+      executeDefer
+      checkSingular
+      ;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

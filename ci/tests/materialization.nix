@@ -741,6 +741,74 @@ let
     needs = [ ];
     "then" = _: throw "defer thenFn applied during wiring — defer laziness violated";
   };
+
+  # ── Task 5 fixtures: singular arity (both depths) + the laziness sweep ──
+  # the singular / wiring / definition checks, reached through the raw-gen-libs seam.
+  inherit (denHoag.internal) checkSingular checkSingularDefinition;
+
+  # a SINGULAR-arity row and a MANY row (the default). `singularRow` is the mount whose live set must be ≤ 1.
+  singularRow = flatRow // {
+    arity = "singular";
+  };
+  manyRow = flatRow // {
+    arity = "many";
+  };
+
+  # WIRING-TIME live-edge sets. Each edge is `{ id; when ? <bool>; }` — `when` is the fired flag (absent ⇒
+  # unconditional, always live). `bothFire` = two live edges; `oneFalse` = one edge whose `when` is false
+  # (filtered OUT before the check); `singleLive` = one live edge.
+  bothFire = [
+    { id = "e1"; }
+    { id = "e2"; }
+  ];
+  oneFalse = [
+    { id = "e1"; }
+    {
+      id = "e2";
+      when = false;
+    }
+  ];
+  singleLive = [ { id = "e1"; } ];
+
+  # DEFINITION-TIME intent sets. `uncondPair` = two UNCONDITIONAL (no `when`) intents into one singular mount
+  # (a static double-mount → throw). `condPair` = intents carrying a `when` (conditional) → PASS definition-
+  # time, defer to wiring. `singleIntent` = one unconditional intent (fine).
+  uncondPair = [
+    { id = "i1"; }
+    { id = "i2"; }
+  ];
+  condPair = [
+    {
+      id = "i1";
+      when = "guardA";
+    }
+    {
+      id = "i2";
+      when = "guardB";
+    }
+  ];
+  singleIntent = [ { id = "i1"; } ];
+
+  # THE LAZINESS SWEEP: one row poisoning EVERY surface at once — a `provide` fn whose RESULT throws + an
+  # `adapt` argEnv whose CONTENTS throw (the argEnv itself is a non-null attrset so the rider attaches; its
+  # values are poison), on a content row, fed an inner whose payload throws. Wiring must build a fine
+  # contribution; forcing any payload-bearing field would fire a poison, but the shape (mode + rider
+  # presence) is forcible.
+  sweepRow = flatRow // {
+    provide = _: throw "provide result forced — sweep laziness violated";
+    adapt = {
+      poison = throw "adapt argEnv contents forced — sweep laziness violated";
+    };
+  };
+  sweepInner = tuxInner // {
+    payload = [ (throw "payload forced — sweep laziness violated") ];
+  };
+  # a ctx carrying an EXTRA content-thunk field beyond the structural handles — executeNest must read ONLY
+  # the structural ctx (paramPoint), never this poison field (the structural-handles re-assertion).
+  poisonCtx = {
+    paramPoint = tuxPoint;
+    __poisonContent = throw "ctx content field forced — structural-handles discipline violated";
+  };
 in
 {
   flake.tests.materialization = {
@@ -2006,6 +2074,127 @@ in
         mode = "defer";
         needsLen = 0;
       };
+    };
+
+    # ── §4.2 SINGULAR arity — WIRING-TIME (the live set, post-`when`) ──
+    # the `when` filter is applied BEFORE the check: an edge whose `when` is false is NOT in the live set, so
+    # two edges where one is filtered out do NOT throw (only ONE live edge into the singular mount).
+    test-nest-singular-wiring-one-when-false = {
+      expr = checkSingular {
+        row = singularRow;
+        edges = oneFalse;
+        mount = "host.slot";
+      };
+      # returns the live edge set unchanged (no throw) when singular holds.
+      expected = [ { id = "e1"; } ];
+    };
+    # both edges FIRE (both live) into a singular mount → named throw naming the mount + both edge ids.
+    test-nest-singular-wiring-both-fire-throw = {
+      expr = throws (checkSingular {
+        row = singularRow;
+        edges = bothFire;
+        mount = "host.slot";
+      });
+      expected = true;
+    };
+    # arity = "many" NEVER throws, regardless of how many edges fire.
+    test-nest-singular-wiring-many-never-throws = {
+      expr = checkSingular {
+        row = manyRow;
+        edges = bothFire;
+        mount = "host.slot";
+      };
+      expected = bothFire; # the full set returned, no throw.
+    };
+    # a single live edge into a singular mount is fine.
+    test-nest-singular-wiring-single-ok = {
+      expr = checkSingular {
+        row = singularRow;
+        edges = singleLive;
+        mount = "host.slot";
+      };
+      expected = singleLive;
+    };
+
+    # ── §4.2 SINGULAR arity — DEFINITION-TIME (unconditional edges, both depths) ──
+    # two UNCONDITIONAL (no `when`) intents into a singular mount throw at DEFINITION time (a static
+    # double-mount — the spec's "both depths"). Named, naming the mount + both intent ids.
+    test-nest-singular-definition-uncond-pair-throw = {
+      expr = throws (checkSingularDefinition {
+        row = singularRow;
+        intents = uncondPair;
+        mount = "host.slot";
+      });
+      expected = true;
+    };
+    # CONDITIONAL intents (each carrying a `when`) PASS definition-time and defer to wiring — a static pair of
+    # guarded intents is NOT a definition-time violation (they may never co-fire).
+    test-nest-singular-definition-conditional-defers = {
+      expr = checkSingularDefinition {
+        row = singularRow;
+        intents = condPair;
+        mount = "host.slot";
+      };
+      expected = condPair; # no throw — the guarded pair defers to wiring.
+    };
+    # a single unconditional intent is fine at definition time.
+    test-nest-singular-definition-single-ok = {
+      expr = checkSingularDefinition {
+        row = singularRow;
+        intents = singleIntent;
+        mount = "host.slot";
+      };
+      expected = singleIntent;
+    };
+    # arity = "many" never throws at definition time either.
+    test-nest-singular-definition-many-never-throws = {
+      expr = checkSingularDefinition {
+        row = manyRow;
+        intents = uncondPair;
+        mount = "host.slot";
+      };
+      expected = uncondPair;
+    };
+
+    # ── THE LAZINESS SWEEP (uniform structural-handles / laziness re-assertion) ──
+    # ONE executeNest call whose row carries provide + adapt riders AND a poison payload — every payload-
+    # bearing surface poisoned at once. Wiring builds a fine contribution: the mode + rider presence are
+    # forcible, but no poison fires (the placed modules, the provideArgs, the adaptEnv all stay thunks).
+    test-nest-laziness-sweep-combined = {
+      expr =
+        let
+          c = executeNest {
+            row = sweepRow;
+            inner = sweepInner;
+            ctx = {
+              paramPoint = tuxPoint;
+            };
+          };
+        in
+        {
+          inherit (c) mode;
+          hasProvide = c ? provideArgs;
+          hasAdapt = c ? adaptEnv;
+          moduleCount = builtins.length c.modules; # walks the spine, forces no element.
+        };
+      expected = {
+        mode = "content";
+        hasProvide = true;
+        hasAdapt = true;
+        moduleCount = 1;
+      };
+    };
+    # STRUCTURAL-HANDLES re-assertion: executeNest reads ONLY the structural ctx fields (paramPoint). A ctx
+    # carrying an EXTRA content-thunk field is never read — FULLY forcing the contribution (`deepSeq` over the
+    # clean `flatRow`/`tuxInner`, whose payload is real, not poison) leaves the poison ctx field untouched
+    # (the §2.1 structural-handles discipline, engine-wide; the deep force also guards a lazy-field regression).
+    test-nest-structural-handles-ctx-probe = {
+      expr = builtins.deepSeq (executeNest {
+        row = flatRow;
+        inner = tuxInner;
+        ctx = poisonCtx;
+      }) "forced-clean";
+      expected = "forced-clean";
     };
   };
 }

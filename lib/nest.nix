@@ -45,6 +45,36 @@ let
   # names) is forcible without forcing the payload.
   mkContribution = mode: extra: { inherit mode; } // extra;
 
+  # `checkSingular { row; edges; mount ? "<mount>" }` (§4.2 arity, the WIRING-TIME half) — the singular
+  # live-edge enforcement at wiring, on the LIVE edge set (post-`when`): "two predicate-differing edges into a
+  # singular mount both firing throws". The `when` filter is applied BEFORE the check — an edge is LIVE iff
+  # its `when` fired (`e.when or true` — an unconditional edge, no `when`, is always live; a conditional edge
+  # rides its already-resolved fired flag). A `singular` mount with MORE than one live edge aborts NAMED
+  # (naming the mount + every live edge id); `arity = "many"` never throws.
+  # RETURN CONTRACT: the post-`when` live set on the SINGULAR path; the input `edges` UNCHANGED on the `many`
+  # path (the `when` filter is a singular-arity concern only — a `many` mount admits every edge, so the
+  # unfiltered input rides through). This is a deliberate asymmetry vs `receivers.checkSingularDefinition`,
+  # which returns `intents` UNFILTERED on every pass path (it inspects the unconditional subset only to decide
+  # the throw, never to reshape the result). The DEFINITION-TIME half (the unconditional-pair static check) is
+  # `receivers.checkSingularDefinition` — each check lives where its phase-data does (§4.2 "both depths").
+  checkSingular =
+    {
+      row,
+      edges,
+      mount ? "<singular mount>",
+    }:
+    let
+      live = builtins.filter (e: e.when or true) edges;
+    in
+    if row.arity or "many" != "singular" then
+      edges
+    else if builtins.length live > 1 then
+      throw "den.nest: singular mount '${mount}' has ${toString (builtins.length live)} live edges [ ${
+        builtins.concatStringsSep " " (map (e: e.id) live)
+      } ] — a singular arity admits at most one live edge (§4.2)"
+    else
+      live;
+
   # `bindArgs argEnv fnModule` (§4.8 adapt) — bind ONLY the functionArgs-declared args of a function-module,
   # LAZILY. `intersectAttrs (functionArgs fnModule) argEnv` keeps exactly the args the fn DECLARES (a
   # `{ osConfig, ... }:` module binds `osConfig`, an undeclared arg in `argEnv` is never selected, so it
@@ -244,5 +274,10 @@ let
     base // provideRider // adaptRider;
 in
 {
-  inherit executeNest bindArgs executeDefer;
+  inherit
+    executeNest
+    bindArgs
+    executeDefer
+    checkSingular
+    ;
 }

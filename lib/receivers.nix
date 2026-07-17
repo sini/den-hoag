@@ -27,8 +27,10 @@
 }:
 let
   # `arity` domain (spec §4.2): `many` (the default) or `singular`. The singular live-edge enforcement (two
-  # predicate-differing edges into one singular mount both firing = a throw) is EXECUTED by the mode-execution
-  # work, at BOTH definition-time and wiring — here the domain is validated, the enforcement is a later step.
+  # predicate-differing edges into one singular mount both firing = a throw) runs at BOTH depths: the
+  # DEFINITION-TIME half (`checkSingularDefinition`, below — two UNCONDITIONAL intents into a singular mount)
+  # and the WIRING-TIME half (`nest.checkSingular` — the LIVE edge set, post-`when`). Here the domain is
+  # validated; the two checks are the pure fns the edge-assembly / mode-execution steps invoke.
   arities = [
     "many"
     "singular"
@@ -236,7 +238,34 @@ let
           "den.kinds: equal-precedence receivers disagree on multiplicity: ${builtins.toJSON phase.kinds} — all tied rows must declare multiplicity = \"multi\" to coexist"
       else
         throw "den.kinds: ambiguous receiver for '${outerKind}.receives.${phase.key}' — kinds ${builtins.toJSON phase.kinds} carry it at equal precedence; disambiguate or declare multiplicity = \"multi\"";
+
+  # `checkSingularDefinition { row; intents; mount ? "<mount>" }` (§4.2 arity, the DEFINITION-TIME half) —
+  # the singular enforcement at definition time, over the UNCONDITIONAL intents (no `when`): two static,
+  # always-firing intents into one singular mount are a double-mount that can NEVER be legal, so they abort
+  # NAMED before the identity freeze. A CONDITIONAL intent (carrying a `when`) may never co-fire, so it PASSES
+  # here and DEFERS to the wiring-time check (`nest.checkSingular` on the post-`when` live set) — this is the
+  # spec's "both depths" (§4.2): unconditional edges caught at definition, conditional deferred to wiring.
+  # `arity = "many"` never throws. Returns the intent set (so a caller may thread it). Lives HERE (beside the
+  # row validation) because a receives row's `arity` is registry data — the enforcement the arity-domain
+  # comment above PROMISED "at BOTH definition-time and wiring" now lands, one half per phase.
+  checkSingularDefinition =
+    {
+      row,
+      intents,
+      mount ? "<singular mount>",
+    }:
+    let
+      unconditional = builtins.filter (i: !(i ? when)) intents;
+    in
+    if row.arity or "many" != "singular" then
+      intents
+    else if builtins.length unconditional > 1 then
+      throw "den.kinds: singular mount '${mount}' has ${toString (builtins.length unconditional)} unconditional intents [ ${
+        builtins.concatStringsSep " " (map (i: i.id) unconditional)
+      } ] — a singular arity admits at most one; a static double-mount is a definition error (§4.2)"
+    else
+      intents;
 in
 {
-  inherit compile resolveReceiver;
+  inherit compile resolveReceiver checkSingularDefinition;
 }
