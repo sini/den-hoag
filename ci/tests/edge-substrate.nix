@@ -36,6 +36,7 @@ let
       fromId ? "host:a",
       toId ? "host:b",
       fromS ? { },
+      toS ? { },
       data ? { },
     }:
     {
@@ -48,8 +49,19 @@ let
       to = {
         entityId = toId;
         class = "nixos";
-        s = { };
+        s = toS;
       };
+    };
+  # The instanceId of an assembly endpoint (entityId + class + S) — mirrors edges.nix's sideIdentity, so
+  # a test can name an instance by its LITERAL instanceId (the spec's own reference vocabulary).
+  nixosInstIdOf =
+    entityId: s:
+    identity.instanceId {
+      assemblyId = identity.assemblyId {
+        inherit entityId;
+        class = "nixos";
+      };
+      inherit s;
     };
   # The seeded four-stratum order (structural < resolution < collection < demand).
   fourStrata = [
@@ -1065,9 +1077,10 @@ in
       });
       expected = 1;
     };
-    # THE FILL-GRAPH ACYCLICITY WITNESS: two intents whose endpoint fills reference each other's producer
-    # (each side's S carries the OTHER endpoint's entityId as a producer-id) form a 2-cycle — checkFillAcyclic
-    # aborts NAMED, once per assembly. (Keyed by the stable entityId producer identity — see edges.nix.)
+    # THE FILL-GRAPH ACYCLICITY WITNESS (instance-UNambiguous): two intents whose FROM instances reference
+    # each other's producer by entityId sugar. Each entity has EXACTLY ONE instance, so the sugar resolves
+    # unambiguously and the 2-cycle is real at instance grain — checkFillAcyclic aborts NAMED, once per
+    # assembly.
     test-assemble-fill-cycle-throws = {
       expr =
         (builtins.tryEval (
@@ -1075,14 +1088,70 @@ in
             kinds = reachKinds;
             intents = [
               (mkAsmIntent {
-                fromId = "host:a";
-                toId = "host:b";
-                fromS.ref = "host:b";
+                fromId = "ent:a";
+                toId = "ent:p";
+                fromS.ref = "ent:b";
               })
               (mkAsmIntent {
-                fromId = "host:b";
-                toId = "host:c";
-                fromS.ref = "host:a";
+                fromId = "ent:b";
+                toId = "ent:q";
+                fromS.ref = "ent:a";
+              })
+            ];
+          }) null
+        )).success;
+      expected = false;
+    };
+    # THE QUOTIENT FALSE-POSITIVE PIN: entity A fans out to TWO instances (A1 with a fill, A2 empty). A1
+    # references B; B references A2 by its LITERAL instanceId (the spec's own vocabulary, invisible to an
+    # entity-keyed graph). At instance grain A1 → B → A2 is ACYCLIC (A2 references nothing back), even
+    # though it would collapse to a false a→b→a cycle under entity-keying. Must SUCCEED: 3 records.
+    test-assemble-fill-quotient-no-false-positive = {
+      expr = builtins.length (assembleEdges {
+        kinds = reachKinds;
+        intents = [
+          (mkAsmIntent {
+            fromId = "ent:a";
+            fromS.ref = "ent:b";
+            toId = "ent:p";
+          })
+          (mkAsmIntent {
+            fromId = "ent:b";
+            fromS.ref = nixosInstIdOf "ent:a" { };
+            toId = "ent:q";
+          })
+          (mkAsmIntent {
+            fromId = "ent:a";
+            fromS = { };
+            toId = "ent:r";
+          })
+        ];
+      });
+      expected = 3;
+    };
+    # AMBIGUOUS ENTITY REF: entity A has two instances (empty and marked); a fill referencing "ent:a" by
+    # entityId sugar cannot pick one → aborts NAMED (never resolves to all instances — that would re-derive
+    # the entity quotient).
+    test-assemble-fill-ambiguous-ref-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (assembleEdges {
+            kinds = reachKinds;
+            intents = [
+              (mkAsmIntent {
+                fromId = "ent:a";
+                fromS = { };
+                toId = "ent:m";
+              })
+              (mkAsmIntent {
+                fromId = "ent:a";
+                fromS.mark = "x";
+                toId = "ent:n";
+              })
+              (mkAsmIntent {
+                fromId = "ent:c";
+                fromS.ref = "ent:a";
+                toId = "ent:o";
               })
             ];
           }) null
@@ -1095,9 +1164,9 @@ in
         kinds = reachKinds;
         intents = [
           (mkAsmIntent {
-            fromId = "host:a";
-            toId = "host:b";
-            fromS.ref = "host:b";
+            fromId = "ent:a";
+            toId = "ent:b";
+            fromS.ref = "ent:b";
           })
         ];
       });

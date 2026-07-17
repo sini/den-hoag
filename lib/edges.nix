@@ -209,7 +209,6 @@ let
           to = sideIdentity i.to;
         in
         {
-          intent = i;
           inherit from to;
           record = edge.edge {
             # SYNTHETIC record: the intent's data is the value source; the target root is keyed by the
@@ -232,27 +231,55 @@ let
           };
         }
       ) survivors;
-      # The fill-reference graph (§2.1: "which producer-ids appear in whose S"), declared ACYCLIC. Keyed by
-      # the STABLE producer identity (entityId — instanceId is a function of it, so the two are cycle-
-      # equivalent, and entityId keeps the graph free of the instanceId self-hash fixpoint that would make a
-      # genuine cycle unconstructable). References = the entityId string-leaves of each side's S. Checked
-      # ONCE per assembly.
-      allEntityIds = prelude.unique (
-        prelude.concatMap (r: [
-          r.from.entityId
-          r.to.entityId
-        ]) resolved
-      );
-      entityIdSet = prelude.genAttrs allEntityIds (_: true);
-      refsOf = side: builtins.filter (leaf: entityIdSet ? ${leaf}) (stringLeaves side.s);
-      fillGraph = prelude.foldl' (
-        acc: r:
+      # The fill-reference graph (§2.1: "which producer-ids appear in whose S"), declared ACYCLIC. Nodes
+      # are PER INSTANCE, keyed by instanceId — the instanceId is computable pre-check (S is literal data
+      # in this vocabulary; it never contains the node's own instanceId, so there is no hash regress). The
+      # check runs over the declared nominal reference structure per instance — the well-foundedness of
+      # identity computation. Entity-sugar refs (an entityId string leaf in S) resolve ONLY when the entity
+      # has exactly one instance in the assembly; a literal instanceId string leaf resolves directly (the
+      # spec's own reference vocabulary). Checked ONCE per assembly.
+      sides = prelude.concatMap (r: [
+        r.from
+        r.to
+      ]) resolved;
+      instanceIdSet = prelude.genAttrs (map (s: s.instanceId) sides) (_: true);
+      # entityId -> the instanceIds it has in this assembly (an entity may fan out to several instances).
+      entityInstances = prelude.foldl' (
+        acc: s:
         acc
         // {
-          ${r.from.entityId} = (acc.${r.from.entityId} or [ ]) ++ refsOf r.from;
-          ${r.to.entityId} = (acc.${r.to.entityId} or [ ]) ++ refsOf r.to;
+          ${s.entityId} = prelude.unique ((acc.${s.entityId} or [ ]) ++ [ s.instanceId ]);
         }
-      ) { } resolved;
+      ) { } sides;
+      # resolve one S string leaf to a referenced instanceId, or `null` if it names nothing in the
+      # assembly. A literal instanceId is a direct ref; an entityId is INSTANCE-DISCRIMINATING sugar —
+      # it resolves iff the entity has exactly ONE instance here, else it is ambiguous and aborts NAMED
+      # (resolving it to ALL the entity's instances would re-derive the entity quotient — the very
+      # false-positive this keying removes).
+      resolveRef =
+        leaf:
+        if instanceIdSet ? ${leaf} then
+          leaf
+        else if entityInstances ? ${leaf} then
+          (
+            let
+              is = entityInstances.${leaf};
+            in
+            if builtins.length is == 1 then
+              builtins.head is
+            else
+              throw "den.edges: assembleEdges structural-fill reference to entity '${leaf}' is ambiguous — it has ${toString (builtins.length is)} instances in this assembly; reference an instanceId"
+          )
+        else
+          null;
+      refsOf = side: builtins.filter (r: r != null) (map resolveRef (stringLeaves side.s));
+      fillGraph = prelude.foldl' (
+        acc: s:
+        acc
+        // {
+          ${s.instanceId} = prelude.unique ((acc.${s.instanceId} or [ ]) ++ refsOf s);
+        }
+      ) { } sides;
     in
     if unknownKinds != [ ] then
       throw "den.edges: assembleEdges intent names unknown kind '${(builtins.head unknownKinds).kind}' (not in the registry)"
