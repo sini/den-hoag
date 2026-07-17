@@ -14,6 +14,8 @@ let
   # explicit stratum order + a stratum→ctx-key-groups map, so the capability-scoped ctx projection
   # (a ctx key at a stratum ≥ the rule's is replaced by a named throw) can be witnessed synthetically.
   compileWithStrata = denHoag.internal.compilePoliciesWithStrata;
+  # The edge-kind registry seam (lib/edges.nix): the compile fn + the framework pre-registration.
+  inherit (denHoag.internal) compileEdges edgeKinds;
   # The seeded four-stratum order (structural < resolution < collection < demand).
   fourStrata = [
     "structural"
@@ -21,6 +23,8 @@ let
     "collection"
     "demand"
   ];
+  # The order the registry validates against once the framework's `output` stratum is inserted.
+  edgeStrata = fourStrata ++ [ "output" ];
   # A structural rule reading a structural ctx entry (`thing`) via a DECLARED record gate — the probe
   # fills the required `thing` coord with the value-less sentinel, observing the structural `link`.
   # The ctx projection wraps ONLY the FINAL dispatch produce, never the probe.
@@ -454,7 +458,8 @@ in
       expected = false;
     };
     # END-TO-END through the OPTION mount: a fleet setting `den.strata.insert` surfaces the compiled
-    # order on the `den.strata` output (the seeded four with the insert placed densely after its anchor).
+    # order on the `den.strata` output — the seeded four with the user insert placed densely after its
+    # anchor, PLUS the framework's own `output` stratum (dogfooded after `demand` for nest/defer).
     test-strata-option-mount-order = {
       expr =
         (denHoag.mkDen [
@@ -470,6 +475,7 @@ in
         "reify"
         "collection"
         "demand"
+        "output"
       ];
     };
 
@@ -546,6 +552,142 @@ in
           }
         );
       expected = [ "edge" ];
+    };
+
+    # ── den.edges: the edge-kind registry (spec §2.2) ──
+    # the framework pre-registers exactly the 8 kinds with their strata (contains/include/kindOf
+    # structural; member/reach/reach-suppress resolution; nest/defer output).
+    test-edges-preregistered-strata = {
+      expr = edgeKinds.preRegisteredStrata;
+      expected = {
+        contains = "structural";
+        include = "structural";
+        kindOf = "structural";
+        member = "resolution";
+        reach = "resolution";
+        reach-suppress = "resolution";
+        nest = "output";
+        defer = "output";
+      };
+    };
+    # the framework's own `output` stratum enters through the den.strata insertion mechanism.
+    test-edges-framework-strata-insert = {
+      expr = edgeKinds.frameworkStrataInserts;
+      expected = {
+        output = {
+          after = "demand";
+        };
+      };
+    };
+    # a bare registry (no user kinds) compiles the 8 framework rows with the §2.2 field defaults.
+    test-edges-compile-defaults = {
+      expr =
+        let
+          t = compileEdges {
+            kinds = { };
+            strataOrder = edgeStrata;
+          };
+        in
+        t.reach;
+      expected = {
+        data = null;
+        requires = null;
+        produces = null;
+        discipline = null;
+        inverse = null;
+        closure = false;
+        stratum = "resolution";
+      };
+    };
+    # a user kind merges beside the framework rows (both present in the compiled table).
+    test-edges-user-merge = {
+      expr =
+        let
+          t = compileEdges {
+            kinds.memberOf = {
+              inverse = "members";
+              stratum = "resolution";
+            };
+            strataOrder = edgeStrata;
+          };
+        in
+        {
+          user = t.memberOf.inverse;
+          framework = t.reach.stratum;
+        };
+      expected = {
+        user = "members";
+        framework = "resolution";
+      };
+    };
+    # re-registering a framework-reserved kind name aborts NAMED at definition time.
+    test-edges-reserved-name-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileEdges {
+            kinds.reach = {
+              stratum = "resolution";
+            };
+            strataOrder = edgeStrata;
+          }) null
+        )).success;
+      expected = false;
+    };
+    # closure = true with no discipline aborts NAMED (the laws-gating defers to the disciplines registry).
+    test-edges-closure-without-discipline-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileEdges {
+            kinds.aclClosure = {
+              closure = true;
+              stratum = "resolution";
+            };
+            strataOrder = edgeStrata;
+          }) null
+        )).success;
+      expected = false;
+    };
+    # closure = true WITH a declared discipline compiles (the entry carries closure + discipline).
+    test-edges-closure-with-discipline-ok = {
+      expr =
+        (compileEdges {
+          kinds.aclClosure = {
+            closure = true;
+            discipline = "set-union";
+            stratum = "resolution";
+          };
+          strataOrder = edgeStrata;
+        }).aclClosure.closure;
+      expected = true;
+    };
+    # a `stratum` outside the compiled order aborts NAMED.
+    test-edges-unknown-stratum-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (compileEdges {
+            kinds.weird = {
+              stratum = "nowhere";
+            };
+            strataOrder = edgeStrata;
+          }) null
+        )).success;
+      expected = false;
+    };
+    # END-TO-END: the fleet exposes the compiled kind table on `den.edges`, and the framework's `output`
+    # stratum has been dogfooded into the fleet strata order (nest/defer validate against it).
+    test-edges-fleet-output-stratum = {
+      expr =
+        let
+          d = denHoag.mkDen [ ];
+        in
+        {
+          nestStratum = d.den.edges.nest.stratum;
+          outputInOrder = builtins.elem "output" d.den.strata;
+        };
+      expected = {
+        nestStratum = "output";
+        outputInOrder = true;
+      };
     };
   };
 }

@@ -25,6 +25,9 @@ let
   # builtins, no gen dep (REFERENCE.md). Exposed through `internal` for the substrate suite; the
   # substrate consumers reach it there.
   identity = import ./identity.nix { inherit prelude; };
+  # The edge-kind registry (den.edges): pre-registered vocabulary + validation (§2.2). Its `output`
+  # stratum is dogfooded into the fleet strata order below; the compiled table rides `den.edges`.
+  edgesLib = import ./edges.nix { inherit prelude; };
   entity = import ./entity.nix { inherit prelude schema merge; };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
@@ -312,6 +315,19 @@ let
         };
       };
 
+      # den.edges.<kind> — the edge-kind registry (§2.2). Each entry describes a typed-edge kind:
+      # `{ data ? null; requires ? null; produces ? null; discipline ? null; inverse ? null;
+      # closure ? false; stratum ? "resolution"; }`. `raw` holds each record unmerged (its `data` may be
+      # a schema). Absent ⇒ a fleet with only the framework-pre-registered kinds. The registry DESCRIBES
+      # kinds; emission rewiring onto the substrate is a later step.
+      edgesDecl = {
+        options.den.edges = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Edge-kind registry: `<kind> = { data ? null; requires ? null; produces ? null; discipline ? null; inverse ? null; closure ? false; stratum ? \"resolution\"; }` (§2.2).";
+        };
+      };
+
       # den.demandKinds.<name> — the demand-kind registry (§B demand stratum). Each entry declares a
       # gen-demand kind: `{ below ? []; resolve; dedupKey ? null; fold ? null; }` (functions, so `raw`
       # holds it unmerged); `below` names the kinds this one may cascade into (downward-only DAG,
@@ -490,6 +506,7 @@ let
           linearizationDecl
           settingsDecl
           strataDecl
+          edgesDecl
           demandKindsDecl
           demandContextDecl
           nixpkgsDecl
@@ -702,11 +719,23 @@ let
       ) { } rootScopeKinds;
       linkTarget = entry: entryNodeIndex.${entry.id_hash} or null;
 
-      # The compiled stratum order (spec §5): the seeded four with each `den.strata.insert.<name>` placed
-      # densely after its anchor. Zero inserts ⇒ the seeded order, byte-identical. Threaded into policy
-      # compilation as the capability-scoped ctx projection's stratum order (the ctx-key map is seeded
-      # empty, so the projection is a no-op for the native/corpus fleet — rule ctx is all-structural).
-      compiledStrata = declare.compileStrata { inserts = ent.config.den.strata.insert or { }; };
+      # The compiled stratum order (spec §5): the seeded four with the framework's OWN edge-registry
+      # inserts (the `output` stratum after `demand`, for nest/defer) plus each `den.strata.insert.<name>`,
+      # each placed densely after its anchor. Zero user inserts ⇒ seeded four + `output`. The framework
+      # inserts win on a name collision (`output` is a framework stratum). Threaded into policy compilation
+      # as the capability-scoped ctx projection's stratum order (the ctx-key map is seeded empty, so the
+      # projection is a no-op for the native/corpus fleet — rule ctx is all-structural).
+      compiledStrata = declare.compileStrata {
+        inserts = (ent.config.den.strata.insert or { }) // edgesLib.frameworkStrataInserts;
+      };
+
+      # The compiled edge-kind table (§2.2): the framework-pre-registered vocabulary UNION the fleet's
+      # `den.edges` registrations, validated (reserved-name, closure-gate, stratum ∈ the compiled order).
+      # Threaded to the kernel via `den.edges`, mirroring how `classesByName` rides `den.classConfigs`.
+      edgeKindTable = edgesLib.compile {
+        kinds = ent.config.den.edges or { };
+        strataOrder = compiledStrata;
+      };
 
       # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
       # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
@@ -1096,8 +1125,11 @@ let
         cells = product.cells theFleet;
         inherit dimKinds;
         linearization = lin;
-        # The compiled stratum order (spec §5): the seeded four + `den.strata.insert` dense insertions.
+        # The compiled stratum order (spec §5): the seeded four + `den.strata.insert` dense insertions
+        # + the framework's `output` stratum (nest/defer).
         strata = compiledStrata;
+        # The compiled edge-kind table (§2.2): framework vocabulary + `den.edges` registrations, validated.
+        edges = edgeKindTable;
         scopeRoots = scopeRoots;
         inherit structural;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
@@ -1178,6 +1210,11 @@ in
     # so the capability-scoped ctx projection is exercisable from the suite (the seeded config = the
     # byte-identical no-op the fleet path uses). `compilePoliciesWithStrata { order; ctxKeyStrata } sentinel rf ef`.
     compilePoliciesWithStrata = concernPolicies.compileWithStrata;
+    # The edge-kind registry compile (§2.2) + the framework pre-registration, for the suite's
+    # registration/validation scenarios. `compileEdges { kinds; strataOrder }`; `edgeKinds` = the
+    # pre-registered strata + framework strata inserts.
+    compileEdges = edgesLib.compile;
+    edgeKinds = edgesLib;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     inherit (concernAspects) classifyKey facets;
