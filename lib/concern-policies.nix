@@ -91,8 +91,8 @@ let
         builtins.genList (i: i) (builtins.length strataCfg.order)
       );
       # key → its declared stratum (inverting the stratum→keys map); un-tagged keys are structural-safe.
-      # A stratum name in the map that is absent from the compiled order aborts NAMED at build time — an
-      # untagged silent pass would defeat the projection.
+      # A stratum name in the map that is absent from the compiled order aborts NAMED (forced at the first
+      # projection, since the fold is lazy) — an untagged silent pass would defeat the projection.
       ctxKeyStratum = prelude.foldl' (
         acc: stratum:
         if !(stratumIndex ? ${stratum}) then

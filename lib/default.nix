@@ -721,13 +721,22 @@ let
 
       # The compiled stratum order (spec §5): the seeded four with the framework's OWN edge-registry
       # inserts (the `output` stratum after `demand`, for nest/defer) plus each `den.strata.insert.<name>`,
-      # each placed densely after its anchor. Zero user inserts ⇒ seeded four + `output`. The framework
-      # inserts win on a name collision (`output` is a framework stratum). Threaded into policy compilation
-      # as the capability-scoped ctx projection's stratum order (the ctx-key map is seeded empty, so the
-      # projection is a no-op for the native/corpus fleet — rule ctx is all-structural).
-      compiledStrata = declare.compileStrata {
-        inserts = (ent.config.den.strata.insert or { }) // edgesLib.frameworkStrataInserts;
-      };
+      # each placed densely after its anchor. Zero user inserts ⇒ seeded four + `output`. A user insert
+      # naming a framework-reserved stratum (`output`) aborts NAMED — the same posture as a seed-stratum
+      # shadow (compileStrata) or a reserved edge-kind (edges.nix): a framework stratum is not overridable.
+      # Threaded into policy compilation as the capability-scoped ctx projection's stratum order (the
+      # ctx-key map is seeded empty, so the projection is a no-op for the native fleet — ctx is structural).
+      userStrataInserts = ent.config.den.strata.insert or { };
+      reservedInsertOffenders = builtins.filter (n: edgesLib.frameworkStrataInserts ? ${n}) (
+        builtins.attrNames userStrataInserts
+      );
+      compiledStrata =
+        if reservedInsertOffenders != [ ] then
+          throw "den.strata: insert '${builtins.head reservedInsertOffenders}' is framework-reserved"
+        else
+          declare.compileStrata {
+            inserts = userStrataInserts // edgesLib.frameworkStrataInserts;
+          };
 
       # The compiled edge-kind table (§2.2): the framework-pre-registered vocabulary UNION the fleet's
       # `den.edges` registrations, validated (reserved-name, closure-gate, stratum ∈ the compiled order).

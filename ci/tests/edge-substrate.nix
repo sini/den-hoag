@@ -689,5 +689,48 @@ in
         outputInOrder = true;
       };
     };
+    # a user insert naming a framework-reserved stratum (`output`) aborts NAMED through the mount — the
+    # framework stratum is not overridable (same posture as a reserved edge-kind or a seed-stratum shadow).
+    test-edges-reserved-strata-insert-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq
+            (denHoag.mkDen [
+              {
+                config.den.strata.insert.output = {
+                  after = "structural";
+                };
+              }
+            ]).den.strata
+            null
+        )).success;
+      expected = false;
+    };
+    # THE T5-AUTHOR INTERACTION: a user-inserted stratum carries a user edge-kind through the mount —
+    # `den.strata.insert.reify` + `den.edges.<k>.stratum = "reify"` compiles end-to-end (the compiled
+    # table's kind resolves to the inserted stratum, present in the compiled order).
+    test-edges-user-stratum-user-kind = {
+      expr =
+        let
+          d = denHoag.mkDen [
+            {
+              config.den.strata.insert.reify = {
+                after = "resolution";
+              };
+              config.den.edges.reifyEdge = {
+                stratum = "reify";
+              };
+            }
+          ];
+        in
+        {
+          kindStratum = d.den.edges.reifyEdge.stratum;
+          inOrder = builtins.elem "reify" d.den.strata;
+        };
+      expected = {
+        kindStratum = "reify";
+        inOrder = true;
+      };
+    };
   };
 }
