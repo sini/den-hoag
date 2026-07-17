@@ -7,7 +7,7 @@
 # over (today the `system` axis, whose values are `den.systems`), and the `requires` products it consults.
 # The Bazel output-groups reading: a family is a named group of built artifacts a consumer addresses at the
 # flake root; `consumes`/`requires` name the product faces flowing into it. This is the D7-promotion precedent
-# once more (REFERENCE "Materialization registries"): the shipped `systemOutputs`/`faceOf` face-builder becomes
+# once more (REFERENCE "Materialization registries"): the ad-hoc per-class declared-target face-builder became
 # a full validated registry row, superseding the render row's kept `output` field. See REFERENCE.md.
 #
 # NO EFFECT RUNTIME: `compile` is a `mapAttrs` + a validation fold — field defaults + product/render/axis
@@ -111,17 +111,17 @@ let
       };
     };
 
-  # THE BUILT-IN FAMILY SEEDING (spec §4.4, the D7 promotion of `systemOutputs`): the framework's own output
-  # families — `nixosConfigurations`/`darwinConfigurations` and any user system class's declared target —
-  # derived PER-FLEET from each class's INSTANTIATION `output` field. `builtinFamilies { classNames;
-  # instantiationOf; hasRender }` reads, for each class, `(instantiationOf class).output` (the SAME source
-  # today's systemOutputs reads — so the `classes.<name>.instantiation` overlay is preserved, NOT raw
-  # rendersRows.output which would bypass it); a non-null output STRING seeds a family keyed by that string,
-  # `consumes = "SystemInfo"` (the system artifact face), `render` = the class name where a render row exists
-  # (`hasRender class`, null otherwise), `at = _point: e: [ <family> e.name ]` (the placement producing the
-  # `[<family> <entityName>]` path the systemOutputs face keys by). LAST-WINS on a shared output string: two
-  # classes declaring the same `output` collapse to the last one (the fold's later write wins — the SAME
-  # `listToAttrs` last-wins today's systemOutputs has; un-exercised by the corpus, reproduced for parity).
+  # THE BUILT-IN FAMILY SEEDING (spec §4.4, the D7 promotion of the declared-target face): the framework's
+  # own output families — `nixosConfigurations`/`darwinConfigurations` and any user system class's declared
+  # target — derived PER-FLEET from each class's INSTANTIATION `output` field. `builtinFamilies { classNames;
+  # instantiationOf; hasRender }` reads, for each class, `(instantiationOf class).output` (via `instantiationOf`
+  # so the `classes.<name>.instantiation` overlay is preserved, NOT raw rendersRows.output which would bypass
+  # it); a non-null output STRING seeds a family keyed by that string, `consumes = "SystemInfo"` (the system
+  # artifact face), `render` = the class name where a render row exists (`hasRender class`, null otherwise),
+  # `at = _point: e: [ <family> e.name ]` (the placement producing the `[<family> <entityName>]` face path).
+  # LAST-WINS on a shared output string: two classes declaring the same `output` collapse to the last one (the
+  # fold's later write wins — the listToAttrs last-wins the declared-target face has; corpus-un-exercised,
+  # reproduced for parity).
   # Returns `{ families; classOf; }` — `families` the raw rows (for `compile` + `toReceives` seeding),
   # `classOf.<family>` the winning class (the assembly reads `output.systems.<class>` + resolves that class).
   builtinFamilies =

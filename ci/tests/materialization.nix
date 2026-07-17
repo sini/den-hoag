@@ -2612,30 +2612,37 @@ in
       };
     };
 
-    # ── §4.4/§4.6 THE LIVE FAMILY MOUNT — familyOutputs assembled via the root dispatch + the value arm ──
-    # (4) THE EQUIVALENCE PIN: `familyOutputs == systemOutputs` (the top-level `outputs`) while BOTH exist.
-    # The overlayFleet has one nixos host (box1) whose built system rides both the legacy systemOutputs face
-    # and the new family-dispatch assembly — they must be byte-identical (the next task deletes the legacy
-    # block and swaps this pin for face pins). `overlayFleet.outputs` IS the legacy systemOutputs.
-    test-family-outputs-equals-system-outputs = {
-      expr = overlayFleet.den.familyOutputs == overlayFleet.outputs;
-      expected = true;
+    # ── §4.4/§4.6 THE LIVE FAMILY MOUNT — familyOutputs IS the output face (dispatch + the value arm) ──
+    # (4) THE FACE PIN (replacing the retired T3 `familyOutputs == systemOutputs` equivalence pin — the
+    # systemOutputs binding is deleted, so `den.familyOutputs`, the top-level `outputs`, and the
+    # `nixosConfigurations` alias are now ONE value; this asserts the family path DIRECTLY on all three faces).
+    # The overlayFleet's nixos host box1 surfaces at every face under its entity name, carrying the crossed
+    # system (the fake evaluator's `__fakeCrossed` tag proves the value rode through value-mode injection).
+    test-family-outputs-face = {
+      expr = {
+        viaOutputs = overlayFleet.outputs.nixosConfigurations.box1.__fakeCrossed or false;
+        viaAlias = overlayFleet.nixosConfigurations.box1.__fakeCrossed or false;
+        viaFamily = overlayFleet.den.familyOutputs.nixosConfigurations.box1.__fakeCrossed or false;
+        # the three faces are the SAME value (outputs = familyOutputs; the alias projects off it).
+        allOne =
+          (overlayFleet.outputs == overlayFleet.den.familyOutputs)
+          && (overlayFleet.nixosConfigurations == overlayFleet.den.familyOutputs.nixosConfigurations);
+      };
+      expected = {
+        viaOutputs = true;
+        viaAlias = true;
+        viaFamily = true;
+        allOne = true;
+      };
     };
-    # the assembled family map surfaces the built member re-keyed scope-id → entity NAME (box1), under the
-    # family key (nixosConfigurations), carrying the SAME crossed artifact the legacy face does (the fake
-    # evaluator's `__fakeCrossed` tag proves the value rode through value-mode injection verbatim).
-    test-family-outputs-member-rekey = {
-      expr = overlayFleet.den.familyOutputs.nixosConfigurations.box1.__fakeCrossed or false;
-      expected = true;
-    };
-    # the family map is keyed by the family (output string), then by the entity name — the systemOutputs
-    # shape. Forcing the SPINE (attr names at both levels) counts families + members without building any
-    # system (per-member lazy). Both built-in families surface (darwinConfigurations memberless, empty face).
+    # the family map is keyed by the family (output string), then by the entity name. Forcing the SPINE (attr
+    # names at both levels) counts families + members without building any system (per-member lazy). Both
+    # built-in families surface (darwinConfigurations memberless, empty face) — the declared-target face shape.
     test-family-outputs-shape = {
       expr = {
-        families = builtins.attrNames overlayFleet.den.familyOutputs;
-        members = builtins.attrNames overlayFleet.den.familyOutputs.nixosConfigurations;
-        darwinEmpty = overlayFleet.den.familyOutputs.darwinConfigurations;
+        families = builtins.attrNames overlayFleet.outputs;
+        members = builtins.attrNames overlayFleet.outputs.nixosConfigurations;
+        darwinEmpty = overlayFleet.outputs.darwinConfigurations;
       };
       expected = {
         families = [
@@ -2646,19 +2653,17 @@ in
         darwinEmpty = { };
       };
     };
-    # (5) LAZINESS: assembling familyOutputs does NOT force the member artifacts — a fleet whose built system
-    # would throw when forced still yields a familyOutputs whose SPINE (family + member keys) forces clean.
-    # The value arm injects the artifact verbatim (never evaluated by the assembly); only reading
-    # `.nixosConfigurations.<member>.config` would force it. Here the collect artifact is real (not poison),
-    # so we assert the spine forces without deep-forcing the value — the force-surface parity with faceOf.
+    # (5) SPINE-COUNT PARITY: forcing the face SPINE (family + member keys) counts members without building
+    # any system — a shape-only force. The value-arm laziness itself (an unforced prebuilt value) is proven
+    # separately at test-nest-value-laziness-poison.
     test-family-outputs-spine-lazy = {
-      expr = builtins.length (builtins.attrNames overlayFleet.den.familyOutputs.nixosConfigurations);
+      expr = builtins.length (builtins.attrNames overlayFleet.outputs.nixosConfigurations);
       expected = 1;
     };
-    # NO MEMBERS, still byte-identical: a fleet with no system MEMBERS (a lone `unit` entity) still surfaces
-    # the built-in `nixosConfigurations`/`darwinConfigurations` families with EMPTY faces — the framework
-    # nixos/darwin classes are always in effectiveClassNames, and systemOutputs emits their memberless faces
-    # as `{ }`. familyOutputs reproduces that exactly (empty-family seeding), so the two agree even here.
+    # NO MEMBERS, EMPTY FACES: a fleet with no system MEMBERS (a lone `unit` entity) still surfaces the
+    # built-in `nixosConfigurations`/`darwinConfigurations` families with EMPTY faces — the framework
+    # nixos/darwin classes are always in effectiveClassNames, and the declared-target face law emits their
+    # memberless faces as `{ }`. The alias projects the empty family off `outputs`.
     test-family-outputs-no-members-empty-faces = {
       expr =
         let
@@ -2668,15 +2673,15 @@ in
           ];
         in
         {
-          equal = fleet.den.familyOutputs == fleet.outputs;
-          family = fleet.den.familyOutputs;
+          outputs = fleet.outputs;
+          nixosAlias = fleet.nixosConfigurations;
         };
       expected = {
-        equal = true;
-        family = {
+        outputs = {
           darwinConfigurations = { };
           nixosConfigurations = { };
         };
+        nixosAlias = { };
       };
     };
   };

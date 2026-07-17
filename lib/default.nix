@@ -1034,8 +1034,8 @@ let
       # DECLARED INSTANTIATION (D7): a system class declares HOW it crosses — `den.classes.<name>.
       # instantiation = { evaluator ? null; output ? null; }`. `evaluator` is the `{ modules, specialArgs }
       # -> system` builder (gen-flake's `mkSystemTerminal` contract, #48); `output` names the flake-parts
-      # option target the built systems mount at (D8; consumed by `systemOutputs` below + the flake-parts
-      # bridge). The instantiation is NOT a core constant — a new system class (droid, or anything a user
+      # option target the built systems mount at (D8; the built-in family seeding below reads it to key each
+      # family, the flake-parts bridge mounts each). The instantiation is NOT a core constant — a new system class (droid, or anything a user
       # invents) is a pure declaration needing zero edits here or in gen-flake.
       #
       # The compiled render table (§4.3, the D7 promotion) — the SINGLE source of the built-in nixos/darwin
@@ -1057,10 +1057,10 @@ let
       # guard is the sole protection (operand order is not).
       userKinds = ent.config.den.kinds or { };
       rootReserved = userKinds ? root;
-      # THE BUILT-IN FAMILY SEEDING (§4.4, the D7 promotion of systemOutputs): the framework's own output
-      # families (nixosConfigurations/darwinConfigurations + any user system class's declared target) derived
-      # per-fleet from each class's INSTANTIATION `output` field (via `instantiationOf` — the SAME source the
-      # shipped systemOutputs reads, so the `classes.<name>.instantiation` overlay is preserved). `families`
+      # THE BUILT-IN FAMILY SEEDING (§4.4, the D7 promotion of the declared-target output face): the
+      # framework's own output families (nixosConfigurations/darwinConfigurations + any user system class's
+      # declared target) derived per-fleet from each class's INSTANTIATION `output` field (via
+      # `instantiationOf`, so the `classes.<name>.instantiation` overlay is preserved). `families`
       # seed both the families table (`outputsTable`) and the root receives projection; `classOf` maps each
       # family to its winning class for the live mount (`familyOutputs`, below the output stratum).
       builtinFams = outputsLib.builtinFamilies {
@@ -1313,9 +1313,10 @@ let
       # nested receives edge uses: the family row resolved via the REAL `resolveReceiver` (over the receives
       # table carrying `root`), the built artifact injected VALUE-mode through `executeNest` (the prebuilt
       # ArtifactRef arm — the artifact is injected verbatim, never re-evaluated). NO hand-rolled dispatch: the
-      # row comes from `resolveReceiver`, the placement from the contribution's `at`. Byte-identical to the
-      # shipped `systemOutputs` (the T3 equivalence pin proves it) — the member re-key (scope-id → entity name)
-      # and the last-wins family collapse are reproduced exactly (faceOf / listToAttrs semantics).
+      # row comes from `resolveReceiver`, the placement from the contribution's `at`. THE OUTPUT FACE: the
+      # top-level `outputs` and the nixosConfigurations/darwinConfigurations aliases project off this. The
+      # member re-key (scope-node id → entity name) and the last-wins family collapse (listToAttrs semantics)
+      # are the face laws — an empty face for a memberless family, one entry per member keyed by entity name.
       #
       # the fold's `place` primitive — a local `setAttrByPath` twin (den-hoag has no public gen-edge
       # `core.setAttrByPath` re-export; the same local-twin note the nest engine + output-modules carry).
@@ -1327,7 +1328,8 @@ let
           { ${builtins.head path} = familyNestAtPath (builtins.tail path) value; };
       # recursively merge two plain attrset trees (the per-member contributions fold into one family subtree,
       # families into the root product). A leaf (a built artifact — never an attrset with a colliding key path)
-      # rides as-is; two subtrees at the same family key merge (distinct member names, so no leaf clash).
+      # rides as-is; two subtrees at the same family key merge. Member names are `attrNames output.systems.
+      # <class>` — unique per class — so no two contributions target the same `[ family, member ]` leaf.
       familyMerge =
         a: b:
         a
@@ -1338,10 +1340,10 @@ let
       familyOutputs =
         let
           families = builtins.attrNames builtinFams.classOf;
-          # EVERY family key surfaces even with NO members: systemOutputs emits `<family> = faceOf class`, and
-          # `faceOf` of a memberless class is `{ }` — so the family KEY is present with an empty face (a class
-          # like darwin with no members yields `darwinConfigurations = { }`). Seed the fold with one empty
-          # subtree per family so a memberless family keeps its key (the listToAttrs-parity for empty faces).
+          # EVERY family key surfaces even with NO members: the declared-target face law emits `<family> = { }`
+          # for a memberless class (a class like darwin with no members yields `darwinConfigurations = { }`).
+          # Seed the fold with one empty subtree per family so a memberless family keeps its key (the empty-face
+          # law) — otherwise a member-only fold would drop the key entirely.
           emptyFamilies = builtins.listToAttrs (
             map (family: {
               name = family;
@@ -1390,51 +1392,13 @@ let
           acc: c: familyMerge acc (familyNestAtPath c.at c.value)
         ) emptyFamilies contributions;
 
-      # faceOf — the shared flake-output face builder (§2.10): a class's per-member systems re-keyed from
-      # the member scope-node id ("host:igloo") to the host entity NAME ("igloo"), so a consumer addresses
-      # `<output>.<host>` exactly as a flake does. With an evaluator declared these are REAL systems (the
-      # `crossVia` crossing → `config.networking.hostName` evaluates); absent, the nixpkgs-free `collect`
-      # artifacts (same class-major spine — one entry per host). Forcing the attrset SPINE counts hosts
-      # without building any system (per-member lazy, Law A17); a real build is forced only at `.config`.
-      faceOf =
-        className:
-        builtins.listToAttrs (
-          map (
-            memberId:
-            let
-              entry = (structural.eval.node memberId).decls.__entry or null;
-            in
-            {
-              name = if entry != null then entry.name else memberId;
-              value = output.systems.${className}.${memberId};
-            }
-          ) (builtins.attrNames (output.systems.${className} or { }))
-        );
-
-      # systemOutputs — the DECLARED flake-parts output faces (D8): each system class's declared `output`
-      # target key → its host-name-keyed face. The face MOUNTS at that target (the flake-parts bridge / a
-      # `mkDen` consumer reads `<output>`); a class with no `output` declaration contributes none.
-      # `nixosConfigurations` / `darwinConfigurations` are the built-in aliases — and a new system class
-      # (droid → `nixOnDroidConfigurations`) surfaces here from its declaration ALONE, with zero face code.
-      systemOutputs = builtins.listToAttrs (
-        builtins.filter (x: x != null) (
-          map (
-            name:
-            let
-              out = (instantiationOf name).output or null;
-            in
-            if out == null then
-              null
-            else
-              {
-                name = out;
-                value = faceOf name;
-              }
-          ) effectiveClassNames
-        )
-      );
-      nixosConfigurations = systemOutputs.nixosConfigurations or { };
-      darwinConfigurations = systemOutputs.darwinConfigurations or { };
+      # The built-in aliases (§4.4): each is the corresponding family projected off the root product
+      # (`familyOutputs`). The output face is now assembled ENTIRELY by the family dispatch — the per-class
+      # face-builder + the declared-target map that preceded it are retired, the family assembly owns the
+      # face. A new system class (droid → `nixOnDroidConfigurations`) surfaces at its own family key with zero
+      # face code; the `or { }` keeps a fleet with no members of that class projecting the empty face.
+      nixosConfigurations = familyOutputs.nixosConfigurations or { };
+      darwinConfigurations = familyOutputs.darwinConfigurations or { };
     in
     {
       den = {
@@ -1471,8 +1435,8 @@ let
         outputs = outputsTable;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
-        # `executeNest` arm. Byte-identical to `systemOutputs` (the equivalence pin); the next task swaps the
-        # face onto it and deletes the superseded systemOutputs block.
+        # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/
+        # darwinConfigurations aliases project off it (the per-class face-builder that preceded it is retired).
         inherit familyOutputs;
         # The system-axis values (§4.4): the domain of a family's `system` param (`den.systems`, default `[ ]`).
         inherit (ent.config.den) systems;
@@ -1503,11 +1467,12 @@ let
       # `den.graph`) and the flake-output system faces (`nixosConfigurations` / `darwinConfigurations`,
       # host-name-keyed) lifted beside `den` so a consumer reads
       # `mkDen fleetModules → { den; graph; nixosConfigurations; darwinConfigurations; outputs; }`.
-      # `outputs` is the GENERIC declared-target map (D8): `outputs.<target> = <host-keyed face>` for every
-      # system class's declared `output` (nixosConfigurations/darwinConfigurations are its built-in aliases;
-      # a user/droid class surfaces at its own declared target here). The flake-parts bridge mounts each.
+      # `outputs` is the GENERIC family map (§4.4): `outputs.<family> = <entity-name-keyed face>` — the root
+      # entity's product, assembled by the family dispatch (`familyOutputs`). nixosConfigurations/
+      # darwinConfigurations are its built-in family aliases; a user/droid class surfaces at its own family
+      # key here. The flake-parts bridge mounts each.
       inherit graph nixosConfigurations darwinConfigurations;
-      outputs = systemOutputs;
+      outputs = familyOutputs;
     };
 in
 {
