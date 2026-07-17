@@ -124,6 +124,56 @@ let
           tieBreak = "a12";
         };
       };
+
+    # reach-closure (§1/§2): the per-scope single-visit resolved-aspect closure — the OWN/structural
+    # subtree component FIRST (verbatim), then each positive reach-edge's target aspects, first-occurrence
+    # deduped by aspect-ident key, transitively. It is a set-semantics closure (idempotent under re-reach),
+    # so laws = join-semilattice — the fixpoint law: idempotence is what makes the reachable-set converge
+    # (Datafun). NO fold-code change (declaration-only); the reach fold stays let-bound in resolved-aspects.
+    reach-closure = {
+      laws = "join-semilattice";
+      empty = [ ];
+      # DOCUMENTED RESTATEMENT (review-sanctioned for this one instance): the production fold is let-bound
+      # inside the reach attribute (resolved-aspects.nix `addNode`/`addTarget`) — no separable unit, and
+      # exporting one is not warranted for a declaration-only instance. This restates the EDGE-closure
+      # algebra: append `b`, keeping only its not-yet-seen keys (first-occurrence dedup by `.key`). The
+      # PROOF CHAIN certifying it matches production is threefold: (i) the property harness law-checks the
+      # restatement (associativity + identity + idempotence on key-unique node lists); (ii) the ORDER
+      # ORACLE asserts the live reach attribute's order matches the declared tiers; (iii) the VALUE-
+      # AGREEMENT pin folds this combine over the live structural + edge components and reproduces the
+      # live reach list. Together they certify the restatement IS the production algebra.
+      combine =
+        a: b:
+        let
+          seen = builtins.foldl' (acc: n: acc // { ${n.key} = true; }) { } a;
+        in
+        a ++ builtins.filter (n: !(seen ? ${n.key})) b;
+      engine = "reach in-attribute ordered fold (resolved-aspects)";
+      # THE RULING RECORD (review-refuted, carried — the dedup key STAYS aspect-ident):
+      # (1) the previously-planned key→id_hash migration is VACUOUS — `id_hash = hashString
+      #     "den-aspect:${key}"` (concern-aspects.nix: "Same key ⇒ same id_hash") is a BIJECTION of the
+      #     key, so the seen-set is extensionally identical under either; Shape B's path-bearing keys
+      #     already de-collided the nested same-leaf-name shape. The key therefore stays `aspect-ident`.
+      # (2) reach's EDGE identity (the bare `target` string, resolved-aspects.nix "no separate edge-id
+      #     field yet") ports onto the unified edgeId scheme at the substrate-CONSUMPTION step (reach edges
+      #     live in the aspect graph, whose endpoints are not entity instances) — RE-STAGED, not dropped.
+      dedup = {
+        key = "aspect-ident";
+        keep = "first";
+        # NEVER structural — the structural-subtree component emits per-provider multiplicity VERBATIM
+        # (distinct descendant scopes are distinct ctx-eval results, the u24 content-loss exemption) and
+        # seeds the seen-set; dedup gates the reach-edge closure ONLY.
+        appliesTo = [ "reach-edge" ];
+      };
+      order = {
+        tiers = [
+          "structural"
+          "reach-edge"
+        ];
+        withinTier = "traversal:subtree-dfs"; # own node then descendants in lexicographic-DFS order
+        tieBreak = null;
+      };
+    };
   };
 
   # A registry entry's canonical fields (spec §5). `laws` names the ladder class (REQUIRED); `empty` +

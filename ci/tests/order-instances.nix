@@ -5,10 +5,10 @@
 # surface and asserts the order it observes is the order the instance declares. A drifted declaration (or
 # a drifted `combine` reference) is caught here. See REFERENCE.md.
 #
-# T3 lands the `settings-layers` oracle; T4/T5 extend this file with the collections-neron and
-# reach-closure oracles.
+# T3 lands the `settings-layers` oracle; T4 the collections-neron; T5 the reach-closure oracle.
 {
   denHoag,
+  denHoagSrc,
   ...
 }:
 let
@@ -16,6 +16,26 @@ let
   # the A12 producer sort (scope-adapter.nix `sortByProducer` over `producerLt`) — for the tie-break
   # triple-shape pin (rank < identity < emissionIndex) against the live scope-adapter behavior.
   inherit (denHoag.internal.scopeAdapter) sortByProducer;
+  # the reach attribute driven synthetically (the reach-graph.nix precedent): import resolved-aspects.nix
+  # with the REAL internal deps and drive `reach.compute stub id` against a stub graph — reach-edges have
+  # no policy vocabulary yet, so the closure is exercised as a pure graph function.
+  inherit (denHoag.internal)
+    prelude
+    scope
+    resolve
+    aspects
+    select
+    ;
+  raReach =
+    (import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
+      inherit
+        prelude
+        scope
+        resolve
+        aspects
+        select
+        ;
+    } { }).reach;
 
   # ── settings-layers (§2.7): the per-(node, aspect) layer fold ────────────────────────────────────
   # A synthetic multi-level fleet: env prod ⊇ host axon ⊇ user alice, with an aspect carrying a schema
@@ -127,7 +147,9 @@ let
   # instance's `combine`. This closes that seam: fold the live per-layer VALUES (the provenance carries
   # them in fold order) through `settingsInst.combine` from `settingsInst.empty`, and assert the result
   # equals the LIVE resolved value. A drifted-but-lawful combine reference (a fold that orders right and
-  # obeys the laws but computes a different field merge) is caught HERE, nowhere else.
+  # obeys the laws but computes a different field merge) is caught HERE, nowhere else. (This is a finite-
+  # sample witness on ONE cell's layer values — a point check, not a universal proof; combined with the
+  # source-level combine-by-reference it certifies the declaration tracks production.)
   layerValueRecs = map (e: { level = e.value; }) prov;
   foldedViaInstance = builtins.foldl' settingsInst.combine settingsInst.empty layerValueRecs;
   liveValue = (den.structural.eval.get cellId "resolved-settings").app.value;
@@ -289,6 +311,83 @@ let
     }
   ];
   a12Sorted = sortByProducer a12Recs;
+
+  # ── reach-closure (§1/§2): the per-scope single-visit resolved-aspect closure ────────────────────
+  # A synthetic reach graph (the reach-graph.nix stub pattern): `src` has an own aspect + a descendant
+  # `cell` (the STRUCTURAL subtree) and a positive reach-edge to `ext`. `ext` carries a fresh aspect AND
+  # one whose key is ALREADY present structurally (via `cell`) — so the edge closure dedups it (first-
+  # occurrence, structural wins). The live reach order is: structural verbatim, then edge, dedup-gated.
+  reachInst = den.disciplines.reach-closure;
+  mkAspectNode = key: {
+    inherit key;
+    content = {
+      home-manager.tag = key;
+    };
+  };
+  nSrcOwn = mkAspectNode "src-own";
+  nShared = mkAspectNode "shared";
+  nExtOnly = mkAspectNode "ext-only";
+  reachStub = graph: {
+    get =
+      id: attr:
+      if attr == "resolved-aspects" then
+        (graph.${id} or { resolved = [ ]; }).resolved or [ ]
+      else if attr == "declarations" then
+        { actions.resolution = (graph.${id} or { }).edges or [ ]; }
+      else if attr == "children" then
+        (graph.${id} or { }).children or { }
+      else
+        throw "reach-order stub: unexpected attr ${attr}";
+    node = id: (graph.${id} or { }).node or { };
+  };
+  reachGraph = {
+    src = {
+      resolved = [ nSrcOwn ];
+      children.cell = { }; # the structural descendant
+      edges = [
+        {
+          __action = "reach-edge";
+          target = "ext";
+          classFilter = null;
+        }
+      ];
+    };
+    cell.resolved = [ nShared ]; # structural subtree carries `shared`
+    ext.resolved = [
+      nExtOnly
+      nShared
+    ]; # the edge target: a fresh key + a structurally-seen one
+  };
+  reachNodes = raReach.compute (reachStub reachGraph) "src";
+  reachKeys = map (n: n.key) reachNodes;
+
+  # the components for the VALUE-AGREEMENT pin: the STRUCTURAL subtree nodes (src own ++ cell descendant,
+  # emitted verbatim — the u24 multiplicity component, seeding the seen-set) and the reach-EDGE target's
+  # contribution. Folding the instance combine from the structural seed over the edge contribution
+  # reproduces the live reach (structural verbatim, edge deduped first-occurrence against the structural
+  # keys) — the restatement IS the production algebra.
+  structuralNodes = reachGraph.src.resolved ++ reachGraph.cell.resolved;
+  edgeContribution = reachGraph.ext.resolved;
+  reachFoldedViaInstance = builtins.foldl' reachInst.combine structuralNodes [ edgeContribution ];
+
+  # the three-cells structural-multiplicity fixture (the u24 exemption, reach-graph.nix per-provider
+  # multiplicity): three DISTINCT cell scopes each carrying the SAME-key aspect all survive via the
+  # structural component (distinct ctx-eval results, NOT a bare-key collapse). dedup NEVER applies here.
+  nAcct = mkAspectNode "acct";
+  threeCellsGraph = {
+    host = {
+      resolved = [ ];
+      children = {
+        c1 = { };
+        c2 = { };
+        c3 = { };
+      };
+    };
+    c1.resolved = [ nAcct ];
+    c2.resolved = [ nAcct ];
+    c3.resolved = [ nAcct ];
+  };
+  threeCellsKeys = map (n: n.key) (raReach.compute (reachStub threeCellsGraph) "host");
 in
 {
   flake.tests.order-instances = {
@@ -394,8 +493,8 @@ in
       expr = collInst.engine;
       expected = "gen-pipe run (B5 pinned-sequence ordered fold)";
     };
-    # the combine IS the compiled channel's `.combine` (the SAME field gen-pipe's fold applies) — a
-    # reference, not a hand-restated append: it folds two contribution lists by association.
+    # the combine folds two contribution lists by association (extensional shape check — that it BEHAVES
+    # like the channel append; the reference-ness itself lives in source, `combine = probeChannel.combine`).
     test-collections-instance-combine-is-channel-append = {
       expr =
         collInst.combine [ "x" ] [ "y" ] == [
@@ -407,7 +506,9 @@ in
 
     # ── THE ORDER ORACLE: the LIVE received-collections order matches the declared neron + A12 order ──
     # two same-position producers land in the plain channel in A12 producer-identity order (beta's aspect
-    # id_hash sorts before alpha's) — the neron traversal + tie-break the instance declares.
+    # id_hash sorts before alpha's) — the neron traversal + tie-break the instance declares. The traversal
+    # LEG itself (self → imports → parent) has its own pre-existing oracle in b5-channel-order.nix; this
+    # pins the A12 same-position tie-break the instance's `order` declares.
     test-collections-oracle-received-order = {
       expr = producersOf rcFwd "peers";
       expected = [
@@ -455,6 +556,81 @@ in
         dedupedCount = 1;
         dedupedKept = [ "beta" ];
         plainCount = 2;
+      };
+    };
+
+    # ── reach-closure DECLARATION pins ──
+    # the reach closure is set-semantics (idempotent under re-reach), so join-semilattice — the fixpoint
+    # law: idempotence is what makes the reachable-set converge.
+    test-reach-instance-laws = {
+      expr = reachInst.laws;
+      expected = "join-semilattice";
+    };
+    # the declared order: the structural subtree first (verbatim), then the reach-edge closure; the within-
+    # tier rank is the subtree DFS; no producer ties. dedup gates the reach-EDGE tier ONLY (keep first).
+    test-reach-instance-order-and-dedup = {
+      expr = {
+        tiers = reachInst.order.tiers;
+        withinTier = reachInst.order.withinTier;
+        tieBreak = reachInst.order.tieBreak;
+        dedup = reachInst.dedup;
+      };
+      expected = {
+        tiers = [
+          "structural"
+          "reach-edge"
+        ];
+        withinTier = "traversal:subtree-dfs";
+        tieBreak = null;
+        dedup = {
+          key = "aspect-ident";
+          keep = "first";
+          appliesTo = [ "reach-edge" ];
+        };
+      };
+    };
+    # the nominal engine reference: the in-attribute ordered fold that lives in resolved-aspects.
+    test-reach-instance-engine = {
+      expr = reachInst.engine;
+      expected = "reach in-attribute ordered fold (resolved-aspects)";
+    };
+
+    # ── THE ORDER ORACLE: the LIVE reach attribute's order matches the declared tiers ──
+    # structural component VERBATIM first (src own, then the descendant cell), then the reach-edge closure
+    # (dedup-gated: `ext`'s `shared` is already seen structurally, so only `ext-only` is added).
+    test-reach-oracle-order = {
+      expr = reachKeys;
+      expected = [
+        "src-own" # structural: src's own aspect
+        "shared" # structural: the descendant cell's aspect
+        "ext-only" # reach-edge: the fresh edge-target aspect (shared was deduped — already seen)
+      ];
+    };
+    # THE COMBINE VALUE-AGREEMENT (the standing pin, here against a RESTATED combine — the proof the
+    # restatement matches production): folding the instance combine from the structural seed over the edge
+    # contribution reproduces the live reach list (structural verbatim, edge first-occurrence deduped).
+    test-reach-oracle-combine-value-agreement = {
+      expr = map (n: n.key) reachFoldedViaInstance == reachKeys;
+      expected = true;
+    };
+
+    # ── THREE-CELLS GOLDEN (risk register #1): the u24 structural-multiplicity exemption ──
+    # three DISTINCT cell scopes each carrying the SAME-key `acct` aspect ALL survive via the structural
+    # component (distinct ctx-eval results — the three cells' one parametric aspect resolve to three nodes,
+    # NOT one). dedup NEVER applies to the structural subtree; a bare-key collapse here would be the u24
+    # content-loss the spec warns of (the same law reach-graph.nix per-provider-multiplicity witnesses).
+    test-golden-reach-structural-multiplicity = {
+      expr = {
+        count = builtins.length (builtins.filter (k: k == "acct") threeCellsKeys);
+        keys = threeCellsKeys;
+      };
+      expected = {
+        count = 3;
+        keys = [
+          "acct"
+          "acct"
+          "acct"
+        ];
       };
     };
   };

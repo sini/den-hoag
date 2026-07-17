@@ -173,6 +173,19 @@ let
       [ "b" ]
       [ "a" ]
     ];
+    # reach-closure (the framework instance, §1/§2): resolved-aspect NODE lists (keyed by `.key`) folded by
+    # append-then-first-occurrence-dedup — a JOIN-SEMILATTICE (idempotent: re-reaching a node collapses).
+    # Each sample is KEY-UNIQUE (so identity `combine [] x == x` holds — the closure keeps a key once); the
+    # empty list + a repeated whole-list sample witness identity + idempotence (`combine x x == x`).
+    reach-closure = [
+      [ ]
+      [ { key = "a"; } ]
+      [
+        { key = "a"; }
+        { key = "b"; }
+      ]
+      [ { key = "a"; } ]
+    ];
   };
 
   # THE HARNESS OVER THE COMPILED TABLE: `checkTable samplesMap table` runs `checkLaws` over EVERY entry
@@ -314,6 +327,7 @@ in
         "comm-sum"
         "join-unit"
         "ord-append"
+        "reach-closure"
         "settings-layers"
         "shadow-lastwins"
       ];
