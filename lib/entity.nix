@@ -40,10 +40,13 @@ let
     in
     # A kind's option mount lands at `options.den.<kindName>` (build below), so a kind literally named
     # `kinds` would collide with the framework `den.kinds` receives-registry concern option — abort NAMED
-    # at discovery. (This is the ONE reserved concern-option name guarded here; other latent concern-name
-    # collisions are out of scope.)
+    # at discovery. `root` is likewise reserved: it is the framework output-side receiver locus (den.outputs
+    # families project onto `den.kinds.root`, §4.6), not a discovered entity kind. (These are the reserved
+    # concern-option names guarded here; other latent concern-name collisions are out of scope.)
     if builtins.elem "kinds" sch._kindNames then
       throw "den.kinds is a framework concern option — a kind may not be named 'kinds'"
+    else if builtins.elem "root" sch._kindNames then
+      throw "den.kinds root is the framework output locus — a kind may not be named 'root'"
     else
       prelude.genAttrs sch._kindNames (kindName: {
         parent = sch._topology.${kindName}.parent;

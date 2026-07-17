@@ -196,6 +196,28 @@ let
       systems = [ "x86_64-linux" ];
     };
 
+  # ── the ROOT-projection seam (§4.4/§4.6) ──
+  # `toReceives` projects the raw `den.outputs` config into a raw `den.kinds` entry `{ root = { includes;
+  # receives.<family> = <§4.2 receives row>; }; }`: each family becomes a receives row carrying the §4.2
+  # contract ONLY (`at`/`consumes`/`render` + the `many`/`error` defaults); the family-specific `params`/
+  # `requires` STAY on the family row (not §4.2 fields). Fed through the REAL receivers compile.
+  projectedRoot = outputsLib.toReceives {
+    nixosConfigurations = {
+      at = _point: e: [ e.name ];
+      consumes = "SystemInfo";
+      render = "nixos";
+      params = [ "system" ];
+    };
+  };
+  # the projected root entry, routed THROUGH the receivers compile (its validation applies: mode derivation,
+  # render/artifact pairing). `root` is a known outer kind here (the knownKinds augmentation the fleet does).
+  rootKinds = receivers.compile {
+    rows = projectedRoot;
+    knownKinds = [ "root" ];
+    products = frameworkProducts;
+    renders = pureRenders;
+  };
+
   # ── the receives registry seam (lib/receivers.nix, §4.2) ──
   # `receivers` = the lib. `compile { rows; knownKinds; products; renders }` compiles the
   # `den.kinds.<outerKind>.receives.<slot>` graft-site rows: every §4.2 field stored, mode derived via the
@@ -2317,6 +2339,19 @@ in
       });
       expected = true;
     };
+    # `render` is legal ONLY on an artifact-mode family (mirrored from receivers): a render on a content-mode
+    # consumes (ModulesInfo) aborts NAMED — the family's render IS the artifact evaluator, and a content
+    # family (the future flake-parts transposition path) has none. Sibling parity, no silent divergence.
+    test-outputs-render-non-artifact-throw = {
+      expr = throws (compileOutputs {
+        nixosConfigurations = {
+          at = _: e: [ e.name ];
+          consumes = "ModulesInfo";
+          render = "nixos";
+        };
+      });
+      expected = true;
+    };
     # `params` names a KNOWN AXIS — today exactly `"system"`; an unknown axis aborts NAMED.
     test-outputs-params-unknown-axis-throw = {
       expr = throws (compileOutputs {
@@ -2444,6 +2479,137 @@ in
           true
       );
       expected = true;
+    };
+
+    # ── §4.4/§4.6 the ROOT kind — families as root receiver rows through the REAL dispatch ──
+    # the projection yields a `root.receives.<family>` row carrying the §4.2 contract only. `at`/`consumes`/
+    # `render` ride through; `arity`/`multiplicity` default; `params`/`requires` are NOT §4.2 fields (they
+    # stayed on the family row) so they are absent on the receives row.
+    test-outputs-root-projection = {
+      expr = {
+        hasRoot = rootKinds ? root;
+        hasFamily = rootKinds.root.receives ? nixosConfigurations;
+        consumes = rootKinds.root.receives.nixosConfigurations.consumes;
+        mode = rootKinds.root.receives.nixosConfigurations.mode;
+        render = rootKinds.root.receives.nixosConfigurations.render;
+        arity = rootKinds.root.receives.nixosConfigurations.arity;
+        multiplicity = rootKinds.root.receives.nixosConfigurations.multiplicity;
+        keepsParams = rootKinds.root.receives.nixosConfigurations ? params;
+        # `at` (the load-bearing placement fn) rides through — applied to a point + entity it yields the
+        # family's `[ <entityName> ]` path (the projection carried the SAME fn, not a stub).
+        atPlacement = rootKinds.root.receives.nixosConfigurations.at { } { name = "igloo"; };
+      };
+      expected = {
+        hasRoot = true;
+        hasFamily = true;
+        consumes = "SystemInfo";
+        mode = "artifact"; # DERIVED by the receivers compile from consumes (F1) — the projection didn't set it.
+        render = "nixos";
+        arity = "many";
+        multiplicity = "error";
+        keepsParams = false; # params stays on the family row, off the §4.2 receives row.
+        atPlacement = [ "igloo" ];
+      };
+    };
+    # (2) DISPATCH: the family resolves through the REAL `resolveReceiver` — slot phase. Resolving `root`'s
+    # `nixosConfigurations` slot returns the projected family row (the same machinery a nested receives row uses).
+    test-outputs-root-dispatch-slot = {
+      expr =
+        (resolveReceiver {
+          compiledKinds = rootKinds;
+          outerKind = "root";
+          slot = "nixosConfigurations";
+          class = "nixos";
+        }).consumes;
+      expected = "SystemInfo";
+    };
+    # a class-fallback witness: `root.receives.<class>` is legal like any kind's — a slot with no row falls
+    # back to the class row. Here a `nixos` family row (class-named) resolves when the slot is absent.
+    test-outputs-root-dispatch-class-fallback = {
+      expr =
+        let
+          classRoot = receivers.compile {
+            rows = outputsLib.toReceives {
+              nixos = {
+                at = _point: e: [ e.name ];
+                consumes = "SystemInfo";
+                render = "nixos";
+              };
+            };
+            knownKinds = [ "root" ];
+            products = frameworkProducts;
+            renders = pureRenders;
+          };
+        in
+        (resolveReceiver {
+          compiledKinds = classRoot;
+          outerKind = "root";
+          slot = "ghostslot";
+          class = "nixos";
+        }).consumes;
+      expected = "SystemInfo";
+    };
+    # (3) `root` is FRAMEWORK-RESERVED: a user declaring `den.kinds.root` directly aborts NAMED (the sibling
+    # reserved posture) — root is the output-side receiver locus, not a user-writable receives entry.
+    test-outputs-root-user-kinds-reserved-throw = {
+      expr = throws (
+        builtins.deepSeq
+          (denHoag.mkDen [
+            { config.den.schema.server.parent = null; }
+            {
+              config.den = {
+                server.box1 = { };
+                kinds.root.receives.x = {
+                  at = _: e: [ e.name ];
+                  consumes = "SystemInfo";
+                };
+              };
+            }
+          ]).den.kinds
+          true
+      );
+      expected = true;
+    };
+    # a kind literally NAMED `root` declared in den.schema aborts NAMED at kind discovery (mirroring the
+    # existing `kinds` guard — same site, same message shape).
+    test-outputs-root-schema-kind-reserved-throw = {
+      expr = throws (
+        denHoag.mkDen [
+          { config.den.schema.root.parent = null; }
+        ]
+      );
+      expected = true;
+    };
+    # the root entry is COMPOSED into the per-fleet receivers compile: a fleet declaring `den.outputs`
+    # surfaces its families as `den.kinds.root.receives.<family>` rows (routed through the real receivers
+    # compile), so `den.kinds` carries the `root` entry the dispatch resolves against.
+    test-outputs-root-composed-in-fleet = {
+      expr =
+        let
+          fleet = denHoag.mkDen [
+            { config.den.schema.server.parent = null; }
+            {
+              config.den = {
+                server.box1 = { };
+                outputs.nixosConfigurations = {
+                  at = _point: e: [ e.name ];
+                  consumes = "SystemInfo";
+                  render = "nixos";
+                };
+              };
+            }
+          ];
+        in
+        {
+          hasRoot = fleet.den.kinds ? root;
+          hasFamily = fleet.den.kinds.root.receives ? nixosConfigurations;
+          mode = fleet.den.kinds.root.receives.nixosConfigurations.mode;
+        };
+      expected = {
+        hasRoot = true;
+        hasFamily = true;
+        mode = "artifact";
+      };
     };
   };
 }

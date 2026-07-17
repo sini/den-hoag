@@ -59,6 +59,11 @@ let
       throw "den.outputs: family '${family}' declares no consumes — the product face is required"
     else if render != null && !(renders ? ${render}) then
       throw "den.outputs: family '${family}' names unregistered render '${render}'"
+    # `render` names the artifact evaluator the built member surfaces through — legal ONLY on an artifact-mode
+    # family (mirroring receivers.nix; extend-mode families don't exist). A content/value family (the future
+    # flake-parts transposition path) has no artifact to render, so a render there is a definition error.
+    else if render != null && mode != "artifact" then
+      throw "den.outputs: family '${family}' consumes '${consumes}' — a ${mode}-mode family has no artifact to render (render is the artifact eval, artifact-mode families only)"
     else if badParams != [ ] then
       throw "den.outputs: family '${family}' declares unknown param axis '${builtins.head badParams}' — one of ${builtins.toJSON axes}"
     else if badRequires != [ ] then
@@ -74,6 +79,37 @@ let
           requires
           ;
       };
+
+  # THE ROOT KIND (spec §4.6, root-as-entity): the fleet's TOP-LEVEL output faces resolve through the SAME
+  # slot ≻ class dispatch a nested receives row does — so a family IS a receives row on a framework `root`
+  # kind. `toReceives registered` projects the raw `den.outputs` config into a raw `den.kinds` ENTRY
+  # `{ root = { includes = [ ]; receives.<family> = <§4.2 receives row>; }; }`, merged into the receivers
+  # compile's `rows`. Each family row carries the §4.2 receives contract ONLY — `at`/`consumes` (+ `render`
+  # when present), plus the `arity = "many"` / `multiplicity = "error"` defaults; the family-specific
+  # `params`/`requires` STAY on the family row (they are the §4.4 face-materialization fields, not §4.2 graft
+  # data — the split keeps the receives row a clean §4.2 record the real `resolveReceiver` walks). The
+  # RECEIVERS compile validates the projected rows (mode derivation via consumes, render/artifact pairing),
+  # so this projection re-implements NONE of that — it selects the §4.2 fields and hands them over.
+  toReceives =
+    registered:
+    let
+      # `arity = "many"` / `multiplicity = "error"` are §4.4 INVARIANTS (a family always admits many members,
+      # errors on a mount clash), NOT projected data — a family row never declares them, so they are set here.
+      receivesRowOf =
+        raw:
+        {
+          inherit (raw) at consumes;
+          arity = "many";
+          multiplicity = "error";
+        }
+        // prelude.optionalAttrs (raw ? render) { inherit (raw) render; };
+    in
+    {
+      root = {
+        includes = [ ];
+        receives = prelude.mapAttrs (_family: receivesRowOf) registered;
+      };
+    };
 
   # `compile { registered; builtins ? { }; renders; products; systems }` → the validated compiled families
   # table (a `mapAttrs` + validation, Law A1 — the receivers/renders template). This task compiles USER rows
@@ -98,5 +134,5 @@ let
     prelude.mapAttrs (rowOf renders products) allRaw;
 in
 {
-  inherit compile axes;
+  inherit compile toReceives axes;
 }

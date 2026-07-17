@@ -1048,16 +1048,31 @@ let
         inherit npkgs ndarwin;
         products = productsTable;
       };
+      # THE ROOT KIND (§4.6, root-as-entity): the fleet's `den.outputs.<family>` faces resolve through the SAME
+      # slot ≻ class dispatch a nested receives row does — so each family projects to a receives row on a
+      # framework `root` outer kind (`outputsLib.toReceives`), merged into the receivers compile's rows. A user
+      # declaring `den.kinds.root` directly collides with this framework output locus — abort NAMED (the
+      # sibling reserved posture; root is not a user-writable receives entry). The `rootReserved` guard aborts
+      # BEFORE this merge, so a user `root` — which WOULD win the right-biased `//` — can never reach it; the
+      # guard is the sole protection (operand order is not).
+      userKinds = ent.config.den.kinds or { };
+      rootReserved = userKinds ? root;
+      rootKindEntry = outputsLib.toReceives (ent.config.den.outputs or { });
       # The compiled receives table (§4.2): the fleet's `den.kinds.<outerKind>.receives.<slot>` graft-site
-      # rows, validated (mode derived via the products table; outer-kind + includes checked against the
-      # registered kinds; `render` checked against the render rows). PER-FLEET (the render-name check reads
-      # `rendersRows`, which compiles here), following the render read-through's placement.
-      receivesTable = receiversLib.compile {
-        rows = ent.config.den.kinds or { };
-        knownKinds = builtins.attrNames ent.kinds;
-        products = productsTable;
-        renders = rendersRows;
-      };
+      # rows UNION the projected `root` families entry, validated (mode derived via the products table; outer-
+      # kind + includes checked against the registered kinds — augmented with `root`, the output-side receiver
+      # locus that is NOT a discovered entity kind; `render` checked against the render rows). PER-FLEET (the
+      # render-name check reads `rendersRows`, which compiles here), following the render read-through's placement.
+      receivesTable =
+        if rootReserved then
+          throw "den.kinds: 'root' is the framework output locus (den.outputs families project onto it) — a kind may not be declared as den.kinds.root"
+        else
+          receiversLib.compile {
+            rows = rootKindEntry // userKinds;
+            knownKinds = builtins.attrNames ent.kinds ++ [ "root" ];
+            products = productsTable;
+            renders = rendersRows;
+          };
       # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` rows, validated (mode
       # derived via the products table; `render` checked against the render rows; `params` against the axis
       # registry; `requires` against the products table). PER-FLEET (the render-name check reads `rendersRows`),
