@@ -275,8 +275,7 @@ in
       self: id:
       let
         # Positive edges at a node: the node's own DECLARED (opt-in) reach-edges.
-        positiveEdgesAt =
-          nid: reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
+        positiveEdgesAt = nid: reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
 
         # NEGATIVE-EDGE SUPPRESSION (spec §2 F3-exclude / u21). The suppressed-EDGE set at a node: the
         # `target`s named by every reach-suppress declaration whose scope predicate `when` HOLDS for the

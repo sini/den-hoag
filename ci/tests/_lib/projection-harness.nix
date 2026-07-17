@@ -41,16 +41,15 @@ let
   #    single-visit dedup + structural-descendant + edge closure are exercised end-to-end (NOT a pre-built
   #    reach list). This is how the corpus terminal will behave once Phase 5 wires the real edges; here the
   #    edges are injected synthetically.
-  mkRa =
-    import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
-      inherit
-        prelude
-        scope
-        aspects
-        select
-        resolve
-        ;
-    } { };
+  mkRa = import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
+    inherit
+      prelude
+      scope
+      aspects
+      select
+      resolve
+      ;
+  } { };
   # A reach-graph stub `self` (resolved-aspects / declarations / children).
   mkStub = graph: {
     get =

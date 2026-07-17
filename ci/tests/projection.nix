@@ -84,7 +84,8 @@ in
     #     exactly the os-class subtree fold `classSubtreeAt igloo "os"` (each reached node's os slice, flat).
     #     A clean, non-circular decomposition — the base same-class prefix ++ the route-remap delta.
     test-anchor-projectClass-nixos-routed-delta = {
-      expr = out.projectClass igloo "nixos" == out.classSubtreeAt igloo "nixos" ++ out.classSubtreeAt igloo "os";
+      expr =
+        out.projectClass igloo "nixos" == out.classSubtreeAt igloo "nixos" ++ out.classSubtreeAt igloo "os";
       expected = true;
     };
     # (b) ROUTE-FREE EXACT (the PRESERVED strong same-class subsume proof): `home-manager` is NOT routed at

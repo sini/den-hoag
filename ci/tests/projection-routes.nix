@@ -99,8 +99,12 @@ let
     }:
     {
       __action = "delivery";
-      sourceClass = { name = from; };
-      targetClass = { name = to; };
+      sourceClass = {
+        name = from;
+      };
+      targetClass = {
+        name = to;
+      };
       module = null;
       path = at;
       mode = "merge";
@@ -158,7 +162,9 @@ let
         inherit classSliceOf assertKeysRegistered;
       };
 
-  projectClassOf = graph: id: class: (mkOut graph).projectClass id class;
+  projectClassOf =
+    graph: id: class:
+    (mkOut graph).projectClass id class;
 
   # every `tag` string reachable in a wrapped deferredModule (gen-aspects `{ imports = [ … ]; }` form).
   tags =
@@ -186,7 +192,14 @@ let
           options.devshells = lib.mkOption {
             type = lib.types.attrsOf (
               lib.types.submoduleWith {
-                modules = [ { options.marker = lib.mkOption { type = lib.types.str; default = "none"; }; } ];
+                modules = [
+                  {
+                    options.marker = lib.mkOption {
+                      type = lib.types.str;
+                      default = "none";
+                    };
+                  }
+                ];
               }
             );
             default = { };
@@ -216,7 +229,12 @@ in
                 homeLinux.tag = "linux-b"; # a second reached node's homeLinux slice.
               })
             ];
-            routes = [ (deliveryAct { from = "homeLinux"; to = "home-manager"; }) ];
+            routes = [
+              (deliveryAct {
+                from = "homeLinux";
+                to = "home-manager";
+              })
+            ];
           };
           ts = builtins.concatMap tags (projectClassOf graph "scope" "home-manager");
         in
@@ -342,14 +360,23 @@ in
             (mkNode "a" { home-manager.tag = "hm-a"; })
             (mkNode "b" { home-manager.tag = "hm-b"; })
           ];
-          withNoRoute = builtins.concatMap tags (projectClassOf { scope = { inherit reach; }; } "scope" "home-manager");
+          withNoRoute = builtins.concatMap tags (
+            projectClassOf { scope = { inherit reach; }; } "scope" "home-manager"
+          );
           # base-only reference: the same reach with the route machinery present but targeting ANOTHER class.
-          otherClassRoute = builtins.concatMap tags (projectClassOf {
-            scope = {
-              inherit reach;
-              routes = [ (deliveryAct { from = "homeLinux"; to = "nixos"; }) ]; # targets nixos, NOT home-manager.
-            };
-          } "scope" "home-manager");
+          otherClassRoute = builtins.concatMap tags (
+            projectClassOf {
+              scope = {
+                inherit reach;
+                routes = [
+                  (deliveryAct {
+                    from = "homeLinux";
+                    to = "nixos";
+                  })
+                ]; # targets nixos, NOT home-manager.
+              };
+            } "scope" "home-manager"
+          );
         in
         {
           noRoute = withNoRoute; # base fold.
@@ -403,7 +430,11 @@ in
           hostNixos = projectClassOf graph "host" "nixos";
           # the nested hm module the host's nixos projection carries: { home-manager.users.<u> = <module> }.
           hmUsers = builtins.concatMap (
-            m: if builtins.isAttrs m && m ? home-manager then builtins.attrNames (m.home-manager.users or { }) else [ ]
+            m:
+            if builtins.isAttrs m && m ? home-manager then
+              builtins.attrNames (m.home-manager.users or { })
+            else
+              [ ]
           ) hostNixos;
           hmTags = builtins.concatMap (
             m: if builtins.isAttrs m && m ? home-manager then tags (m.home-manager.users.tux or { }) else [ ]
@@ -434,7 +465,11 @@ in
           };
           hostNixos = projectClassOf graph "host" "nixos";
           hmUsers = builtins.concatMap (
-            m: if builtins.isAttrs m && m ? home-manager then builtins.attrNames (m.home-manager.users or { }) else [ ]
+            m:
+            if builtins.isAttrs m && m ? home-manager then
+              builtins.attrNames (m.home-manager.users or { })
+            else
+              [ ]
           ) hostNixos;
         in
         {
@@ -525,7 +560,11 @@ in
             m.devshells.default;
         in
         {
-          withAdaptArgs = builtins.isFunction (placedOf (_args: { pkgs2 = "x"; })); # function-wrapper present.
+          withAdaptArgs = builtins.isFunction (
+            placedOf (_args: {
+              pkgs2 = "x";
+            })
+          ); # function-wrapper present.
           withoutAdaptArgs = builtins.isFunction (placedOf null); # plain module — NO injection path.
         };
       expected = {
@@ -542,7 +581,12 @@ in
         let
           graph.scope = {
             reach = [ (mkNode "a" { homeLinux.tag = "linux-a"; }) ];
-            routes = [ (deliveryAct { from = "homeLinux"; to = "home-manager"; }) ]; # NO adaptArgs.
+            routes = [
+              (deliveryAct {
+                from = "homeLinux";
+                to = "home-manager";
+              })
+            ]; # NO adaptArgs.
           };
           hm = projectClassOf graph "scope" "home-manager";
         in
@@ -735,14 +779,18 @@ in
           spec = {
             fromClass = "devshell";
             intoClass = "flake-parts";
-            sourceModule = { tag = "src-seed"; }; # the source the adapter maps.
-            mapModule = src: (
-              { injected, ... }:
-              {
-                marker = injected; # the composed module READS the adaptArgs-injected arg (freeform-absorbed).
-                seed = src.tag; # …and carries the mapped source content (non-vacuous).
-              }
-            );
+            sourceModule = {
+              tag = "src-seed";
+            }; # the source the adapter maps.
+            mapModule =
+              src:
+              (
+                { injected, ... }:
+                {
+                  marker = injected; # the composed module READS the adaptArgs-injected arg (freeform-absorbed).
+                  seed = src.tag; # …and carries the mapped source content (non-vacuous).
+                }
+              );
             adaptArgs = _args: { injected = "synth-injected"; }; # the content-producer arg-env.
           };
           produced = fwd.synthesizeProducer spec;
@@ -777,7 +825,9 @@ in
           spec = {
             fromClass = "devshell";
             intoClass = "flake-parts";
-            sourceModule = { tag = "plain-src"; };
+            sourceModule = {
+              tag = "plain-src";
+            };
             # NO adaptArgs / adapterModule / mapModule ⇒ a plain composed module set.
           };
           produced = fwd.synthesizeProducer spec;

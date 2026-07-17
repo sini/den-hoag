@@ -1448,9 +1448,7 @@ let
         kind: builtins.filter isPolicyRef (expandRefs ing.kindIncludes.${kind})
       ) (builtins.attrNames ing.kindIncludes);
     in
-    builtins.filter (n: n != null) (
-      map (r: r.name or null) (kindPolicyRefs ++ aspectIncludeRecords)
-    );
+    builtins.filter (n: n != null) (map (r: r.name or null) (kindPolicyRefs ++ aspectIncludeRecords));
   policies =
     (builtins.removeAttrs compiledPolicies.policies includeReferencedNames)
     // kindIncludePolicies

@@ -75,9 +75,12 @@ let
     v1
     // {
       schema = (v1.schema or { }) // {
-        ${kind} = builtinDefault // existing // {
-          includes = (existing.includes or [ ]) ++ [ "defaults" ];
-        };
+        ${kind} =
+          builtinDefault
+          // existing
+          // {
+            includes = (existing.includes or [ ]) ++ [ "defaults" ];
+          };
       };
     };
 
