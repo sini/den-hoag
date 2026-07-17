@@ -82,6 +82,13 @@ edge appends ` | <kind>` as the fifth component (and carries a `kind` field on i
 labeled kind (its `toEdges` records stamp `kind = "demand"`); the demand-free parity corpus is therefore
 byte-untouched. This is the extension-in-place by which the demand edge-identity scheme retires.
 
+**`edgeId` placement caveat (S1).** `assembleEdges` currently stamps the computed `edgeId` on the
+synthetic record's `annotations` (inert, provenance-only). When live producers route through the pipeline,
+`edgeId` must move OFF `annotations`: gen-edge folds annotations into trace entries, so an identity sha256
+would enter trace goldens and a `data` change would double-ripple the trace (source key AND edgeId); and
+gen-edge annotations are provenance/diagnostics never read by materialize, so a consumer keying on `edgeId`
+semantically (dedup/query) needs it as a first-class field or recomputed at the read site.
+
 ## Theory citations (§6)
 
 The libraries den-hoag delegates to carry the theory; the citations that matter at this layer:

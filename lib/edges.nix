@@ -223,6 +223,16 @@ let
               class = i.to.class;
             };
             kind = i.kind;
+            # FORWARD CAVEAT (annotations = provenance ONLY, per gen-edge's contract): `edgeId` rides
+            # `annotations` here because this record is synthetic and inert. When live producers route
+            # through assembleEdges, TWO things follow. (1) gen-edge's `traceEntryOf` folds annotations
+            # into trace entries, so an identity sha256 would enter the trace goldens — and a `data`
+            # change then double-ripples the trace (via BOTH the source key AND the edgeId annotation),
+            # making golden churn opaque; the trace should carry the source identity, not the derived
+            # edgeId. (2) The moment a consumer reads `edgeId` SEMANTICALLY (dedup / query keying),
+            # `annotations` is the wrong home — gen-edge annotations are provenance/diagnostics, never
+            # read by materialize. Promote `edgeId` to a first-class field (or recompute it at the read
+            # site) before either happens.
             annotations = {
               edgeId = identity.edgeId {
                 inherit (i) kind;
