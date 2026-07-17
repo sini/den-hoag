@@ -1057,7 +1057,21 @@ let
       # guard is the sole protection (operand order is not).
       userKinds = ent.config.den.kinds or { };
       rootReserved = userKinds ? root;
-      rootKindEntry = outputsLib.toReceives (ent.config.den.outputs or { });
+      # THE BUILT-IN FAMILY SEEDING (§4.4, the D7 promotion of systemOutputs): the framework's own output
+      # families (nixosConfigurations/darwinConfigurations + any user system class's declared target) derived
+      # per-fleet from each class's INSTANTIATION `output` field (via `instantiationOf` — the SAME source the
+      # shipped systemOutputs reads, so the `classes.<name>.instantiation` overlay is preserved). `families`
+      # seed both the families table (`outputsTable`) and the root receives projection; `classOf` maps each
+      # family to its winning class for the live mount (`familyOutputs`, below the output stratum).
+      builtinFams = outputsLib.builtinFamilies {
+        classNames = effectiveClassNames;
+        inherit instantiationOf;
+        hasRender = class: rendersRows ? ${class};
+      };
+      # the family rows the framework + user contribute: the built-in seeds UNION `den.outputs` (a user
+      # re-declaration of a built-in family key wins — the extension posture, the `//` right-bias).
+      allFamilies = builtinFams.families // (ent.config.den.outputs or { });
+      rootKindEntry = outputsLib.toReceives allFamilies;
       # The compiled receives table (§4.2): the fleet's `den.kinds.<outerKind>.receives.<slot>` graft-site
       # rows UNION the projected `root` families entry, validated (mode derived via the products table; outer-
       # kind + includes checked against the registered kinds — augmented with `root`, the output-side receiver
@@ -1079,7 +1093,7 @@ let
       # following receivesTable's placement. `systems` carries `den.systems` (the `system` param's axis values)
       # for the later per-system materialization; this step validates the axis NAMES.
       outputsTable = outputsLib.compile {
-        registered = ent.config.den.outputs or { };
+        registered = allFamilies;
         renders = rendersRows;
         products = productsTable;
         systems = ent.config.den.systems or [ ];
@@ -1293,6 +1307,89 @@ let
         demands = demandResolution;
       };
 
+      # ── THE LIVE FAMILY MOUNT (§4.4/§4.6): the output map assembled VIA the root family dispatch ──
+      # `familyOutputs` is the root entity's PRODUCT — the plain attrset `{ <family> = { <entityName> =
+      # <artifact>; }; }` — assembled by nesting each built member into the root through the SAME machinery a
+      # nested receives edge uses: the family row resolved via the REAL `resolveReceiver` (over the receives
+      # table carrying `root`), the built artifact injected VALUE-mode through `executeNest` (the prebuilt
+      # ArtifactRef arm — the artifact is injected verbatim, never re-evaluated). NO hand-rolled dispatch: the
+      # row comes from `resolveReceiver`, the placement from the contribution's `at`. Byte-identical to the
+      # shipped `systemOutputs` (the T3 equivalence pin proves it) — the member re-key (scope-id → entity name)
+      # and the last-wins family collapse are reproduced exactly (faceOf / listToAttrs semantics).
+      #
+      # the fold's `place` primitive — a local `setAttrByPath` twin (den-hoag has no public gen-edge
+      # `core.setAttrByPath` re-export; the same local-twin note the nest engine + output-modules carry).
+      familyNestAtPath =
+        path: value:
+        if path == [ ] then
+          value
+        else
+          { ${builtins.head path} = familyNestAtPath (builtins.tail path) value; };
+      # recursively merge two plain attrset trees (the per-member contributions fold into one family subtree,
+      # families into the root product). A leaf (a built artifact — never an attrset with a colliding key path)
+      # rides as-is; two subtrees at the same family key merge (distinct member names, so no leaf clash).
+      familyMerge =
+        a: b:
+        a
+        // builtins.mapAttrs (
+          k: bv:
+          if (a ? ${k}) && builtins.isAttrs a.${k} && builtins.isAttrs bv then familyMerge a.${k} bv else bv
+        ) b;
+      familyOutputs =
+        let
+          families = builtins.attrNames builtinFams.classOf;
+          # EVERY family key surfaces even with NO members: systemOutputs emits `<family> = faceOf class`, and
+          # `faceOf` of a memberless class is `{ }` — so the family KEY is present with an empty face (a class
+          # like darwin with no members yields `darwinConfigurations = { }`). Seed the fold with one empty
+          # subtree per family so a memberless family keeps its key (the listToAttrs-parity for empty faces).
+          emptyFamilies = builtins.listToAttrs (
+            map (family: {
+              name = family;
+              value = { };
+            }) families
+          );
+          # one value-mode contribution per (family, member): the built artifact nested into the root through
+          # the resolved family row. The contribution's `at` is `[ <family> <entityName> ]` (the family row's
+          # placement); `value` is the built artifact (carried verbatim — the value arm never forces it).
+          contributions = prelude.concatMap (
+            family:
+            let
+              class = builtinFams.classOf.${family};
+              row = receiversLib.resolveReceiver {
+                compiledKinds = receivesTable;
+                outerKind = "root";
+                slot = family;
+                class = class;
+              };
+            in
+            map (
+              memberId:
+              let
+                entry = (structural.eval.node memberId).decls.__entry or null;
+                entityName = if entry != null then entry.name else memberId;
+              in
+              nestLib.executeNest {
+                inherit row;
+                inner = {
+                  product = "ArtifactRef SystemInfo";
+                  artifactRef = {
+                    product = "SystemInfo";
+                    value = output.systems.${class}.${memberId};
+                  };
+                  name = entityName;
+                  kind = class;
+                };
+                ctx.paramPoint = {
+                  name = entityName;
+                };
+              }
+            ) (builtins.attrNames (output.systems.${class} or { }))
+          ) families;
+        in
+        prelude.foldl' (
+          acc: c: familyMerge acc (familyNestAtPath c.at c.value)
+        ) emptyFamilies contributions;
+
       # faceOf — the shared flake-output face builder (§2.10): a class's per-member systems re-keyed from
       # the member scope-node id ("host:igloo") to the host entity NAME ("igloo"), so a consumer addresses
       # `<output>.<host>` exactly as a flake does. With an evaluator declared these are REAL systems (the
@@ -1368,10 +1465,15 @@ let
         # rows, validated (mode derived from consumes; outer-kind/includes/render checked). The
         # dispatch-execution work walks these rows' `includes` for receiver inheritance.
         kinds = receivesTable;
-        # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` root-as-entity rows,
-        # validated (mode derived from consumes; render/params/requires checked). The face-materialization work
-        # reads these rows to surface each family at the flake root, superseding the render row's `output` field.
+        # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` root-as-entity rows
+        # (framework-seeded + `den.outputs`), validated (mode derived from consumes; render/params/requires
+        # checked). The face-materialization work reads these rows to surface each family at the flake root.
         outputs = outputsTable;
+        # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
+        # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
+        # `executeNest` arm. Byte-identical to `systemOutputs` (the equivalence pin); the next task swaps the
+        # face onto it and deletes the superseded systemOutputs block.
+        inherit familyOutputs;
         # The system-axis values (§4.4): the domain of a family's `system` param (`den.systems`, default `[ ]`).
         inherit (ent.config.den) systems;
         scopeRoots = scopeRoots;

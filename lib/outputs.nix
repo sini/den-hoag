@@ -111,11 +111,72 @@ let
       };
     };
 
+  # THE BUILT-IN FAMILY SEEDING (spec §4.4, the D7 promotion of `systemOutputs`): the framework's own output
+  # families — `nixosConfigurations`/`darwinConfigurations` and any user system class's declared target —
+  # derived PER-FLEET from each class's INSTANTIATION `output` field. `builtinFamilies { classNames;
+  # instantiationOf; hasRender }` reads, for each class, `(instantiationOf class).output` (the SAME source
+  # today's systemOutputs reads — so the `classes.<name>.instantiation` overlay is preserved, NOT raw
+  # rendersRows.output which would bypass it); a non-null output STRING seeds a family keyed by that string,
+  # `consumes = "SystemInfo"` (the system artifact face), `render` = the class name where a render row exists
+  # (`hasRender class`, null otherwise), `at = _point: e: [ <family> e.name ]` (the placement producing the
+  # `[<family> <entityName>]` path the systemOutputs face keys by). LAST-WINS on a shared output string: two
+  # classes declaring the same `output` collapse to the last one (the fold's later write wins — the SAME
+  # `listToAttrs` last-wins today's systemOutputs has; un-exercised by the corpus, reproduced for parity).
+  # Returns `{ families; classOf; }` — `families` the raw rows (for `compile` + `toReceives` seeding),
+  # `classOf.<family>` the winning class (the assembly reads `output.systems.<class>` + resolves that class).
+  builtinFamilies =
+    {
+      classNames,
+      instantiationOf,
+      hasRender,
+    }:
+    let
+      # one seed per class with a non-null output string, in effectiveClassNames order (so the fold's LAST
+      # write for a shared output string wins — the listToAttrs last-wins parity).
+      seeds = builtins.concatMap (
+        class:
+        let
+          out = (instantiationOf class).output or null;
+        in
+        if out == null then
+          [ ]
+        else
+          [
+            {
+              family = out;
+              inherit class;
+              row = {
+                at = _point: e: [
+                  out
+                  e.name
+                ];
+                consumes = "SystemInfo";
+                render = if hasRender class then class else null;
+              };
+            }
+          ]
+      ) classNames;
+    in
+    {
+      families = builtins.listToAttrs (
+        map (s: {
+          name = s.family;
+          value = s.row;
+        }) seeds
+      );
+      classOf = builtins.listToAttrs (
+        map (s: {
+          name = s.family;
+          value = s.class;
+        }) seeds
+      );
+    };
+
   # `compile { registered; builtins ? { }; renders; products; systems }` → the validated compiled families
-  # table (a `mapAttrs` + validation, Law A1 — the receivers/renders template). This task compiles USER rows
-  # only; the framework seeding (the built-in nixosConfigurations/darwinConfigurations families) arrives as
-  # the `builtins` compile arg in a later task, seeding beside the user rows exactly as renders' `builtinRows`
-  # do — the arg seam is left open here (default `{ }`). `renders` is the COMPILED render table (§4.3, for the
+  # table (a `mapAttrs` + validation, Law A1 — the receivers/renders template). The framework `builtins`
+  # families (the built-in nixosConfigurations/darwinConfigurations seeded by `builtinFamilies`) seed the
+  # table; a USER `den.outputs.<family>` merges beside them (a user re-declaration of a built-in family key
+  # wins, the render/product extension posture). `renders` is the COMPILED render table (§4.3, for the
   # `render` name check); `products` the COMPILED products table (§4.1, for the mode derivation + consumes
   # gate); `systems` the `den.systems` axis values (the `system` param's domain — carried for the later
   # per-system materialization, the axis NAMES are validated here). Invoked per-fleet (the render rows compile
@@ -134,5 +195,10 @@ let
     prelude.mapAttrs (rowOf renders products) allRaw;
 in
 {
-  inherit compile toReceives axes;
+  inherit
+    compile
+    toReceives
+    builtinFamilies
+    axes
+    ;
 }

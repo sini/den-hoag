@@ -2611,5 +2611,73 @@ in
         mode = "artifact";
       };
     };
+
+    # ── §4.4/§4.6 THE LIVE FAMILY MOUNT — familyOutputs assembled via the root dispatch + the value arm ──
+    # (4) THE EQUIVALENCE PIN: `familyOutputs == systemOutputs` (the top-level `outputs`) while BOTH exist.
+    # The overlayFleet has one nixos host (box1) whose built system rides both the legacy systemOutputs face
+    # and the new family-dispatch assembly — they must be byte-identical (the next task deletes the legacy
+    # block and swaps this pin for face pins). `overlayFleet.outputs` IS the legacy systemOutputs.
+    test-family-outputs-equals-system-outputs = {
+      expr = overlayFleet.den.familyOutputs == overlayFleet.outputs;
+      expected = true;
+    };
+    # the assembled family map surfaces the built member re-keyed scope-id → entity NAME (box1), under the
+    # family key (nixosConfigurations), carrying the SAME crossed artifact the legacy face does (the fake
+    # evaluator's `__fakeCrossed` tag proves the value rode through value-mode injection verbatim).
+    test-family-outputs-member-rekey = {
+      expr = overlayFleet.den.familyOutputs.nixosConfigurations.box1.__fakeCrossed or false;
+      expected = true;
+    };
+    # the family map is keyed by the family (output string), then by the entity name — the systemOutputs
+    # shape. Forcing the SPINE (attr names at both levels) counts families + members without building any
+    # system (per-member lazy). Both built-in families surface (darwinConfigurations memberless, empty face).
+    test-family-outputs-shape = {
+      expr = {
+        families = builtins.attrNames overlayFleet.den.familyOutputs;
+        members = builtins.attrNames overlayFleet.den.familyOutputs.nixosConfigurations;
+        darwinEmpty = overlayFleet.den.familyOutputs.darwinConfigurations;
+      };
+      expected = {
+        families = [
+          "darwinConfigurations"
+          "nixosConfigurations"
+        ];
+        members = [ "box1" ];
+        darwinEmpty = { };
+      };
+    };
+    # (5) LAZINESS: assembling familyOutputs does NOT force the member artifacts — a fleet whose built system
+    # would throw when forced still yields a familyOutputs whose SPINE (family + member keys) forces clean.
+    # The value arm injects the artifact verbatim (never evaluated by the assembly); only reading
+    # `.nixosConfigurations.<member>.config` would force it. Here the collect artifact is real (not poison),
+    # so we assert the spine forces without deep-forcing the value — the force-surface parity with faceOf.
+    test-family-outputs-spine-lazy = {
+      expr = builtins.length (builtins.attrNames overlayFleet.den.familyOutputs.nixosConfigurations);
+      expected = 1;
+    };
+    # NO MEMBERS, still byte-identical: a fleet with no system MEMBERS (a lone `unit` entity) still surfaces
+    # the built-in `nixosConfigurations`/`darwinConfigurations` families with EMPTY faces — the framework
+    # nixos/darwin classes are always in effectiveClassNames, and systemOutputs emits their memberless faces
+    # as `{ }`. familyOutputs reproduces that exactly (empty-family seeding), so the two agree even here.
+    test-family-outputs-no-members-empty-faces = {
+      expr =
+        let
+          fleet = denHoag.mkDen [
+            { config.den.schema.unit.parent = null; }
+            { config.den.unit.u1 = { }; }
+          ];
+        in
+        {
+          equal = fleet.den.familyOutputs == fleet.outputs;
+          family = fleet.den.familyOutputs;
+        };
+      expected = {
+        equal = true;
+        family = {
+          darwinConfigurations = { };
+          nixosConfigurations = { };
+        };
+      };
+    };
   };
 }
