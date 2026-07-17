@@ -1062,6 +1062,86 @@ in
         )).success;
       expected = false;
     };
+    # THE SEMILATTICE-SET OPT-IN WITNESS (gen-pipe E10 class landed, pin bump): a synthetic quirk channel
+    # DECLARING `merge = "semilattice-set"` composes + folds with SET semantics — duplicate contribution
+    # values collapse (three aspects emit ["x"] ["x"] ["y"] at one position; the second ["x"] deduped, so
+    # the folded set is ["x" "y"], two contributions). Under the OLD gen-pipe pin this channel threw E10
+    # (the reserved-throw) at composition — the pin-bump is the RED; the class is opt-in, so no default
+    # channel changes and every existing fleet suite is byte-identical.
+    test-disciplines-semilattice-set-channel = {
+      expr =
+        let
+          d = denHoag.mkDen [
+            {
+              config.den.schema = {
+                env.parent = null;
+                host.parent = "env";
+                user.parent = "host";
+              };
+            }
+            {
+              config.den = {
+                env.prod = { };
+                host.axon = { };
+                user.alice = { };
+              };
+            }
+            (
+              { config, ... }:
+              {
+                config.den.membership = [
+                  {
+                    coords = {
+                      env = config.den.env.prod;
+                      host = config.den.host.axon;
+                    };
+                  }
+                  {
+                    coords = {
+                      host = config.den.host.axon;
+                      user = config.den.user.alice;
+                    };
+                  }
+                ];
+              }
+            )
+            { config.den.contentClass.host = "nixos"; }
+            { config.den.quirks.tags.channel.merge = "semilattice-set"; }
+            (
+              { config, ... }:
+              {
+                config.den.aspects = {
+                  a1.tags = [ "x" ];
+                  a2.tags = [ "x" ]; # DUPLICATE value → collapses under the set-union merge
+                  a3.tags = [ "y" ];
+                };
+                config.den.include = [
+                  {
+                    at = config.den.host.axon;
+                    aspects = [
+                      config.den.aspects.a1
+                      config.den.aspects.a2
+                      config.den.aspects.a3
+                    ];
+                  }
+                ];
+              }
+            )
+          ];
+          rc = d.den.structural.eval.get "user:alice@host:axon" "received-collections";
+        in
+        {
+          values = rc.tags.values;
+          contribCount = builtins.length rc.tags.contributions;
+        };
+      expected = {
+        values = [
+          "x"
+          "y"
+        ];
+        contribCount = 2;
+      };
+    };
 
     # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.4, before edgeId) ──
     # no override touches an edge (empty list) → the intent passes through untouched.
