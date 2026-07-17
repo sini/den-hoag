@@ -231,11 +231,11 @@ It is the D7 PROMOTION of the shipped `{ evaluator; output }` instantiation reco
 | `adapt` | binds only functionArgs-declared args, lazily |
 | `face` | builds the artifact from an eval |
 | `produces` | the product this render emits (validated ∈ the products table) |
-| `requires` | the products it consumes (each validated ∈ the products table; definition-time CONSUMPTION arrives with the families work) |
-| `params` | the finite axes — `params ? [ ]` here (NO phantom `["system"]` axis until the axis-validation work lands); names-only in this step |
+| `requires` | the products it consumes (each validated ∈ the products table; the definition-time CONSUMPTION is realized by the output families — see Output families and the root) |
+| `params` | the finite axes over which the face materializes (the `system` axis validated against the axis registry; the values are `den.systems`) |
 | `extendsVia` | the extend-mode capability flag (stored; consumed by extend mode later) |
 | `compatibleWith` | the compatibility predicate (stored) |
-| `output` | the flake-parts target the built systems mount at (D7 field, KEPT; a later families registry supersedes it) |
+| `output` | the flake-parts target the built systems mount at (D7 field). It seeds the built-in output families (per-fleet, via `instantiationOf`) and is retained for the `classes.instantiation` overlay; it is NO LONGER the face source — the family assembly is (see Output families and the root) |
 
 The compile is PER-FLEET (invoked inside the mkDen closure): the built-in `nixos`/`darwin` rows derive their
 evaluators from the fleet's OWN `den.nixpkgs`/`den.darwin` inputs (null input ⇒ null evaluator ⇒ the
@@ -244,7 +244,9 @@ built-in rows are THE single source of the instantiation base — the old separa
 **The precedence law (read-through):** `classes.instantiation` ≻ renders row ≻ nothing. `instantiationOf`
 reads the row's `{ evaluator; output }` as the BASE, with the `den.classes.<name>.instantiation` D4 overlay
 on top (a class setting its own `instantiate` overrides everything). The built-in rows are byte-identical to
-the deleted defaults, so the promotion is transparent — a fleet declaring nothing is unchanged.
+the deleted defaults, so the promotion is transparent — a fleet declaring nothing is unchanged. The
+`output` half of that read-through now feeds the built-in output-family seeding (below); the `evaluator`
+half stays the terminal crossing.
 
 **Receives (`den.kinds.<outerKind>.receives.<slot>`, spec §4.2) — `lib/receivers.nix`.** The graft-site rule
 as DATA on the outer kind. A row is
@@ -295,6 +297,92 @@ word order (a proper prefix beats its extensions). The mechanics:
 - **Legal null + laziness.** No rows anywhere returns `null` — a LEGAL no-receiver result (mode execution
   decides its meaning). Only the WINNER's row value is forced — a reachable-but-shadowed loser's row value
   stays a thunk (`where` probes row PRESENCE, attr names, never the value).
+
+## Output families and the root (`den.outputs`/`den.systems`, spec §4.4/§4.6) — `lib/outputs.nix`
+
+The fleet's TOP-LEVEL output faces — `nixosConfigurations`, `darwinConfigurations`, a user's own target — are
+DATA, one row per FAMILY, resolved by the SAME machinery a nested receives row is. **The root is an entity**
+(kind `root`); a family is a receives row on it, so the root is receiver-dispatched like every other outer —
+never a special case.
+
+**The family row (`den.outputs.<family>`).** A row is `{ at; consumes; render ? null; params ? [ ]; requires ? [ ]; }`.
+`at` is `point: e: [ …path ]` — the SAME singular-path / `[]`⇒flat placement convention `lib/nest.nix`'s `at`
+obeys, receiving STRUCTURAL handles only (the paramPoint + the built member's structural face). The MODE is
+DERIVED — `row.mode = modeOf consumes` (F1's canonical machine form); **F1 as a checked law:** a user-declared
+`mode` field aborts NAMED, rejected first. `consumes` passes `checkConsumes` (the products-table gate).
+`render` names a registered render AND is legal ONLY on an artifact-mode family — the render IS the artifact
+evaluator, and a content/value family (the future flake-parts transposition path) has no artifact to render, so
+a render there aborts NAMED (mirroring the receives-row artifact/extend pairing; extend-mode families do not
+exist yet). `params` names known axes (the axis registry is deliberately minimal — today the sole axis is
+`system`); an unknown axis aborts NAMED. `requires` names registered products (shape-checked at compile).
+
+**The family → root-receiver projection (`toReceives`).** Each family projects to a receives row on the
+framework `root` outer kind — `den.kinds.root.receives.<family>` — carrying the §4.2 receives contract ONLY:
+`at`/`consumes` (+ `render` when present), plus the `arity = "many"` / `multiplicity = "error"` INVARIANTS (a
+family always admits many members, errors on a mount clash — set by the projection, never declared). The
+family-specific `params`/`requires` STAY on the family row — they are §4.4 face-materialization fields, not
+§4.2 graft data, so the split keeps the receives row a clean §4.2 record the real `resolveReceiver` walks. The
+RECEIVERS compile validates the projected rows (mode derivation, render/artifact pairing) — the projection
+re-implements none of that. The receivers compile's `knownKinds` is augmented with `root` (the output-side
+receiver locus, NOT a discovered entity kind). `root` is FRAMEWORK-RESERVED two ways: a user `den.kinds.root`
+aborts NAMED (the sibling reserved posture), and a schema kind literally named `root` aborts NAMED at kind
+discovery (mirroring the `kinds` guard).
+
+**The promotion law (single-source).** The built-in families are seeded PER-FLEET from each class's
+INSTANTIATION `output` field via `instantiationOf` — the SAME source that preserves the
+`classes.instantiation` overlay (NOT raw `rendersRows.output`, which would bypass it). A non-null output string
+seeds a family keyed by that string, `consumes = SystemInfo`, `render` = the class's render name where one
+exists. Two classes declaring the SAME output string collapse LAST-WINS (the `listToAttrs` semantics the
+declared-target face always had; corpus-un-exercised, reproduced for parity). The OLD per-class face-builder +
+declared-target map tier is DELETED — the single-source posture mirrors the Renders precedence-law entry
+(one instantiation base, no parallel tier). **The byte-identity triad** that proved the deletion safe: the
+direct face pin (the family path asserted on the top-level `outputs`/alias faces), the untouched fleet corpus,
+and the parity-71 source proof (the artifact source `output.systems` unchanged).
+
+**The live family mount (`familyOutputs`).** The root entity's PRODUCT — the plain attrset
+`{ <family> = { <entityName> = <artifact>; }; }`, pure Nix — is assembled by nesting each built member into
+the root through the SAME machinery a nested receives edge uses: the family row resolved via the REAL
+`resolveReceiver { outerKind = "root"; slot = <family>; class = <class>; }`, the built artifact injected
+VALUE-mode through `executeNest` (the prebuilt `ArtifactRef` arm — the artifact is injected verbatim, never
+re-evaluated). No hand-rolled dispatch: the row comes from `resolveReceiver`, the placement from the
+contribution's `at`. **The laziness law:** assembling the map forces the ATTR SHAPE only (family + member
+keys) — the member artifacts are forced only when read (`.config`), the value-arm verbatim-injection law.
+**The member re-key:** the member's scope-node id (`host:igloo`) is re-keyed to the entity NAME (`igloo`) so a
+consumer addresses `<family>.<host>` exactly as a flake does; a memberless family keeps its key with an empty
+face (the declared-target face law). This IS the output face: the top-level `outputs` and the
+nixosConfigurations/darwinConfigurations aliases project off it (`.<family> or { }`).
+
+**`den.systems` + params fan-out.** `den.systems` is a plain list of system strings (default `[ ]`) — the
+domain of a family's `system` param. `fanParams { family; params; systems }` produces the declared CARTESIAN at
+the family level: `params = [ "system" ]` fans to one paramPoint per system (`{ system = <sys>; }` each — the
+devShells shape); `params = [ ]` is the degenerate single face (`[ { } ]`, a system-agnostic family surfaces
+once). Today `system` is the sole axis, so the fan is one-dimensional. Dedup-per-paramPoint (a member
+materialized at the same paramPoint twice) arrives with the live producers; here the fan is the pure axis
+enumeration — the pre-wired seam that step consumes.
+
+**`requires` definition-time law.** A family's `requires` (∪ its render's `requires`) names the products it
+CONSUMES; each must be SATISFIABLE at the graft site (`checkRequires` — else a NAMED throw naming the family +
+the missing product). The available set is `[ consumes ] ++ render.produces` — the products a member can supply
+there. The built-ins carry `requires = [ ]` (vacuous, byte-neutral). CONVERSION-AWARE satisfiability (a
+required product reachable through a registered conversion) is a recorded note for the live-producer step.
+
+**The entity-level opt-in.** An entity opts into a family via `den.<kind>.<name>.outputs.<family> = { <field> = <value>; }`. The render-declared REQUIRED FIELDS an opt-in must supply are the family's `params` (the axes the
+render fans over — the "render genuinely needs" set, e.g. a homeConfigurations family requiring `system`).
+`checkOptIn` validates the opt-in supplies a value for EACH param (missing → NAMED throw quoting the field +
+family — **one declaration plus whatever the render genuinely needs, never silent**) and returns the
+elaboration RECORD `{ family; entity; data }` (surfaced at `den.optIns`). A family naming no render and no
+params requires nothing, so an empty opt-in `{ }` is valid. EDGE EMISSION is absent — the family nest edge for
+an opted-in entity arrives with the live producers.
+
+**The strictness note.** Native gen-schema kinds are STRICT — an undeclared instance field aborts NAMED. So
+`outputs` is a framework-declared UNIVERSAL entity field (a `raw` attrset, default `{ }`, identity-neutral —
+the `id_hash` folds primitive fields only, so declaring it does not perturb entity identity), the same posture
+as the compat shim's `class`/`system`/`hostName` field declarations.
+
+**Forward.** User-declared families materialize via the opt-in nest edges (the live-producer step); `fanParams`
+is the pre-wired seam that step consumes. Collectors (aggregate entities) and the flake-parts root-kind adapter
+are the remaining §4.4 sub-plans. The render row's `output` field is superseded as the FACE source, retained
+for the instantiation overlay; its full retirement is decided together with the compat forwarding layer.
 
 ## Nest-mode execution (spec §4.2/§4.3/§4.8) — `lib/nest.nix`
 

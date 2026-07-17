@@ -218,7 +218,7 @@ let
     renders = pureRenders;
   };
 
-  # ── the requires / params / opt-in seams (§4.4, Task 5) ──
+  # ── the requires / params / opt-in seams (§4.4) ──
   # `checkRequires { family; requires; available }` — the definition-time consumption of a family's (∪ its
   # render's) `requires`: each required product must be SATISFIABLE at the graft site (∈ `available`), else a
   # named throw. `fanParams { family; params; systems }` — the per-param cartesian fan (today the `system`
