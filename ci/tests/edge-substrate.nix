@@ -750,7 +750,7 @@ in
       };
     };
 
-    # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.2, before edgeId) ──
+    # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.4, before edgeId) ──
     # no override touches an edge (empty list) → the intent passes through untouched.
     test-overrides-empty-passthrough = {
       expr = applyOverrides {
@@ -923,6 +923,29 @@ in
           }) null
         )).success;
       expected = false;
+    };
+    # `from`/`to` match by WHOLE VALUE, not per-field: a partial `from = { entityId = "host:a"; }`
+    # does NOT match an intent whose `from = { entityId = "host:a"; class = "nixos"; }` (they are
+    # unequal records). This pins the whole-value contract so a future per-field `from`-matcher is a
+    # deliberate change, not a silent drift — protecting T6 edgeId stability.
+    test-overrides-partial-from-no-match = {
+      expr =
+        (builtins.head (applyOverrides {
+          overrides = [
+            {
+              match = {
+                from = {
+                  entityId = "host:a";
+                };
+              };
+              rewrite = {
+                touched = true;
+              };
+            }
+          ];
+          edges = [ (mkIntent { }) ];
+        })).data;
+      expected = { };
     };
   };
 }

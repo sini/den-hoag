@@ -90,13 +90,15 @@ let
     else
       compiled;
 
-  # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.2) ──
+  # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.4) ──
   # Framework-emitted NEW-substrate edge INTENTS (`{ kind; from; to; data ? {}; }`) pass through the
   # override list BEFORE their edgeId is computed. An override is `{ match; rewrite; }`:
   #   • `match` — an attrset of PRE-HASH coordinates `{ kind ?; from ?; to ?; data ? { <field> = v; } }`.
   #     Every STATED coordinate must EQUAL the edge's (kind/from/to by whole value; `data` per-field);
   #     an absent coordinate is a wildcard. Matchers are STRUCTURAL DATA ONLY — no function-valued
   #     matchers (consistent with the fingerprint law; a selector-language upgrade is a later step).
+  #     A `null` field VALUE in `match.data` matches both an explicitly-null and an absent edge field —
+  #     there is no "explicitly null only" matcher in v1 (the null≡absent conflation is deliberate).
   #   • `rewrite` — an attrset data-patch shallow-merged into `data` (`//`), or `null` = SUPPRESS the
   #     edge entirely (it contributes nothing downstream).
   # SINGLE-STEP: one pass over the list per edge, FIRST match wins, the rewritten edge is NEVER
