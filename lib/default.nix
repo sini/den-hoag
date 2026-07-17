@@ -159,6 +159,10 @@ let
   # gate (edges.nix) validates a closure kind's discipline against the compiled table; the framework
   # instance names are reserved here; the framework seeds the three shipped merge orders. Pure Law A1.
   concernDisciplines = import ./concern-disciplines.nix { inherit prelude algebra pipe; };
+  # The typed-product registry (den.products) + the single-step conversion registry (den.conversions):
+  # compile + mode-set/reserved validation (§4.1). Materialization reads modes off the compiled table;
+  # receivers call `checkConsumes` at a consumes position. Pure Law A1 (mapAttrs + validation).
+  productsLib = import ./products.nix { inherit prelude; };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
@@ -345,6 +349,31 @@ let
           type = merge.types.lazyAttrsOf merge.types.raw;
           default = { };
           description = "Merge-discipline registry: `<name> = { laws; empty; combine; dedup ? null; order ? null; }` (§5).";
+        };
+      };
+
+      # den.products.<name> — the typed-product registry (§4.1). Each entry declares a materialization
+      # payload's mode: `{ mode; nestable ? true; }` — `mode` ∈ { content artifact extend value }, `nestable`
+      # gates whether the product may appear in a receiver's `consumes`. `raw` holds each record unmerged.
+      # Absent ⇒ a fleet with only the framework-pre-registered faces. The registry DESCRIBES products; the
+      # payload SCHEMAS arrive with mode execution.
+      productsDecl = {
+        options.den.products = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Typed-product registry: `<name> = { mode; nestable ? true; }`, mode ∈ { content artifact extend value } (§4.1).";
+        };
+      };
+
+      # den.conversions."<from>-><to>" — the single-step conversion registry (§4.1). Each entry declares the
+      # materialization for a (produces, consumes) mismatch: `{ via = fn; }`. `raw` holds each record
+      # unmerged (its `via` is a function). Uniqueness is GLOBAL per pair by keying; conversions are
+      # single-step (no chain search). Absent ⇒ a fleet with no declared conversions.
+      conversionsDecl = {
+        options.den.conversions = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Single-step conversion registry: `\"<from>-><to>\" = { via = fn; }` (§4.1).";
         };
       };
 
@@ -541,6 +570,8 @@ let
           strataDecl
           edgesDecl
           disciplinesDecl
+          productsDecl
+          conversionsDecl
           overridesDecl
           demandKindsDecl
           demandContextDecl
@@ -788,6 +819,19 @@ let
         kinds = ent.config.den.edges or { };
         strataOrder = compiledStrata;
         disciplines = disciplinesTable;
+      };
+
+      # The compiled typed-product table (§4.1): the framework-pre-registered faces UNION the fleet's
+      # `den.products` registrations, validated (mode-set, reserved-name). Materialization reads modes off
+      # it; a receiver's `consumes` passes through `checkConsumes` against it (the next step).
+      productsTable = productsLib.compile {
+        products = ent.config.den.products or { };
+      };
+
+      # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated
+      # (key well-formedness, no ArtifactRef endpoint). Global per-pair uniqueness holds by keying.
+      conversionsTable = productsLib.compileConversions {
+        conversions = ent.config.den.conversions or { };
       };
 
       # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
@@ -1186,6 +1230,11 @@ let
         # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
         # (laws ladder): the framework merge-order instances seeded, plus any user registration.
         disciplines = disciplinesTable;
+        # The compiled typed-product table (§4.1): framework faces + `den.products` registrations, validated
+        # (mode-set). Materialization derives each receiver's mode from it (F1's canonical machine form).
+        products = productsTable;
+        # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated.
+        conversions = conversionsTable;
         scopeRoots = scopeRoots;
         inherit structural;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
@@ -1276,6 +1325,13 @@ in
     # suite's laws-ladder validation scenarios. `compileDisciplines { disciplines }`.
     compileDisciplines = concernDisciplines.compile;
     disciplines = concernDisciplines;
+    # The typed-product registry (§4.1): the lib (its `modes`/`reservedNames` + the `modeOf`/`checkConsumes`
+    # definition-time helpers) + the two compile fns, for the suite's product/mode/conversion scenarios.
+    # `compileProducts { products }` → the framework-seeded table; `compileConversions { conversions }` →
+    # the validated single-step pairs.
+    products = productsLib;
+    compileProducts = productsLib.compile;
+    compileConversions = productsLib.compileConversions;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →

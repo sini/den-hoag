@@ -47,6 +47,7 @@ let
     "demand.nix"
     "identity.nix"
     "edges.nix"
+    "products.nix"
     "graph-escape.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
