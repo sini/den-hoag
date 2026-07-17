@@ -975,7 +975,7 @@ in
       expected = false;
     };
     # re-registering a framework-reserved instance name aborts NAMED (same posture as a reserved edge
-    # kind — the framework vocabulary is not user-overridable; the instances themselves land in later steps).
+    # kind — the framework vocabulary is not user-overridable; the framework itself seeds these names).
     test-disciplines-reserved-name-throws = {
       expr =
         (builtins.tryEval (
@@ -989,8 +989,8 @@ in
         )).success;
       expected = false;
     };
-    # END-TO-END: the fleet exposes the compiled discipline table on `den.disciplines` (empty for a fleet
-    # registering none — the framework instances land in later steps, user registrations join here).
+    # END-TO-END: the fleet exposes the compiled discipline table on `den.disciplines` (the framework
+    # merge-order instances seed it; user registrations join beside them).
     test-disciplines-fleet-output = {
       expr = (denHoag.mkDen [ ]).den ? disciplines;
       expected = true;

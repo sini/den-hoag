@@ -164,6 +164,15 @@ let
       }
       { level = "info"; }
     ];
+    # collections-neron (the framework instance, §6): channel CONTRIBUTIONS folded by the associative-only
+    # combine (default list-append). Lists incl. the empty seed + a repeated element — associativity +
+    # identity hold; the fold is order-bearing (append is NOT commutative), so ordered-monoid is right.
+    collections-neron = [
+      [ ]
+      [ "a" ]
+      [ "b" ]
+      [ "a" ]
+    ];
   };
 
   # THE HARNESS OVER THE COMPILED TABLE: `checkTable samplesMap table` runs `checkLaws` over EVERY entry
@@ -301,6 +310,7 @@ in
     test-lawful-table-coverage = {
       expr = builtins.sort (a: b: a < b) (builtins.attrNames checkedTable);
       expected = [
+        "collections-neron"
         "comm-sum"
         "join-unit"
         "ord-append"

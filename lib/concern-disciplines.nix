@@ -21,6 +21,7 @@
 {
   prelude,
   algebra,
+  pipe,
 }:
 let
   # The laws ladder (spec §5) — the CLOSED set of algebraic classes a discipline may declare. A name
@@ -85,12 +86,44 @@ let
           "slice"
           "policy"
         ];
-        # product count-major within `slice`; containment depth descending within `contains` (least-
-        # specific first) — the §2.7 linearization order the live fold lays the layers down in.
+        # the §2.7 linearization order the live fold lays the layers down in: within `contains` the
+        # ancestor slices ascend by containment count (least-specific first); the `slice` tier is the
+        # cell's own full-coordinate slice (projection `via` before direct override at that slice).
         withinTier = "linearization";
         tieBreak = null; # single layer per (aspect, scope, rendered) — no producer ties
       };
     };
+
+    # collections-neron (§6 / B5): the channel-contribution fold — the pinned neron traversal (self →
+    # imports → parent, gen-scope) folded by gen-pipe's `run` under the channel's associative-only
+    # combine. The fold is ORDER-BEARING (the neron sequence is a fixed order), so laws = ordered-monoid;
+    # a per-channel `merge` string may declare STRONGER laws for its OWN channel individually (E10's
+    # semilattice-set, say) — this instance declares the ORDER discipline the traversal itself obeys.
+    collections-neron =
+      let
+        # the COMPILED channel record — its `combine`/`init` are the SAME fields gen-pipe's fold
+        # (evaluate.nix `channelValue`) applies. Reference them BY VALUE (never a hand-restated append):
+        # a probe channel is compiled here purely to read its default fold algebra.
+        probeChannel = pipe.channel { name = "collections-neron"; };
+      in
+      {
+        laws = "ordered-monoid";
+        empty = probeChannel.init; # the fold seed (gen-pipe default `[ ]`), by reference
+        combine = probeChannel.combine; # the associative-only left-fold combine (default `a: b: a ++ b`)
+        engine = "gen-pipe run (B5 pinned-sequence ordered fold)";
+        # PRODUCTION TRUTH: quirk channels default `dedup = null` — there is NO unified default dedup; a
+        # channel COLLAPSES duplicates only when it DECLARES one (spec §6 per-channel declared dedup;
+        # register item #2). So the instance declares dedup = null; keep/identity are gen-pipe's
+        # per-declaration defaults when a channel opts in (the keep-first golden exercises an opted-in one).
+        dedup = null;
+        order = {
+          tiers = [ "neron" ]; # one tier: the pinned self → imports → parent traversal IS the order
+          withinTier = "traversal:neron"; # the traversal-valued rank (the §6 vocabulary)
+          # same-position multi-producer ties break on the A12 triple (rank, id_hash, emissionIndex) —
+          # the identity term is the aspect id_hash, PINNED (scope-adapter.nix `producerLt`).
+          tieBreak = "a12";
+        };
+      };
   };
 
   # A registry entry's canonical fields (spec §5). `laws` names the ladder class (REQUIRED); `empty` +

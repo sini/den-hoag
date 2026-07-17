@@ -13,6 +13,9 @@
 }:
 let
   sel = denHoag.sel;
+  # the A12 producer sort (scope-adapter.nix `sortByProducer` over `producerLt`) — for the tie-break
+  # triple-shape pin (rank < identity < emissionIndex) against the live scope-adapter behavior.
+  inherit (denHoag.internal.scopeAdapter) sortByProducer;
 
   # ── settings-layers (§2.7): the per-(node, aspect) layer fold ────────────────────────────────────
   # A synthetic multi-level fleet: env prod ⊇ host axon ⊇ user alice, with an aspect carrying a schema
@@ -119,6 +122,16 @@ let
   prov = (den.structural.eval.get cellId "resolved-settings").app.provenance.level;
   renderedOrder = map (e: e.rendered) prov;
 
+  # ── the COMBINE VALUE-AGREEMENT pin (proof comment (iii) is true) ──
+  # The order oracle checks the layer ORDER; the law harness checks the LAWS; neither invokes the
+  # instance's `combine`. This closes that seam: fold the live per-layer VALUES (the provenance carries
+  # them in fold order) through `settingsInst.combine` from `settingsInst.empty`, and assert the result
+  # equals the LIVE resolved value. A drifted-but-lawful combine reference (a fold that orders right and
+  # obeys the laws but computes a different field merge) is caught HERE, nowhere else.
+  layerValueRecs = map (e: { level = e.value; }) prov;
+  foldedViaInstance = builtins.foldl' settingsInst.combine settingsInst.empty layerValueRecs;
+  liveValue = (den.structural.eval.get cellId "resolved-settings").app.value;
+
   # the cell's full product-dimension count (env, host, user) — a slice at the full coords is the cell's
   # OWN slice (`slice` tier); a strict-ancestor slice (fewer coords) is a containment layer (`contains`).
   fullDimCount = builtins.length den.dimKinds;
@@ -148,6 +161,134 @@ let
   # slices (the `contains` tier) appear least-specific-first — env before host — never most-specific-first.
   # `containsRendered` = the rendered labels classified into the `contains` tier, in fold order.
   containsRendered = builtins.filter (r: tierOf r == "contains") renderedOrder;
+
+  # ── collections-neron (§6 / B5): the channel-contribution fold ───────────────────────────────────
+  # A synthetic fleet: env prod ⊇ host axon ⊇ user alice, host producing the nixos class. TWO aspects
+  # emit to a plain channel AND a dedup-declaring channel at the SAME position (the host include) — a
+  # same-position multi-producer tie the A12 order breaks. The received-collections output at the cell
+  # carries `.contributions` (A12-ordered) and `.values` (the folded channel value).
+  collInst = den.disciplines.collections-neron;
+  collBase = [
+    {
+      config.den.schema = {
+        env.parent = null;
+        host.parent = "env";
+        user.parent = "host";
+      };
+    }
+    {
+      config.den = {
+        env.prod = { };
+        host.axon = { };
+        user.alice = { };
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.membership = [
+          {
+            coords = {
+              env = config.den.env.prod;
+              host = config.den.host.axon;
+            };
+          }
+          {
+            coords = {
+              host = config.den.host.axon;
+              user = config.den.user.alice;
+            };
+          }
+        ];
+      }
+    )
+    { config.den.contentClass.host = "nixos"; }
+    { config.den.quirks.peers = { }; } # a plain channel (no dedup)
+    # a channel that DECLARES dedup keep=first (default channels never exercise dedup — the review trap)
+    {
+      config.den.quirks.deduped.channel.dedup = {
+        key = "identity";
+        keep = "first";
+      };
+    }
+  ];
+  # two aspects at ONE position (the host include), both emitting to both channels; `includeOrder`
+  # permutes the include list (⇒ the resolved-aspects order) to prove A12 is declaration-order-independent.
+  collMod =
+    includeOrder:
+    { config, ... }:
+    {
+      config.den.aspects = {
+        alpha = {
+          peers = [ "a" ];
+          deduped = [ "a" ];
+        };
+        beta = {
+          peers = [ "b" ];
+          deduped = [ "b" ];
+        };
+      };
+      config.den.include = [
+        {
+          at = config.den.host.axon;
+          aspects = includeOrder config;
+        }
+      ];
+    };
+  collCellId = "user:alice@host:axon";
+  rcOf =
+    includeOrder:
+    (denHoag.mkDen (collBase ++ [ (collMod includeOrder) ])).den.structural.eval.get collCellId
+      "received-collections";
+  rcFwd = rcOf (config: [
+    config.den.aspects.alpha
+    config.den.aspects.beta
+  ]);
+  rcRev = rcOf (config: [
+    config.den.aspects.beta
+    config.den.aspects.alpha
+  ]);
+  producersOf = rc: chName: map (c: c.producer.aspect.name or null) rc.${chName}.contributions;
+
+  # the value-agreement pin: fold the peers contributions' VALUES through the INSTANCE's own combine from
+  # its empty, and assert it equals the live channel value (the declared algebra computes production's).
+  peersContribValues = map (c: c.value) rcFwd.peers.contributions;
+  peersFoldedViaInstance = builtins.foldl' collInst.combine collInst.empty peersContribValues;
+  peersLiveValue = rcFwd.peers.values;
+
+  # the A12 tie-break TRIPLE shape (rank < identity < emissionIndex): three annotated records that each
+  # differ at exactly ONE precedence level, sorted by `sortByProducer`. rank dominates identity dominates
+  # emissionIndex — so the sorted contributions come out in the order the triple dictates.
+  a12Recs = [
+    # differs at emissionIndex only (same rank+identity) — the weakest key
+    {
+      rank = 0;
+      identity = "id-x";
+      emissionIndex = 1;
+      contribution = "x1";
+    }
+    {
+      rank = 0;
+      identity = "id-x";
+      emissionIndex = 0;
+      contribution = "x0";
+    }
+    # differs at identity (a later identity, but same rank) — beats emissionIndex
+    {
+      rank = 0;
+      identity = "id-y";
+      emissionIndex = 0;
+      contribution = "y0";
+    }
+    # differs at rank (rank 1, policy) — beats everything, sorts LAST
+    {
+      rank = 1;
+      identity = "id-a";
+      emissionIndex = 0;
+      contribution = "p0";
+    }
+  ];
+  a12Sorted = sortByProducer a12Recs;
 in
 {
   flake.tests.order-instances = {
@@ -206,6 +347,13 @@ in
       expr = liveTierSequence == settingsInst.order.tiers;
       expected = true;
     };
+    # THE COMBINE VALUE-AGREEMENT: folding the live per-layer values through the INSTANCE's own `combine`
+    # reproduces the live resolved value — the declared algebra computes what production computes (a
+    # drifted-but-lawful combine is caught here; the order oracle and law harness never invoke `combine`).
+    test-settings-oracle-combine-value-agreement = {
+      expr = foldedViaInstance == liveValue;
+      expected = true;
+    };
 
     # ── ENV-TIER GOLDEN (risk register #3): least-specific-first on a ≥3-level containment chain ──
     # the containment (`contains`-tier) slices appear LEAST-SPECIFIC-FIRST — the 1-coord env slice before
@@ -217,6 +365,97 @@ in
         "env=prod"
         "env=prod,host=axon"
       ];
+    };
+
+    # ── collections-neron DECLARATION pins ──
+    # the channel fold is order-bearing (the pinned neron sequence), so ordered-monoid.
+    test-collections-instance-laws = {
+      expr = collInst.laws;
+      expected = "ordered-monoid";
+    };
+    # one tier — the pinned traversal IS the order; the within-tier rank is the neron traversal; the
+    # same-position tie-break is the A12 triple. `dedup = null` (no unified default; per-channel declared).
+    test-collections-instance-order = {
+      expr = {
+        tiers = collInst.order.tiers;
+        withinTier = collInst.order.withinTier;
+        tieBreak = collInst.order.tieBreak;
+        dedup = collInst.dedup;
+      };
+      expected = {
+        tiers = [ "neron" ];
+        withinTier = "traversal:neron";
+        tieBreak = "a12";
+        dedup = null;
+      };
+    };
+    # the nominal engine reference: gen-pipe's run (the B5 pinned-sequence ordered fold).
+    test-collections-instance-engine = {
+      expr = collInst.engine;
+      expected = "gen-pipe run (B5 pinned-sequence ordered fold)";
+    };
+    # the combine IS the compiled channel's `.combine` (the SAME field gen-pipe's fold applies) — a
+    # reference, not a hand-restated append: it folds two contribution lists by association.
+    test-collections-instance-combine-is-channel-append = {
+      expr =
+        collInst.combine [ "x" ] [ "y" ] == [
+          "x"
+          "y"
+        ];
+      expected = true;
+    };
+
+    # ── THE ORDER ORACLE: the LIVE received-collections order matches the declared neron + A12 order ──
+    # two same-position producers land in the plain channel in A12 producer-identity order (beta's aspect
+    # id_hash sorts before alpha's) — the neron traversal + tie-break the instance declares.
+    test-collections-oracle-received-order = {
+      expr = producersOf rcFwd "peers";
+      expected = [
+        "beta"
+        "alpha"
+      ];
+    };
+    # THE COMBINE VALUE-AGREEMENT: folding the live contributions' values through the INSTANCE combine from
+    # its empty reproduces the live channel value — the declared algebra computes what gen-pipe computes.
+    test-collections-oracle-combine-value-agreement = {
+      expr = peersFoldedViaInstance == peersLiveValue;
+      expected = true;
+    };
+
+    # ── A12 GOLDEN (risk register #5): the identity term is the aspect id_hash, declaration-order-free ──
+    # permuting the include (aspect DECLARATION) order does NOT reorder the same-position multi-producer
+    # tie — the A12 order keys on the aspect id_hash (declaration-order-independent), never include order.
+    test-golden-a12-identity-is-id-hash = {
+      expr = producersOf rcFwd "peers" == producersOf rcRev "peers";
+      expected = true;
+    };
+    # the tie-break TRIPLE shape (rank < identity < emissionIndex), pinned against scope-adapter.nix:
+    # rank dominates (policy after aspect), then identity, then a producer's own emission index.
+    test-golden-a12-tiebreak-triple-shape = {
+      expr = a12Sorted;
+      expected = [
+        "x0" # rank 0, id-x, emissionIndex 0 — lowest on every key
+        "x1" # rank 0, id-x, emissionIndex 1 — emissionIndex breaks the id-x tie
+        "y0" # rank 0, id-y — identity beats emissionIndex
+        "p0" # rank 1 — rank beats everything, sorts last
+      ];
+    };
+
+    # ── KEEP-FIRST GOLDEN (risk register #2): per-channel declared dedup keeps the FIRST occurrence ──
+    # a channel that DECLARES `dedup = { keep = "first"; }` collapses the two same-position producers to
+    # ONE, keeping the first per the A12 order (beta). Default channels never exercise dedup (the trap);
+    # keep-direction is per-channel-declared — there is NO unified default (the plain channel keeps both).
+    test-golden-collections-keep-first = {
+      expr = {
+        dedupedCount = builtins.length rcFwd.deduped.contributions;
+        dedupedKept = producersOf rcFwd "deduped";
+        plainCount = builtins.length rcFwd.peers.contributions;
+      };
+      expected = {
+        dedupedCount = 1;
+        dedupedKept = [ "beta" ];
+        plainCount = 2;
+      };
     };
   };
 }
