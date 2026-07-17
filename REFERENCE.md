@@ -103,7 +103,7 @@ holds functions freely; the fingerprint law bans functions from EDGE DATA only, 
 **The laws ladder + what each class GATES.** A subsumption chain — ordered-monoid ⊂ commutative-monoid ⊂
 join-semilattice, plus `shadow` off the chain:
 
-| `laws` | laws | gates |
+| class | laws | gates |
 |---|---|---|
 | `ordered-monoid` | associativity + identity | order-BEARING merges (last-wins-per-field / pinned sequence) |
 | `commutative-monoid` | + commutativity | order-FREEDOM (ACI minus idempotence) |
@@ -135,14 +135,16 @@ ordered discipline is the general shape and a stronger-laws channel refines it i
 per-new-channel OPT-IN — a channel adopts `semilattice-set` (below) by DECLARING it; an existing instance
 never silently gains stronger laws (the risk-register #6 golden pins the current laws).
 
-**`combine`-by-reference.** `settings-layers`'s combine is `algebra.record.foldLayers { strategies = {}; layers = [a b]; }` — the SAME gen-algebra unit `gen-settings.resolveAll` applies (its per-aspect strategies
-instantiate a strategy-indexed family of monoids; the declared combine samples the all-`replace`
-representative, exact because replace/append/recursive are each associative per field).
-`collections-neron`'s combine/init are the COMPILED channel record's `.combine`/`.init` by value.
-`reach-closure`'s combine is a documented RESTATEMENT (append-then-first-occurrence-dedup by `.key` — the
-edge-closure algebra; the fold is let-bound in the reach attribute, no separable unit), certified by the
-same three-leg chain. In every case the registry's algebra IS the production unit, and a drift is caught by
-the value pins.
+**`combine`-by-reference.** `settings-layers`'s combine is `algebra.record.foldLayers { strategies = {}; layers = [a b]; }` — the same gen-algebra algebra `gen-settings.resolveAll` applies. Production calls the
+TRACED variant `foldLayersTraced`; this references the untraced `foldLayers` — SIBLING implementations,
+value-pinned byte-identical by gen-algebra's own suite (`traced.value == untraced`), so either fixes the
+same algebra (its per-aspect strategies instantiate a strategy-indexed family of monoids; the declared
+combine samples the all-`replace` representative, exact because replace/append/recursive are each
+associative per field). `collections-neron`'s combine/init are the COMPILED channel record's
+`.combine`/`.init` by value. `reach-closure`'s combine is a documented RESTATEMENT
+(append-then-first-occurrence-dedup by `.key` — the edge-closure algebra; the fold is let-bound in the
+reach attribute, no separable unit), certified by the same three-leg chain. In every case the registry's
+algebra tracks the production one, and a drift is caught by the value-agreement pins.
 
 **The reach dedup-key ruling (declaration-only, no migration).** `reach-closure.dedup.key` STAYS
 `aspect-ident`: the key→id_hash migration is VACUOUS because `id_hash = hashString "den-aspect:${key}"` is a

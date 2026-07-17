@@ -5,7 +5,8 @@
 # surface and asserts the order it observes is the order the instance declares. A drifted declaration (or
 # a drifted `combine` reference) is caught here. See REFERENCE.md.
 #
-# T3 lands the `settings-layers` oracle; T4 the collections-neron; T5 the reach-closure oracle.
+# This file carries the three instance oracles — settings-layers, collections-neron, reach-closure — each
+# with its declaration pins, its order oracle, its value-agreement pin, and its risk-register goldens.
 {
   denHoag,
   denHoagSrc,

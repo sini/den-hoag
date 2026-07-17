@@ -30,7 +30,7 @@ let
       file = "order-instances.nix";
     }
     {
-      item = "4 — trace key K rendered only for non-legacy kinds (SHIPPED step 2)";
+      item = "4 — trace key K rendered only for non-legacy kinds";
       name = "test-K-boundary-unstamped-vs-demand";
       file = "edge-substrate.nix";
     }

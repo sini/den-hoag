@@ -60,14 +60,17 @@ let
       # per-field record fold — identity is the empty record (NOT the empty list): `foldLayers` over no
       # layers is `{ }`, and folding it in changes nothing.
       empty = { };
-      # BY REFERENCE the production fold: `algebra.record.foldLayers` is the SAME gen-algebra unit
-      # gen-settings' `resolveAll` applies (gen-settings/lib/resolve.nix: "the single fold implementation,
-      # never reimplemented here"). Three facts make this binary combine exact: (i) production's per-aspect
-      # strategies instantiate a strategy-INDEXED FAMILY of monoids — the declared combine samples a
-      # REPRESENTATIVE member (the all-`replace` default, `strategies = { }`); (ii) the binary
-      # decomposition is exact because replace/append/recursive are each associative per field, so folding
-      # `[ a b ]` pairwise equals folding the whole layer list; (iii) the reference target is that same
-      # gen-algebra unit, so a drift is caught by the settings-layers order oracle.
+      # BY REFERENCE the production ALGEBRA: `algebra.record.foldLayers` is the same gen-algebra fold
+      # gen-settings' `resolveAll` applies — production calls the TRACED variant `foldLayersTraced`
+      # (gen-settings/lib/resolve.nix), this references the untraced `foldLayers`; they are SIBLING
+      # implementations (gen-algebra rec.nix), value-pinned byte-identical by gen-algebra's own suite
+      # (`traced.value == untraced`), so referencing either fixes the same algebra. Three facts make this
+      # binary combine exact: (i) production's per-aspect strategies instantiate a strategy-INDEXED FAMILY
+      # of monoids — the declared combine samples a REPRESENTATIVE member (the all-`replace` default,
+      # `strategies = { }`); (ii) the binary decomposition is exact because replace/append/recursive are
+      # each associative per field, so folding `[ a b ]` pairwise equals folding the whole layer list;
+      # (iii) our value-agreement pin folds THIS combine over the live layer values and reproduces the live
+      # resolved value, closing the loop — a drift is caught there and by the order oracle.
       combine =
         a: b:
         algebra.record.foldLayers {
@@ -97,8 +100,8 @@ let
     # collections-neron (§6 / B5): the channel-contribution fold — the pinned neron traversal (self →
     # imports → parent, gen-scope) folded by gen-pipe's `run` under the channel's associative-only
     # combine. The fold is ORDER-BEARING (the neron sequence is a fixed order), so laws = ordered-monoid;
-    # a per-channel `merge` string may declare STRONGER laws for its OWN channel individually (E10's
-    # semilattice-set, say) — this instance declares the ORDER discipline the traversal itself obeys.
+    # a per-channel `merge` string may declare STRONGER laws for its OWN channel individually (the
+    # semilattice-set channel class, say) — this instance declares the ORDER discipline the traversal obeys.
     collections-neron =
       let
         # the COMPILED channel record — its `combine`/`init` are the SAME fields gen-pipe's fold

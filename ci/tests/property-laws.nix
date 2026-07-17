@@ -214,14 +214,14 @@ let
       }
     ) table;
   # register the lawful synthetics on `den.disciplines`, take the COMPILED table back, and check it.
-  # Iterating the compiled table (not `lawfulInstances` directly) is the AC: a framework instance
-  # registered in a later step is covered automatically the moment it (and its samples) are added.
+  # Iterating the compiled table (not `lawfulInstances` directly) is the AC: any framework instance the
+  # registry seeds is covered automatically the moment it (and its samples) are present.
   compiledTable = (denHoag.mkDen [ { config.den.disciplines = lawfulInstances; } ]).den.disciplines;
   checkedTable = checkTable lawfulSamples compiledTable;
   allLawful = builtins.all (v: v == true) (builtins.attrValues checkedTable);
 
   # THE COVERAGE TEETH: a compiled table carrying an ORPHAN discipline (registered, but with no sample
-  # set in the map) MUST throw when the harness reaches it — this is the exact mechanism T3+ rides
+  # set in the map) MUST throw when the harness reaches it — the mechanism that enforces sample coverage
   # (`or (throw …)` degrading to `or [ ]` would keep the suite green while silently skipping a discipline).
   orphanTableThrows =
     (builtins.tryEval (
@@ -341,8 +341,8 @@ in
       ];
     };
     # THE COVERAGE TEETH: an orphan discipline in the table (registered, no sample set) makes the harness
-    # THROW — proving the sample-map cover is enforced, not silently skipped (the mechanism every later
-    # framework instance rides: it must land its samples or the suite goes red).
+    # THROW — proving the sample-map cover is enforced, not silently skipped (a framework or user instance
+    # must land its samples beside the registration or the suite goes red).
     test-coverage-orphan-discipline-throws = {
       expr = orphanTableThrows;
       expected = false;

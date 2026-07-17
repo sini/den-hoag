@@ -488,7 +488,7 @@ in
     # list-order within each. A host carrying BOTH an own-scope route (homeLinux → nixos, remapping its own
     # homeLinux slice) AND a descendant cell firing a parent-targeted route (home-manager → nixos): the
     # host's nixos projection lays the base own reach slice first, then the own-scope remap, then the
-    # parent-targeted remap. This pins the delivery order the step-2 reviews noted as un-goldened.
+    # parent-targeted remap. This pins the delivery order (risk register #7).
     test-golden-delivery-order-own-scope-before-parent-targeted = {
       expr =
         let
