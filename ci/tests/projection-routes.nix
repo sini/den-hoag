@@ -482,6 +482,84 @@ in
       };
     };
 
+    # ══ DELIVERY-ORDER GOLDEN (risk register #7) — routeRemapFor own-scope-then-parent-targeted ══════════
+    # `routeRemapFor id class` composes its two legs in a FIXED order: (1) OWN-scope routes fired at `id`
+    # (`routesAt id`), THEN (2) descendant-driven PARENT-TARGETED routes (`parentTargetedRoutesAt id`),
+    # list-order within each. A host carrying BOTH an own-scope route (homeLinux → nixos, remapping its own
+    # homeLinux slice) AND a descendant cell firing a parent-targeted route (home-manager → nixos): the
+    # host's nixos projection lays the base own reach slice first, then the own-scope remap, then the
+    # parent-targeted remap. This pins the delivery order the step-2 reviews noted as un-goldened.
+    test-golden-delivery-order-own-scope-before-parent-targeted = {
+      expr =
+        let
+          graph = {
+            host = {
+              node.parent = null;
+              children.cell = { };
+              reach = [
+                (mkNode "host-own" { nixos.tag = "base-nixos"; }) # the base own nixos slice (folded first)
+                (mkNode "host-hl" { homeLinux.tag = "ownscope-hl"; }) # remapped by the OWN-scope route
+              ];
+              routes = [
+                (deliveryAct {
+                  from = "homeLinux";
+                  to = "nixos";
+                  at = [ "ownRemap" ]; # own-scope: remaps the host's own homeLinux slice into nixos
+                })
+              ];
+            };
+            cell = {
+              node.parent = "host";
+              reach = [ (mkNode "cell-acct" { home-manager.tag = "parent-hm"; }) ];
+              routes = [
+                (deliveryAct {
+                  from = "home-manager";
+                  to = "nixos";
+                  at = [ "parentRemap" ];
+                  appendToParent = true; # parent-targeted: gathered by the host, folded AFTER own-scope
+                })
+              ];
+            };
+          };
+          hostNixos = projectClassOf graph "host" "nixos";
+          # a DEEP tag walk: the remapped slices are PLACED under their route path (`placeSlice route.at`
+          # nests them under an attr like `{ ownRemap = <module>; }`), so a tag can sit arbitrarily deep —
+          # recurse through every attrValue and list element, not just `imports`.
+          deepTags =
+            m:
+            if builtins.isAttrs m then
+              (if m ? tag then [ m.tag ] else [ ]) ++ builtins.concatMap deepTags (builtins.attrValues m)
+            else if builtins.isList m then
+              builtins.concatMap deepTags m
+            else
+              [ ];
+          # every tag reachable across the projected module list, in order — the delivery sequence.
+          orderedTags = builtins.concatMap deepTags hostNixos;
+          idxOf =
+            t:
+            builtins.head (
+              builtins.filter (i: builtins.elemAt orderedTags i == t) (
+                builtins.genList (i: i) (builtins.length orderedTags)
+              )
+            );
+        in
+        {
+          allTags = orderedTags;
+          # the base own slice precedes the own-scope remap, which precedes the parent-targeted remap.
+          baseBeforeOwnScope = idxOf "base-nixos" < idxOf "ownscope-hl";
+          ownScopeBeforeParentTargeted = idxOf "ownscope-hl" < idxOf "parent-hm";
+        };
+      expected = {
+        allTags = [
+          "base-nixos"
+          "ownscope-hl"
+          "parent-hm"
+        ];
+        baseBeforeOwnScope = true;
+        ownScopeBeforeParentTargeted = true;
+      };
+    };
+
     # ══ (6) #15 devshell adaptArgs — the ARG-ENV crossing hook (Task 3, spec §5 (c) — the HARD bucket) ════
     # A route `{ from="devshell"; to="flake-parts"; at=[devshells default]; adaptArgs={...}: {pkgs2=...} }`.
     # projectClass (Task 1) places the devshell slice at `devshells.default` (content half); the arg-env

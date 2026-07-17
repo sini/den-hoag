@@ -1065,9 +1065,13 @@ in
     # THE SEMILATTICE-SET OPT-IN WITNESS (gen-pipe E10 class landed, pin bump): a synthetic quirk channel
     # DECLARING `merge = "semilattice-set"` composes + folds with SET semantics — duplicate contribution
     # values collapse (three aspects emit ["x"] ["x"] ["y"] at one position; the second ["x"] deduped, so
-    # the folded set is ["x" "y"], two contributions). Under the OLD gen-pipe pin this channel threw E10
-    # (the reserved-throw) at composition — the pin-bump is the RED; the class is opt-in, so no default
-    # channel changes and every existing fleet suite is byte-identical.
+    # the folded set is ["x" "y"], two contributions). Under the OLD gen-pipe pin this fleet did NOT throw
+    # E10 — the reserved-throw was lazy and inert on THIS path (the fold never forces `.merge`, so nothing
+    # triggered validation); it silently folded UN-deduped (all three contributions, value = ["x" "x" "y"]).
+    # So the observed RED under the old pin is this count/value mismatch, NOT an abort — and the new
+    # construction-defaults shape (dedup set at channel construction) is precisely what armed the set
+    # semantics. The class is opt-in, so no default channel changes and every existing fleet suite is
+    # byte-identical.
     test-disciplines-semilattice-set-channel = {
       expr =
         let

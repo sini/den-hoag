@@ -668,5 +668,26 @@ in
       expr = builtins.length (builtins.filter (k: k == "acct") combinedKeys);
       expected = 2;
     };
+
+    # ══ NEW-LAWS OPT-IN GOLDEN (risk register #6) — no silent strengthening ══════════════════════════════
+    # The three framework instances declare their CURRENT laws — no instance is SILENTLY strengthened to a
+    # stronger ladder class it does not obey. In particular settings-layers/collections-neron are
+    # ordered-monoid (order-bearing, NOT commutative/idempotent) — declaring them join-semilattice would be
+    # a false claim the property harness would then RED. A stronger discipline is PER-NEW-CHANNEL OPT-IN: a
+    # channel adopts semilattice-set (the gen-pipe E10 class, witnessed live by
+    # `test-disciplines-semilattice-set-channel` in edge-substrate.nix) by DECLARING it — never by an
+    # existing instance silently gaining stronger laws.
+    test-golden-new-laws-opt-in-current-laws = {
+      expr = {
+        settings-layers = settingsInst.laws;
+        collections-neron = collInst.laws;
+        reach-closure = reachInst.laws;
+      };
+      expected = {
+        settings-layers = "ordered-monoid";
+        collections-neron = "ordered-monoid";
+        reach-closure = "join-semilattice";
+      };
+    };
   };
 }
