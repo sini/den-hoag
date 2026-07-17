@@ -1,10 +1,15 @@
-# The edge-kind registry (`den.edges.<kind>`, spec §2.2): the ONE registry describing every typed-edge
-# kind — its structural stratum, its product typing, its algebraic discipline. den-hoag pre-registers the
-# framework vocabulary; a user registers beside it. This module only DESCRIBES kinds (Law A1: one mapAttrs
-# + validation, no algorithm); rewiring emission onto the substrate is a later step. The kind label a
-# described kind carries is the typed-edge `K` component — an un-labeled edge (gen-edge's default) needs no
-# registry row, so the pre-den vocabulary is untouched. See REFERENCE.md.
-{ prelude }:
+# The edge-kind registry (`den.edges.<kind>`, spec §2.2) + the pre-identity-freeze override tier (§2.4)
+# + the edge-assembly pipeline (§2.1). The registry DESCRIBES every typed-edge kind — its structural
+# stratum, product typing, algebraic discipline; den-hoag pre-registers the framework vocabulary and a
+# user registers beside it. `assembleEdges` runs SYNTHETIC edge intents through overrides → two-level
+# identity → fill-graph acyclicity → gen-edge records stamped with `kind`. Every algorithm delegates to a
+# named lib (Law A1: mapAttrs + validation for the registry; the identity module for the hashes; the
+# override fold for the tier; gen-edge's `edge` for the record). See REFERENCE.md.
+{
+  prelude,
+  identity,
+  edge,
+}:
 let
   # The framework-pre-registered kinds and their strata (spec §2.2): contains/include/kindOf are
   # structural; member/reach/reach-suppress resolution (selector-driven membership targets a later
@@ -146,6 +151,115 @@ let
       throw "den.overrides: match coordinate '${builtins.head malformed}' is not one of ${builtins.toJSON matchCoords}"
     else
       builtins.filter (e: e != null) (map (e: overrideEdge e overrides) edges);
+
+  # ── assembleEdges: override → two-level identity → fill-graph acyclicity → stamped record (§2.1) ──
+  # SYNTHETIC-ONLY in this step: no live producer routes through here yet (a live producer arrives with
+  # later spec steps). An intent is `{ kind; from = { entityId; class; s ? {}; }; to = <same>; data ? {} }`.
+  # Order (the reviewer-ratified §2.4 rider): overrides match the RAW intent (pre-normalization — "pre-hash
+  # coordinates" are the as-declared coordinates), THEN identities are computed on the surviving intents.
+  #
+  # data schema enforcement arrives with live producers — see REFERENCE.md
+
+  # every string leaf of a structural fill (the producer-id references recorded IN S, §2.1).
+  stringLeaves =
+    v:
+    if builtins.isString v then
+      [ v ]
+    else if builtins.isAttrs v then
+      prelude.concatMap stringLeaves (builtins.attrValues v)
+    else if builtins.isList v then
+      prelude.concatMap stringLeaves v
+    else
+      [ ];
+
+  assembleEdges =
+    {
+      kinds,
+      overrides ? [ ],
+      intents,
+    }:
+    let
+      # unknown-kind guard (definition-time, named): every intent's kind must be a registered edge kind.
+      unknownKinds = builtins.filter (i: !(kinds ? ${i.kind})) intents;
+      # the override tier runs on the RAW intents; identities are computed on the survivors.
+      survivors = applyOverrides {
+        inherit overrides;
+        edges = intents;
+      };
+      # per side: the content coordinate (assemblyId) and the placement (instanceId over canonical S).
+      sideIdentity =
+        side:
+        let
+          aid = identity.assemblyId {
+            inherit (side) entityId class;
+          };
+        in
+        {
+          entityId = side.entityId;
+          instanceId = identity.instanceId {
+            assemblyId = aid;
+            s = side.s or { };
+          };
+          s = side.s or { };
+        };
+      resolved = map (
+        i:
+        let
+          from = sideIdentity i.from;
+          to = sideIdentity i.to;
+        in
+        {
+          intent = i;
+          inherit from to;
+          record = edge.edge {
+            # SYNTHETIC record: the intent's data is the value source; the target root is keyed by the
+            # `to` instanceId (the placement). A live producer's source/target arms arrive with later
+            # spec steps — here the record exists to carry the STAMPED kind + the frozen (T,P,S,M,K) key.
+            source = edge.sources.value (i.data or { });
+            target = edge.targets.root {
+              root = to.instanceId;
+              class = i.to.class;
+            };
+            kind = i.kind;
+            annotations = {
+              edgeId = identity.edgeId {
+                inherit (i) kind;
+                fromInstanceId = from.instanceId;
+                toInstanceId = to.instanceId;
+                dataFingerprint = identity.dataFingerprint (i.data or { });
+              };
+            };
+          };
+        }
+      ) survivors;
+      # The fill-reference graph (§2.1: "which producer-ids appear in whose S"), declared ACYCLIC. Keyed by
+      # the STABLE producer identity (entityId — instanceId is a function of it, so the two are cycle-
+      # equivalent, and entityId keeps the graph free of the instanceId self-hash fixpoint that would make a
+      # genuine cycle unconstructable). References = the entityId string-leaves of each side's S. Checked
+      # ONCE per assembly.
+      allEntityIds = prelude.unique (
+        prelude.concatMap (r: [
+          r.from.entityId
+          r.to.entityId
+        ]) resolved
+      );
+      entityIdSet = prelude.genAttrs allEntityIds (_: true);
+      refsOf = side: builtins.filter (leaf: entityIdSet ? ${leaf}) (stringLeaves side.s);
+      fillGraph = prelude.foldl' (
+        acc: r:
+        acc
+        // {
+          ${r.from.entityId} = (acc.${r.from.entityId} or [ ]) ++ refsOf r.from;
+          ${r.to.entityId} = (acc.${r.to.entityId} or [ ]) ++ refsOf r.to;
+        }
+      ) { } resolved;
+    in
+    if unknownKinds != [ ] then
+      throw "den.edges: assembleEdges intent names unknown kind '${(builtins.head unknownKinds).kind}' (not in the registry)"
+    else
+      # checkFillAcyclic runs once per assembly; a cycle aborts NAMED (identity module). `seq` forces the
+      # check before the records are handed back, so a cyclic assembly aborts rather than emitting.
+      builtins.seq (identity.checkFillAcyclic fillGraph) (map (r: r.record) resolved);
 in
 {
   inherit
@@ -154,5 +268,6 @@ in
     frameworkStrataInserts
     compile
     applyOverrides
+    assembleEdges
     ;
 }

@@ -25,9 +25,11 @@ let
   # builtins, no gen dep (REFERENCE.md). Exposed through `internal` for the substrate suite; the
   # substrate consumers reach it there.
   identity = import ./identity.nix { inherit prelude; };
-  # The edge-kind registry (den.edges): pre-registered vocabulary + validation (§2.2). Its `output`
-  # stratum is dogfooded into the fleet strata order below; the compiled table rides `den.edges`.
-  edgesLib = import ./edges.nix { inherit prelude; };
+  # The edge-kind registry (den.edges): pre-registered vocabulary + validation (§2.2), the override tier
+  # (§2.4), and the synthetic edge-assembly pipeline (§2.1). Its `output` stratum is dogfooded into the
+  # fleet strata order below; the compiled table rides `den.edges`. `assembleEdges` needs the identity
+  # module + the gen-edge lib (to stamp `kind` on the constructed records).
+  edgesLib = import ./edges.nix { inherit prelude identity edge; };
   entity = import ./entity.nix { inherit prelude schema merge; };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
@@ -1240,7 +1242,9 @@ in
     edgeKinds = edgesLib;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
-    inherit (edgesLib) applyOverrides;
+    # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →
+    # identity → acyclicity → stamped gen-edge record), for the suite's end-to-end scenario.
+    inherit (edgesLib) applyOverrides assembleEdges;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     inherit (concernAspects) classifyKey facets;

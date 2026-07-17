@@ -15,7 +15,42 @@ let
   # (a ctx key at a stratum ≥ the rule's is replaced by a named throw) can be witnessed synthetically.
   compileWithStrata = denHoag.internal.compilePoliciesWithStrata;
   # The edge-kind registry seam (lib/edges.nix): the compile fn + the framework pre-registration.
-  inherit (denHoag.internal) compileEdges edgeKinds applyOverrides;
+  inherit (denHoag.internal)
+    compileEdges
+    edgeKinds
+    applyOverrides
+    assembleEdges
+    ;
+  # gen-edge's frozen sort key (Task 1's public export) — to pin an assembled edge's ` | <kind>` component.
+  inherit (denHoag.internal.edge) edgeSortKey;
+  # A minimal registered-kind table for the assembly scenarios (reach is a framework kind).
+  reachKinds = compileEdges {
+    kinds = { };
+    strataOrder = edgeStrata;
+  };
+  # A pre-identity assembly INTENT (kind + typed endpoints + data). Distinct entityIds so the two
+  # endpoints get distinct assembly/instance ids.
+  mkAsmIntent =
+    {
+      kind ? "reach",
+      fromId ? "host:a",
+      toId ? "host:b",
+      fromS ? { },
+      data ? { },
+    }:
+    {
+      inherit kind data;
+      from = {
+        entityId = fromId;
+        class = "nixos";
+        s = fromS;
+      };
+      to = {
+        entityId = toId;
+        class = "nixos";
+        s = { };
+      };
+    };
   # The seeded four-stratum order (structural < resolution < collection < demand).
   fourStrata = [
     "structural"
@@ -946,6 +981,127 @@ in
           edges = [ (mkIntent { }) ];
         })).data;
       expected = { };
+    };
+
+    # ── assembleEdges: override → identity → acyclicity → stamped record (§2.1, synthetic-only) ──
+    # a well-formed assembly emits one gen-edge record per surviving intent, each STAMPED with its kind.
+    test-assemble-stamps-kind = {
+      expr =
+        (builtins.head (assembleEdges {
+          kinds = reachKinds;
+          intents = [ (mkAsmIntent { }) ];
+        })).kind;
+      expected = "reach";
+    };
+    # the assembled edge's gen-edge sort key ends in ` | <kind>` — the frozen (T,P,S,M,K) key, pinned
+    # from the den-hoag side (T1 semantics through the live gen-edge pin).
+    test-assemble-sortkey-carries-kind = {
+      expr =
+        let
+          e = builtins.head (assembleEdges {
+            kinds = reachKinds;
+            intents = [ (mkAsmIntent { }) ];
+          });
+          key = edgeSortKey e;
+          suffix = " | reach";
+        in
+        builtins.substring (
+          builtins.stringLength key - builtins.stringLength suffix
+        ) (builtins.stringLength suffix) key;
+      expected = " | reach";
+    };
+    # an unknown kind (absent from the registry table) aborts NAMED.
+    test-assemble-unknown-kind-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (assembleEdges {
+            kinds = reachKinds;
+            intents = [ (mkAsmIntent { kind = "no-such-kind"; }) ];
+          }) null
+        )).success;
+      expected = false;
+    };
+    # an override changing `data` is applied BEFORE edgeId: the stamped edgeId annotation differs from
+    # the un-overridden assembly's (the override tier genuinely participates in identity).
+    test-assemble-override-changes-edgeId = {
+      expr =
+        let
+          id =
+            overrides:
+            (builtins.head (assembleEdges {
+              kinds = reachKinds;
+              inherit overrides;
+              intents = [ (mkAsmIntent { data.port = 8080; }) ];
+            })).annotations.edgeId;
+        in
+        (id [ ]) != (id [
+          {
+            match = {
+              kind = "reach";
+            };
+            rewrite = {
+              port = 9090;
+            };
+          }
+        ]);
+      expected = true;
+    };
+    # a suppressing override (`rewrite = null`) drops the edge — a suppressed intent emits no record.
+    test-assemble-override-suppresses = {
+      expr = builtins.length (assembleEdges {
+        kinds = reachKinds;
+        overrides = [
+          {
+            match = {
+              kind = "reach";
+            };
+            rewrite = null;
+          }
+        ];
+        intents = [
+          (mkAsmIntent { })
+          (mkAsmIntent { kind = "member"; })
+        ];
+      });
+      expected = 1;
+    };
+    # THE FILL-GRAPH ACYCLICITY WITNESS: two intents whose endpoint fills reference each other's producer
+    # (each side's S carries the OTHER endpoint's entityId as a producer-id) form a 2-cycle — checkFillAcyclic
+    # aborts NAMED, once per assembly. (Keyed by the stable entityId producer identity — see edges.nix.)
+    test-assemble-fill-cycle-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (assembleEdges {
+            kinds = reachKinds;
+            intents = [
+              (mkAsmIntent {
+                fromId = "host:a";
+                toId = "host:b";
+                fromS.ref = "host:b";
+              })
+              (mkAsmIntent {
+                fromId = "host:b";
+                toId = "host:c";
+                fromS.ref = "host:a";
+              })
+            ];
+          }) null
+        )).success;
+      expected = false;
+    };
+    # an acyclic assembly (an endpoint fill referencing a producer that never references back) succeeds.
+    test-assemble-fill-acyclic-ok = {
+      expr = builtins.length (assembleEdges {
+        kinds = reachKinds;
+        intents = [
+          (mkAsmIntent {
+            fromId = "host:a";
+            toId = "host:b";
+            fromS.ref = "host:b";
+          })
+        ];
+      });
+      expected = 1;
     };
   };
 }
