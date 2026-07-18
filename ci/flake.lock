@@ -780,11 +780,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1783655514,
-        "narHash": "sha256-sFUn4Sj/tq5U6ceYg4oGsJz7Jrpi3a8vY0TZBA8+cXc=",
+        "lastModified": 1784386718,
+        "narHash": "sha256-zSANFjqV2Hx7AQ68kDtPrTxIKowW4GnO2ANZfoN0V9Q=",
         "owner": "sini",
         "repo": "gen-flake",
-        "rev": "9812caf6cfb3f1946692f8304d74e04e055c3ebb",
+        "rev": "90960ad1bc52bfee474b346012c16909b4f893b9",
         "type": "github"
       },
       "original": {
