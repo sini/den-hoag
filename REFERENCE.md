@@ -755,8 +755,63 @@ deep in the traversal, so it is deep-forced here and re-thrown den-namespaced).
 
 **Forward — the relations layer.** `ctx.rel.<kind>`, the `den.relations` registry (which defines the relation
 kinds), and the LIVE edge-source wiring — assembling the relation graph so `den.query` reads real fleet
-relations, and compiling the scoped `where` a gen-select `sel` needs — ship with that layer; the spine here
-stays source-agnostic.
+relations, and compiling the scoped `where` a gen-select `sel` needs — ship with the relations layer (below); the
+spine here stays source-agnostic.
+
+## Relations — the resolution graph (`den.relations` / `.edges` / `den.relationEdges` / `den.relAt`, spec §5) — `lib/concern-relations.nix`
+
+The relations layer is `den.query`'s LIVE edge source: a declarative relation registry, an entity-side edge field,
+a flat producer assembling a fleet-global labeled edge set, the `sel`→`matchId` `where`-adaptation, and a
+per-entity accessor. It reuses the shipped substrate — the `den.edges` edge-kind registry (§2.2), the
+`memberProducer` flat-edge posture (§4.7), `matchId` (Law E6), and `den.query` (§3) — with ZERO new graph
+machinery.
+
+**`den.relations.<name>` — the registry (§5 / §2.2 one-registry).** `den.relations.<name> = { inverse ? null; data ? {}; }` DESUGARS onto the LIVE `den.edges` registry at the `resolution` stratum: ONE edge-kind `<name>`
+@resolution (`closure = false`), carrying `inverse` as LABEL-ONLY metadata (the reverse-query label). NO second
+kind is registered — the inverse is a query DIRECTION, not a kind (`den.query` is source-agnostic, so a label is
+followable unregistered; the producer emits swapped `<inverse>`-labeled edges and the accessor follows that
+label). `closure = false` makes the registry closure-gate (§2.2) a NO-OP (the surface has no closure field); the
+closure CAPABILITY + a join-semilattice discipline are a downstream ACL concern. The desugar `//`-merges the
+relation kinds BESIDE the user `den.edges` kinds into the ONE edge compile, gated by a single label-collision
+detector: {relation names} ∪ {non-null inverse labels} must be pairwise-distinct AND disjoint from the user
+`den.edges` kinds AND the reserved framework names (a label-only inverse escapes the shipped reserved-name check,
+so this guard owns the reserved case too) — one NAMED throw pre-empting the `//`-merge silent last-wins.
+
+**The `.edges.<rel>` field (§5) + the undeclared-relation guard.** An entity declares relation edges via
+`den.<kind>.<name>.edges.<rel> = [ <targets> ]` — a per-kind schema option (the `outputs`-field posture,
+entity.nix), a `raw` attrset default `{ }` that STORES the raw target refs (byte-identical when unused). The
+fleet-level UNDECLARED-RELATION GUARD validates that every `<rel>` named in any entity's `.edges` is a declared
+`den.relations` relation — a NAMED throw naming the offending entity + relation, needing only `den.relations` +
+the `.edges` attr-names (no lowering): the validate-then-transform contract the producer relies on. It is WOVEN
+onto the producer's critical path (`den.relationEdges = seq guard produce`), so a malformed `.edges` aborts for
+any consumer, not only when `den.relations` is read.
+
+**The FLAT producer + `den.relationEdges` (§5, the memberProducer posture).** Over every entity's `.edges`, the
+producer emits FLAT records `{ id; kind; from; to }` with PLAIN-STRING node-id endpoints (`den.query`
+string-compares the flat list — not the `{entityId;class}` records the collector producer emits). `from` is the
+declaring entity's node-id (the iteration key `"${kind}:${name}"`); each TARGET ref is lowered to
+`"${kind}:${name}"` via the fleet's `id_hash → kind` index (entity refs carry `id_hash` + `name`, not `kind`, so
+the lowering is fleet-level — the include-precedent posture). When the relation declares `inverse`, the producer
+ALSO emits the SWAPPED inverse-kind edge (`from`↔`to`, `kind = <inverse label>`), so a forward `den.query` for the
+inverse label finds the reverse (`den.query` is forward-only). Assembled read-only as `den.relationEdges` — the
+`den.memberEdges` twin, OFF `edgesForRoot` (never in the live trace), corpus-inert `[ ]` with no relations. **The
+`assembleEdges` STAMPED-IDENTITY unification for relation edges is DEFERRED to step 6** (the same posture as the
+`reach` edge-id port — step 6 does the edge-id / parity-ladder unification for `reach` + relations together);
+`den.query`'s consumers use the flat set, so the deferral is transparent.
+
+**`relQuery` — the `sel`→`matchId` `where`-adaptation.** `relQuery { from; kind; sel ? null; mode ? "all" }` wraps
+`den.query` with `edges = den.relationEdges` + `follow = kind`, adapting a gen-select structural selector into
+`den.query`'s RAW node→bool `where`: `where = matchIdStructural sel` (the LIVE adaptation the collector membership
+filter runs — relation endpoints ARE scope node-ids, `matchId`'s domain), or `_: true` when `sel == null`. This is
+the adaptation the source-agnostic `den.query` spine deferred here. Built per-mkDen; exposed `den.relQuery`.
+
+**`ctx.rel` / `den.relAt` — the per-entity accessor (§5, the narrow-accessor posture).** `den.relAt <nodeId> = { <kind> = { targets; inverse; closure; paths; }; }` — a LAZY per-node record keyed by relation kind (the
+`aspectsAt` sibling; this per-node record is what a node's `ctx.rel` reads). Each field is a `den.query` over
+`den.relationEdges` from the node: `targets` = the 1-hop forward (`follow = <kind>`); `inverse` = the reverse
+(`follow = <inverse label>`, reading the producer's swapped edges; `[ ]` when the relation declares no inverse);
+`closure` = the TRANSITIVE set — the `+` (one-or-more) in `follow = "${kind}+"` walks the full chain and `mode = "fixpoint"` folds that reach through a CONCRETE set-union monoid (`empty = [ ]`; `combine` = a dedup union;
+`valueOf = id: [ id ]`); `paths` = the path witnesses. The registry closure CAPABILITY + the set-union DISCIPLINE
+law-gating are a downstream ACL concern — the accessor supplies its own concrete monoid now.
 
 ## Theory citations (§6)
 
