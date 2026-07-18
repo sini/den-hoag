@@ -962,6 +962,54 @@ let
           [ ]
       )
     );
+
+  # ── §4.4: CONTENT-mode families (den EXPORTING composed modules — no render, no system
+  # axis). `contentFamilyMod fam cc` declares a content family `<fam>` consuming ModulesInfo, contentClass `cc`,
+  # params `[ ]`. `u` is a standalone user root carrying BOTH nixos + home-manager content. `mkContentFleet
+  # optInFamilies` opts `u` into each named content family (both families are always DECLARED; `optInFamilies`
+  # controls only the opt-ins). The face is a SINGLE module `{ imports = <raw slice> }` per family.
+  contentFamilyMod = fam: cc: {
+    config.den.outputs.${fam} = {
+      at = _point: e: [
+        fam
+        e.name
+      ];
+      consumes = "ModulesInfo";
+      params = [ ];
+      contentClass = cc;
+    };
+  };
+  uContentMod = (
+    { config, ... }:
+    {
+      config.den.aspects.acct = {
+        nixos.foo = "bar";
+        home-manager.baz = "qux";
+      };
+      config.den.include = [
+        {
+          at = config.den.user.u;
+          aspects = [ config.den.aspects.acct ];
+        }
+      ];
+    }
+  );
+  mkContentFleet =
+    optInFamilies:
+    denHoag.mkDen [
+      { config.den.schema.user.parent = null; }
+      {
+        config.den.user.u.outputs = builtins.listToAttrs (
+          map (fam: {
+            name = fam;
+            value = { };
+          }) optInFamilies
+        );
+      }
+      uContentMod
+      (contentFamilyMod "nixosModules" "nixos")
+      (contentFamilyMod "homeManagerModules" "home-manager")
+    ];
 in
 {
   flake.tests.materialization = {
@@ -3292,6 +3340,74 @@ in
             contentClass = null;
           }).outputs;
       expected = true;
+    };
+
+    # ── §4.4: the CONTENT-mode family mount (den EXPORTING composed modules) ──
+    # a content family (no render, no system axis) surfaces at `outputs.<family>.<entity>` as a SINGLE module
+    # `{ imports = <raw slice> }` — the RAW `classSubtreeAt` payload placed ONCE at `[ family, member ]` (NOT
+    # the double-nested placeSlice `modules`). `faceKeys == [ "imports" ]` pins the single-module shape;
+    # `imports` == the INDEPENDENTLY-read slice (byte-equal — proves the raw payload, placed once).
+    test-content-family-mount = {
+      expr =
+        let
+          d = mkContentFleet [ "nixosModules" ];
+        in
+        {
+          keyedByName = builtins.attrNames (d.outputs.nixosModules or { });
+          faceKeys = builtins.attrNames (d.outputs.nixosModules.u or { });
+          importsEqRaw =
+            (d.outputs.nixosModules.u.imports or null) == d.den.output.classSubtreeAt "user:u" "nixos";
+        };
+      expected = {
+        keyedByName = [ "u" ];
+        faceKeys = [ "imports" ];
+        importsEqRaw = true;
+      };
+    };
+    # THE stylix-shaped cross-cutting witness: ONE entity into TWO content families → BOTH surface, each carrying
+    # its OWN class's slice (two contributions, each `{ imports = raw_i }`).
+    test-content-family-two-families = {
+      expr =
+        let
+          d = mkContentFleet [
+            "nixosModules"
+            "homeManagerModules"
+          ];
+        in
+        {
+          nixosFace = builtins.attrNames (d.outputs.nixosModules.u or { });
+          hmFace = builtins.attrNames (d.outputs.homeManagerModules.u or { });
+          nixosEq =
+            (d.outputs.nixosModules.u.imports or null) == d.den.output.classSubtreeAt "user:u" "nixos";
+          hmEq =
+            (d.outputs.homeManagerModules.u.imports or null)
+            == d.den.output.classSubtreeAt "user:u" "home-manager";
+        };
+      expected = {
+        nixosFace = [ "imports" ];
+        hmFace = [ "imports" ];
+        nixosEq = true;
+        hmEq = true;
+      };
+    };
+    # THE GUARD (corpus-inert): a fleet DECLARING content families but opting NOBODY in has `optIns == [ ]`, so no
+    # content contribution ever exists — the families do NOT surface, `outputs` is the built-in aliases only.
+    test-content-family-guard-nobody = {
+      expr =
+        let
+          d = mkContentFleet [ ];
+        in
+        {
+          optIns = d.den.optIns;
+          outputsKeys = builtins.attrNames d.outputs;
+        };
+      expected = {
+        optIns = [ ];
+        outputsKeys = [
+          "darwinConfigurations"
+          "nixosConfigurations"
+        ];
+      };
     };
   };
 }

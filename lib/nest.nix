@@ -169,9 +169,13 @@ let
         if row.mode == "content" then
           # CONTENT mode: the module list grafted at `at` — flat for `at = [ ]`, wrapped under the path
           # otherwise. The caller places the contribution; the engine performs only the pure at-path wrap.
+          # `raw` carries the UN-placed payload beside the placed `modules`: a caller that places the whole
+          # contribution ONCE at its own path (the family face) wraps `raw` as a single `{ imports = raw }`
+          # module, avoiding the double-nest that re-placing the already-`at`-placed `modules` would cause.
           mkContribution "content" {
             at = atPath;
             modules = placeSlice atPath payload;
+            raw = payload;
           }
         else if row.mode == "artifact" then
           # ARTIFACT mode: the render row (`renders.${row.render}`) crosses the inner's modules in ISOLATION —

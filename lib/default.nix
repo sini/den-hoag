@@ -1506,11 +1506,12 @@ let
                 slot = o.family;
                 class = o.family;
               };
-              # the member's content slice at its root scope — the render evaluator's input. A family declaring
-              # a render but NO contentClass has no channel to slice, so a build here aborts NAMED.
+              # the member's content slice at its root scope — the mount's content source (the render's input
+              # for an artifact family, the `imports` face for a content family). A family with an opt-in but
+              # NO contentClass has no channel to slice, so a build here aborts NAMED.
               payload =
                 if famRow.contentClass == null then
-                  throw "den.outputs: opt-in family '${o.family}' declares a render but no contentClass — the render needs a content channel to build entity '${o.entity}' member content"
+                  throw "den.outputs: opt-in family '${o.family}' has no contentClass — an opted-in member needs a content channel to slice its modules (entity '${o.entity}')"
                 else
                   output.classSubtreeAt "${o.entityKind}:${o.entity}" famRow.contentClass;
               inner = {
@@ -1541,8 +1542,18 @@ let
               )
           ) optInsEnriched;
           # the placed value per contribution mode: the value arm carries `value` (the prebuilt system), the
-          # artifact arm `artifact` (the render-built face). Both lazy — the fold forces the attr shape only.
-          placedValue = c: if c.mode == "artifact" then c.artifact else c.value;
+          # artifact arm `artifact` (the render-built face), the content arm the RAW (un-placed) module slice
+          # wrapped as a SINGLE `{ imports = raw }` module — placed ONCE at `[ family, member ]` by the fold
+          # below (the placed `modules` field is skipped here, so the slice is not double-nested). All lazy —
+          # the fold forces the attr shape only.
+          placedValue =
+            c:
+            if c.mode == "artifact" then
+              c.artifact
+            else if c.mode == "content" then
+              { imports = c.raw; }
+            else
+              c.value;
         in
         # GUARD: with no opt-ins the built-in fold is byte-identical (the opt-in path is structurally absent).
         if optIns == [ ] then
