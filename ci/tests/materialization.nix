@@ -1090,6 +1090,7 @@ in
         ShellInfo = "artifact";
         TerranixInfo = "artifact";
         HiveInfo = "artifact";
+        FlakeInfo = "artifact";
         EvalHandleInfo = "extend";
         ArgsInfo = "content";
       };

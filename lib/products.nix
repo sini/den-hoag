@@ -39,7 +39,7 @@ let
   isArtifactRef = name: prelude.hasPrefix artifactRefPrefix name;
 
   # The framework-pre-registered products (spec §4.1 table). Each row is `{ mode; nestable }`. The artifact
-  # faces (SystemInfo … HiveInfo) are the assembled-output products (HiveInfo = a collector's built
+  # faces (SystemInfo … HiveInfo … FlakeInfo) are the assembled-output products (HiveInfo = a collector's built
   # aggregate). ArgsInfo is the arg-environment payload `adapt` consumes/produces — non-nestable, so it is
   # never a receiver's `consumes`. `ArtifactRef P` is NOT here: it is the structural wrapper (above), not a
   # row. A user re-registration of any of these names aborts NAMED (the reserved posture).
@@ -69,6 +69,11 @@ let
       mode = "artifact";
     };
     HiveInfo = {
+      mode = "artifact";
+    };
+    # the OPAQUE transposed flake-outputs attrset a hosted flake-parts render produces (§4.4, the flake-parts
+    # adapter) — value-nested verbatim like HiveInfo (den never type-walks it), reserved by its presence here.
+    FlakeInfo = {
       mode = "artifact";
     };
     EvalHandleInfo = {
