@@ -1130,9 +1130,10 @@ let
       # REQUIRES CONSUMPTION (§4.4): each family's `requires` (∪ its render's `requires`) must be SATISFIABLE
       # at the graft site — the products a member can supply there. The graft-site available set is the
       # family's own `consumes` (what its members produce) UNION the family's render `produces` (the artifact
-      # face the render emits). A required product outside that set aborts NAMED (`checkRequires`). The
-      # built-ins carry `requires = [ ]` (vacuous), so this is byte-neutral for them. deepSeq'd into the
-      # `outputsTable` surface below so the check fires when the families table is forced.
+      # face the render emits), EXTENDED by the single-step conversion targets (§4.1: a product reachable from
+      # an available one through ONE registered conversion). A required product outside that set aborts NAMED
+      # (`checkRequires`). The built-ins carry `requires = [ ]` (vacuous), so this is byte-neutral for them.
+      # deepSeq'd into the `outputsTable` surface below so the check fires when the families table is forced.
       requiresChecked = builtins.mapAttrs (
         family: row:
         let
@@ -1153,6 +1154,9 @@ let
         outputsLib.checkRequires {
           inherit family available;
           requires = (row.requires or [ ]) ++ renderRequires;
+          # CONVERSION-AWARE satisfiability (§4.1, single-step): a required product reachable from an available
+          # one through ONE registered conversion is satisfiable — the compiled table carries `.from`/`.to`.
+          conversions = conversionsTable;
         }
       ) outputsTable;
 

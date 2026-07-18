@@ -2798,6 +2798,81 @@ in
       };
       expected = [ ];
     };
+    # ── §4.1/§4.4 CONVERSION-AWARE satisfiability (single-step) ──
+    # a required product NOT directly available but reachable through ONE registered conversion (`A->P` with
+    # `A` available) is SATISFIABLE — the non-vacuous half: `P` is supplied via the conversion, so the check
+    # passes (returns the required set).
+    test-outputs-requires-conversion-satisfied = {
+      expr = checkRequires {
+        family = "customConfigurations";
+        requires = [ "P" ];
+        available = [ "A" ];
+        conversions."A->P" = {
+          from = "A";
+          to = "P";
+          via = x: x;
+        };
+      };
+      expected = [ "P" ];
+    };
+    # a required product with NO available producer AND no conversion REACHING it aborts NAMED — a conversion
+    # to a DIFFERENT product (`A->Q`) does not spuriously satisfy `P`.
+    test-outputs-requires-conversion-no-path-throws = {
+      expr = throws (checkRequires {
+        family = "customConfigurations";
+        requires = [ "P" ];
+        available = [ "A" ];
+        conversions."A->Q" = {
+          from = "A";
+          to = "Q";
+          via = x: x;
+        };
+      });
+      expected = true;
+    };
+    # SINGLE-STEP ONLY (the determinism law, no transitive chain search): `A->B` + `B->P` with only `A`
+    # available reaches `B` in one hop but NOT `P` (that needs a second hop) — so `P` is unsatisfiable and the
+    # check STILL aborts. Proves the conversion consult is applied EXACTLY ONCE.
+    test-outputs-requires-conversion-two-hop-throws = {
+      expr = throws (checkRequires {
+        family = "customConfigurations";
+        requires = [ "P" ];
+        available = [ "A" ];
+        conversions = {
+          "A->B" = {
+            from = "A";
+            to = "B";
+            via = x: x;
+          };
+          "B->P" = {
+            from = "B";
+            to = "P";
+            via = x: x;
+          };
+        };
+      });
+      expected = true;
+    };
+    # END-TO-END: a fleet declaring a `RawModulesInfo->ModulesInfo` conversion + a family consuming
+    # RawModulesInfo and requiring ModulesInfo compiles — `den.outputs` forces the requires check, which finds
+    # ModulesInfo satisfiable through the conversion (the compiled `conversionsTable` is threaded into the
+    # check). Without the conversion consult the required ModulesInfo (∉ [ RawModulesInfo ]) would abort.
+    test-outputs-requires-conversion-fleet = {
+      expr =
+        (denHoag.mkDen [
+          {
+            config.den = {
+              conversions."RawModulesInfo->ModulesInfo".via = x: x;
+              outputs.customConfigurations = {
+                at = _point: e: [ e.name ];
+                consumes = "RawModulesInfo";
+                requires = [ "ModulesInfo" ];
+              };
+            };
+          }
+        ]).den.outputs ? customConfigurations;
+      expected = true;
+    };
 
     # ── §4.4 PARAMS fan-out (the declared cartesian at the family level) ──
     # a family with `params = [ "system" ]` + the `system` axis domain `[ x86_64-linux aarch64-linux ]` fans to

@@ -210,23 +210,34 @@ let
 
   # ── REQUIRES CONSUMPTION (spec §4.4, the deferred definition-time check): a family's `requires` (∪ its
   # render's `requires`) names the products it CONSUMES; each must be SATISFIABLE at the graft site — present
-  # in the `available` product set the fold can supply there. `checkRequires { family; requires; available }`
-  # returns the required set unchanged when satisfied, else aborts NAMED (naming the family + the first missing
-  # product) — the §4.4 sentence "Required fields are render-declared and definition-time-checked" realized.
-  # An empty `requires` is vacuously satisfiable (the built-ins). This is the CONSUMPTION half of the shape
-  # check the render/family compile already did — a registered product that is simply not producible HERE.
+  # in the `available` product set the fold can supply there. `checkRequires { family; requires; available;
+  # conversions }` returns the required set unchanged when satisfied, else aborts NAMED (naming the family +
+  # the first missing product) — the §4.4 sentence "Required fields are render-declared and definition-time-
+  # checked" realized. An empty `requires` is vacuously satisfiable (the built-ins).
+  #
+  # CONVERSION-AWARE (§4.1, single-step): the available set is extended with the `to`-face of every registered
+  # conversion whose `from`-face is available — a product reachable through ONE conversion is satisfiable. The
+  # consult is applied EXACTLY ONCE (single hop, no transitive chain search — the determinism law; a needed
+  # composite is registered as its own pair). `conversions` is the COMPILED table (each entry carries `.from`/
+  # `.to`), so the reachability reads the faces directly — no key splitting.
   checkRequires =
     {
       family,
       requires ? [ ],
       available ? [ ],
+      conversions ? { },
     }:
     let
-      availableSet = prelude.genAttrs available (_: true);
+      availableSet0 = prelude.genAttrs available (_: true);
+      # the single-step conversion targets: the `to` of every conversion whose `from` is directly available.
+      convTargets = map (c: c.to) (
+        builtins.filter (c: availableSet0 ? ${c.from}) (builtins.attrValues conversions)
+      );
+      availableSet = prelude.genAttrs (available ++ convTargets) (_: true);
       missing = builtins.filter (p: !(availableSet ? ${p})) requires;
     in
     if missing != [ ] then
-      throw "den.outputs: family '${family}' requires product '${builtins.head missing}' but it is not satisfiable at the graft site — no producer supplies it there"
+      throw "den.outputs: family '${family}' requires product '${builtins.head missing}' but it is not satisfiable at the graft site — no producer supplies it there (nor a single-step conversion to it)"
     else
       requires;
 
