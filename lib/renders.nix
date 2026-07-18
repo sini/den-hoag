@@ -51,6 +51,12 @@ let
         # (a collector render). The crossing stays the `evaluator` FIELD (swappable data — the gen-flake seam);
         # this flag only lets each mount site NAME a per-config/aggregate misuse instead of a bare shape crash.
         aggregate = raw.aggregate or false;
+        # `needsSelf` (spec §4.4, the self-knot): false (default) = the aggregate crossing is called
+        # `evaluator memberMap` (byte-untouched); true = it is CURRIED `evaluator { self = <root product>; }
+        # memberMap` so a hosted render (flake-parts) can read sibling output families through the recursive
+        # `familyOutputs` knot. WELL-FOUNDEDNESS: the render's output KEY SPINE must be self-independent (only
+        # leaf VALUES may read `self`), else the knot diverges with a tryEval-uncatchable infinite recursion.
+        needsSelf = raw.needsSelf or false;
       };
       # `produces` (when stated) names a registered product; `requires` names registered products. The
       # definition-time CONSUMPTION of `requires` (the graft-site product-face checks) arrives with the

@@ -1717,8 +1717,25 @@ let
                     }
                   ) cMemberEdges
                 );
-                # THE RENDER: ONE call over the aggregated map — the aggregate crossing behind the seam.
-                hiveInfo = builtins.seq aggChecked (builtins.seq producesChecked (renderRow.evaluator memberMap));
+                # THE RENDER: ONE call over the aggregated map — the aggregate crossing behind the seam. A
+                # `needsSelf` render (§4.4, the self-knot) is CURRIED `evaluator { self = familyOutputs; }
+                # memberMap` — `self` is the RECURSIVE root product this fold produces, tied natively through the
+                # `familyOutputs` `let` (no combinator, nothing deepSeq'd), so a hosted render reads sibling
+                # output families through the knot. WELL-FOUNDEDNESS: it terminates ONLY IF the render's output
+                # KEY SPINE is self-independent (a NECESSARY condition — only leaf VALUES may read `self`, and each
+                # leaf must read ANOTHER family's value, never its own); a spine derived from `self`, OR a leaf
+                # reading its own family's value (a self-loop), diverges with a tryEval-UNCATCHABLE infinite
+                # recursion (a documented boundary — Case B in flakeparts.nix, never an executed oracle).
+                # `needsSelf = false` (every shipped HiveInfo/SystemInfo render) keeps
+                # the byte-untouched `evaluator memberMap` call — the lazy `if` never forces the then-branch there.
+                hiveInfo = builtins.seq aggChecked (
+                  builtins.seq producesChecked (
+                    if renderRow.needsSelf then
+                      renderRow.evaluator { self = familyOutputs; } memberMap
+                    else
+                      renderRow.evaluator memberMap
+                  )
+                );
                 row = receiversLib.resolveReceiver {
                   compiledKinds = receivesTable;
                   outerKind = "root";
