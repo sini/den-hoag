@@ -46,6 +46,11 @@ let
       render = raw.render or null;
       params = raw.params or [ ];
       requires = raw.requires or [ ];
+      # `contentClass` (nullable) names the CONTENT CHANNEL an opted-in member's modules are sliced from
+      # (`classSubtreeAt <entity-root-scope> contentClass`) to feed the render evaluator — the artifact-mode
+      # opt-in mount's payload source. Built-ins declare none (null): they inject the prebuilt system VALUE-mode,
+      # never re-sliced. A non-null non-string value is a definition error.
+      contentClass = raw.contentClass or null;
       # each `params` entry names a KNOWN AXIS (today `system`); an unknown axis is a definition error.
       badParams = builtins.filter (p: !(axisSet ? ${p})) params;
       # each `requires` entry names a registered product (shape-check only — consumption is a later task).
@@ -68,6 +73,8 @@ let
       throw "den.outputs: family '${family}' declares unknown param axis '${builtins.head badParams}' — one of ${builtins.toJSON axes}"
     else if badRequires != [ ] then
       throw "den.outputs: family '${family}' requires unregistered product '${builtins.head badRequires}' — register it in den.products"
+    else if contentClass != null && !(builtins.isString contentClass) then
+      throw "den.outputs: family '${family}' declares a non-string contentClass — the opt-in content channel is a class-name string (or null)"
     else
       {
         inherit (raw) at;
@@ -77,6 +84,7 @@ let
           render
           params
           requires
+          contentClass
           ;
       };
 

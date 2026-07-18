@@ -1141,7 +1141,10 @@ let
       # this surfaces the elaboration records only. An entity opting into an UNKNOWN family aborts NAMED (a
       # family must be registered in `outputsTable` for its params to be known). Absent for every entity ⇒
       # `[ ]` (byte-neutral — a fleet that opts nobody in surfaces no records).
-      optIns = prelude.concatMap (
+      # the enriched elaboration records — checkOptIn's `{ family; entity; data }` PLUS `entityKind` (the opt-in
+      # mount reads it to slice the member's content at the entity's root scope `"${kind}:${name}"`). The
+      # PUBLIC `optIns` (below) strips `entityKind` back to the §4.4 `{ family; entity; data }` record.
+      optInsEnriched = prelude.concatMap (
         kindName:
         prelude.concatMap (
           name:
@@ -1160,9 +1163,15 @@ let
                 entity = name;
                 optIn = entOptIns.${family};
               }
+              // {
+                entityKind = kindName;
+              }
           ) (builtins.attrNames entOptIns)
         ) (builtins.attrNames ent.registries.${kindName})
       ) (builtins.attrNames ent.registries);
+      optIns = map (o: {
+        inherit (o) family entity data;
+      }) optInsEnriched;
       # THE READ-THROUGH (spec §4.3): the render row supplies the BASE `{ evaluator; output }`; the
       # `den.classes.<name>.instantiation` D4 overlay STAYS ON TOP. Precedence law:
       # `classes.instantiation` ≻ render row ≻ nothing. The built-in nixos/darwin rows are always present in
@@ -1452,10 +1461,70 @@ let
               }
             ) (builtins.attrNames (output.systems.${class} or { }))
           ) families;
+          # ── the opt-in family mount (§4.4/§7): each opted-in entity BUILT through its family's render
+          # (ARTIFACT-mode executeNest — the render evaluator is the sole forcing boundary), keyed by entity
+          # NAME (the member re-key law). Unlike the built-in mount (a PREBUILT system injected value-mode),
+          # an opt-in entity is not in `output.systems` — its member content is sliced from the entity's ROOT
+          # scope (`classSubtreeAt "${kind}:${name}" contentClass`) and the render evaluator builds it. SINGLE-
+          # INSTANCE root scope only: an entity with one root scope has exactly one content slice; a
+          # multi-instance/cell entity's content resolves through the reach-route (§7), out of this mount's
+          # scope. GUARDED below by `optIns != [ ]` — a fleet opting nobody in is structurally the built-in fold
+          # (byte-identical).
+          optInContributions = prelude.concatMap (
+            o:
+            let
+              famRow = outputsTable.${o.family};
+              row = receiversLib.resolveReceiver {
+                compiledKinds = receivesTable;
+                outerKind = "root";
+                slot = o.family;
+                class = o.family;
+              };
+              # the member's content slice at its root scope — the render evaluator's input. A family declaring
+              # a render but NO contentClass has no channel to slice, so a build here aborts NAMED.
+              payload =
+                if famRow.contentClass == null then
+                  throw "den.outputs: opt-in family '${o.family}' declares a render but no contentClass — the render needs a content channel to build entity '${o.entity}' member content"
+                else
+                  output.classSubtreeAt "${o.entityKind}:${o.entity}" famRow.contentClass;
+              inner = {
+                product = row.consumes;
+                inherit payload;
+                name = o.entity;
+                kind = o.entityKind;
+              };
+            in
+            map
+              (
+                paramPoint:
+                nestLib.executeNest {
+                  inherit row inner;
+                  ctx.paramPoint = {
+                    name = o.entity;
+                  }
+                  // paramPoint;
+                  renders = rendersRows;
+                }
+              )
+              (
+                outputsLib.fanParams {
+                  inherit (o) family;
+                  inherit (famRow) params;
+                  systems = ent.config.den.systems or [ ];
+                }
+              )
+          ) optInsEnriched;
+          # the placed value per contribution mode: the value arm carries `value` (the prebuilt system), the
+          # artifact arm `artifact` (the render-built face). Both lazy — the fold forces the attr shape only.
+          placedValue = c: if c.mode == "artifact" then c.artifact else c.value;
         in
-        prelude.foldl' (
-          acc: c: familyMerge acc (familyNestAtPath c.at c.value)
-        ) emptyFamilies contributions;
+        # GUARD: with no opt-ins the built-in fold is byte-identical (the opt-in path is structurally absent).
+        if optIns == [ ] then
+          prelude.foldl' (acc: c: familyMerge acc (familyNestAtPath c.at c.value)) emptyFamilies contributions
+        else
+          prelude.foldl' (acc: c: familyMerge acc (familyNestAtPath c.at (placedValue c))) emptyFamilies (
+            contributions ++ optInContributions
+          );
 
       # The built-in aliases (§4.4): each is the corresponding family projected off the root product
       # (`familyOutputs`). The output face is now assembled ENTIRELY by the family dispatch — the per-class

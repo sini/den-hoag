@@ -876,6 +876,69 @@ let
     paramPoint = tuxPoint;
     __poisonContent = throw "ctx content field forced — structural-handles discipline violated";
   };
+
+  # ── §4.4/§7 opt-in family materialization (artifact-mode) fixtures ──
+  # A synthetic `homeConfigurations` family + a STUB render (a pure evaluator returning a synthetic artifact —
+  # nixpkgs-free, no real hm eval): the evaluator maps its content payload to a `{ __artifactMode; memberCount }`
+  # face, so an oracle distinguishes the BUILT artifact from a value-mode verbatim inject AND pins the payload =
+  # the entity's content slice (its length). `mkHomeFleet` varies the opt-in / contentClass / content presence.
+  # alice is a standalone user ROOT (`user:alice`) — the SINGLE-INSTANCE root-scope case (a multi-instance/cell
+  # entity's content resolves through the reach-route, §7, out of this mount's scope).
+  mkHomeFleet =
+    {
+      optIn ? null,
+      contentClass ? "home-manager",
+      withContent ? false,
+    }:
+    denHoag.mkDen (
+      [
+        { config.den.schema.user.parent = null; }
+        {
+          config.den.user.alice = if optIn == null then { } else { outputs.homeConfigurations = optIn; };
+        }
+        { config.den.systems = [ "x86_64-linux" ]; }
+        {
+          config.den.renders.homeStub = {
+            evaluator = payload: {
+              __artifactMode = true;
+              memberCount = builtins.length payload;
+            };
+            produces = "SystemInfo";
+          };
+        }
+        {
+          config.den.outputs.homeConfigurations = {
+            at = _point: e: [
+              "homeConfigurations"
+              e.name
+            ];
+            consumes = "SystemInfo";
+            render = "homeStub";
+            params = [ "system" ];
+          }
+          // (if contentClass == null then { } else { inherit contentClass; });
+        }
+      ]
+      ++ (
+        if withContent then
+          [
+            (
+              { config, ... }:
+              {
+                config.den.aspects.acct.home-manager.foo = "bar";
+                config.den.include = [
+                  {
+                    at = config.den.user.alice;
+                    aspects = [ config.den.aspects.acct ];
+                  }
+                ];
+              }
+            )
+          ]
+        else
+          [ ]
+      )
+    );
 in
 {
   flake.tests.materialization = {
@@ -2863,6 +2926,72 @@ in
           ]).den.optIns
           true
       );
+      expected = true;
+    };
+
+    # ── §4.4/§7 the LIVE opt-in family mount (artifact-mode) ──
+    # an opted-in entity surfaces at `outputs.<family>.<entity>` carrying the artifact BUILT via the family's
+    # render (ARTIFACT-mode — the stub evaluator is the sole forcing boundary), keyed by the entity NAME (the
+    # member re-key law). The payload is the entity's content slice (`classSubtreeAt` at its root scope), so
+    # `memberCount` pins it (the one home-manager module the aspect contributes) — a value-mode verbatim inject
+    # would carry the raw slice, NOT the evaluator's `{ __artifactMode; memberCount }` face.
+    test-outputs-optin-artifact-mount = {
+      expr =
+        let
+          d = mkHomeFleet {
+            optIn.system = "x86_64-linux";
+            withContent = true;
+          };
+        in
+        {
+          hasFamily = d.outputs ? homeConfigurations;
+          keyedByName = builtins.attrNames (d.outputs.homeConfigurations or { });
+          artifact = d.outputs.homeConfigurations.alice or "MISSING";
+        };
+      expected = {
+        hasFamily = true;
+        keyedByName = [ "alice" ];
+        artifact = {
+          __artifactMode = true;
+          memberCount = 1;
+        };
+      };
+    };
+    # THE GUARD (opt-nobody-in byte-identity): a fleet DECLARING the family + render but opting NOBODY in has
+    # `den.optIns == [ ]`, so `familyOutputs` is structurally untouched — the user family does NOT surface, the
+    # face is exactly the built-in aliases. This is what makes the corpus (opts nobody in) parity byte-identical.
+    test-outputs-optin-guard-nobody = {
+      expr =
+        let
+          d = mkHomeFleet { optIn = null; };
+        in
+        {
+          optIns = d.den.optIns;
+          outputsKeys = builtins.attrNames d.outputs;
+        };
+      expected = {
+        optIns = [ ];
+        outputsKeys = [
+          "darwinConfigurations"
+          "nixosConfigurations"
+        ];
+      };
+    };
+    # the inherited checkOptIn law is NOT regressed at the live mount: an opt-in MISSING the render-declared
+    # param aborts NAMED (forcing the elaboration records fires the definition-time throw).
+    test-outputs-optin-mount-missing-param-throws = {
+      expr = throws (mkHomeFleet { optIn = { }; }).den.optIns;
+      expected = true;
+    };
+    # a family declaring a render but NO contentClass cannot build an opted-in member's content — the mount
+    # aborts NAMED (the content channel is required to slice the member's modules).
+    test-outputs-optin-mount-no-contentclass-throws = {
+      expr =
+        throws
+          (mkHomeFleet {
+            optIn.system = "x86_64-linux";
+            contentClass = null;
+          }).outputs;
       expected = true;
     };
   };
