@@ -280,6 +280,119 @@ let
       config.den.nixosHost.a = { };
     }
   ];
+
+  # ── §4.7: the GENERICITY witness (consumes IS the abstraction, genericity floor 4) ──
+  # TWO collectors over the SAME member set (a, b) differing ONLY in `consumes` (+ render): `cluster` consumes
+  # RawModulesInfo (content → the raw class slice), `deploy` consumes SystemInfo (artifact → the already-built
+  # system, the deploy-rs/agenix shape). NO colmena/deploy-rs field anywhere in the kernel — the extraction
+  # dispatches on the consumed product's MODE alone, so ONE machine turns the same member set into two payload
+  # shapes. Both renders are opaque stubs producing HiveInfo into their own families.
+  # ONE shared `members` selector — so the two collector records are provably identical in `members` (distinct
+  # `hasClass "nixos"` calls would be equal-but-incomparable closures), which the structural genericity assert
+  # below relies on to prove they differ ONLY in consumes+render.
+  genericMembers = hasClass "nixos";
+  genericFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.colmena = { };
+      config.den.collectors.cluster = {
+        class = "colmena";
+        members = genericMembers;
+        consumes = "RawModulesInfo";
+        render = "modAgg";
+      };
+      config.den.collectors.deploy = {
+        class = "colmena";
+        members = genericMembers;
+        consumes = "SystemInfo";
+        render = "sysAgg";
+      };
+      config.den.renders.modAgg = {
+        evaluator = m: {
+          built = m;
+        };
+        produces = "HiveInfo";
+        aggregate = true;
+        output = "modHive";
+      };
+      config.den.renders.sysAgg = {
+        evaluator = m: {
+          built = m;
+        };
+        produces = "HiveInfo";
+        aggregate = true;
+        output = "sysHive";
+      };
+      config.den.outputs.modHive = {
+        at = _point: e: [
+          "modHive"
+          e.name
+        ];
+        consumes = "HiveInfo";
+      };
+      config.den.outputs.sysHive = {
+        at = _point: e: [
+          "sysHive"
+          e.name
+        ];
+        consumes = "HiveInfo";
+      };
+      config.den.nixosHost.a = { };
+      config.den.nixosHost.b = { };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.aspects.aContent.nixos.tag = "a-content";
+        config.den.aspects.bContent.nixos.tag = "b-content";
+        config.den.include = [
+          {
+            at = config.den.nixosHost.a;
+            aspects = [ config.den.aspects.aContent ];
+          }
+          {
+            at = config.den.nixosHost.b;
+            aspects = [ config.den.aspects.bContent ];
+          }
+        ];
+      }
+    )
+  ];
+  modHive = genericFleet.outputs.modHive.cluster.built;
+  sysHive = genericFleet.outputs.sysHive.deploy.built;
+
+  # a SystemInfo collector over a member with a CLASS (hasClass matches) but NO content — absent from
+  # output.systems, so the artifact read must NAMED-throw, never a bare `.${id}` miss (the M1 class).
+  missSysFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.colmena = { };
+      config.den.collectors.deploy = {
+        class = "colmena";
+        members = hasClass "nixos";
+        consumes = "SystemInfo";
+        render = "sysAgg";
+      };
+      config.den.renders.sysAgg = {
+        evaluator = m: {
+          built = m;
+        };
+        produces = "HiveInfo";
+        aggregate = true;
+        output = "sysHive";
+      };
+      config.den.outputs.sysHive = {
+        at = _point: e: [
+          "sysHive"
+          e.name
+        ];
+        consumes = "HiveInfo";
+      };
+      config.den.nixosHost.void = { };
+    }
+  ];
 in
 {
   flake.tests.collectors = {
@@ -420,6 +533,61 @@ in
     # an aggregate render with no `output` family aborts CATCHABLE-NAMED (the null-output uncatchable closed).
     test-collector-no-output-family-aborts = {
       expr = throws noOutputFleet.outputs;
+      expected = true;
+    };
+
+    # GENERICITY (consumes IS the abstraction): both collectors aggregate the SAME member set (a, b).
+    test-generic-same-member-set = {
+      expr =
+        builtins.attrNames modHive == [
+          "a"
+          "b"
+        ]
+        &&
+          builtins.attrNames sysHive == [
+            "a"
+            "b"
+          ];
+      expected = true;
+    };
+    # the SystemInfo collector's payload is the already-built SYSTEM (output.systems), read via the artifact arm.
+    test-generic-systeminfo-reads-built-system = {
+      expr = sysHive.a == genericFleet.den.output.systems.nixos."nixosHost:a";
+      expected = true;
+    };
+    # the RawModulesInfo collector's payload is the raw class SLICE (classSubtreeAt), read via the content arm.
+    test-generic-rawmodules-reads-raw-slice = {
+      expr = modHive.a == genericFleet.den.output.classSubtreeAt "nixosHost:a" "nixos";
+      expected = true;
+    };
+    # SAME member, DIFFERENT payload shape — `consumes` alone drives the extraction (one machine, no
+    # colmena/deploy-rs field in the kernel).
+    test-generic-consumes-drives-payload = {
+      expr = sysHive.a != modHive.a;
+      expected = true;
+    };
+    # STRUCTURAL genericity (floor 4): the two compiled collector records, minus identity (`name` + its
+    # name-derived `id_hash`) and the two intended differences (`consumes`, `render`), are EQUAL — so NO other
+    # kernel-contract field distinguishes them (no colmena/deploy-rs field leaked into the collector contract).
+    test-generic-differ-only-in-consumes-render = {
+      expr =
+        let
+          strip =
+            e:
+            removeAttrs e [
+              "name"
+              "id_hash"
+              "consumes"
+              "render"
+            ];
+        in
+        strip genericFleet.den.registries.collector.cluster
+        == strip genericFleet.den.registries.collector.deploy;
+      expected = true;
+    };
+    # the SystemInfo artifact read NAMED-throws on a selected member with no built system (never a bare miss).
+    test-generic-missing-system-aborts = {
+      expr = throws missSysFleet.outputs.sysHive;
       expected = true;
     };
   };

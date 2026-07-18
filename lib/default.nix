@@ -1489,9 +1489,18 @@ let
           mode = productsLib.modeOf productsTable product;
         in
         if mode == "content" then
+          # the raw class slice. Uncatchable-clean by construction on a content-empty member: `classSubtreeAt`
+          # is `concatMap (nid: (classModulesAt nid).${class} or [ ]) …`, so an absent class bucket yields `[ ]`
+          # (an empty aggregate), never an attr-miss — no guard needed. The artifact arm below is the ASYMMETRIC
+          # case (output.systems FILTERS content-empty nodes → the key is absent → a bare miss), so only it guards.
           output.classSubtreeAt memberNodeId memberClass
         else if mode == "artifact" then
-          output.systems.${memberClass}.${memberNodeId}
+          # the already-built system for this member. NAMED-guard the read (never a bare `.${id}` miss — the
+          # tryEval-uncatchable class): a member selected by the collector's `members` but ABSENT from
+          # `output.systems.<class>` (a class-bearing node with empty content never surfaces a system) aborts
+          # NAMED, quoting the member + class.
+          (output.systems.${memberClass} or { }).${memberNodeId}
+            or (throw "den.collectors: member '${memberNodeId}' (class '${memberClass}') has no built system in output.systems — an artifact-consuming collector aggregates already-built systems, so a selected member must produce one (§4.7)")
         else
           throw "den.collectors: member product '${product}' has mode '${mode}' — a collector aggregates content (raw modules) or artifact (built systems) products, not ${mode}-mode";
 
