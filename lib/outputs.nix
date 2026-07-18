@@ -19,12 +19,39 @@
   productsLib,
 }:
 let
-  # The KNOWN AXIS registry (spec §4.4): a family's `params` names finite materialization axes, and today the
-  # sole axis is `system` — the axis whose values are the fleet's `den.systems`. The registry is deliberately
-  # minimal (one axis): a NEW axis (a per-family variant dimension a user invents) joins this set, and a
-  # `params` entry outside it is a definition error. Generality is a registry extension, never a core literal.
-  axes = [ "system" ];
-  axisSet = prelude.genAttrs axes (_: true);
+  # THE AXIS REGISTRY (spec §4.4): the finite materialization axes a family's `params` may name — the built-in
+  # `system` axis (domain = the fleet's `den.systems`) UNIONED with the user-declared `den.axes.<name> =
+  # { values = [ <string> ]; }`. `system` is FRAMEWORK-RESERVED: a user `den.axes.system` would shadow the
+  # built-in domain, so it aborts NAMED (the sibling reserved posture — cf. the reserved edge kinds/disciplines).
+  # `axesRegistry { axes; systems }` returns `{ names; domains }`: the valid axis NAMES (the family `params`
+  # validation set) and the name → value-list map (the `fanParams` domains). No user axes ⇒ the single `system`
+  # axis (`names = [ "system" ]`, `domains.system = den.systems`).
+  axesRegistry =
+    {
+      axes ? { },
+      systems ? [ ],
+    }:
+    let
+      # each user axis must declare `values` as a LIST — else the fan's `axesDomains.<axis>` read is a bare
+      # attribute error (tryEval-uncatchable); name the malformed axis here (beside the reserved-`system` guard).
+      badAxes = builtins.filter (n: !(axes.${n} ? values && builtins.isList axes.${n}.values)) (
+        builtins.attrNames axes
+      );
+    in
+    if axes ? system then
+      throw "den.axes: 'system' is the framework-reserved axis (its domain is den.systems) — a user den.axes.system shadows the built-in axis"
+    else if badAxes != [ ] then
+      throw "den.axes: axis '${builtins.head badAxes}' must declare `values` as a list of strings"
+    else
+      {
+        names = [ "system" ] ++ builtins.attrNames axes;
+        domains = {
+          system = systems;
+        }
+        // prelude.mapAttrs (_: a: a.values) axes;
+      };
+  # the default axis-name set (no user axes) — the compile fallback, the single built-in `system` axis.
+  defaultAxisNames = [ "system" ];
 
   # A family row's canonical fields (spec §4.4). THE §2.1 HOOK-SCOPING COROLLARY (the row contract, mirrored
   # from receivers.nix): `at` receives STRUCTURAL handles only (the paramPoint + the built member's structural
@@ -35,8 +62,9 @@ let
   # a later task). `mode` is NOT a field — it is DERIVED from `consumes` (F1, a CHECKED law mirroring
   # receivers.nix): a user-declared `mode` is a definition error, rejected FIRST (never silently absorbed).
   rowOf =
-    renders: products: family: raw:
+    renders: products: axisNames: family: raw:
     let
+      axisSet = prelude.genAttrs axisNames (_: true);
       # F1 AS A CHECKED LAW: mode derives from consumes; a user-declared `mode` field is forbidden.
       hasMode = raw ? mode;
       # `consumes` passes the products-table gate (unregistered / non-nestable / literal ArtifactRef all throw
@@ -70,7 +98,7 @@ let
     else if render != null && mode != "artifact" then
       throw "den.outputs: family '${family}' consumes '${consumes}' — a ${mode}-mode family has no artifact to render (render is the artifact eval, artifact-mode families only)"
     else if badParams != [ ] then
-      throw "den.outputs: family '${family}' declares unknown param axis '${builtins.head badParams}' — one of ${builtins.toJSON axes}"
+      throw "den.outputs: family '${family}' declares unknown param axis '${builtins.head badParams}' — one of ${builtins.toJSON axisNames}"
     else if badRequires != [ ] then
       throw "den.outputs: family '${family}' requires unregistered product '${builtins.head badRequires}' — register it in den.products"
     else if contentClass != null && !(builtins.isString contentClass) then
@@ -202,29 +230,28 @@ let
     else
       requires;
 
-  # ── PARAMS FAN-OUT (spec §4.4): a family's `params` are the finite axes its face materializes over — today
-  # the `system` axis, whose values are `den.systems`. `fanParams { family; params; systems }` produces the
-  # declared CARTESIAN at the family level: one paramPoint per axis-value tuple. With `params = [ "system" ]`
-  # the fan is one entry per system (the devShells shape, `{ system = <sys>; }` each); with `params = [ ]` the
-  # fan is the DEGENERATE single face (`[ { } ]` — a system-agnostic family surfaces once). Today the sole
-  # axis is `system`, so the fan is one-dimensional; a multi-axis cartesian is a later generality (one axis
-  # registry entry per axis). DEDUP-PER-PARAMPOINT — the instanceId wiring that dedups a member materialized
-  # at the same paramPoint twice rides the live-producer sub-plan; here the fan is the pure axis enumeration.
+  # ── PARAMS FAN-OUT (spec §4.4): a family's `params` are the finite axes its face materializes over.
+  # `fanParams { family; params; axesDomains }` produces the FULL declared CARTESIAN at the family level — one
+  # paramPoint per axis-value tuple over `params`, each axis's values drawn from `axesDomains.<axis>` (the
+  # name → value-list map from `axesRegistry`). `params = [ ]` ⇒ the DEGENERATE single face `[ { } ]`; a single
+  # `params = [ "system" ]` ⇒ `map (v: { system = v; }) axesDomains.system` (one point per system) — the
+  # one-axis fan the built-in families + the opt-in mount rely on. An axis with no domain aborts NAMED (an
+  # explicit guard, not a bare attribute error). DEDUP-PER-PARAMPOINT — the instanceId wiring that dedups a
+  # member materialized at the same paramPoint twice rides a later step; here the fan is the pure cartesian
+  # enumeration.
   fanParams =
     {
       family,
       params ? [ ],
-      systems ? [ ],
+      axesDomains ? { },
     }:
-    if params == [ ] then
-      [ { } ]
-    else if params == [ "system" ] then
-      map (s: { system = s; }) systems
-    else
-      # unreachable while `system` is the sole axis (the family compile rejects an unknown axis); the named
-      # throw guards a future axis reaching here before its fan is wired.
-      throw
-        "den.outputs: family '${family}' declares params ${builtins.toJSON params} — only the 'system' axis fans today";
+    prelude.foldl' (
+      acc: p:
+      if !(axesDomains ? ${p}) then
+        throw "den.outputs: family '${family}' declares param axis '${p}' with no value domain — register it in den.axes (or it names an unknown axis)"
+      else
+        builtins.concatMap (pt: map (v: pt // { ${p} = v; }) axesDomains.${p}) acc
+    ) [ { } ] params;
 
   # ── THE ENTITY-LEVEL OPT-IN (spec §4.4/§7): an entity opts into a family via `den.<kind>.<name>.outputs.
   # <family> = { <field> = <value>; }`. The render-declared REQUIRED FIELDS an opt-in must supply are the
@@ -253,14 +280,14 @@ let
         data = optIn;
       };
 
-  # `compile { registered; builtins ? { }; renders; products; systems }` → the validated compiled families
+  # `compile { registered; builtins ? { }; renders; products; axisNames }` → the validated compiled families
   # table (a `mapAttrs` + validation, Law A1 — the receivers/renders template). The framework `builtins`
   # families (the built-in nixosConfigurations/darwinConfigurations seeded by `builtinFamilies`) seed the
   # table; a USER `den.outputs.<family>` merges beside them (a user re-declaration of a built-in family key
   # wins, the render/product extension posture). `renders` is the COMPILED render table (§4.3, for the
   # `render` name check); `products` the COMPILED products table (§4.1, for the mode derivation + consumes
-  # gate); `systems` the `den.systems` axis values (the `system` param's domain — carried for the later
-  # per-system materialization, the axis NAMES are validated here). Invoked per-fleet (the render rows compile
+  # gate); `axisNames` the valid materialization-axis names (`axesRegistry.names` — `system` ∪ the user
+  # `den.axes`), against which each family's `params` is validated. Invoked per-fleet (the render rows compile
   # inside the mkDen closure), following receivesTable's placement.
   compile =
     {
@@ -268,12 +295,12 @@ let
       builtins ? { },
       renders ? { },
       products ? { },
-      systems ? [ ],
+      axisNames ? defaultAxisNames,
     }:
     let
       allRaw = builtins // registered;
     in
-    prelude.mapAttrs (rowOf renders products) allRaw;
+    prelude.mapAttrs (rowOf renders products axisNames) allRaw;
 in
 {
   inherit
@@ -283,6 +310,6 @@ in
     checkRequires
     fanParams
     checkOptIn
-    axes
+    axesRegistry
     ;
 }

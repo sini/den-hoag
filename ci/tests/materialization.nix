@@ -161,9 +161,10 @@ let
   ];
 
   # ── the output-families registry seam (lib/outputs.nix, §4.4) ──
-  # `outputsLib` = the lib. `compile { registered; renders; products; systems }` compiles the
+  # `outputsLib` = the lib. `compile { registered; renders; products; axisNames }` compiles the
   # `den.outputs.<family>` rows: the `at` placement fn stored (registry-resident), `consumes` validated
-  # via the products table's `checkConsumes` (reused), `render`/`params`/`requires` name-checked. PER-FLEET
+  # via the products table's `checkConsumes` (reused), `render`/`params`/`requires` name-checked (`params`
+  # against `axisNames`, defaulting the single built-in `system` axis). PER-FLEET
   # (the `render` name check reads the per-fleet render rows). The framework seeding is a later task's
   # compile arg (the `builtins` seam is left open here, defaulting `{ }`).
   inherit (denHoag.internal) outputsLib;
@@ -182,10 +183,10 @@ let
     };
     renders = pureRenders;
     products = frameworkProducts;
-    systems = [ "x86_64-linux" ];
+    axisNames = [ "system" ];
   };
 
-  # a compile helper closing over the standard renders + products + systems, so each throw scenario varies
+  # a compile helper closing over the standard renders + products + axis names, so each throw scenario varies
   # only its rows.
   compileOutputs =
     registered:
@@ -193,7 +194,7 @@ let
       inherit registered;
       renders = pureRenders;
       products = frameworkProducts;
-      systems = [ "x86_64-linux" ];
+      axisNames = [ "system" ];
     };
 
   # ── the ROOT-projection seam (§4.4/§4.6) ──
@@ -221,11 +222,17 @@ let
   # ── the requires / params / opt-in seams (§4.4) ──
   # `checkRequires { family; requires; available }` — the definition-time consumption of a family's (∪ its
   # render's) `requires`: each required product must be SATISFIABLE at the graft site (∈ `available`), else a
-  # named throw. `fanParams { family; params; systems }` — the per-param cartesian fan (today the `system`
-  # axis over `den.systems`). `checkOptIn { family; params; optIn; entity }` — an entity's family opt-in must
-  # supply a value for each render-declared required field (= the family's `params`); missing → named throw,
-  # valid → the elaboration record. Reached through the outputs lib.
-  inherit (outputsLib) checkRequires fanParams checkOptIn;
+  # named throw. `fanParams { family; params; axesDomains }` — the per-param cartesian fan over the declared
+  # axis domains. `axesRegistry { axes; systems }` — the built-in `system` axis ∪ user `den.axes` (reserved
+  # `system`). `checkOptIn { family; params; optIn; entity }` — an entity's family opt-in must supply a value
+  # for each render-declared required field (= the family's `params`); missing → named throw, valid → the
+  # elaboration record. Reached through the outputs lib.
+  inherit (outputsLib)
+    checkRequires
+    fanParams
+    axesRegistry
+    checkOptIn
+    ;
 
   # ── the receives registry seam (lib/receivers.nix, §4.2) ──
   # `receivers` = the lib. `compile { rows; knownKinds; products; renders }` compiles the
@@ -2793,13 +2800,14 @@ in
     };
 
     # ── §4.4 PARAMS fan-out (the declared cartesian at the family level) ──
-    # a family with `params = [ "system" ]` + `den.systems = [ x86_64-linux aarch64-linux ]` fans to a
-    # per-system paramPoint set (the devShells shape) — one entry per system, each carrying the axis value.
+    # a family with `params = [ "system" ]` + the `system` axis domain `[ x86_64-linux aarch64-linux ]` fans to
+    # a per-system paramPoint set (the devShells shape) — one entry per system, each carrying the axis value.
+    # The single-`system`-axis fan is `map (v: { system = v; }) domain` (one point per system).
     test-outputs-params-fan = {
       expr = map (p: p.system) (fanParams {
         family = "devShells";
         params = [ "system" ];
-        systems = [
+        axesDomains.system = [
           "x86_64-linux"
           "aarch64-linux"
         ];
@@ -2810,17 +2818,137 @@ in
       ];
     };
     # a family with NO params (`params = [ ]`) fans to a SINGLE paramPoint carrying no axis — the degenerate
-    # fan (one face, no per-system split), so a system-agnostic family surfaces once.
+    # fan (`[ { } ]`, one face, no per-system split), so a system-agnostic family surfaces once.
     test-outputs-params-no-fan-single = {
       expr = builtins.length (fanParams {
         family = "nixosConfigurations";
         params = [ ];
-        systems = [
+        axesDomains.system = [
           "x86_64-linux"
           "aarch64-linux"
         ];
       });
       expected = 1;
+    };
+    # THE FULL MULTI-AXIS CARTESIAN: `params = [ "system" "variant" ]` over the two axis
+    # domains fans to the COMPLETE cross-product — |fan| = 2 × 3 = 6, and EVERY (system, variant) tuple present
+    # (the whole sorted set is pinned, not head/count).
+    test-outputs-params-multi-cartesian = {
+      expr = builtins.sort (a: b: builtins.toJSON a < builtins.toJSON b) (fanParams {
+        family = "homeConfigurations";
+        params = [
+          "system"
+          "variant"
+        ];
+        axesDomains = {
+          system = [
+            "s1"
+            "s2"
+          ];
+          variant = [
+            "a"
+            "b"
+            "c"
+          ];
+        };
+      });
+      expected = [
+        {
+          system = "s1";
+          variant = "a";
+        }
+        {
+          system = "s1";
+          variant = "b";
+        }
+        {
+          system = "s1";
+          variant = "c";
+        }
+        {
+          system = "s2";
+          variant = "a";
+        }
+        {
+          system = "s2";
+          variant = "b";
+        }
+        {
+          system = "s2";
+          variant = "c";
+        }
+      ];
+    };
+    # an unknown axis at a `params` position aborts NAMED (naming the family + the axis) — the fan's domain
+    # lookup has no entry for it.
+    test-outputs-params-unknown-axis-throws = {
+      expr = throws (fanParams {
+        family = "homeConfigurations";
+        params = [ "nope" ];
+        axesDomains.system = [ "s1" ];
+      });
+      expected = true;
+    };
+
+    # ── §4.4 the axis registry (`den.axes`) — the user-declarable axis domains ──
+    # `axesRegistry { axes; systems }` unions the built-in `system` axis (domain = `den.systems`) with the user
+    # `den.axes.<name> = { values }`. The names are `system` ∪ the declared axes; the domains map each name to
+    # its value list (system → systems, user → its `values`).
+    test-outputs-axes-registry = {
+      expr = axesRegistry {
+        axes.variant.values = [
+          "a"
+          "b"
+          "c"
+        ];
+        systems = [
+          "s1"
+          "s2"
+        ];
+      };
+      expected = {
+        names = [
+          "system"
+          "variant"
+        ];
+        domains = {
+          system = [
+            "s1"
+            "s2"
+          ];
+          variant = [
+            "a"
+            "b"
+            "c"
+          ];
+        };
+      };
+    };
+    # `system` is the FRAMEWORK-RESERVED axis (its domain is `den.systems`): a user `den.axes.system` shadows it
+    # and aborts NAMED. Proven both at the registry seam and end-to-end through the mount.
+    test-outputs-axes-reserved-system-throws = {
+      expr = throws (axesRegistry {
+        axes.system.values = [ "x" ];
+        systems = [ ];
+      });
+      expected = true;
+    };
+    test-outputs-axes-reserved-system-fleet-throws = {
+      expr =
+        throws
+          (denHoag.mkDen [
+            { config.den.axes.system.values = [ "x86_64-linux" ]; }
+          ]).den.outputs;
+      expected = true;
+    };
+    # a MALFORMED user axis (no `values`, or `values` not a list) aborts NAMED — without this guard the fan's
+    # domain read is a bare attribute error (tryEval-uncatchable); the guard makes the requirement observable.
+    test-outputs-axes-malformed-throws = {
+      expr = throws (axesRegistry {
+        axes.foo = { };
+        systems = [ ];
+      });
+      expected = true;
     };
 
     # ── §4.4/§7 the entity-level OPT-IN declaration ──

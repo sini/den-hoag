@@ -467,6 +467,17 @@ let
         };
       };
 
+      # den.axes — the user-declarable materialization axes (§4.4): `<name> = { values = [ <string> ]; }`, the
+      # finite domains a family's `params` fans over. `system` is framework-reserved (its domain is den.systems);
+      # a user `den.axes.system` aborts NAMED at the axis registry.
+      axesDecl = {
+        options.den.axes = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "User-declarable materialization axes (§4.4): `<name> = { values = [ <string> ]; }`; a family's `params` fans the cartesian over them. `system` is reserved (its domain is den.systems).";
+        };
+      };
+
       # den.overrides — the pre-identity-freeze match/rewrite tier (§2.4). An ordered list of
       # `{ match = { kind ?; from ?; to ?; data ? {}; }; rewrite = <data-patch> | null; }`: a framework
       # edge intent passes through BEFORE its edgeId, first match wins, `rewrite = null` suppresses.
@@ -666,6 +677,7 @@ let
           kindsDecl
           outputsDecl
           systemsDecl
+          axesDecl
           overridesDecl
           demandKindsDecl
           demandContextDecl
@@ -1094,17 +1106,27 @@ let
             products = productsTable;
             renders = rendersRows;
           };
-      # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` rows, validated (mode
-      # derived via the products table; `render` checked against the render rows; `params` against the axis
-      # registry; `requires` against the products table). PER-FLEET (the render-name check reads `rendersRows`),
-      # following receivesTable's placement. `systems` carries `den.systems` (the `system` param's axis values)
-      # for the later per-system materialization; this step validates the axis NAMES.
-      outputsTable = outputsLib.compile {
-        registered = allFamilies;
-        renders = rendersRows;
-        products = productsTable;
+      # The axis registry (§4.4): the built-in `system` axis (domain = `den.systems`) ∪ the user `den.axes`.
+      # `system` is reserved — a user `den.axes.system` aborts NAMED here. `.names` is the family-`params`
+      # validation set; `.domains` the per-axis value lists the fan draws from.
+      axesReg = outputsLib.axesRegistry {
+        axes = ent.config.den.axes or { };
         systems = ent.config.den.systems or [ ];
       };
+      # The compiled output-families table (§4.4): the fleet's `den.outputs.<family>` rows, validated (mode
+      # derived via the products table; `render` checked against the render rows; `params` against the axis
+      # registry `axesReg.names`; `requires` against the products table). PER-FLEET (the render-name check reads
+      # `rendersRows`), following receivesTable's placement. The `seq` forces the axis registry (its reserved-
+      # `system` guard) whenever the families table is read, so a user `den.axes.system` aborts even if no family
+      # names a `params` axis.
+      outputsTable = builtins.seq axesReg.names (
+        outputsLib.compile {
+          registered = allFamilies;
+          renders = rendersRows;
+          products = productsTable;
+          axisNames = axesReg.names;
+        }
+      );
       # REQUIRES CONSUMPTION (§4.4): each family's `requires` (∪ its render's `requires`) must be SATISFIABLE
       # at the graft site — the products a member can supply there. The graft-site available set is the
       # family's own `consumes` (what its members produce) UNION the family's render `produces` (the artifact
@@ -1510,7 +1532,7 @@ let
                 outputsLib.fanParams {
                   inherit (o) family;
                   inherit (famRow) params;
-                  systems = ent.config.den.systems or [ ];
+                  axesDomains = axesReg.domains;
                 }
               )
           ) optInsEnriched;
