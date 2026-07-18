@@ -1701,7 +1701,7 @@ in
       expected = "content";
     };
     # a content row forced to ARTIFACT mode but naming NO render aborts NAMED — an artifact consume has no
-    # way to build its face without a render row (§4.3). (T1 wrote this as an "unknown mode" stand-in when
+    # way to build its face without a render row (§4.3). (Originally written as an "unknown mode" stand-in when
     # artifact was unhandled; artifact is handled now, so its TRUE behavior is the missing-render throw — the
     # genuine unknown-mode witness is `test-nest-bogus-mode-throw` below.)
     test-nest-artifact-missing-render-throw = {
@@ -2944,7 +2944,7 @@ in
     };
 
     # ── §4.4/§4.6 THE LIVE FAMILY MOUNT — familyOutputs IS the output face (dispatch + the value arm) ──
-    # (4) THE FACE PIN (replacing the retired T3 `familyOutputs == systemOutputs` equivalence pin — the
+    # (4) THE FACE PIN (replacing the retired `familyOutputs == systemOutputs` equivalence pin — the
     # systemOutputs binding is deleted, so `den.familyOutputs`, the top-level `outputs`, and the
     # `nixosConfigurations` alias are now ONE value; this asserts the family path DIRECTLY on all three faces).
     # The overlayFleet's nixos host box1 surfaces at every face under its entity name, carrying the crossed

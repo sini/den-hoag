@@ -201,7 +201,7 @@ products (F1's canonical machine form). The framework pre-registers the table:
 | --- | --- | --- |
 | `ModulesInfo` | content | universal default — unevaluated module list |
 | `RawModulesInfo` | content | raw module list, no re-eval by the receiver |
-| `SystemInfo` / `HmInfo` / `DroidInfo` / `NixidyEnvInfo` / `ShellInfo` / `TerranixInfo` / `HiveInfo` | artifact | artifact faces (HiveInfo = a collector's built aggregate) |
+| `SystemInfo` / `HmInfo` / `DroidInfo` / `NixidyEnvInfo` / `ShellInfo` / `TerranixInfo` / `HiveInfo` / `FlakeInfo` | artifact | artifact faces (HiveInfo = a collector's built aggregate; FlakeInfo = a hosted flake-parts render's opaque transposed flake outputs — see Flake-parts output) |
 | `EvalHandleInfo` | extend | extendModules handle; legal only under a render declaring `extendsVia` |
 | `ArgsInfo` | content (`nestable = false`) | the arg-environment payload; NEVER a `consumes` |
 
@@ -245,6 +245,8 @@ It is the D7 PROMOTION of the shipped `{ evaluator; output }` instantiation reco
 | `extendsVia` | the extend-mode capability flag (stored; consumed by extend mode later) |
 | `compatibleWith` | the compatibility predicate (stored) |
 | `output` | the flake-parts target the built systems mount at (D7 field). It seeds the built-in output families (per-fleet, via `instantiationOf`) and is retained for the `classes.instantiation` overlay; it is NO LONGER the face source — the family assembly is (see Output families and the root) |
+| `aggregate` | tags the evaluator's ARITY (spec §4.7): `false` (default) = the per-config `{ modules; specialArgs } -> system` crossing; `true` = the aggregate crossing (a name-keyed member map → the built aggregate). A per-config/aggregate misuse aborts NAMED in both directions |
+| `needsSelf` | (aggregate renders, the self-knot, spec §4.4) `false` (default) = the crossing is called `evaluator memberMap` (byte-untouched); `true` = it is CURRIED `evaluator { self = familyOutputs; } memberMap`, so a hosted render reads sibling output families through the recursive `familyOutputs` knot — WELL-FOUNDED only if the output key spine is self-independent (see Flake-parts output) |
 
 The compile is PER-FLEET (invoked inside the mkDen closure): the built-in `nixos`/`darwin` rows derive their
 evaluators from the fleet's OWN `den.nixpkgs`/`den.darwin` inputs (null input ⇒ null evaluator ⇒ the
@@ -433,9 +435,10 @@ placed at the row's `at`, PER MODULE); the gen-edge whole-list nest-materialize 
 two-facet split, §4.2). THE MOUNT CHECK: at a singular graft site `nest.checkSingular` filters the site's
 post-`when` live intents — two live edges into one singular mount abort NAMED (naming the mount + every tied id).
 
-**Forward.** Collectors (aggregate entities) and the flake-parts root-kind adapter are the remaining §4.4
-sub-plans. The render row's `output` field is superseded as the FACE source, retained for the instantiation
-overlay; its full retirement is decided together with the compat forwarding layer.
+**Forward.** The render row's `output` field is superseded as the FACE source, retained for the instantiation
+overlay; its full retirement is decided together with the compat forwarding layer. The two §4.4 aggregate/root
+adapters that once sat forward of this note are delivered: Collectors (aggregate entities) and Flake-parts
+output (the hosted root-kind crossing), both below.
 
 ## Nest-mode execution (spec §4.2/§4.3/§4.8) — `lib/nest.nix`
 
@@ -630,6 +633,77 @@ module list is byte-untouched. The synthetic name colliding with a user collecto
 identity:** over the same member set + render, a named collector and the sugar-synthesized one produce a
 BYTE-IDENTICAL `HiveInfo` aggregate value (the member-name-keyed map) — the face keys differ by construction
 (family key + leaf name), so identity is proven by VALUE, not face.
+
+## Flake-parts output — the hosted crossing (spec §4.4/§4.6/§4.7) — `lib/output/flake-adapter.nix`
+
+A flake-parts flake is an OUTPUT the root produces: a family whose product is the transposed `config.flake` of a
+real flake-parts eval, HOSTED behind the render-evaluator seam. It composes on the collector aggregate arm + the
+family dispatch — NO new mount mechanism; the flake-parts-specific pieces are a framework product, a render field,
+and a thin mount module.
+
+**`FlakeInfo` — the framework product (§4.1).** `FlakeInfo` is an artifact-mode framework product: the OPAQUE
+transposed flake-outputs attrset a hosted flake-parts render produces, value-nested verbatim like `HiveInfo` (den
+never type-walks it). Framework-reserved (its name rides `frameworkProducts`, so `reservedNames` auto-includes
+it) — a `consumes = "FlakeInfo"` output family compiles with the derived artifact mode, and a user
+re-registration aborts NAMED. Corpus-inert (added-but-unconsumed).
+
+**`needsSelf` — the self-knot curry (§4.4).** A flake-parts render is an AGGREGATE render (`aggregate = true`,
+`produces = "FlakeInfo"`) whose `needsSelf` field selects the crossing's call convention: `false` (default) keeps
+the byte-untouched `evaluator memberMap`; `true` CURRIES `evaluator { self = familyOutputs; } memberMap`, where
+`self` is the RECURSIVE root product the family fold produces, tied natively through the `familyOutputs` `let` (no
+combinator, nothing deepSeq'd). So a hosted render reads sibling output families through the knot (a hosted module
+reading `self.<siblingFamily>.<leaf>`). **THE SELF-KNOT INVARIANT** (well-foundedness): the fold terminates ONLY
+IF the render's output KEY SPINE is self-independent — only leaf VALUES may read `self`, and each leaf must read
+ANOTHER family's value. **Case A** (spine self-free, a leaf reads a sibling family) terminates non-vacuously.
+**Case B** (the output keyset derived from `self`, OR a leaf reading its OWN family's value — a self-loop) diverges
+with a tryEval-UNCATCHABLE infinite recursion — a documented boundary, never wrapped as a catchable throw.
+`needsSelf = false` on every shipped SystemInfo/HiveInfo render keeps the lazy `if`'s then-branch unforced
+(parity-safe by construction).
+
+**`at = _: _: [ ]` root transposition + collision coexistence (§4.6).** A flake-parts family's row declares
+`at = _: _: [ ]` (a FUNCTION, not a literal) — the empty placement path, so the render's transposed attrset merges
+FLAT AT ROOT (nest.nix `[ ]` ⇒ flat) alongside the built-in families. When the transposed output shares a key with
+a built-in family (e.g. `nixosConfigurations`), the root `familyMerge` RECURSES on the collision and BOTH entries
+COEXIST (never a last-wins clobber) — the spine-deepening merge path a disjoint-keys mount does not exercise.
+
+**The three-adapter genericity floor + NO-TRANSLATION.** The family ROW is an INTERFACE, not flake-parts-shaped:
+three adapters express through ONE row surface, differing only in the MECHANISM fields (`render` + `at`) and the
+PRODUCT each types (`consumes`). (1) flake-parts — an aggregate `needsSelf` render + `at = _: _: [ ]`
+transposition; (2) plain-flake — a plain aggregate render (`needsSelf = false`) + a direct-attrset `at` (no
+transposition); (3) bare-root — the shipped built-in fold (the nixos family: no user render/at, value-mode). For a
+FIXED product the flake-parts and plain-flake rows are EQUAL once the mechanism fields are stripped; the bare-root
+is the third adapter over the IDENTICAL row interface (a no-render family produces a different PRODUCT, so
+`consumes` differs, the surface does not). **NO-TRANSLATION:** an UNMODIFIED ecosystem flake-parts module (a
+treefmt-nix-shaped `perSystem`-option module) rides VERBATIM through the hosted eval — den rewrites nothing; the
+crossing hosts the module as-is inside gen-flake's boundary. **The source-metadata boundary (§4.4):** because the
+curried `self` IS `familyOutputs` (the den root OUTPUT families), it carries the output attrs but NOT the flake's
+source-info — a hosted module reading `self.outPath` / `self.rev` / `self.sourceInfo` hits a boundary, so
+NO-TRANSLATION is scoped to modules that read OUTPUTS/options; a module riding on `sourceInfo` is out of scope
+(mkFlakeTerminal passes `inputs` explicitly, so this never surfaces as a `self.inputs` fault — it is a deliberate
+output-only `self`).
+
+**`den.flakeAdapter` — the greenfield v2 mount.** The native v2 flake-parts entry: a pure mount
+`flakeAdapter <built den fleet> = { config.flake = builtFleet.outputs; }` handing the fleet's transposed family map
+to `config.flake` (the transposition already happened inside `mkDen`). A v2 greenfield consumer calls `mkDen`
+DIRECTLY, then `imports = [ (den.flakeAdapter (den.mkDen [ … ])) ]`. It COEXISTS with the v1-compat `flakeModule`
+bridge (which declares `options.den`, raw-absorbs a v1 corpus, and runs the compat two-eval) — ZERO shared splice,
+a consumer chooses one entry, the v1 face stays byte-untouched.
+
+**THE RENDER-EVALUATOR SEAM (binding).** The flake-parts crossing IS the render's swappable `evaluator` field —
+the same seam the class render and the collector aggregate ride. den-hoag's own tests use a stub
+`{ self }: memberMap: { … }`; the REAL crossing is gen-flake's `terminals.mkFlakeTerminal { inputs; self; modules; systems ? [ ] }` (a genuine `flake-parts.lib.evalFlakeModule` returning `config.flake`), swapped in with a ONE-LINE
+change to the evaluator (exactly as the class render delegates its per-config crossing to
+`flake.terminals.mkSystemTerminal`). mkFlakeTerminal uses the EXPLICITLY-passed `inputs`, so `self = familyOutputs`
+becomes the hosted modules' flake-parts `self` (cross-family reads = the knot), never `self.inputs`. **The
+gen-flake output-crossing re-scope INHERITS this member-map → `FlakeInfo`/aggregate contract** — den's flake-parts
+evaluator swaps to gen-flake's terminal via that same one-line seam.
+
+**The collector-fed template (§4.7 composition).** A SystemInfo collector's member map feeds the hosted
+flake-parts eval as an EXPLICIT TYPED EDGE: `den.collectors.<c> = { class; members = hasClass "nixos"; consumes = "SystemInfo"; render = <flake-parts render>; }` gathers the members' built systems into a name-keyed map, which the
+aggregate arm hands the render's evaluator; the evaluator threads that map into the hosted eval's modules. So the
+hosted flake reads its members' systems through a den typed edge (a collector edge), NOT a fragile
+`self.nixosConfigurations` self-read — the doctrine's payoff. Pure composition of the SystemInfo member-product arm
++ the hosted crossing; no new mechanism.
 
 ## Theory citations (§6)
 
