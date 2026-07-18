@@ -703,7 +703,60 @@ flake-parts eval as an EXPLICIT TYPED EDGE: `den.collectors.<c> = { class; membe
 aggregate arm hands the render's evaluator; the evaluator threads that map into the hosted eval's modules. So the
 hosted flake reads its members' systems through a den typed edge (a collector edge), NOT a fragile
 `self.nixosConfigurations` self-read — the doctrine's payoff. Pure composition of the SystemInfo member-product arm
-+ the hosted crossing; no new mechanism.
+and the hosted crossing; no new mechanism.
+
+## Query — the §3 calculus surface (`den.query`, spec §3/§5) — `lib/query.nix`
+
+`den.query` lowers the §3 query calculus onto gen-graph's complete query engine over a SUPPLIED flat labeled
+edge list — the dependency-free spine of the resolution facet (§5). The engine is COMPLETE for §3 (all five
+modes + order + path witnesses), so this is a PURE den-hoag lowering with ZERO gen-graph change; it GENERALIZES
+the hardcoded §4.2 receiver dispatch (`resolveKey`, which lowers to the same `graph.labeledFrom` + `graph.query`)
+into a user surface, added BESIDE `resolveKey` (untouched).
+
+**Signature** — `den.query { edges; from; follow; where ? (_: true); mode ? "all"; order ? { }; empty ? null; combine ? null; valueOf ? (x: x); }`:
+
+- `edges` — a flat `[{ kind; from; to }]` list. SOURCE-AGNOSTIC: plain-string node ids, no coupling to any
+  rendered identity — synthetic-testable. `den.query` takes the edge list as DATA; assembling the live relation
+  graph is a caller concern (see the forward note).
+- `from` — the source node id.
+- `follow` — a §3 follow-grammar STRING (`"rel*"`, `"include*"`, `"contains* nest?"`, labels / `( ) | * ? +` /
+  concat), parsed via `graph.regex.parse`.
+- `where` — a RAW `node → bool` predicate over the id string (as the §4.2 dispatch's raw closure `where`), NOT a
+  gen-select selector: a `sel` needs a scope `result` the source-agnostic spine does not hold, so the
+  `sel → matchId result sel` adaptation is a CALLER concern (the caller that holds the scope — the relations layer).
+- `mode` — one of `all` / `paths` / `visible` / `layers` / `fixpoint`.
+- `order { labels; endOfPath }` — the path-ranking for `visible`/`layers` (nearest-wins). `labels` ranks the
+  label alphabet (a single-label alphabet leaves label-ranking inert — order is only witnessed with ≥2 labels
+  whose rank changes the winner); `endOfPath` is the prefix-vs-extension tie rule.
+- `empty` / `combine` / `valueOf` — the `fixpoint` fold monoid (the ACI join); forced ONLY for
+  `mode = "fixpoint"`.
+
+**The RETURN is the RAW §3 shape per mode** — NO node-dedup (the diamond-dedup is caller-specific, e.g.
+`resolveKey`'s): `all → [ node-id ]`; `paths → [ { node; path } ]` (`path` = the edge list); `layers → [ [ { node; path } ] ]` (list-OF-layers, BFS ranks); `visible → { visible; shadowed }` (nearest-wins vs the
+shadowed longer / lower-ranked paths); `fixpoint →` the fold result.
+
+**The `perLabelFromEdges` adapter** — the ONE utility gen-graph lacks. `graph.labeledFrom` expects per-label
+ACCESSORS already; this builds them from a flat edge list: `[{ kind; from; to }] → { <kind> = fromId: [ toId … ]; }` (one accessor per distinct edge kind). Small + pure.
+
+**The mode-appropriate arg set.** gen-graph's `queryAll`/`queryPaths` are STRICT-signatured, and
+`queryVisible → queryPaths` / `queryFold → queryAll` pass their args through — so an unrelated optional leaks
+into a strict signature ("unexpected argument"). `den.query` passes `empty`/`combine`/`valueOf` ONLY for fixpoint
+and `order` ONLY for visible/layers; all/paths carry neither.
+
+**The two-`graph`s seam.** `den.query` lowers to the OUTER gen-graph engine (the labeled-query calculus, the same
+`graph` the §4.2 receiver dispatch rides) — NEVER the mkDen-local `graph = graphEscape {…}` read-only edge/trace
+surface, which has no `.query`.
+
+**NAMED guards (the tryEval-uncatchable class → a catchable den-namespaced throw).** A malformed query pre-empts
+the uncatchable class: an unknown `mode` (pre-validated before gen-graph's raw throw); a `where` that is not a
+function (→ "attempt to call"); at `mode = "fixpoint"` a non-function `combine` or a null `empty` (the fold's
+`combine acc …` is a call-null); and an unparseable `follow` (gen-graph's grammar throw is catchable but fires
+deep in the traversal, so it is deep-forced here and re-thrown den-namespaced).
+
+**Forward — the relations layer.** `ctx.rel.<kind>`, the `den.relations` registry (which defines the relation
+kinds), and the LIVE edge-source wiring — assembling the relation graph so `den.query` reads real fleet
+relations, and compiling the scoped `where` a gen-select `sel` needs — ship with that layer; the spine here
+stays source-agnostic.
 
 ## Theory citations (§6)
 
