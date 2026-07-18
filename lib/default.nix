@@ -38,6 +38,10 @@ let
     inherit (nestLib) executeNest checkSingular;
   };
   entity = import ./entity.nix { inherit prelude schema merge; };
+  # The collectors concern (§4.7): the framework `collector` entity kind — the `den.collectors` option, the
+  # denMeta `//`-augment (gated on collectors present), the schema-decl + registry bridge, the compiled-surface
+  # class validation, and the per-instance function-form `contentClass`. Pure wiring over gen-schema/gen-merge.
+  collectorsLib = import ./concern-collectors.nix { inherit prelude schema merge; };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
   scopeAdapter = import ./scope-adapter.nix { inherit prelude select; };
@@ -656,7 +660,14 @@ let
         };
       };
 
-      denMeta = entity.discoverKinds userModules;
+      # The collector NAMES probe (§4.7) — the gate for the framework `collector` kind: a fleet declaring no
+      # `den.collectors` gets no collector kind (`metaAugment { hasCollectors = false } == { }`, corpus-inert).
+      discoveredCollectors = collectorsLib.discoverCollectors userModules;
+      hasCollectors = discoveredCollectors != [ ];
+      # denMeta = the DISCOVERED user kinds `//` the framework collector-kind augment (§4.7). The `//`-augment
+      # (NOT fed through discoverKinds, whose reserved-name guard would throw on the framework kind) rides
+      # `contentClass = null`; the per-instance function-form class is injected at `metaWithClass` below.
+      denMeta = entity.discoverKinds userModules // collectorsLib.metaAugment { inherit hasCollectors; };
       ent = entity.build {
         userModules = [
           membershipDecl
@@ -690,7 +701,12 @@ let
           probeSentinelDecl
           resolveFamilyNamesDecl
           excludeFamilyNamesDecl
+          # The `den.collectors` DECLARATION option (§4.7, always present, the classesDecl posture — inert
+          # default `{ }`). The collector schema kind + the `den.collector` registry bridge ride separately,
+          # GATED on collectors present, so a corpus fleet gets neither the kind nor the registry.
+          collectorsLib.optionModule
         ]
+        ++ collectorsLib.collectorModules { inherit hasCollectors; }
         ++ userModules;
         inherit denMeta;
       };
@@ -1025,12 +1041,36 @@ let
             or (throw "den-hoag: den.contentClass names unknown class `${cc}` (known: ${builtins.concatStringsSep ", " effectiveClassNames})")
         else
           cc;
+      # The framework `collector` kind's producing class is a PER-INSTANCE function of the collector's own
+      # `class` field (§4.7/§2.5 function-form): `contentClassFn e = effectiveClassEntries.${e.class}` (guarded
+      # NAMED on an unregistered class). Every OTHER kind reads its string/entry from `den.contentClass`. The
+      # special-case fires only when the collector kind is present, so a corpus fleet is byte-identical.
+      collectorContentClass = collectorsLib.contentClassFn {
+        inherit effectiveClassEntries effectiveClassNames;
+      };
       metaWithClass = builtins.mapAttrs (
-        k: m: m // { contentClass = resolveClass (ent.config.den.contentClass.${k} or null); }
+        k: m:
+        m
+        // {
+          contentClass =
+            if k == collectorsLib.kindName then
+              collectorContentClass
+            else
+              resolveClass (ent.config.den.contentClass.${k} or null);
+        }
       ) ent.meta;
       classOfNode = entity.classOf {
         meta = metaWithClass;
         entityOfNode = node: node.decls.__entry or null;
+      };
+
+      # The compiled collectors surface (§4.7): the fleet's `den.collectors` registrations with each `class`
+      # validated against the registered classes (an unregistered/absent class aborts NAMED when read). Absent
+      # ⇒ `{ }` (no collectors), byte-neutral. The collector ENTITIES themselves ride `registries.collector`;
+      # this is the concern's validated declaration table (the products/renders compile-and-expose posture).
+      collectorsTable = collectorsLib.compile {
+        collectors = ent.config.den.collectors or { };
+        inherit effectiveClassNames;
       };
 
       # The classes concern (§2.4): compile every registered class (the class-name buckets, extended by
@@ -1613,6 +1653,13 @@ let
         # `{ family; entity; data }`, each definition-time-checked against the family's render-declared required
         # fields (its params). Inert this task — the family nest edge arrives with the live-producer sub-plan.
         inherit optIns;
+        # The compiled collectors surface (§4.7): the fleet's `den.collectors` registrations with each `class`
+        # validated against the registered classes (an absent/null or unregistered class aborts NAMED). A
+        # collector is a `collector`-kind ENTITY — its id_hash-bearing instance rides `registries.collector`.
+        # deepSeq'd EAGER (the `requiresChecked` posture): reading the surface validates EVERY collector's class,
+        # not only the entries a consumer happens to force. Corpus-safe (empty table ⇒ deepSeq no-op ⇒ parity
+        # byte-identical). The classOf materialization path additionally fires the same guard via `contentClassFn`.
+        collectors = builtins.seq (builtins.deepSeq collectorsTable null) collectorsTable;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/

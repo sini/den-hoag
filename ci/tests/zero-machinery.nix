@@ -22,6 +22,7 @@ let
     "concern-aspects.nix"
     "concern-quirks.nix"
     "concern-classes.nix"
+    "concern-collectors.nix"
     "outputs.nix"
     "nest.nix"
     "linearization.nix"
