@@ -1,4 +1,4 @@
-# The COLLECTOR FRAMEWORK-KIND suite (vocabulary spec §4.7, spec §12 step 4c-iii sub-arc B). A collector is
+# The COLLECTOR FRAMEWORK-KIND suite (vocabulary spec §4.7, spec §12 step 4c-iii). A collector is
 # a first-class ENTITY of the framework `collector` kind: `den.collectors.<name> = { class; … }` bridges into
 # the entity registry (`den.collector.<name>`, an id_hash-bearing root node), so a collector carries its OWN
 # class content DISTINCT from any member's. The kind is framework-owned: `discoverKinds` reserves the name
@@ -13,6 +13,7 @@
 }:
 let
   throws = e: !(builtins.tryEval (builtins.deepSeq e true)).success;
+  inherit (denHoag) hasClass;
 
   # A class slice is a list of `{ imports = [ … ]; }` modules (den content is module-wrapped), so the
   # marker `meta.tag = "core"` rides nested — deep-search for an attrset carrying `meta.tag == "core"`.
@@ -91,6 +92,32 @@ let
 
   collectorSlice = collectorFleet.den.output.classSubtreeAt "collector:hive" "colmena";
   memberSlice = collectorFleet.den.output.classSubtreeAt "host:m" "nixos";
+
+  # ── §4.7: SELECTOR-DRIVEN MEMBERSHIP + the member-edge producer ──
+  # `hasClass "nixos"` (the top-level sugar, written literally in config — A1 ergonomics) selects the scope
+  # nodes whose PRODUCING class is `nixos`. A fleet with a nixos host `n`, a darwin host `d`, and a class-
+  # NEUTRAL env `e` (no contentClass) beside a collector `members = hasClass "nixos"`: the member producer must
+  # emit `member` edges `collector→member` targeting ONLY the nixos node — including `n`, EXCLUDING `d` (the
+  # selector rejects non-matching) AND `e` (the null-guard: a class-neutral node must not crash the gather).
+  memberFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.schema.darwinHost.parent = null;
+      config.den.schema.env.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.contentClass.darwinHost = "darwin";
+      config.den.classes.colmena = { };
+      config.den.collectors.hive = {
+        class = "colmena";
+        members = hasClass "nixos";
+      };
+      config.den.nixosHost.n = { };
+      config.den.darwinHost.d = { };
+      config.den.env.e = { };
+    }
+  ];
+  memberEdges = memberFleet.den.memberEdges;
+  memberTargets = map (edge: edge.to.entityId) memberEdges;
 in
 {
   flake.tests.collectors = {
@@ -148,6 +175,36 @@ in
     test-collector-omitted-class-aborts-materialization = {
       expr = throws omittedClassFleet.den.output.systems;
       expected = true;
+    };
+
+    # the `members = hasClass "nixos"` selector INCLUDES the nixos node as a member edge target …
+    test-member-includes-matching-class = {
+      expr = builtins.elem "nixosHost:n" memberTargets;
+      expected = true;
+    };
+    # … and EXCLUDES the darwin node (the selector rejects non-matching — exclusion, not just inclusion).
+    test-member-excludes-nonmatching-class = {
+      expr = builtins.elem "darwinHost:d" memberTargets;
+      expected = false;
+    };
+    # the member edges are `collector→member`: from = the collector entity, kind = "member".
+    test-member-edges-from-collector = {
+      # self-standing: `memberEdges != []` guards the vacuous-truth pass (never leans on the inclusion test).
+      expr =
+        memberEdges != [ ]
+        && builtins.all (edge: edge.from.entityId == "collector:hive" && edge.kind == "member") memberEdges;
+      expected = true;
+    };
+    # the NULL-GUARD: the gather runs over a class-neutral (contentClass-null) env node without crashing —
+    # forcing the whole member-edge set evaluates cleanly (the env node is simply not a member).
+    test-member-gather-null-safe = {
+      expr = throws memberEdges || builtins.elem "env:e" memberTargets;
+      expected = false;
+    };
+    # CORPUS-INERT: a fleet with no `den.collectors` emits an EMPTY member producer set (byte-identical trace).
+    test-no-collectors-no-member-edges = {
+      expr = plainFleet.den.memberEdges;
+      expected = [ ];
     };
   };
 }

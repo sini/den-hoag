@@ -17,6 +17,7 @@
   prelude,
   schema,
   merge,
+  select,
 }:
 let
   # The framework kind name. Reserved by `entity.discoverKinds` (a user kind may not be `collector`); keyed
@@ -151,6 +152,62 @@ let
       throw (declaresNoClassMsg e.name)
     else
       effectiveClassEntries.${class} or (throw (unknownClassMsg effectiveClassNames e.name class));
+
+  # ── §4.7: `hasClass` selector sugar + the member-edge producer ──────────────────────────────────────
+  # `hasClass cls` — a TOP-LEVEL selector sugar (the `hasSetting` posture, projects.nix): matches a scope node
+  # whose PRODUCING class NAME is `cls`. It reads `ctx.classOf` — a class-NAME accessor the GATHER injects into
+  # the run ctx (the base gen-select scope ctx carries no producing class; den's classOfNode is not a scope
+  # primitive). NULL-GUARDED: the gather runs over ALL scope nodes, so a class-neutral node yields `ctx.classOf
+  # id == null` — the short-circuit keeps a null from a name comparison (a first-class composable selector VALUE,
+  # not a marker record). NO gen-select change (select.matches threads the ctx straight to the `when` fn); NO
+  # closure capture (the per-mkDen classOf lives in the injected ctx, mirroring how hasSetting reads ctx.data).
+  hasClass =
+    cls:
+    select.when (
+      id: ctx:
+      let
+        c = ctx.classOf id;
+      in
+      c != null && c == cls
+    );
+
+  # The member-edge PRODUCER (§4.7, the nestProducer posture): each collector declaring `members` (a selector)
+  # contributes one `member` edge per matching scope node — `collector→member` (from = the collector entity, to
+  # = the matched member). EXPOSED + gathered per-mkDen; the aggregate FOLDS over these edges (never re-
+  # selects — the audit's graph-fidelity pin). Corpus-inert BY CONSTRUCTION: no collector (or a collector with
+  # `members == null`) ⇒ EMPTY set, and the edges never join the live fleet trace (a separate read-only
+  # surface), so byte-identity holds with no guaranteed-empty contribution to guard.
+  #   collectors   — the collector entity registry `{ <name> = { class; members; … }; }`.
+  #   memberIdsFor — `selector -> [ matching node id ]`: the GATHER, supplied per-mkDen (runs the selector over
+  #                  all scope nodes with the class-injected ctx), so this stays free of classOfNode/structural.
+  #   classNameOf  — `node id -> producing class NAME | null`: stamped on each member edge's `to`.
+  memberProducer =
+    {
+      collectors,
+      memberIdsFor,
+      classNameOf,
+    }:
+    prelude.concatMap (
+      cName:
+      let
+        c = collectors.${cName};
+      in
+      if (c.members or null) == null then
+        [ ]
+      else
+        map (memberId: {
+          id = "member:${cName}/${memberId}";
+          kind = "member";
+          from = {
+            entityId = "collector:${cName}";
+            class = c.class;
+          };
+          to = {
+            entityId = memberId;
+            class = classNameOf memberId;
+          };
+        }) (memberIdsFor c.members)
+    ) (builtins.attrNames collectors);
 in
 {
   inherit
@@ -161,5 +218,7 @@ in
     collectorModules
     compile
     contentClassFn
+    hasClass
+    memberProducer
     ;
 }

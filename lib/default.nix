@@ -41,7 +41,14 @@ let
   # The collectors concern (§4.7): the framework `collector` entity kind — the `den.collectors` option, the
   # denMeta `//`-augment (gated on collectors present), the schema-decl + registry bridge, the compiled-surface
   # class validation, and the per-instance function-form `contentClass`. Pure wiring over gen-schema/gen-merge.
-  collectorsLib = import ./concern-collectors.nix { inherit prelude schema merge; };
+  collectorsLib = import ./concern-collectors.nix {
+    inherit
+      prelude
+      schema
+      merge
+      select
+      ;
+  };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
   scopeAdapter = import ./scope-adapter.nix { inherit prelude select; };
@@ -1447,6 +1454,30 @@ let
         demands = demandResolution;
       };
 
+      # ── §4.7: SELECTOR-DRIVEN MEMBERSHIP → the member-edge producer. Each collector's `members` selector
+      # is run over ALL scope nodes with a CLASS-INJECTED ctx (`matchIdWith` adds `classOf`, the seam a
+      # `hasClass` selector reads — the base scope ctx carries no producing class), yielding `member` edges
+      # collector→member. EXPOSED read-only (`den.memberEdges`); the aggregate FOLDS over these edges (never
+      # re-selects). NOT spliced into `output.edgesForRoot`/the live trace, so byte-identity holds by
+      # construction. Corpus-inert: no collector ⇒ `[ ]` (the concatMap short-circuits before forcing the
+      # gather). `classNameOf` = producingClassOf semantics (the class NAME string, or null on a class-neutral
+      # node — the null-guard `hasClass` short-circuits on).
+      classNameOf =
+        id:
+        let
+          c = classOfNode (structural.eval.node id);
+        in
+        if c == null then null else c.name;
+      memberIdsFor =
+        sel:
+        builtins.filter (scopeAdapter.matchIdWith structural { classOf = classNameOf; } sel) (
+          builtins.attrNames structural.eval.allNodes
+        );
+      collectorMemberEdges = collectorsLib.memberProducer {
+        collectors = ent.registries.collector or { };
+        inherit memberIdsFor classNameOf;
+      };
+
       # ── THE LIVE FAMILY MOUNT (§4.4/§4.6): the output map assembled VIA the root family dispatch ──
       # `familyOutputs` is the root entity's PRODUCT — the plain attrset `{ <family> = { <entityName> =
       # <artifact>; }; }` — assembled by nesting each built member into the root through the SAME machinery a
@@ -1660,6 +1691,11 @@ let
         # not only the entries a consumer happens to force. Corpus-safe (empty table ⇒ deepSeq no-op ⇒ parity
         # byte-identical). The classOf materialization path additionally fires the same guard via `contentClassFn`.
         collectors = builtins.seq (builtins.deepSeq collectorsTable null) collectorsTable;
+        # THE MEMBER EDGES (§4.7): the selector-driven `member` edges collector→member, one per matching
+        # scope node (`den.collectors.<c>.members` run over all nodes). A read-only surface — the aggregate
+        # render folds over these edges (never a mount re-select). NOT in `output.edgesForRoot`/the live trace,
+        # so byte-identity holds; corpus-inert `[ ]` (no collectors ⇒ no member edges).
+        memberEdges = collectorMemberEdges;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/
@@ -1713,6 +1749,11 @@ in
   # (`projects = [ { select = hasSetting "theme"; set = { theme = …; }; } ]`). Independent of any one
   # mkDen instance; the aspect-schema selector domain is den-hoag-owned (see lib/projects.nix).
   inherit (projectsLib) hasSetting;
+  # den's collector-membership sugar (§4.7): `hasClass <name>` = a scope-node selector matching every node
+  # whose PRODUCING class name is `<name>` — the `hasSetting` posture (a top-level, composable selector VALUE),
+  # written literally in `den.collectors.<c>.members`. It reads a `classOf` accessor the membership gather
+  # injects into the run ctx (den-hoag owns the classOf seam; no gen-select addition — see concern-collectors.nix).
+  inherit (collectorsLib) hasClass;
   # den's class-tag vocabulary (the fixed class entries, identity-law A2): the same entries every
   # mkDen tags contributions with, exposed for writing quirk `adapters` (cross-class coercions) that
   # reference a class by its entry rather than a bare name.
@@ -1812,6 +1853,9 @@ in
     # `containmentPairs { fleet; meta }` (§4.2/§4.6) — the fleet's immediate parent→child cell edges, the
     # thin containment accessor `nestProducer` reads.
     inherit (fleet) containmentPairs;
+    # `memberProducer { collectors; memberIdsFor; classNameOf }` (§4.7) — the selector-driven member-edge
+    # producer (collector→member), the nestProducer twin the aggregate folds over. Pure over the gather.
+    inherit (collectorsLib) memberProducer;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     # `artifactExclusive` (§4.1) is the pure prebuilt-arm buckets-empty check, for the suite's exclusivity

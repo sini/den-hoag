@@ -18,13 +18,23 @@ let
       a.identity < b.identity
     else
       a.emissionIndex < b.emissionIndex;
-in
-{
-  # Predicate a selector against a scope node id (Law E6). The gen-select scope context is inlined here
-  # (its only den-hoag use); consumed by the entity-fleet suite's scope-adapter sanity check.
+
+  # Predicate a selector against a scope node id (Law E6), with an optional ctx EXTENSION merged over the
+  # gen-select scope context — the den-hoag seam for a selector reading a den concept absent from the base
+  # scope ctx (e.g. `hasClass` reads an injected `classOf` accessor; the base ctx carries name/kind/decls but
+  # no producing class). `select.matches` threads the ctx straight to the selector, so the extension needs no
+  # gen-select change. `matchId` is the no-extension case (ONE selection path, not a parallel inline).
+  matchIdWith =
+    result: ctxExt: selector: id:
+    select.matches selector id (
+      select.adapters.scope.mkContext { inherit (result.eval) node get; } // ctxExt
+    );
   matchId =
     result: selector: id:
-    select.matches selector id (select.adapters.scope.mkContext { inherit (result.eval) node get; });
+    matchIdWith result { } selector id;
+in
+{
+  inherit matchIdWith matchId;
 
   # gen-pipe's traversal-adapter contract (gen-scope `collectionAttr` shape). `result` is the resolve
   # EVAL (`self` inside an attribute, or `den.structural.eval` at the top level):
