@@ -140,6 +140,78 @@ let
       }
     )
   ];
+
+  # ── the THREE-ADAPTER genericity floor (the family ROW is an INTERFACE, not flake-parts-shaped). THREE
+  # adapters express through ONE family-row surface, differing only in the ADAPTER MECHANISM (`render` + `at`)
+  # and the PRODUCT each types (`consumes`): (1) flake-parts — an aggregate render (needsSelf) + `at = _: _: [ ]`
+  # transposition; (2) plain-flake — a PLAIN aggregate render (needsSelf=false) + a direct-attrset `at` (no
+  # transposition); (3) bare-root — the shipped built-in fold (the nixos family: no user render/at, params=[],
+  # value-mode). `stripRow` drops the function-valued mechanism fields so the remainder is `==`-comparable.
+  stripRow =
+    row:
+    removeAttrs row [
+      "render"
+      "at"
+    ];
+  adapterFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.flake = { };
+      config.den.collectors.fpColl = {
+        class = "flake";
+        render = "adapterFp";
+      };
+      config.den.collectors.pfColl = {
+        class = "flake";
+        render = "adapterPlain";
+      };
+      config.den.renders.adapterFp = {
+        evaluator =
+          { self }:
+          _memberMap: {
+            fpOut = "FP";
+          };
+        produces = "FlakeInfo";
+        aggregate = true;
+        needsSelf = true;
+        output = "fp";
+      };
+      config.den.renders.adapterPlain = {
+        evaluator = _memberMap: {
+          pfOut = "PF";
+        };
+        produces = "FlakeInfo";
+        aggregate = true;
+        needsSelf = false;
+        output = "pf";
+      };
+      config.den.outputs.fp = {
+        at = _: _: [ ];
+        consumes = "FlakeInfo";
+      };
+      config.den.outputs.pf = {
+        at = _point: e: [
+          "pf"
+          e.name
+        ];
+        consumes = "FlakeInfo";
+      };
+      config.den.nixosHost.h = { };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.aspects.hc.nixos.tag = "t";
+        config.den.include = [
+          {
+            at = config.den.nixosHost.h;
+            aspects = [ config.den.aspects.hc ];
+          }
+        ];
+      }
+    )
+  ];
 in
 {
   flake.tests.flakeparts = {
@@ -194,6 +266,34 @@ in
           nc = flakePartsFleet.outputs.nixosConfigurations or { };
         in
         (nc ? h) && (nc ? fpExtra);
+      expected = true;
+    };
+
+    # THE THREE-ADAPTER FLOOR (a): for a FIXED product (FlakeInfo), flake-parts and plain-flake express through
+    # the SAME family row — strip the mechanism fields `{ render, at }` and the remainder is EQUAL and
+    # NON-VACUOUS (`{ consumes = "FlakeInfo"; contentClass = null; mode = "artifact"; params = [ ]; requires =
+    # [ ] }`). So `render` + `at` are the SOLE adapter-mechanism differentiators; the row is adapter-agnostic.
+    test-adapter-strip-equal-same-product = {
+      expr = (stripRow adapterFleet.den.outputs.fp) == (stripRow adapterFleet.den.outputs.pf);
+      expected = true;
+    };
+    # (b) the BARE-ROOT (the shipped built-in nixos fold, over SystemInfo) IS the third adapter over the
+    # IDENTICAL family-row INTERFACE — all three rows carry exactly the 7-field surface. (Strip-equal can't be
+    # 3/3: a bare no-render family can't PRODUCE a FlakeInfo, so the bare-root is over a different PRODUCT —
+    # `consumes` differs; the SURFACE does not.)
+    test-adapter-interface-identity-bare-root = {
+      expr =
+        (builtins.attrNames adapterFleet.den.outputs.nixosConfigurations)
+        == (builtins.attrNames adapterFleet.den.outputs.fp);
+      expected = true;
+    };
+    # (c) the bare-root differs from flake-parts ONLY in the mechanism (`render`/`at`, the stripped function
+    # fields) + the PRODUCT (`consumes`): strip those and the remaining row is EQUAL (`{ contentClass; mode;
+    # params; requires }`) — "differs only in mechanism + product" made explicit, no function comparison.
+    test-adapter-bare-root-differs-only-in-product = {
+      expr =
+        (removeAttrs (stripRow adapterFleet.den.outputs.fp) [ "consumes" ])
+        == (removeAttrs (stripRow adapterFleet.den.outputs.nixosConfigurations) [ "consumes" ]);
       expected = true;
     };
   };
