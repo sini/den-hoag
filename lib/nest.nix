@@ -180,7 +180,10 @@ let
         else if row.mode == "artifact" then
           # ARTIFACT mode: the render row (`renders.${row.render}`) crosses the inner's modules in ISOLATION —
           # the render call is the SOLE FORCING BOUNDARY (REFERENCE.md §4.2: "artifact — isolated inner eval,
-          # the forcing boundary"). The eval is `renderRow.evaluator payload`; `face` projects it to the placed
+          # the forcing boundary"). The eval is `renderRow.evaluator { modules; specialArgs }` — the gen-flake
+          # `mkSystemTerminal` crossing shape (terminal.nix): `modules` = the inner's module list, `specialArgs`
+          # = the fanned AXIS POINT (`ctx.paramPoint` with the structural `name` stripped — only the axis values,
+          # so a multi-axis render knows which tuple it is building). `face` projects the eval to the placed
           # artifact (`face eval`), or a NULL face means the eval ITSELF is the artifact. The `artifact` field
           # is a THUNK — the evaluator is never called during wiring, only when the mount consumer forces it.
           # `renderRow.provision`/`adapt` stay SHAPE-ONLY here (the provisioning-data + arg-crossing wiring is
@@ -196,7 +199,10 @@ let
               at = atPath;
               artifact =
                 let
-                  eval = renderRow.evaluator payload;
+                  eval = renderRow.evaluator {
+                    modules = payload;
+                    specialArgs = removeAttrs ctx.paramPoint [ "name" ];
+                  };
                 in
                 if renderRow.face != null then renderRow.face eval else eval;
             }

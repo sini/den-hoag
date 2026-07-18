@@ -658,10 +658,12 @@ let
   nestRenders = renders.compile {
     registered = {
       arti = {
-        evaluator = mods: {
-          __fakeCrossed = true;
-          modules = mods;
-        };
+        evaluator =
+          { modules, ... }:
+          {
+            __fakeCrossed = true;
+            inherit modules;
+          };
         face = eval: {
           __face = true;
           inherit eval;
@@ -669,10 +671,12 @@ let
         produces = "SystemInfo";
       };
       artiNoFace = {
-        evaluator = mods: {
-          __fakeCrossed = true;
-          modules = mods;
-        };
+        evaluator =
+          { modules, ... }:
+          {
+            __fakeCrossed = true;
+            inherit modules;
+          };
         produces = "SystemInfo";
       };
       ext = {
@@ -682,6 +686,21 @@ let
         produces = "SystemInfo";
       };
       extNoCap = {
+        produces = "SystemInfo";
+      };
+      # a 2-axis render reading the FANNED axis point off `specialArgs` (the axis→evaluator threading witness):
+      # the evaluator takes `{ modules, specialArgs }` and tags its artifact with the axis tuple it built.
+      axisStub = {
+        evaluator =
+          {
+            modules,
+            specialArgs,
+          }:
+          {
+            builtAt = {
+              inherit (specialArgs) system variant;
+            };
+          };
         produces = "SystemInfo";
       };
     };
@@ -708,6 +727,7 @@ let
     }).host.receives.sys;
   artiFaceRow = mkArtifactRow "arti";
   artiNoFaceRow = mkArtifactRow "artiNoFace";
+  axisRow = mkArtifactRow "axisStub";
 
   # an artifact-mode inner: produces SystemInfo directly (exact-match → artifact arm), its payload the
   # module list the render's evaluator crosses in isolation (the forcing boundary).
@@ -922,10 +942,12 @@ let
         { config.den.systems = [ "x86_64-linux" ]; }
         {
           config.den.renders.homeStub = {
-            evaluator = payload: {
-              __artifactMode = true;
-              memberCount = builtins.length payload;
-            };
+            evaluator =
+              { modules, ... }:
+              {
+                __artifactMode = true;
+                memberCount = builtins.length modules;
+              };
             produces = "SystemInfo";
           };
         }
@@ -2010,6 +2032,63 @@ in
           renders = poisonRenders;
         }).mode;
       expected = "artifact";
+    };
+    # ── §4.4: axis→evaluator threading (the render sees the fanned axis point) ──
+    # a 2-axis artifact family fanned over `[ "system" "variant" ]` × its domains: EACH fan paramPoint reaches
+    # the render evaluator as `specialArgs` (the axis tuple, structural `name` stripped), so the evaluator tags
+    # each of the 4 artifacts with its OWN `{ system; variant }`. Reads the WHOLE sorted set of 4.
+    test-nest-artifact-axis-specialargs = {
+      expr =
+        let
+          points = fanParams {
+            family = "f";
+            params = [
+              "system"
+              "variant"
+            ];
+            axesDomains = {
+              system = [
+                "s1"
+                "s2"
+              ];
+              variant = [
+                "a"
+                "b"
+              ];
+            };
+          };
+          contribs = map (
+            pp:
+            executeNest {
+              row = axisRow;
+              inner = artiInner;
+              ctx.paramPoint = {
+                name = "e";
+              }
+              // pp;
+              renders = nestRenders;
+            }
+          ) points;
+        in
+        builtins.sort (a: b: builtins.toJSON a < builtins.toJSON b) (map (c: c.artifact.builtAt) contribs);
+      expected = [
+        {
+          system = "s1";
+          variant = "a";
+        }
+        {
+          system = "s1";
+          variant = "b";
+        }
+        {
+          system = "s2";
+          variant = "a";
+        }
+        {
+          system = "s2";
+          variant = "b";
+        }
+      ];
     };
 
     # ── §4.2/§4.3 EXTEND mode (legal only under a render's extendsVia) ──
