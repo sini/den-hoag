@@ -40,6 +40,9 @@ let
   # den.relations (§5): the relation registry desugared onto the den.edges edge-kind registry (§2.2
   # one-registry) — a relation → one edge-kind @resolution carrying its inverse label. See concern-relations.nix.
   relationsLib = import ./concern-relations.nix { inherit prelude; };
+  # den.derived (§5): laws-gated synthesized attributes over the resolution graph — the field validator. See
+  # concern-derived.nix.
+  derivedLib = import ./concern-derived.nix { inherit prelude; };
   entity = import ./entity.nix { inherit prelude schema merge; };
   # The collectors concern (§4.7): the framework `collector` entity kind — the `den.collectors` option, the
   # denMeta `//`-augment (gated on collectors present), the schema-decl + registry bridge, the compiled-surface
@@ -422,6 +425,18 @@ let
         };
       };
 
+      # den.derived.<name> — laws-gated synthesized attributes (§5). Each entry `{ over; direction; stratum;
+      # provides; discipline ? null; closure ? false; derive }` synthesizes a value over the resolution graph,
+      # capability-scoped by `stratum` (§2.3) and laws-gated by `closure`/`discipline`. `raw` holds each record
+      # unmerged (its `derive` is a function). Absent ⇒ a fleet with no derived attributes.
+      derivedDecl = {
+        options.den.derived = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Derived-attribute registry (§5): `<name> = { over; direction; stratum; provides; discipline ? null; closure ? false; derive }` — a laws-gated synthesized attribute over the resolution graph.";
+        };
+      };
+
       # den.disciplines.<name> — the merge-discipline registry (§5). Each entry declares the algebra a
       # merge site obeys: `{ laws; empty; combine; dedup ? null; order ? null; }` — `laws` names the
       # ladder class (ordered-monoid / commutative-monoid / join-semilattice / shadow), `empty`/`combine`
@@ -727,6 +742,7 @@ let
           strataDecl
           edgesDecl
           relationsDecl
+          derivedDecl
           disciplinesDecl
           productsDecl
           conversionsDecl
@@ -1027,6 +1043,18 @@ let
       productsTable = productsLib.compile {
         products = ent.config.den.products or { };
       };
+
+      # THE DERIVED FIELD GUARD (§5): definition-time validation of each `den.derived`'s fields against the
+      # fleet's relations (`relationEdgeKinds`), the compiled strata order, and the products table — a value
+      # detector thrown when non-null. Read-only + corpus-inert (empty `den.derived` ⇒ the detector is null ⇒
+      # no throw). Forced by reading the `den.derived` return surface.
+      derivedGuardMessage = derivedLib.derivedFieldMessage {
+        deriveds = ent.config.den.derived or { };
+        relationKinds = relationEdgeKinds;
+        strataOrder = compiledStrata;
+        productNames = builtins.attrNames productsTable;
+      };
+      derivedGuard = if derivedGuardMessage != null then throw derivedGuardMessage else null;
 
       # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated
       # (key well-formedness, no ArtifactRef endpoint). Global per-pair uniqueness holds by keying.
@@ -1937,6 +1965,10 @@ let
         # fires the undeclared-relation guard (`.edges.<rel>` naming an undeclared relation aborts NAMED). The
         # relations desugar to edge kinds (surfaced under `edges`); this exposes the raw declared set + the gate.
         relations = builtins.seq edgesRelationGuard (ent.config.den.relations or { });
+        # The derived-attribute registry (§5): the fleet's declared `den.derived`, guard-forced — reading this
+        # surface fires the field guards (unknown relation / reverse-over-inverse-less / unknown or too-early
+        # stratum / unregistered provides). The compute engine + the stratum/closure gates are later rungs.
+        derived = builtins.seq derivedGuard (ent.config.den.derived or { });
         # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
         # (laws ladder): the framework merge-order instances seeded, plus any user registration.
         disciplines = disciplinesTable;
@@ -2104,6 +2136,9 @@ in
     # The relation registry desugar (§5): `relationsToEdgeKinds`/`relationCollisionMessage`, for the suite's
     # desugar + collision-message scenarios (the NAMED contract is a value, since tryEval can't capture a throw).
     relations = relationsLib;
+    # The derived-attribute field validator (§5): `derivedFieldMessage`, for the suite's field-guard scenarios
+    # (the NAMED contract as a value).
+    derived = derivedLib;
     # The merge-discipline registry compile (§5) + the lib (its `reservedNames`/`lawClasses`), for the
     # suite's laws-ladder validation scenarios. `compileDisciplines { disciplines }`.
     compileDisciplines = concernDisciplines.compile;

@@ -42,6 +42,7 @@ let
     "concern-classes.nix"
     "concern-collectors.nix"
     "concern-relations.nix"
+    "concern-derived.nix"
     "concern-disciplines.nix"
     "linearization.nix"
     "settings.nix"
