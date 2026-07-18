@@ -39,6 +39,7 @@ let
     "attributes/output-modules.nix"
     "output/terminal.nix"
     "output/class-share.nix"
+    "output/flake-adapter.nix"
   ];
   forbidden = [
     "builtins.genericClosure"

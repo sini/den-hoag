@@ -63,6 +63,7 @@ let
     "attributes/output-modules.nix"
     "output/terminal.nix"
     "output/class-share.nix"
+    "output/flake-adapter.nix"
   ];
   readCore = f: builtins.readFile "${denHoagSrc}/lib/${f}";
 

@@ -212,6 +212,9 @@ let
     inherit prelude;
   };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
+  # The greenfield v2 flake-parts mount (§4.4/§4.6): a built den fleet → a flake-parts module handing the
+  # fleet's transposed family map to `config.flake`. Dep-less (a pure one-line handoff); see output/flake-adapter.nix.
+  flakeAdapter = import ./output/flake-adapter.nix;
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
   runResolve = attributesLib.runResolve;
@@ -1893,6 +1896,11 @@ let
 in
 {
   inherit errors mkDen;
+  # The greenfield v2 flake-parts mount (§4.4/§4.6, D8): `flakeAdapter <built den fleet>` → a flake-parts
+  # module handing the fleet's transposed family map to `config.flake` — `imports = [ (den.flakeAdapter
+  # (den.mkDen [ … ])) ]`. A v2 entry distinct from the drop-in v1 `flakeModule` (zero shared splice); see
+  # lib/output/flake-adapter.nix.
+  inherit flakeAdapter;
   # den's selector vocabulary (identity-law entry/kind constructors + adapters); used to
   # write declarations, independent of any one mkDen instance.
   sel = select;
@@ -1932,6 +1940,11 @@ in
       scopeAdapter
       stagedResolution
       ;
+    # gen-flake's flake-parts crossing (`terminals.mkFlakeTerminal { inputs; self; modules; systems ? [] }` →
+    # the transposed `config.flake`), for the suite's real-flake-parts witnesses to hand an aggregate render's
+    # `evaluator` as the swappable seam value. Present only when the constructed `flake` lib carries it (its
+    # published rev may predate mkFlakeTerminal — the witnesses that read it are override-gated accordingly).
+    mkFlakeTerminal = flake.terminals.mkFlakeTerminal or null;
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
     # The probe-sentinel convenience (`compilePoliciesWith sentinelFields policies`) keeps its 2-arg shape —

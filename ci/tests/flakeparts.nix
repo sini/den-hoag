@@ -6,6 +6,7 @@
 # so parity is byte-untouched (the same posture `HiveInfo` sits in). See REFERENCE.md.
 {
   denHoag,
+  nixpkgs,
   ...
 }:
 let
@@ -212,6 +213,156 @@ let
       }
     )
   ];
+
+  # ── THE REAL FLAKE-PARTS CROSSING (spec §12 step 4c-iii): the witnesses below exercise the aggregate
+  # flake-parts render through gen-flake's REAL `terminals.mkFlakeTerminal` — a genuine `flake-parts.lib.
+  # evalFlakeModule` inside gen-flake's sanctioned nixpkgs/flake-parts boundary — NOT the mechanism stubs above.
+  # `mkFlakeTerminal` ships in gen-flake but is unpublished as of this rung, so den-hoag reaches it via
+  # `--override-input den-hoag/gen-flake path:<local gen-flake>`. OVERRIDE-GATED: on a plain (unpinned) ci the
+  # crossing is absent, so the two witnesses whose render `evaluator` CALLS `mkFlakeTerminal` — W1 (no-translation)
+  # and W2 (real-knot) — hit the null `internal.mkFlakeTerminal` and fail; they are GREEN only under the override,
+  # until the gen-flake push + den-hoag pin bump makes the pushed history plain-ci-green. W3 (adapter-mount) reads
+  # NO mkFlakeTerminal — it builds a plain nixos fleet and mounts via the CORE `denHoag.flakeAdapter` (always
+  # non-null), so it would pass plain ci on its own; it simply co-lives in this override-gated block. The
+  # mechanism witnesses above (stub evaluators) stay plain-ci-green — they prove the mount/transposition/curry
+  # with no flake-parts eval. PARITY never references any of this: the byte-identity gate drives mkDen directly,
+  # names no render evaluator, and runs WITHOUT the override.
+  mkFlakeTerminal = denHoag.internal.mkFlakeTerminal;
+
+  # a SYNTHETIC ecosystem-shaped flake-parts module — the treefmt-nix SHAPE: it declares its OWN `perSystem`
+  # option submodule via `flake-parts-lib.mkPerSystemOption`, sets it, and lifts a flake-level output. Hermetic
+  # (no real treefmt-nix, no nixpkgs package build). It rides UNMODIFIED through the hosted eval — den never
+  # rewrites an ecosystem module; the flake-parts crossing hosts it verbatim (NO-TRANSLATION).
+  ecoModule =
+    { flake-parts-lib, ... }:
+    {
+      options.perSystem = flake-parts-lib.mkPerSystemOption (
+        { lib, ... }:
+        {
+          options.demoFmt = lib.mkOption {
+            type = lib.types.str;
+            default = "unset";
+          };
+        }
+      );
+      config.perSystem = _: { demoFmt = "treefmt-shaped"; };
+      config.flake.ecosystemProof = "VERBATIM";
+    };
+
+  # W1 NO-TRANSLATION: `ecoModule` fed UNMODIFIED to the real flake-parts crossing. The render's `evaluator`
+  # closes over `[ ecoModule ]` + the real flake `inputs`; mkFlakeTerminal hosts them and returns the transposed
+  # `config.flake`, value-nested FLAT at root (`at = _: _: [ ]`). `outputs.ecosystemProof` is the module's own
+  # flake output, byte-unchanged.
+  noTranslationFleet = denHoag.mkDen [
+    {
+      config.den.schema.host.parent = null;
+      config.den.classes.flake = { };
+      config.den.collectors.eco = {
+        class = "flake";
+        render = "ecoRender";
+      };
+      config.den.renders.ecoRender = {
+        evaluator =
+          { self }:
+          _memberMap:
+          mkFlakeTerminal {
+            inherit self;
+            inputs = { inherit nixpkgs; };
+            modules = [ ecoModule ];
+            systems = [ "x86_64-linux" ];
+          };
+        produces = "FlakeInfo";
+        aggregate = true;
+        needsSelf = true;
+        output = "ecoFamily";
+      };
+      config.den.outputs.ecoFamily = {
+        at = _: _: [ ];
+        consumes = "FlakeInfo";
+      };
+    }
+  ];
+
+  # W2 REAL-KNOT (Case A) on real flake-parts. `srcColl` (needsSelf=false) produces a KNOWN string leaf;
+  # `knotColl`'s HOSTED flake-parts module reads `self.src.srcColl.v` across the recursive familyOutputs knot.
+  # Here `self` is the flake-parts `self` MODULE ARG: mkFlakeTerminal threads the den knot as flake-parts' self,
+  # and flake-parts uses the EXPLICITLY-passed `inputs` (never `self.inputs`, evalFlakeModule lib.nix:142), so
+  # the knot rides through untouched. The leaf is a STRING (a built-in artifact leaf is module-fn-`==`-
+  # incomparable — the string-leaf ruling). Terminates: the output KEY SPINE is self-independent, only the
+  # leaf VALUE reads self.
+  realKnotFleet = denHoag.mkDen [
+    {
+      config.den.schema.host.parent = null;
+      config.den.classes.flake = { };
+      config.den.collectors.srcColl = {
+        class = "flake";
+        render = "srcRender";
+      };
+      config.den.collectors.knotColl = {
+        class = "flake";
+        render = "knotRender";
+      };
+      config.den.renders.srcRender = {
+        evaluator = _memberMap: {
+          v = "KNOWN";
+        };
+        produces = "FlakeInfo";
+        aggregate = true;
+        output = "src";
+      };
+      config.den.renders.knotRender = {
+        evaluator =
+          { self }:
+          _memberMap:
+          mkFlakeTerminal {
+            inherit self;
+            inputs = { inherit nixpkgs; };
+            modules = [ { flake.readback = self.src.srcColl.v; } ];
+            systems = [ "x86_64-linux" ];
+          };
+        produces = "FlakeInfo";
+        aggregate = true;
+        needsSelf = true;
+        output = "knot";
+      };
+      config.den.outputs.src = {
+        at = _point: e: [
+          "src"
+          e.name
+        ];
+        consumes = "FlakeInfo";
+      };
+      config.den.outputs.knot = {
+        at = _: _: [ ];
+        consumes = "FlakeInfo";
+      };
+    }
+  ];
+
+  # W3 ADAPTER MOUNT: the THIN flake-adapter — a pure mount `builtFleet -> { config.flake = builtFleet.outputs; }`.
+  # A greenfield v2 consumer calls mkDen DIRECTLY, then `imports = [ (den.flakeAdapter built) ]` hands the
+  # transposed family map to flake-parts' `config.flake` (the transposition already happened INSIDE mkDen). It
+  # coexists with bridge.nix (the v1-compat oracle) — zero shared splice. This fleet carries a real nixos member
+  # so the mount is non-vacuous.
+  adapterMountFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.nixosHost.h = { };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.aspects.hc.nixos.tag = "t";
+        config.den.include = [
+          {
+            at = config.den.nixosHost.h;
+            aspects = [ config.den.aspects.hc ];
+          }
+        ];
+      }
+    )
+  ];
 in
 {
   flake.tests.flakeparts = {
@@ -294,6 +445,31 @@ in
       expr =
         (removeAttrs (stripRow adapterFleet.den.outputs.fp) [ "consumes" ])
         == (removeAttrs (stripRow adapterFleet.den.outputs.nixosConfigurations) [ "consumes" ]);
+      expected = true;
+    };
+
+    # ── THE REAL FLAKE-PARTS CROSSING (override-gated — see the block comment in the `let`) ──
+    # W1 NO-TRANSLATION: the synthetic ecosystem-shaped module rides UNMODIFIED through the real hosted eval; its
+    # own flake output surfaces byte-unchanged at the fleet root (den translated nothing).
+    test-flakeparts-no-translation-verbatim = {
+      expr = noTranslationFleet.outputs.ecosystemProof;
+      expected = "VERBATIM";
+    };
+    # W2 REAL-KNOT (Case A): a hosted flake-parts module reads a sibling family's leaf across the knot on the REAL
+    # mkFlakeTerminal and resolves to the KNOWN string — the self-knot terminates on real flake-parts (de-risks
+    # the L2 template capstone).
+    test-flakeparts-real-knot-case-a = {
+      expr = realKnotFleet.outputs.readback;
+      expected = "KNOWN";
+    };
+    # W3 ADAPTER MOUNT: the thin `flakeAdapter` hands the built fleet's transposed family map to `config.flake` —
+    # the nixos member surfaces under `config.flake.nixosConfigurations` and the built-in family keys are present.
+    test-flake-adapter-mounts-outputs = {
+      expr =
+        let
+          cf = (denHoag.flakeAdapter adapterMountFleet).config.flake;
+        in
+        ((cf.nixosConfigurations or { }) ? h) && (cf ? darwinConfigurations);
       expected = true;
     };
   };
