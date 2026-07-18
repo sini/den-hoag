@@ -319,14 +319,15 @@ never a special case.
 obeys, receiving STRUCTURAL handles only (the paramPoint + the built member's structural face). The MODE is
 DERIVED — `row.mode = modeOf consumes` (F1's canonical machine form); **F1 as a checked law:** a user-declared
 `mode` field aborts NAMED, rejected first. `consumes` passes `checkConsumes` (the products-table gate).
-`render` names a registered render AND is legal ONLY on an artifact-mode family — the render IS the artifact
-evaluator, and a content/value family (the future flake-parts transposition path) has no artifact to render, so
-a render there aborts NAMED (mirroring the receives-row artifact/extend pairing; extend-mode families do not
-exist yet). `params` names known materialization axes (the built-in `system` ∪ the user-declared `den.axes` — see the
-axis registry below); an unknown axis aborts NAMED. `requires` names registered products (shape-checked at
-compile). `contentClass` (nullable) names the CONTENT CHANNEL an opted-in member's modules are sliced from
-to feed an artifact-mode render (see the entity-level opt-in); the built-ins declare none (they inject a
-prebuilt system value-mode, never re-sliced).
+`render` names a registered render AND is legal on an artifact-mode OR extend-mode family — the render is the
+artifact EVALUATOR (artifact mode) or the `extendsVia` capability holder (extend mode); a render on a content or
+value family (which has no artifact to render and no handle to extend) aborts NAMED (mirroring the receives-row
+artifact/extend pairing). `params` names known materialization axes (the built-in `system` ∪ the user-declared
+`den.axes` — see the axis registry below); an unknown axis aborts NAMED. `requires` names registered products
+(shape-checked at compile). `contentClass` (nullable) names the CONTENT CHANNEL an opted-in member's modules are
+sliced from to feed the mount — an artifact render's input, an extend handle's base, or a content family's
+`imports` face (see the entity-level opt-in); the built-ins declare none (they inject a prebuilt system
+value-mode, never re-sliced).
 
 **The family → root-receiver projection (`toReceives`).** Each family projects to a receives row on the
 framework `root` outer kind — `den.kinds.root.receives.<family>` — carrying the §4.2 receives contract ONLY:
@@ -390,15 +391,27 @@ family — **one declaration plus whatever the render genuinely needs, never sil
 elaboration RECORD `{ family; entity; data }` (surfaced at `den.optIns`). A family naming no render and no
 params requires nothing, so an empty opt-in `{ }` is valid.
 
-**The opt-in → live family edge (ARTIFACT-mode).** An opted-in entity is BUILT through the family's render and
-mounted at the family face, keyed by the entity NAME (the member re-key law). Unlike the built-in mount (a
-prebuilt `output.systems` member injected value-mode), an opt-in entity is NOT prebuilt: its member content is
-sliced from the entity's single-instance ROOT scope (`classSubtreeAt "<kind>:<name>" contentClass`) and the
-render evaluator builds the artifact (ARTIFACT-mode `executeNest` — the render call is the sole forcing boundary;
-see Nest-mode execution). A family declaring a render but no `contentClass` with an opt-in aborts NAMED (no
-content channel to slice the member's modules). THE GUARD: the opt-in merge is behind `optIns != [ ]`, so a fleet
-opting NOBODY in leaves `familyOutputs` structurally untouched — byte-identical (the corpus opts nobody in).
-Multi-instance / cell content resolves through the reach-route, out of this mount's scope.
+**The opt-in → live family edge (MODE-COMPLETE).** An opted-in entity is mounted at the family face, keyed by
+the entity NAME (the member re-key law); its member content is sliced from the entity's single-instance ROOT
+scope (`classSubtreeAt "<kind>:<name>" contentClass`). `familyOutputs`' `placedValue` places the member per the
+family's DERIVED mode — the mount is MODE-COMPLETE over all four modes:
+
+- **value** (the built-in path): the prebuilt `output.systems` member injected verbatim.
+- **artifact**: the render evaluator builds the member (the render call is the sole forcing boundary — see
+  Nest-mode execution), e.g. a homeConfigurations family.
+- **content**: a family EXPORTING composed modules (no render, no system axis — the `nixosModules`-export
+  inversion; overlays/lib/templates as the `params = [ ]` degenerate; the stylix/sops-nix cross-cutting shape,
+  one entity into several content families). The face is a SINGLE module `{ imports = <raw slice> }` from the RAW
+  (un-placed) `classSubtreeAt` payload, placed ONCE at `[ family, member ]` — NOT the executeNest content arm's
+  placeSlice-placed `modules` (already `at`-placed; re-placing it double-nests), so the mount reads the
+  contribution's `raw` field instead.
+- **extend**: the render's `extendsVia` capability over the inner `EvalHandleInfo` handle (extendModules — the
+  base preserved, the delta applied), the variants/specialisations shape.
+
+A family declaring a render but no `contentClass` with an opt-in aborts NAMED (no content channel to slice the
+member's modules). THE GUARD: the opt-in merge is behind `optIns != [ ]`, so a fleet opting NOBODY in leaves
+`familyOutputs` structurally untouched — byte-identical (the corpus opts nobody in). Multi-instance / cell
+content resolves through the reach-route, out of this mount's scope.
 
 **The strictness note.** Native gen-schema kinds are STRICT — an undeclared instance field aborts NAMED. So
 `outputs` is a framework-declared UNIVERSAL entity field (a `raw` attrset, default `{ }`, identity-neutral —
@@ -450,7 +463,7 @@ Each mode returns exactly its contribution row (`mkContribution mode extra`, so 
 
 | mode | contribution | lazy fields |
 | --- | --- | --- |
-| content | `{ mode = "content"; at = <path>; modules = [ … ]; }` | each placed module |
+| content | `{ mode = "content"; at = <path>; modules = [ … ]; raw = <un-placed slice>; }` | each placed module |
 | artifact | `{ mode = "artifact"; at; artifact = <thunk>; }` | `artifact` (the render call) |
 | extend | `{ mode = "extend"; at; extended = <thunk>; }` | `extended` (the `extendsVia` call) |
 | value | `{ mode = "value"; at; value = <verbatim>; unrealizedCast ? { from; to; slot }; }` | `value` |
@@ -467,10 +480,15 @@ Each mode returns exactly its contribution row (`mkContribution mode extra`, so 
   wrong wrap fails the leg); the reach-based gather stays the fold's, not the executor's.
 - **artifact — isolated inner eval, the sole forcing boundary.** The render row (`renders.${row.render}`)
   crosses the inner's modules in ISOLATION — the render call is the sole point the inner is forced. The eval is
-  `renderRow.evaluator payload`; `face` projects it (`face eval`), or a NULL `face` means the eval ITSELF is
-  the artifact. A null `row.render` on an artifact consume aborts NAMED (an artifact has no way to build its
-  face without a render). `provision`/`adapt` on the render row stay data (the provisioning + arg-crossing
-  wiring is the families step).
+  `renderRow.evaluator { modules; specialArgs }` — the gen-flake `mkSystemTerminal` crossing shape
+  (`terminal.nix`): `modules` is the inner's module list; `specialArgs = removeAttrs ctx.paramPoint [ "name" ]`
+  is the FANNED AXIS POINT (only the axis values — the structural `name` is not an axis), so a multi-axis render
+  (pkgsCross buildPlatform≠hostPlatform, terranix workspaces, nixidy multi-cluster) knows which axis-tuple it is
+  building. `face` projects the eval (`face eval`), or a NULL `face` means the eval ITSELF is the artifact. A
+  null `row.render` on an artifact consume aborts NAMED (an artifact has no way to build its face without a
+  render). `provision`/`adapt` on the render row stay SHAPE-ONLY here — a `provision` is a full
+  ctx→point→provisioning record, not a `specialArgs` producer, so its wiring is a dedicated later step; the arm
+  reads only `evaluator` + `face`.
 - **extend — legal only under `extendsVia`.** The `extended` thunk wraps the consulted render's `extendsVia`
   capability applied to the inner's `EvalHandleInfo` payload (the extendModules handle). Legal ONLY when the
   render declares `extendsVia`; a null `row.render` OR a render without `extendsVia` is ONE named
