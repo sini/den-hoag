@@ -1542,14 +1542,17 @@ let
               )
           ) optInsEnriched;
           # the placed value per contribution mode: the value arm carries `value` (the prebuilt system), the
-          # artifact arm `artifact` (the render-built face), the content arm the RAW (un-placed) module slice
-          # wrapped as a SINGLE `{ imports = raw }` module — placed ONCE at `[ family, member ]` by the fold
-          # below (the placed `modules` field is skipped here, so the slice is not double-nested). All lazy —
-          # the fold forces the attr shape only.
+          # artifact arm `artifact` (the render-built face), the extend arm `extended` (the render's `extendsVia`
+          # applied to the inner handle), the content arm the RAW (un-placed) module slice wrapped as a SINGLE
+          # `{ imports = raw }` module — placed ONCE at `[ family, member ]` by the fold below (the placed
+          # `modules` field is skipped here, so the slice is not double-nested). All lazy — the fold forces the
+          # attr shape only.
           placedValue =
             c:
             if c.mode == "artifact" then
               c.artifact
+            else if c.mode == "extend" then
+              c.extended
             else if c.mode == "content" then
               { imports = c.raw; }
             else

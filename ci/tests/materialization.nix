@@ -1032,6 +1032,34 @@ let
       (contentFamilyMod "nixosModules" "nixos")
       (contentFamilyMod "homeManagerModules" "home-manager")
     ];
+
+  # ── §4.4: EXTEND-mode families (a family consuming EvalHandleInfo under a render declaring `extendsVia`).
+  # `extendStub`'s `extendsVia` models extendModules: `base ++ [ <delta> ]` — the base preserved, the delta
+  # appended. `extendNoCap` declares NO `extendsVia` (the missing-capability path). `mkExtendFleet render` opts
+  # `u` into an extend family `nixosExtended` (contentClass "nixos") naming `render`.
+  mkExtendFleet =
+    render:
+    denHoag.mkDen [
+      { config.den.schema.user.parent = null; }
+      { config.den.user.u.outputs.nixosExtended = { }; }
+      uContentMod
+      {
+        config.den.renders.extendStub.extendsVia = base: base ++ [ { __delta = "applied"; } ];
+        config.den.renders.extendNoCap.produces = "SystemInfo";
+      }
+      {
+        config.den.outputs.nixosExtended = {
+          at = _point: e: [
+            "nixosExtended"
+            e.name
+          ];
+          consumes = "EvalHandleInfo";
+          params = [ ];
+          contentClass = "nixos";
+          inherit render;
+        };
+      }
+    ];
 in
 {
   flake.tests.materialization = {
@@ -3487,6 +3515,59 @@ in
           "nixosConfigurations"
         ];
       };
+    };
+
+    # ── §4.4: EXTEND-mode families (render declaring `extendsVia`) ──
+    # an extend-mode family over a base member → the face is the BASE with ONLY the extend delta applied
+    # (extendModules semantics): base preserved AND the delta appended — NOT a replace ([ delta ] only), NOT
+    # the base unchanged. Placed ONCE at `[ family, member ]`.
+    test-extend-family-mount = {
+      expr =
+        let
+          d = mkExtendFleet "extendStub";
+          base = d.den.output.classSubtreeAt "user:u" "nixos";
+          face = d.outputs.nixosExtended.u;
+        in
+        {
+          faceEqBasePlusDelta = face == base ++ [ { __delta = "applied"; } ];
+          basePreserved = builtins.head face == builtins.head base;
+          deltaApplied =
+            builtins.elemAt face (builtins.length base) == {
+              __delta = "applied";
+            };
+        };
+      expected = {
+        faceEqBasePlusDelta = true;
+        basePreserved = true;
+        deltaApplied = true;
+      };
+    };
+    # the relaxed guard's OTHER half: an extend-mode family whose render declares NO `extendsVia` aborts NAMED
+    # (the missing-capability throw — extend is legal only under a render declaring extendsVia).
+    test-extend-family-no-capability-throws = {
+      expr = throws (mkExtendFleet "extendNoCap").outputs;
+      expected = true;
+    };
+    # the relaxation is artifact-OR-extend ONLY: a render on a CONTENT family still aborts NAMED at the family
+    # row (a content family has no artifact to render).
+    test-outputs-content-family-render-throws = {
+      expr =
+        throws
+          (denHoag.mkDen [
+            { config.den.schema.user.parent = null; }
+            { config.den.renders.extendStub.extendsVia = base: base; }
+            {
+              config.den.outputs.badContent = {
+                at = _point: e: [
+                  "badContent"
+                  e.name
+                ];
+                consumes = "ModulesInfo";
+                render = "extendStub";
+              };
+            }
+          ]).den.outputs;
+      expected = true;
     };
   };
 }

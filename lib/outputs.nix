@@ -92,11 +92,12 @@ let
       throw "den.outputs: family '${family}' declares no consumes — the product face is required"
     else if render != null && !(renders ? ${render}) then
       throw "den.outputs: family '${family}' names unregistered render '${render}'"
-    # `render` names the artifact evaluator the built member surfaces through — legal ONLY on an artifact-mode
-    # family (mirroring receivers.nix; extend-mode families don't exist). A content/value family (the future
-    # flake-parts transposition path) has no artifact to render, so a render there is a definition error.
-    else if render != null && mode != "artifact" then
-      throw "den.outputs: family '${family}' consumes '${consumes}' — a ${mode}-mode family has no artifact to render (render is the artifact eval, artifact-mode families only)"
+    # `render` names the artifact EVALUATOR (artifact mode) OR the `extendsVia` capability holder (extend mode)
+    # the built member surfaces through — legal on an artifact-mode OR extend-mode family (mirroring the
+    # receives-row rule, receivers.nix). A content/value family (the flake-parts transposition path) has no
+    # artifact to render and no handle to extend, so a render there is a definition error.
+    else if render != null && mode != "artifact" && mode != "extend" then
+      throw "den.outputs: family '${family}' consumes '${consumes}' — a ${mode}-mode family names a render, but render applies to artifact-mode (the artifact eval) and extend-mode (the extendsVia capability) families only"
     else if badParams != [ ] then
       throw "den.outputs: family '${family}' declares unknown param axis '${builtins.head badParams}' — one of ${builtins.toJSON axisNames}"
     else if badRequires != [ ] then
