@@ -135,11 +135,26 @@ let
           description = "Output-family opt-ins: `<family> = { <field> = <value>; }` (§4.4/§7).";
         };
       }) denMeta;
+      # THE `.edges` FIELD (§5:419 relation edges): every entity may declare relation edges via
+      # `den.<kind>.<name>.edges.<rel> = <targets>`. Declared as a per-kind schema option (the same
+      # outputsFieldModules posture) — a `raw` attrset, default `{ }`, so a fleet declaring no edges is
+      # byte-identical (the entry carries an empty `edges`). It STORES the raw target refs; the fleet-level
+      # undeclared-relation guard validates `<rel> ∈ den.relations`, and the producer lowers the refs to
+      # `"${kind}:${name}"` node-ids (records carry `name` but not `kind`, so the lowering is fleet-level).
+      # den-side; id_hash is name-derived, so declaring the field does NOT perturb entity identity.
+      edgesFieldModules = prelude.mapAttrsToList (kindName: _: {
+        config.den.schema.${kindName}.options.edges = schema.mkOption {
+          type = schema.types.raw;
+          default = { };
+          description = "Relation edges: `<rel> = <targets>` (§5); each `<rel>` must name a declared den.relations relation.";
+        };
+      }) denMeta;
       tree = merge.evalModuleTree {
         modules = [
           { options.den.schema = schema.mkSchemaOption { }; }
         ]
         ++ outputsFieldModules
+        ++ edgesFieldModules
         # one instance registry per declared kind, referencing the evaluated kind value:
         ++ prelude.mapAttrsToList (kindName: _: {
           options.den.${kindName} = schema.mkInstanceRegistry tree.config.den.schema.${kindName} { };

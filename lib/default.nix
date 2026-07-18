@@ -997,6 +997,30 @@ let
         disciplines = disciplinesTable;
       };
 
+      # THE UNDECLARED-RELATION GUARD (§5, the validate-then-transform contract): every relation named in any
+      # entity's `.edges` must be a declared `den.relations` relation. A fleet-level read-only pass over the
+      # registries' `.edges` attr-NAMES × `den.relations` — no ref→node-id lowering (that is the producer's).
+      # Corpus-inert: no `.edges` anywhere ⇒ `edgeRels = [ ]` ⇒ the detector is null ⇒ no throw.
+      declaredRelationNames = builtins.attrNames (ent.config.den.relations or { });
+      entityEdgeRels = prelude.concatMap (
+        kindName:
+        prelude.concatMap (
+          name:
+          map (rel: {
+            entityId = "${kindName}:${name}";
+            inherit rel;
+          }) (builtins.attrNames ((ent.registries.${kindName}.${name}).edges or { }))
+        ) (builtins.attrNames ent.registries.${kindName})
+      ) (builtins.attrNames ent.registries);
+      edgesRelationGuard =
+        let
+          m = relationsLib.edgesRelationMessage {
+            edgeRels = entityEdgeRels;
+            relationNames = declaredRelationNames;
+          };
+        in
+        if m != null then throw m else null;
+
       # The compiled typed-product table (§4.1): the framework-pre-registered faces UNION the fleet's
       # `den.products` registrations, validated (mode-set, reserved-name). Materialization reads modes off
       # it; a receiver's `consumes` passes through `checkConsumes` against it (the next step).
@@ -1846,6 +1870,10 @@ let
         strata = compiledStrata;
         # The compiled edge-kind table (§2.2): framework vocabulary + `den.edges` registrations, validated.
         edges = edgeKindTable;
+        # The relation registry (§5): the fleet's declared `den.relations`, guard-forced — reading this surface
+        # fires the undeclared-relation guard (`.edges.<rel>` naming an undeclared relation aborts NAMED). The
+        # relations desugar to edge kinds (surfaced under `edges`); this exposes the raw declared set + the gate.
+        relations = builtins.seq edgesRelationGuard (ent.config.den.relations or { });
         # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
         # (laws ladder): the framework merge-order instances seeded, plus any user registration.
         disciplines = disciplinesTable;

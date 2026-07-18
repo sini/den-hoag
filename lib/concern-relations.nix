@@ -75,7 +75,27 @@ let
       );
     in
     if msg != null then throw msg else edgeKinds;
+
+  # edgesRelationMessage — the fleet-level UNDECLARED-RELATION guard (§5): every relation named in any entity's
+  # `.edges` MUST be a declared `den.relations` relation. Value-returning (`null` = clean, else the NAMED
+  # message) for testability. `edgeRels` is a flat list of `{ entityId; rel; }` (every declared edge rel-name
+  # across all entities); a `rel` not in `relationNames` is undeclared. This is the validate-then-transform
+  # contract: once it passes, the producer may assume `.edges` names only declared relations. It needs ONLY
+  # `den.relations` + the `.edges` attr-names — no ref→node-id lowering — so it lives here, not in the producer.
+  edgesRelationMessage =
+    {
+      edgeRels,
+      relationNames,
+    }:
+    let
+      offenders = builtins.filter (er: !(builtins.elem er.rel relationNames)) edgeRels;
+      o = builtins.head offenders;
+    in
+    if offenders == [ ] then
+      null
+    else
+      "den.relations: entity '${o.entityId}' declares `.edges.${o.rel}`, but '${o.rel}' is not a relation in den.relations (§5)";
 in
 {
-  inherit relationsToEdgeKinds relationCollisionMessage;
+  inherit relationsToEdgeKinds relationCollisionMessage edgesRelationMessage;
 }

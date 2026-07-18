@@ -66,6 +66,30 @@ let
       config.den.edges.foo = { };
     }
   ];
+
+  # ── the entity-side `.edges.<rel>` field (§5:419) — declared, raw-stored; the ref→node-id lowering is the
+  # producer's (records carry name but not kind, so lowering is fleet-level and producer-intrinsic) ──
+  edgesFleet = denHoag.mkDen [
+    (
+      { config, ... }:
+      {
+        config.den.schema.group.parent = null;
+        config.den.schema.user.parent = null;
+        config.den.relations.memberOf = {
+          inverse = "members";
+        };
+        config.den.group.admins = { };
+        config.den.user.sini.edges.memberOf = [ config.den.group.admins ];
+      }
+    )
+  ];
+  # a `.edges.<rel>` naming a relation NOT in den.relations — the undeclared-relation guard fires.
+  undeclaredEdgesFleet = denHoag.mkDen [
+    {
+      config.den.schema.user.parent = null;
+      config.den.user.sini.edges.bogusRel = [ ];
+    }
+  ];
 in
 {
   flake.tests.relations = {
@@ -140,6 +164,40 @@ in
             };
             userEdgeKinds = [ ];
             reservedNames = denHoag.internal.edgeKinds.reservedNames;
+          }
+        ) != null;
+      expected = true;
+    };
+
+    # ── the entity-side `.edges.<rel>` field + the undeclared-relation guard (§5) ──
+    # the field is ACCEPTED (per-kind schema option) and STORES the raw declared edges keyed by relation.
+    test-edges-field-accepted = {
+      expr = builtins.attrNames edgesFleet.den.registries.user.sini.edges;
+      expected = [ "memberOf" ];
+    };
+    # the raw targets are stored (unlowered — the ref list rides verbatim; lowering to node-ids is the producer's).
+    test-edges-field-stores-targets = {
+      expr = builtins.length edgesFleet.den.registries.user.sini.edges.memberOf;
+      expected = 1;
+    };
+    # the fleet-level undeclared-relation guard: `.edges.<rel>` naming a relation NOT in den.relations → NAMED throw.
+    test-edges-undeclared-relation-throws = {
+      expr = throws undeclaredEdgesFleet.den.relations;
+      expected = true;
+    };
+    # the NAMED contract (value-returning detector, as with the collision message): the undeclared-relation
+    # message carries the `den.relations:` prefix + names the offending entity + relation.
+    test-edges-undeclared-relation-message-named = {
+      expr =
+        builtins.match ".*den.relations:.*not a relation in den.relations.*" (
+          denHoag.internal.relations.edgesRelationMessage {
+            edgeRels = [
+              {
+                entityId = "user:sini";
+                rel = "bogusRel";
+              }
+            ];
+            relationNames = [ "memberOf" ];
           }
         ) != null;
       expected = true;
