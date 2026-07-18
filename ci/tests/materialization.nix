@@ -784,8 +784,9 @@ let
     unrelated = throw "undeclared arg forced — bindArgs bound a non-functionArgs arg";
   };
 
-  # a DEFER record (R6): `{ needs = [paths]; then = vals: config; }`. The legal `then` returns a plain
-  # CONFIG payload (no options/imports); the illegal one returns an attrset carrying `options`/`imports`.
+  # a DEFER record (R6): `{ needs = [paths]; then = vals: config; }`. `vals` is the POSITIONAL list `readNeeds`
+  # yields (one value per `needs` path, in order). The legal `then` returns a plain CONFIG payload (no
+  # options/imports); the illegal one returns an attrset carrying `options`/`imports`.
   deferRecord = {
     needs = [
       [
@@ -795,7 +796,7 @@ let
       [ "c" ]
     ];
     "then" = vals: {
-      networking.hostName = vals.host;
+      networking.hostName = builtins.head vals;
     };
   };
   deferIllegalOptions = {
@@ -815,6 +816,21 @@ let
     needs = [ ];
     "then" = _: throw "defer thenFn applied during wiring — defer laziness violated";
   };
+  # a defer whose `needs` names one config path and whose `then` reads it POSITIONALLY (the `readNeeds` list
+  # shape §4.8: `readNeeds needs config = map (getAttrFromPath) needs`). Lowering wraps its config-adapter
+  # `fn` in a `__configThunk` resolved against the terminal's config.
+  deferHostName = {
+    needs = [
+      [
+        "networking"
+        "hostName"
+      ]
+    ];
+    "then" = vals: builtins.head vals;
+  };
+  # the R6 defer lowering (output-modules.nix `lowerDefer`) + the raw gen-bind lib (its `mkThunkFrom`/
+  # `isThunk`/`wrapAll` — the terminal thunk-resolution harness).
+  inherit (denHoag.internal) bind lowerDefer;
 
   # ── Task 5 fixtures: singular arity (both depths) + the laziness sweep ──
   # the singular / wiring / definition checks, reached through the raw-gen-libs seam.
@@ -2170,7 +2186,7 @@ in
             record = deferRecord;
           };
         in
-        (c.thenFn { host = "resolved"; }).networking.hostName;
+        (c.thenFn [ "resolved" ]).networking.hostName;
       expected = "resolved";
     };
     # an ILLEGAL `then` producing `options` → named throw when the payload shape is checked (§4.8: a defer's
@@ -2210,6 +2226,86 @@ in
       expected = {
         mode = "defer";
         needsLen = 0;
+      };
+    };
+
+    # ── §4.8 R6 defer LOWERING onto a gen-bind __configThunk (resolve-at-producing-scope) ──
+    # `lowerDefer <scope> <deferContribution>` wraps the contribution's config-adapter `fn` in
+    # `mkThunkFrom <scope>` → a `{ __configThunk; __sourceScope; __fn }` marker. The `__sourceScope` records
+    # the PRODUCING scope — the marker the live routing (GATHER the contribution at the producing terminal)
+    # keys on; this proves the LOWERING + that resolution reads the terminal's config.
+    test-nest-defer-lowered-thunk-shape = {
+      expr =
+        let
+          t = lowerDefer "host:A" (executeDefer {
+            record = deferHostName;
+          });
+        in
+        {
+          isThunk = bind.isThunk t;
+          sourceScope = t.__sourceScope;
+          hasFn = t ? __fn;
+        };
+      expected = {
+        isThunk = true;
+        sourceScope = "host:A";
+        hasFn = true;
+      };
+    };
+    # the lowered thunk RESOLVES AT THE TERMINAL against the config gen-bind's `wrapAll` supplies — the
+    # config-adapter reads `config.networking.hostName` AT RESOLUTION TIME, so the resolved value VARIES with
+    # the terminal config (A→"A", B→"B"). The A/B variation is the non-vacuous proof: a frozen `thenFn vals`
+    # would not vary. The live routing (resolve-at-producing-scope) puts the PRODUCING terminal's config here.
+    test-nest-defer-resolves-at-terminal-config = {
+      expr =
+        let
+          t = lowerDefer "host:A" (executeDefer {
+            record = deferHostName;
+          });
+          resolveWith =
+            hn:
+            let
+              wrapped =
+                builtins.head
+                  (bind.wrapAll {
+                    modules = [ ({ deferred, config, ... }: { got = builtins.head deferred; }) ];
+                    bindings.deferred = [ t ];
+                  }).modules;
+            in
+            (wrapped {
+              config = {
+                networking.hostName = hn;
+              };
+            }).got;
+        in
+        {
+          a = resolveWith "A";
+          b = resolveWith "B";
+        };
+      expected = {
+        a = "A";
+        b = "B";
+      };
+    };
+
+    # ── §4.1 the unrealizedCast row/slot LOCUS ──
+    # a wrapped-face mismatch's `unrealizedCast` marker carries the `slot` (threaded through ctx at the mount)
+    # beside the `from`/`to` faces — a SERIALIZABLE locus (the slot names the receives row; `to` is what it
+    # expected). Trace-visible, still NEVER a throw.
+    test-nest-value-mismatch-locus = {
+      expr =
+        (executeNest {
+          row = artifactRow;
+          inner = mismatchValueInner;
+          ctx = {
+            paramPoint = tuxPoint;
+            slot = "sys";
+          };
+        }).unrealizedCast;
+      expected = {
+        from = "HmInfo";
+        to = "SystemInfo";
+        slot = "sys";
       };
     };
 

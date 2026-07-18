@@ -87,23 +87,31 @@ let
     argEnv: fnModule: fnModule (builtins.intersectAttrs (builtins.functionArgs fnModule) argEnv);
 
   # `executeDefer { record }` (§4.8 defer / R6) — the reconciled defer contract. `record` is
-  # `{ needs = [ paths ]; then = vals: config; }`; the contribution is the INERT `{ mode = "defer"; needs;
-  # thenFn; }` record — NO terminal consumer exists yet (the live mount arrives with the families work; there
-  # is NO mkMerge splice here). den-hoag ALREADY ships a deferred mechanism: a config-demanding aspect fn
-  # rides `deferredToThunk` → gen-bind's `__configThunk`, resolved at the producing scope at the terminal
+  # `{ needs = [ paths ]; then = vals: config; }`; the contribution is `{ mode = "defer"; needs; thenFn; fn }`,
+  # inert until applied. den-hoag ships a deferred mechanism: a config-demanding aspect fn rides
+  # `deferredToThunk` → gen-bind's `__configThunk`, resolved at the producing scope at the terminal
   # (output-modules.nix `deferredToThunk`, collections.nix `isConfigThunk`). Spec §4.8 R6 is THAT restriction
-  # made explicit: THIS record formalizes the same contract (`needs` = the resolved paths a `then` reads,
-  # `then` = the config producer). The families-step consumer either LOWERS this record onto the
-  # `__configThunk` path or RETIRES both into one — recorded here so no THIRD defer surface is built.
-  # `then` is a Nix keyword, so the record's field is read dynamically (`record.${"then"}`) and surfaced as
-  # the keyword-free `thenFn`. The EXECUTABLE check now: a `then` producing `options`/`imports` is ILLEGAL (a
-  # defer produces config, never options/imports) — a named throw fired when `thenFn` is APPLIED (so the
-  # record stays inert until a consumer applies it; forcing the record shape never fires it).
+  # made explicit: THIS record formalizes the same contract (`needs` = the paths a `then` reads, `then` = the
+  # config producer). `fn` is the config-reading ADAPTER (`{ config, ... }: thenFn (readNeeds needs config)`)
+  # that `output-modules.nix lowerDefer` wraps in `mkThunkFrom <producingScope>` — the record LOWERS onto the
+  # SAME `__configThunk` path (no third defer surface); the live routing that GATHERS it at the producing
+  # terminal (so that terminal's config resolves it, decision #27) is the retire-into-one. `then` is a Nix
+  # keyword, so the record's field is read dynamically (`record.${"then"}`) and surfaced as the keyword-free
+  # `thenFn`. The EXECUTABLE check: a `then` producing `options`/`imports` is ILLEGAL (a defer produces config,
+  # never options/imports) — a named throw fired when `thenFn`/`fn` is APPLIED (the record stays inert until a
+  # consumer applies it; forcing the record shape never fires it).
+  # read a list of attr-PATH-LISTS out of a config attrset (the R6 defer `needs` → the `vals` a `then` reads,
+  # §4.8). The engine is nixpkgs-free with no re-export of a path reader, so this is a local recursive twin
+  # (the same local-twin posture as `nestAtPath` above); the paths are structural coordinates (the reads a
+  # defer DECLARES), positional in `needs` order.
+  getAttrFromPath =
+    path: attrs:
+    if path == [ ] then attrs else getAttrFromPath (builtins.tail path) attrs.${builtins.head path};
+  readNeeds = needs: config: map (p: getAttrFromPath p config) needs;
+
   executeDefer =
     { record }:
-    {
-      mode = "defer";
-      inherit (record) needs;
+    let
       thenFn =
         vals:
         let
@@ -115,6 +123,18 @@ let
           } — a defer produces config only, never options/imports (§4.8 R6)"
         else
           produced;
+    in
+    {
+      mode = "defer";
+      inherit (record) needs;
+      inherit thenFn;
+      # the config-reading ADAPTER (§4.8 R6): `readNeeds` reads the `needs` paths out of the PRODUCING scope's
+      # config, then applies `thenFn` (positional over the needs). `output-modules.nix lowerDefer` wraps this
+      # in `mkThunkFrom <producingScope>` so gen-bind's wrapAll resolves it against the producing terminal's
+      # config (decision #27, resolve-at-producing-scope). `{ config, ... }` so the thunk's functionArgs
+      # demand `config` at resolution; the LIVE routing (gathering the contribution at the producing terminal)
+      # is the retire-into-one step — this record carries the adapter for it.
+      fn = { config, ... }: thenFn (readNeeds record.needs config);
     };
 
   # `executeNest { row; inner; ctx; conversions ? { }; renders ? { } }` — the mode dispatch. `row` = a compiled
@@ -222,10 +242,13 @@ let
               if inner.artifactRef.product != row.consumes then
                 {
                   # the prebuilt face does not match the row's consumes — an unrealized cast (a trace node),
-                  # not a throw: the value is injected as-is and the mismatch is recorded for the trace.
+                  # not a throw: the value is injected as-is and the mismatch is recorded for the trace. The
+                  # locus is SERIALIZABLE (the trace is byte-compared): `from`/`to` are the cast faces, `slot`
+                  # (threaded through ctx at the mount) names the receives row the cast happened at.
                   unrealizedCast = {
                     from = inner.artifactRef.product;
                     to = row.consumes;
+                    slot = ctx.slot or null;
                   };
                 }
               else

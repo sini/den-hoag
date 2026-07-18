@@ -667,6 +667,16 @@ let
   # the PRODUCING class's config when the terminal forces it. `__sourceScope` records the producing scope.
   deferredToThunk = c: bind.mkThunkFrom c.producer.scope c.fn;
 
+  # Lower a §4.8 R6 defer contribution (`executeDefer`'s `{ mode="defer"; needs; thenFn; fn }`) onto a gen-bind
+  # config-thunk: `mkThunkFrom <producingScope>` wraps the contribution's config-adapter `fn` so wrapAll
+  # resolves it against the terminal's config, with `__sourceScope` recording the producing scope. This is the
+  # deferredToThunk twin for the R6 record (which carries `fn` but no `producer.scope` — the scope is supplied
+  # at the mount). The LIVE routing — GATHERING the defer contribution at ITS producing terminal so that
+  # terminal's config feeds the resolution (decision #27, resolve-at-producing-scope) — is the retire-into-one
+  # step; this lowering + the `__sourceScope` marker are its prerequisites (no live producer emits an R6 defer
+  # record today, so this is synthetic).
+  lowerDefer = scope: c: bind.mkThunkFrom scope c.fn;
+
   # A single contribution → its terminal-binding value: a deferred emission becomes a gen-bind config-thunk
   # (resolved at THAT contribution's producing config), a plain emission its value. gen-bind's wrapAll
   # auto-detects the thunk list entries and resolves them at eval (the terminal). Used for BOTH the node's
@@ -855,6 +865,7 @@ in
     traceFor
     systems
     deferredToThunk
+    lowerDefer
     # Phase 2 Task 2/3: the class-slice projection over `reach` (now the terminal's content source via
     # `terminalModulesAt = projectClass`) + the `classSubtreeAt` down-fold it subsumes, both exposed so the
     # ANCHOR witness (`projectClass id class == classSubtreeAt id class` on a no-edge node) compares them.

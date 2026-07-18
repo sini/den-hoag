@@ -1726,14 +1726,21 @@ in
     # `mode` and returns that mode's contribution — content (grafted at `at`), value (the prebuilt arm),
     # artifact (rendered via `renders.${row.render}`), extend (the render's `extendsVia`) — plus the §4.8
     # provide/adapt riders. `bindArgs argEnv fnModule` is the pure functionArgs binder (adapt); `executeDefer
-    # { record }` produces the inert `{ mode = "defer"; needs; thenFn; }` record (§4.8 R6). `checkSingular
-    # { row; edges; mount }` is the §4.2 arity WIRING-TIME half (the live edge set, post-`when`).
+    # { record }` produces the `{ mode = "defer"; needs; thenFn; fn }` record (§4.8 R6 — `fn` is the config-
+    # adapter `lowerDefer` wraps into a __configThunk). `checkSingular { row; edges; mount }` is the §4.2 arity
+    # WIRING-TIME half (the live edge set, post-`when`).
     inherit (nestLib)
       executeNest
       bindArgs
       executeDefer
       checkSingular
       ;
+    # `lowerDefer <scope> <deferContribution>` (§4.8 R6) — lower an executeDefer contribution onto a gen-bind
+    # config-thunk (`mkThunkFrom` over its config-adapter `fn`). The terminal defer→configThunk consumption
+    # lives in output-modules.nix `lowerDefer` (per-fleet, beside deferredToThunk); this is its top-level twin
+    # for the suite (the setAttrByPath/nestAtPath local-twin posture). `bind` (the raw gen-bind lib — its
+    # `wrapAll`/`isThunk` drive the terminal-resolution harness) is exposed below with the other gen libs.
+    lowerDefer = scope: c: bind.mkThunkFrom scope c.fn;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →
