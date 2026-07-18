@@ -1539,11 +1539,13 @@ let
           c = classOfNode (structural.eval.node id);
         in
         if c == null then null else c.name;
+      # The sel → (node-id → bool) predicate over the fleet's structural scope: `matchIdStructural sel` is the raw
+      # gen-select match, the `classOf` extension feeding `hasClass` the producing class the base ctx lacks.
+      # Shared by the collector membership filter AND relQuery's `where` — collector members and relation endpoints
+      # are BOTH scope node-ids.
+      matchIdStructural = scopeAdapter.matchIdWith structural { classOf = classNameOf; };
       memberIdsFor =
-        sel:
-        builtins.filter (scopeAdapter.matchIdWith structural { classOf = classNameOf; } sel) (
-          builtins.attrNames structural.eval.allNodes
-        );
+        sel: builtins.filter (matchIdStructural sel) (builtins.attrNames structural.eval.allNodes);
       collectorMemberEdges = collectorsLib.memberProducer {
         collectors = ent.registries.collector or { };
         inherit memberIdsFor classNameOf;
@@ -1594,6 +1596,14 @@ let
       # forcing `relationEdges` forces the undeclared-relation guard first, so a malformed `.edges` aborts NAMED
       # for ANY consumer of the producer output — not only when the `den.relations` surface is read.
       relationEdges = builtins.seq edgesRelationGuard relationEdgesRaw;
+      # relQuery (§5) — the sel→matchId `where`-adaptation over den.query, built PER-MKDEN from the fleet's scope.
+      # `whereFor` is the SAME `matchIdStructural` the collector membership filter runs (above) — reused, not
+      # re-spelled.
+      relQuery = relationsLib.mkRelQuery {
+        denQuery = queryLib.denQuery;
+        inherit relationEdges;
+        whereFor = matchIdStructural;
+      };
       # ── §4.7: the member-product EXTRACTION — read a member's `consumes` product ALREADY-RESOLVED (never
       # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a
       # content product (RawModulesInfo) = the member's raw class slice (`classSubtreeAt`); an artifact product
@@ -1962,6 +1972,10 @@ let
         # `memberEdges` twin — NOT in `output.edgesForRoot`/the live trace, so byte-identity holds; corpus-inert
         # `[ ]` (no `.edges` ⇒ nothing). Forcing it fires the woven undeclared-relation guard.
         relationEdges = relationEdges;
+        # relQuery (§5): the fleet's `sel`→`matchId` `where`-adapted relation query over `den.relationEdges` —
+        # `relQuery { from; kind; sel ? null; mode ? "all" }`. Per-mkDen (closes over the fleet's scope +
+        # relation edges); corpus-inert — a new read-only surface nothing in the corpus calls.
+        relQuery = relQuery;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/

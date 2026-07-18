@@ -98,6 +98,32 @@ let
       config.den.host.h = { };
     }
   ];
+  # ── relQuery: the sel→matchId `where`-adaptation over den.query (§5) ──
+  # a user relates to a nixos host AND a darwin host; `sel = hasClass "nixos"` must NARROW the followed targets
+  # to the nixos one (the source-agnostic den.query spine can't run a scope-requiring selector — relQuery holds
+  # the scope, and relation endpoints ARE scope node-ids).
+  relQueryFleet = denHoag.mkDen [
+    (
+      { config, ... }:
+      {
+        config.den.schema.nixosHost.parent = null;
+        config.den.schema.darwinHost.parent = null;
+        config.den.schema.user.parent = null;
+        config.den.contentClass.nixosHost = "nixos";
+        config.den.contentClass.darwinHost = "darwin";
+        config.den.relations.memberOf = {
+          inverse = "members";
+        };
+        config.den.nixosHost.a = { };
+        config.den.darwinHost.b = { };
+        config.den.user.sini.edges.memberOf = [
+          config.den.nixosHost.a
+          config.den.darwinHost.b
+        ];
+      }
+    )
+  ];
+
   # the hand-computed relation edge set for `edgesFleet` (memberOf inverse=members, user.sini →[group.admins]):
   # one FORWARD + one SWAPPED inverse edge, plain-string node-id endpoints.
   expectedRelationEdges = [
@@ -265,6 +291,31 @@ in
     test-relation-edges-guard-woven = {
       expr = throws undeclaredEdgesFleet.den.relationEdges;
       expected = true;
+    };
+
+    # ── relQuery: the sel→matchId `where`-adaptation over den.query (§5) ──
+    # with no `sel`, relQuery returns ALL the followed memberOf targets (the plain den.query, where = _: true).
+    test-relquery-no-sel-all-targets = {
+      expr = builtins.sort builtins.lessThan (
+        relQueryFleet.den.relQuery {
+          from = "user:sini";
+          kind = "memberOf";
+        }
+      );
+      expected = [
+        "darwinHost:b"
+        "nixosHost:a"
+      ];
+    };
+    # `sel = hasClass "nixos"` NARROWS the targets to the nixos host (the structural selector resolves each
+    # node-id endpoint back to its scope node via matchId) — non-vacuous: it drops darwinHost:b.
+    test-relquery-sel-narrows = {
+      expr = relQueryFleet.den.relQuery {
+        from = "user:sini";
+        kind = "memberOf";
+        sel = denHoag.hasClass "nixos";
+      };
+      expected = [ "nixosHost:a" ];
     };
   };
 }

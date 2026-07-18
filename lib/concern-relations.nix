@@ -95,7 +95,38 @@ let
       null
     else
       "den.relations: entity '${o.entityId}' declares `.edges.${o.rel}`, but '${o.rel}' is not a relation in den.relations (§5)";
+
+  # mkRelQuery — the `sel`→`matchId` `where`-adaptation over den.query (§5). PER-MKDEN: built from the fleet's
+  # `denQuery` + `relationEdges` (the producer output) + `whereFor` (the scoped selector→node-id-predicate
+  # adapter — `matchIdWith` over the fleet's structural scope). `relQuery { from; kind; sel ? null; mode ? "all" }`
+  # runs den.query over the relation edges with `follow = kind` and `where` = the adapted selector (or `_: true`
+  # when `sel == null`). This is the adaptation the source-agnostic den.query spine deferred here: den.query's
+  # `where` is a RAW node→bool, and a gen-select selector needs a scope — relQuery holds it, and relation
+  # endpoints ARE scope node-ids (matchId's domain).
+  mkRelQuery =
+    {
+      denQuery,
+      relationEdges,
+      whereFor,
+    }:
+    {
+      from,
+      kind,
+      sel ? null,
+      mode ? "all",
+    }:
+    denQuery {
+      edges = relationEdges;
+      inherit from mode;
+      follow = kind;
+      where = if sel == null then (_: true) else whereFor sel;
+    };
 in
 {
-  inherit relationsToEdgeKinds relationCollisionMessage edgesRelationMessage;
+  inherit
+    relationsToEdgeKinds
+    relationCollisionMessage
+    edgesRelationMessage
+    mkRelQuery
+    ;
 }
