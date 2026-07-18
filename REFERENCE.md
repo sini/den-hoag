@@ -56,7 +56,7 @@ a named lib (Law A1): the identity hashes to `lib/identity.nix`, the registry/ov
 
 | Law | Statement | Delegates to | den-hoag file |
 | --- | --- | --- | --- |
-| **S1** | Two-level identity (spec §2.1, F5 nominal producer-ids) — `assemblyId = hash(entityId, class)` (content coordinate; class-share A18 keys here); `instanceId = hash(assemblyId, S)` (placement; `S` = the canonical STRUCTURAL fill map); `edgeId = hash(kind, from.instanceId, to.instanceId, dataFingerprint)`. Hashing is `sha256` of `builtins.toJSON` (attrs sort by key; LISTS preserve order — order-bearing coordinates like mount paths distinguish). | `lib/identity.nix` (`assemblyId`/`instanceId`/`edgeId`/`dataFingerprint`) | `lib/edges.nix` (`assembleEdges` composes them) |
+| **S1** | Two-level identity (spec §2.1, F5 nominal producer-ids) — `assemblyId = hash(entityId, class)` (content coordinate; class-share A18 keys here); `instanceId = hash(assemblyId, S)` (placement; `S` = the canonical STRUCTURAL fill map); `edgeId = hash(kind, from.instanceId, to.instanceId, dataFingerprint)`. Hashing is `sha256` of `builtins.toJSON` (attrs sort by key; LISTS preserve order — order-bearing coordinates like mount paths distinguish). | `lib/identity.nix` (`assemblyId`/`instanceId`/`edgeId`/`dataFingerprint`) | `lib/edges.nix` (`assembleEdges` composes assemblyId/instanceId; the record SOURCE is keyed by the intent `id`, `edgeId` recompute-on-read — see below) |
 | **S2** | Fingerprint law (spec §2.1) — a FUNCTION VALUE anywhere in `S` or in edge `data` is REJECTED with a named throw (`den.identity: function value in …`); function-valued declaration fields (`provision`/`adapt`/`derive`/`when`/…) live in registries and are referenced from edge data BY NAME (`when` is a NAME string, fingerprinted like any scalar). PRODUCED VALUES never enter `S` — only the producing node's instanceId STRING does — so identity hashing can never force content. `S` is STRICT by contract (structural scalars are forced; forcing them is correct); the discipline is "never put content in `S`", not "hashing is lazy over `S`". | `lib/identity.nix` (`rejectFunctions`) | — |
 | **S3** | Strata-by-construction ctx scoping (spec §2.3/§5, A9) — the stratum order is DATA (`den.strata.insert.<name> = { after }`, dense insertion; see the Strata section). A rule declared at stratum *n* may read ONLY ctx facts of a STRICTLY LOWER stratum: a declared stratum→ctx-key map REPLACES a ≥-stratum ctx key with a NAMED THROW (not omitted — a replaced key aborts CATCHABLY when read, whereas attribute-missing escapes `tryEval`). The projection wraps ONLY the rule's FINAL dispatch produce; the value-less stratum PROBE keeps the RAW produce BY DESIGN (the probe is sentinel-only stratum detection, never a value channel). Seeded empty above structural ⇒ a no-op for every shipped rule. | `gen-dispatch` (phase order) + `gen-resolve` | `lib/declarations.nix` (`compileStrata`), `lib/concern-policies.nix` (`compileWithStrata`/`projectCtx`) |
 | **S4** | Override-before-freeze (spec §2.4) — framework NEW-substrate edge intents pass through `den.overrides` BEFORE `edgeId`. `match` = pre-hash coordinates `{ kind ?; from ?; to ?; data ? { <field> = v } }` compared against the RAW (as-declared) intent: `kind`/`from`/`to` by WHOLE VALUE, `data` PER-FIELD, an absent coordinate a wildcard; a `null` field value matches both an explicitly-null and an absent field (null≡absent, deliberate); NO function-valued matchers (structural data only — the selector-language upgrade is a later step). `rewrite` = a data-patch shallow-merged into `data` (`//`) or `null` = SUPPRESS. SINGLE-STEP: one pass per edge, FIRST match wins, the rewritten edge is NEVER re-matched. A malformed coordinate throws NAMED at definition time. | `lib/edges.nix` (`applyOverrides`) | — |
@@ -72,8 +72,8 @@ registers beside them; re-registering a framework kind name aborts NAMED (`frame
 registry — the named `discipline` must EXIST there and declare `laws == "join-semilattice"` (no
 discipline, an unregistered one, or a wrong-laws one each abort NAMED; closure is legal only under a
 join-semilattice discipline, see the Disciplines section below). **Deferred (spec §2.2): per-kind `data` schema VALIDATION** — the
-registry STORES `data`; enforcing it against edge intents lands when live producers arrive
-(`assembleEdges` carries the deferral comment at the intent-validation site).
+registry STORES `data`; enforcing it against edge intents is a later step (the nest producers carry `data`
+unchecked against the per-kind schema; `assembleEdges` carries the deferral note at the intent-validation site).
 
 **The kind-null-=-unlabeled rendering rule (spec §2.2, §6 risk register).** gen-edge's trace key is
 `(T, P, S, M[, K])` — target, path, source, mode, and the optional kind label `K`. An UN-LABELED edge
@@ -83,12 +83,21 @@ edge appends ` | <kind>` as the fifth component (and carries a `kind` field on i
 labeled kind (its `toEdges` records stamp `kind = "demand"`); the demand-free parity corpus is therefore
 byte-untouched. This is the extension-in-place by which the demand edge-identity scheme retires.
 
-**`edgeId` placement caveat (S1).** `assembleEdges` currently stamps the computed `edgeId` on the
-synthetic record's `annotations` (inert, provenance-only). When live producers route through the pipeline,
-`edgeId` must move OFF `annotations`: gen-edge folds annotations into trace entries, so an identity sha256
-would enter trace goldens and a `data` change would double-ripple the trace (source key AND edgeId); and
-gen-edge annotations are provenance/diagnostics never read by materialize, so a consumer keying on `edgeId`
-semantically (dedup/query) needs it as a first-class field or recomputed at the read site.
+**The intent's `id` = the edge's source identity (S1).** An assembly intent is
+`{ id; kind; from = { entityId; class; s ? {} }; to = <same>; data ? {}; when ? true; }`. `assembleEdges`
+keys each record's SOURCE by the intent's readable `id` — a stable producer-supplied string (e.g.
+`family:<family>:<entity>`, `nest:<outer>/<inner>:<slot>`), NEVER a hash — through gen-edge
+`sources.keyedValue`, so the frozen trace carries THAT source identity directly. `annotations` stays
+provenance-only, unread by materialize (no derived `edgeId` on it): gen-edge folds annotations into trace
+entries, so a stamped identity sha256 would enter the goldens and a `data` change would double-ripple the
+trace (source key AND stamp). `id` is REQUIRED — an intent without it aborts NAMED at a definition-time
+guard (`den.edges: assembleEdges intent (kind '…') lacks a required id`), never a bare attribute error.
+`identity.edgeId` stays DEFINED for recompute-on-read where a consumer keys on the derived edge identity
+semantically (dedup/query); no such consumer exists today. A NEST intent additionally carries `mode = "nest"`
+
+- its placement `path` (the receives row's `at`), making the nest edge a substrate citizen — its placement
+  enters the (T, P, S, M, K) trace — while the content GRAFT is owned by the mode-execution engine (see
+  Nest-mode execution), never gen-edge's whole-list nest-materialize.
 
 ## Disciplines and merge orders (`den.disciplines`, spec §5/§6)
 
@@ -305,7 +314,7 @@ DATA, one row per FAMILY, resolved by the SAME machinery a nested receives row i
 (kind `root`); a family is a receives row on it, so the root is receiver-dispatched like every other outer —
 never a special case.
 
-**The family row (`den.outputs.<family>`).** A row is `{ at; consumes; render ? null; params ? [ ]; requires ? [ ]; }`.
+**The family row (`den.outputs.<family>`).** A row is `{ at; consumes; render ? null; params ? [ ]; requires ? [ ]; contentClass ? null; }`.
 `at` is `point: e: [ …path ]` — the SAME singular-path / `[]`⇒flat placement convention `lib/nest.nix`'s `at`
 obeys, receiving STRUCTURAL handles only (the paramPoint + the built member's structural face). The MODE is
 DERIVED — `row.mode = modeOf consumes` (F1's canonical machine form); **F1 as a checked law:** a user-declared
@@ -313,8 +322,11 @@ DERIVED — `row.mode = modeOf consumes` (F1's canonical machine form); **F1 as 
 `render` names a registered render AND is legal ONLY on an artifact-mode family — the render IS the artifact
 evaluator, and a content/value family (the future flake-parts transposition path) has no artifact to render, so
 a render there aborts NAMED (mirroring the receives-row artifact/extend pairing; extend-mode families do not
-exist yet). `params` names known axes (the axis registry is deliberately minimal — today the sole axis is
-`system`); an unknown axis aborts NAMED. `requires` names registered products (shape-checked at compile).
+exist yet). `params` names known materialization axes (the built-in `system` ∪ the user-declared `den.axes` — see the
+axis registry below); an unknown axis aborts NAMED. `requires` names registered products (shape-checked at
+compile). `contentClass` (nullable) names the CONTENT CHANNEL an opted-in member's modules are sliced from
+to feed an artifact-mode render (see the entity-level opt-in); the built-ins declare none (they inject a
+prebuilt system value-mode, never re-sliced).
 
 **The family → root-receiver projection (`toReceives`).** Each family projects to a receives row on the
 framework `root` outer kind — `den.kinds.root.receives.<family>` — carrying the §4.2 receives contract ONLY:
@@ -352,37 +364,65 @@ consumer addresses `<family>.<host>` exactly as a flake does; a memberless famil
 face (the declared-target face law). This IS the output face: the top-level `outputs` and the
 nixosConfigurations/darwinConfigurations aliases project off it (`.<family> or { }`).
 
-**`den.systems` + params fan-out.** `den.systems` is a plain list of system strings (default `[ ]`) — the
-domain of a family's `system` param. `fanParams { family; params; systems }` produces the declared CARTESIAN at
-the family level: `params = [ "system" ]` fans to one paramPoint per system (`{ system = <sys>; }` each — the
-devShells shape); `params = [ ]` is the degenerate single face (`[ { } ]`, a system-agnostic family surfaces
-once). Today `system` is the sole axis, so the fan is one-dimensional. Dedup-per-paramPoint (a member
-materialized at the same paramPoint twice) arrives with the live producers; here the fan is the pure axis
-enumeration — the pre-wired seam that step consumes.
+**The axis registry (`den.axes`) + the params fan-out.** A materialization axis is a finite value domain a
+family's `params` fans over. `axesRegistry { axes; systems }` unions the built-in `system` axis (domain =
+`den.systems`, a plain list of system strings, default `[ ]`) with the user-declared `den.axes.<name> = { values = [ <string> … ]; }`, returning `{ names; domains }` — the valid axis NAMES (the `params` validation set) and the
+name → value-list map. `system` is FRAMEWORK-RESERVED: a user `den.axes.system` shadows the built-in domain and
+aborts NAMED; a user axis whose `values` is absent or not a list aborts NAMED. `fanParams { family; params; axesDomains }` produces the FULL declared CARTESIAN at the family level — one paramPoint per axis-value tuple over
+`params`, each axis's values drawn from `axesDomains.<axis>`: `params = [ ]` ⇒ the degenerate single face `[ { } ]`; `params = [ "system" ]` ⇒ `map (v: { system = v; }) domain` (one point per system, the devShells shape);
+`params = [ "system" "variant" ]` ⇒ the 2×N cross-product (every `{ system; variant }` tuple). An axis named in
+`params` with no domain aborts NAMED. Dedup-per-paramPoint (a member materialized at the same paramPoint twice)
+rides a later step; here the fan is the pure cartesian enumeration.
 
 **`requires` definition-time law.** A family's `requires` (∪ its render's `requires`) names the products it
 CONSUMES; each must be SATISFIABLE at the graft site (`checkRequires` — else a NAMED throw naming the family +
 the missing product). The available set is `[ consumes ] ++ render.produces` — the products a member can supply
-there. The built-ins carry `requires = [ ]` (vacuous, byte-neutral). CONVERSION-AWARE satisfiability (a
-required product reachable through a registered conversion) is a recorded note for the live-producer step.
+there — EXTENDED with the single-step CONVERSION targets: the `to`-face of every registered conversion whose
+`from`-face is available (`checkRequires` reads the compiled conversion table's `.from`/`.to` directly, no key
+splitting). The consult is applied EXACTLY ONCE — single-hop, no transitive chain search (the determinism law; a
+needed composite is registered as its own pair): `A->B` + `B->P` with only `A` available reaches `B` but not `P`,
+so `P` stays unsatisfiable. The built-ins carry `requires = [ ]` (vacuous, byte-neutral).
 
 **The entity-level opt-in.** An entity opts into a family via `den.<kind>.<name>.outputs.<family> = { <field> = <value>; }`. The render-declared REQUIRED FIELDS an opt-in must supply are the family's `params` (the axes the
 render fans over — the "render genuinely needs" set, e.g. a homeConfigurations family requiring `system`).
 `checkOptIn` validates the opt-in supplies a value for EACH param (missing → NAMED throw quoting the field +
 family — **one declaration plus whatever the render genuinely needs, never silent**) and returns the
 elaboration RECORD `{ family; entity; data }` (surfaced at `den.optIns`). A family naming no render and no
-params requires nothing, so an empty opt-in `{ }` is valid. EDGE EMISSION is absent — the family nest edge for
-an opted-in entity arrives with the live producers.
+params requires nothing, so an empty opt-in `{ }` is valid.
+
+**The opt-in → live family edge (ARTIFACT-mode).** An opted-in entity is BUILT through the family's render and
+mounted at the family face, keyed by the entity NAME (the member re-key law). Unlike the built-in mount (a
+prebuilt `output.systems` member injected value-mode), an opt-in entity is NOT prebuilt: its member content is
+sliced from the entity's single-instance ROOT scope (`classSubtreeAt "<kind>:<name>" contentClass`) and the
+render evaluator builds the artifact (ARTIFACT-mode `executeNest` — the render call is the sole forcing boundary;
+see Nest-mode execution). A family declaring a render but no `contentClass` with an opt-in aborts NAMED (no
+content channel to slice the member's modules). THE GUARD: the opt-in merge is behind `optIns != [ ]`, so a fleet
+opting NOBODY in leaves `familyOutputs` structurally untouched — byte-identical (the corpus opts nobody in).
+Multi-instance / cell content resolves through the reach-route, out of this mount's scope.
 
 **The strictness note.** Native gen-schema kinds are STRICT — an undeclared instance field aborts NAMED. So
 `outputs` is a framework-declared UNIVERSAL entity field (a `raw` attrset, default `{ }`, identity-neutral —
 the `id_hash` folds primitive fields only, so declaring it does not perturb entity identity), the same posture
 as the compat shim's `class`/`system`/`hostName` field declarations.
 
-**Forward.** User-declared families materialize via the opt-in nest edges (the live-producer step); `fanParams`
-is the pre-wired seam that step consumes. Collectors (aggregate entities) and the flake-parts root-kind adapter
-are the remaining §4.4 sub-plans. The render row's `output` field is superseded as the FACE source, retained
-for the instantiation overlay; its full retirement is decided together with the compat forwarding layer.
+**The cell/containment nest-edge producer (`nestProducer`/`containmentPairs`).** Beside the root family mount, a
+producer reads the fleet's CONTAINMENT structure and emits nest edges for user-declared containment
+relationships. `containmentPairs { fleet; meta }` (`lib/fleet.nix`) yields one immediate parent→child pair per
+cell coordinate whose parent dim (`meta.parent`) is present in the cell — a scope-root coordinate (absent from
+the product) contributes none. `nestProducer` (`lib/edges.nix`), per pair, emits a nest production IFF the pair
+DISPATCHES: `resolveReceiver { outerKind = parentKind; slot = childKind; class = childClass }` returns non-null.
+THE CORPUS-INERT LAW: the corpus declares receives rows ONLY on `root` (the families), never on a containment
+kind, so `compiledKinds ? parentKind` is false at every containment pair and the producer set is `[ ]` BY
+CONSTRUCTION — `traceFor` stays byte-identical no matter what a synthetic fleet emits. Each production is TWO
+disjoint views of ONE mount: the `intent` (the `id`-keyed record ridden by `assembleEdges` for identity /
+override / acyclicity + the trace) and the `contribution` (the `executeNest` content-arm graft — the payload
+placed at the row's `at`, PER MODULE); the gen-edge whole-list nest-materialize is never the content path (the
+two-facet split, §4.2). THE MOUNT CHECK: at a singular graft site `nest.checkSingular` filters the site's
+post-`when` live intents — two live edges into one singular mount abort NAMED (naming the mount + every tied id).
+
+**Forward.** Collectors (aggregate entities) and the flake-parts root-kind adapter are the remaining §4.4
+sub-plans. The render row's `output` field is superseded as the FACE source, retained for the instantiation
+overlay; its full retirement is decided together with the compat forwarding layer.
 
 ## Nest-mode execution (spec §4.2/§4.3/§4.8) — `lib/nest.nix`
 
@@ -403,8 +443,8 @@ content). THE LAZINESS LAW: the engine may not force `inner.payload` (nor call a
 payload-bearing field stays a thunk. **The `at` call convention:** `at = point: inner: [ …path ]` returns ONE
 path (`[]` ⇒ FLAT, a root merge); `point` is the structural paramPoint HANDLE; the executor STRIPS the payload
 before calling `at` (`removeAttrs inner [ "payload" ]`), so `at` sees the inner's structural face, never its
-content. The engine builds the contribution; the CALLER places it (the live mount + families/collectors
-consume the contributions and arrive with the families work).
+content. The engine builds the contribution; the CALLER places it — the live family mount + the opt-in artifact
+edge consume the contributions today (collector aggregates are the remaining consumer).
 
 Each mode returns exactly its contribution row (`mkContribution mode extra`, so the mode tag is written once):
 
@@ -413,8 +453,8 @@ Each mode returns exactly its contribution row (`mkContribution mode extra`, so 
 | content | `{ mode = "content"; at = <path>; modules = [ … ]; }` | each placed module |
 | artifact | `{ mode = "artifact"; at; artifact = <thunk>; }` | `artifact` (the render call) |
 | extend | `{ mode = "extend"; at; extended = <thunk>; }` | `extended` (the `extendsVia` call) |
-| value | `{ mode = "value"; at; value = <verbatim>; unrealizedCast ? <marker>; }` | `value` |
-| defer | `{ mode = "defer"; needs = [ paths ]; thenFn; }` — INERT record | `thenFn` |
+| value | `{ mode = "value"; at; value = <verbatim>; unrealizedCast ? { from; to; slot }; }` | `value` |
+| defer | `{ mode = "defer"; needs = [ paths ]; thenFn; fn; }` — `fn` lowers to a `__configThunk` | `thenFn`/`fn` |
 | (provide rider) | `provideArgs = { specialArgs = <thunk>; argsModule = <module>; }` | both |
 | (adapt rider) | `adaptEnv = <argEnv>` | the bindings (bound at the mount) |
 
@@ -439,11 +479,13 @@ Each mode returns exactly its contribution row (`mkContribution mode extra`, so 
   prebuilt value: injected VERBATIM, never evaluated, never converted (ArtifactRef acceptance at `consumes = P`
   is DEFINITIONAL, and value acceptance is MODE-INDEPENDENT — it short-circuits before any mode dispatch, so a
   prebuilt value satisfies an artifact-mode row too). A wrapped-face MISMATCH (`artifactRef.product ≠ consumes`)
-  sets the `unrealizedCast` trace marker — a trace-visible node, NEVER an eval failure. The entity-side surface
+  sets the `unrealizedCast` marker `{ from; to; slot }` — the cast faces plus the `slot` (threaded through `ctx`
+  at the mount) naming the receives row the cast happened at; a SERIALIZABLE locus (the trace is byte-compared),
+  a trace-visible node, NEVER an eval failure. The entity-side surface
   is `aspects.<name>.artifact = <value>` (a facet-category key, routed as behaviour by `classifyKey`); its
   EXCLUSIVITY law (`artifactExclusive`): a prebuilt aspect's class buckets must be EMPTY — declaring `artifact`
-  alongside non-empty class content aborts NAMED (fired at the projection terminal). Synthetic until the
-  families provide a consumer.
+  alongside non-empty class content aborts NAMED (fired at the projection terminal). The value arm is consumed by
+  the built-in family mount (a prebuilt `output.systems` member injected value-mode).
 
 **The conversions consult (spec §4.1).** On a (produces, consumes) mismatch the executor does EXACTLY ONE
 single-step lookup in the compiled conversion table (`"<from>-><to>"`): found ⇒ `via` applied LAZILY to the
@@ -467,15 +509,20 @@ system's unique-merge conflict at the `.via` key (the `raw` type never last-wins
   module binds `osConfig`; an undeclared arg in `argEnv` is never selected, so it never forces; a non-pattern
   `_:` fn binds nothing). `ArgsInfo` (content-mode, non-nestable — `checkConsumes` blocks it as a `consumes`)
   is the arg-environment product vocabulary; `adapt` is its legal consumer.
-- **defer.** `executeDefer { record }` lowers the R6 record `{ needs = [ paths ]; then = vals: config; }` to
-  the INERT contribution `{ mode = "defer"; needs; thenFn; }` — no terminal consumer yet (no `mkMerge` splice).
-  `then` is a Nix KEYWORD, so the record's field is a QUOTED/DYNAMIC field (`{ "then" = …; }` / `record.${"then"}`),
-  never bare, surfaced as the keyword-free `thenFn`. The one executable check: a `then` producing `options`/
-  `imports` aborts NAMED (a defer produces config only) — fired when `thenFn` is APPLIED, so the record stays
-  inert until a consumer applies it. THE `__configThunk` RELATIONSHIP: den-hoag already ships a deferred
-  mechanism (a config-demanding aspect fn rides `deferredToThunk` → gen-bind's `__configThunk`, resolved at the
-  producing scope at the terminal); R6 formalizes the same contract, so the families consumer either LOWERS
-  this record onto the `__configThunk` path or RETIRES both into one — never a third defer surface.
+- **defer.** `executeDefer { record }` builds the contribution `{ mode = "defer"; needs; thenFn; fn }` from the
+  R6 record `{ needs = [ paths ]; then = vals: config; }`. `then` is a Nix KEYWORD, so the field is
+  QUOTED/DYNAMIC (`{ "then" = …; }` / `record.${"then"}`), surfaced keyword-free as `thenFn`. The one executable
+  check: a `then` producing `options`/`imports` aborts NAMED (a defer produces config only) — fired when
+  `thenFn`/`fn` is APPLIED, so the record stays inert until a consumer applies it. THE LOWERING onto
+  `__configThunk`: `fn` is the config-reading ADAPTER `{ config, ... }: thenFn (readNeeds needs config)` where
+  `readNeeds needs config = map getAttrFromPath needs` reads the `needs` attr-path-lists POSITIONALLY out of the
+  config (a local prelude-free path reader — `nest.nix` is nixpkgs-free, so the adapter is bind-free).
+  `output-modules.nix lowerDefer scope c = bind.mkThunkFrom scope c.fn` wraps `fn` in a gen-bind config-thunk
+  `{ __configThunk; __sourceScope; __fn }`, resolved by `wrapAll` against the terminal's config — so the adapter
+  reads config AT RESOLUTION time (the resolved value varies with the terminal config, never frozen at wiring).
+  RESOLVE-AT-PRODUCING-SCOPE: `__sourceScope` records the producing scope; the LIVE routing that GATHERS the
+  contribution at ITS producing terminal (so that terminal's config resolves it) is the retire-into-one —
+  synthetic today (no live producer emits an R6 defer record).
 
 **Singular arity at both depths (spec §4.2).** "Two predicate-differing edges into one singular mount both
 firing throws" is enforced at BOTH depths, one pure check per phase where its data lives:
@@ -493,11 +540,10 @@ firing throws" is enforced at BOTH depths, one pure check per phase where its da
 singular-arity concern only); `checkSingularDefinition` returns `intents` unfiltered on every pass path (it
 inspects the unconditional subset only to decide the throw, never to reshape the result).
 
-**Forward.** The live mount + output families + collector aggregates consume these contributions and are
-receiver-dispatched like every other outer, arriving with the families work; the root entity is one such
-outer. `unrealizedCast`'s row/slot locus is decided when the trace consumer lands. Should per-edge dispatch
-profile hot, a per-fleet resolver-hoist seam (`mkReceiverResolver`, closing the dispatch once over one fleet's
-compiled kinds) is the natural addition.
+**Forward.** The live family mount + the opt-in artifact edge consume these contributions today (the root entity
+is receiver-dispatched like every other outer); collector aggregates are the remaining consumer. Should per-edge
+dispatch profile hot, a per-fleet resolver-hoist seam (`mkReceiverResolver`, closing the dispatch once over one
+fleet's compiled kinds) is the natural addition.
 
 ## Theory citations (§6)
 
