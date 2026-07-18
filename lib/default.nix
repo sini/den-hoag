@@ -194,6 +194,12 @@ let
   receiversLib = import ./receivers.nix {
     inherit prelude productsLib graph;
   };
+  # The query spine (den.query, §3/§5): a pure lowering of the §3 follow-grammar query over a SUPPLIED flat
+  # labeled edge list onto gen-graph's query engine — the SAME unshadowed outer `graph` the receivers dispatch
+  # rides (the mkDen-local `graph = graphEscape {…}` shadow has no `.query`). Source-agnostic; see lib/query.nix.
+  queryLib = import ./query.nix {
+    inherit prelude graph;
+  };
   # The output-families registry (den.outputs.<family>): the root-as-entity §4.4 rows — the fleet's
   # TOP-LEVEL output faces (nixosConfigurations/darwinConfigurations/a user target) as validated DATA, one
   # row per family. Mode derives via the products table; `render`/`params`/`requires` are name-checked
@@ -1901,6 +1907,11 @@ in
   # (den.mkDen [ … ])) ]`. A v2 entry distinct from the drop-in v1 `flakeModule` (zero shared splice); see
   # lib/output/flake-adapter.nix.
   inherit flakeAdapter;
+  # den.query (§3 query calculus, §5): a pure lowering of the §3 follow-grammar query over a SUPPLIED flat
+  # labeled edge list (`[{ kind; from; to }]`) onto gen-graph — `query { edges; from; follow; where ? (_: true);
+  # mode ? "all"; order ? {}; empty; combine; valueOf; }`. Source-agnostic (plain-string ids); the live
+  # relation-graph source is a downstream concern. See lib/query.nix.
+  query = queryLib.denQuery;
   # den's selector vocabulary (identity-law entry/kind constructors + adapters); used to
   # write declarations, independent of any one mkDen instance.
   sel = select;

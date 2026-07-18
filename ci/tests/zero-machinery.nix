@@ -24,6 +24,7 @@ let
     "concern-classes.nix"
     "concern-collectors.nix"
     "outputs.nix"
+    "query.nix"
     "nest.nix"
     "linearization.nix"
     "settings.nix"

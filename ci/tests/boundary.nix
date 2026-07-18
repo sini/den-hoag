@@ -51,6 +51,7 @@ let
     "products.nix"
     "renders.nix"
     "receivers.nix"
+    "query.nix"
     "outputs.nix"
     "nest.nix"
     "graph-escape.nix"
