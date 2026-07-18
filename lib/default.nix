@@ -1548,6 +1548,52 @@ let
         collectors = ent.registries.collector or { };
         inherit memberIdsFor classNameOf;
       };
+      # ── THE FLAT RELATION PRODUCER (§5, the memberProducer POSTURE): over all entities' `.edges.<rel> =
+      # [targets]`, emit FLAT records `{ id; kind; from; to }` with PLAIN-STRING `from`/`to` node-ids (den.query
+      # string-compares the flat list — NOT the `{entityId;class}` records the collector producer emits). `from`
+      # is the DECLARING entity's node-id = the iteration key (no lowering); each TARGET ref is lowered to
+      # `"${kind}:${name}"` via `entityKindOf` (the id_hash→kind index over all registries — records carry
+      # id_hash + name, not kind). When the relation declares `inverse`, ALSO emit the SWAPPED inverse-kind edge
+      # (den.query is forward-only, so the per-entity accessor's forward query finds the reverse here). Read-only
+      # + OFF `edgesForRoot` (never in the live trace) — corpus-inert by construction (no `.edges` ⇒ `[ ]`).
+      relationEdgesRaw = prelude.concatMap (
+        kindName:
+        prelude.concatMap (
+          name:
+          let
+            from = "${kindName}:${name}";
+            entityEdges = (ent.registries.${kindName}.${name}).edges or { };
+          in
+          prelude.concatMap (
+            rel:
+            let
+              inverseLabel = relationEdgeKinds.${rel}.inverse or null;
+            in
+            prelude.concatMap (
+              target:
+              let
+                to = "${entityKindOf target}:${target.name}";
+                forward = {
+                  id = "rel:${rel}/${from}->${to}";
+                  kind = rel;
+                  inherit from to;
+                };
+                swapped = {
+                  id = "rel:${inverseLabel}/${to}->${from}";
+                  kind = inverseLabel;
+                  from = to;
+                  to = from;
+                };
+              in
+              [ forward ] ++ prelude.optional (inverseLabel != null) swapped
+            ) entityEdges.${rel}
+          ) (builtins.attrNames entityEdges)
+        ) (builtins.attrNames ent.registries.${kindName})
+      ) (builtins.attrNames ent.registries);
+      # WEAVE THE GUARD onto the producer's critical path (the validate-then-transform contract made real):
+      # forcing `relationEdges` forces the undeclared-relation guard first, so a malformed `.edges` aborts NAMED
+      # for ANY consumer of the producer output — not only when the `den.relations` surface is read.
+      relationEdges = builtins.seq edgesRelationGuard relationEdgesRaw;
       # ── §4.7: the member-product EXTRACTION — read a member's `consumes` product ALREADY-RESOLVED (never
       # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a
       # content product (RawModulesInfo) = the member's raw class slice (`classSubtreeAt`); an artifact product
@@ -1911,6 +1957,11 @@ let
         # render folds over these edges (never a mount re-select). NOT in `output.edgesForRoot`/the live trace,
         # so byte-identity holds; corpus-inert `[ ]` (no collectors ⇒ no member edges).
         memberEdges = collectorMemberEdges;
+        # THE RELATION EDGES (§5): the FLAT plain-string relation edge set produced from every entity's
+        # `.edges` (forward + swapped-inverse), the live SOURCE `den.query` consumes. A read-only surface, the
+        # `memberEdges` twin — NOT in `output.edgesForRoot`/the live trace, so byte-identity holds; corpus-inert
+        # `[ ]` (no `.edges` ⇒ nothing). Forcing it fires the woven undeclared-relation guard.
+        relationEdges = relationEdges;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/

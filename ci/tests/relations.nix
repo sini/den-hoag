@@ -90,6 +90,30 @@ let
       config.den.user.sini.edges.bogusRel = [ ];
     }
   ];
+
+  # a fleet with NO relations / NO `.edges` — the producer emits `[ ]` (the corpus-inert gate).
+  noRelFleet = denHoag.mkDen [
+    {
+      config.den.schema.host.parent = null;
+      config.den.host.h = { };
+    }
+  ];
+  # the hand-computed relation edge set for `edgesFleet` (memberOf inverse=members, user.sini →[group.admins]):
+  # one FORWARD + one SWAPPED inverse edge, plain-string node-id endpoints.
+  expectedRelationEdges = [
+    {
+      id = "rel:memberOf/user:sini->group:admins";
+      kind = "memberOf";
+      from = "user:sini";
+      to = "group:admins";
+    }
+    {
+      id = "rel:members/group:admins->user:sini";
+      kind = "members";
+      from = "group:admins";
+      to = "user:sini";
+    }
+  ];
 in
 {
   flake.tests.relations = {
@@ -200,6 +224,46 @@ in
             relationNames = [ "memberOf" ];
           }
         ) != null;
+      expected = true;
+    };
+
+    # ── the FLAT relation producer + den.relationEdges (§5) ──
+    # the producer emits FLAT plain-string records — one FORWARD + one SWAPPED inverse edge — byte-equal to the
+    # hand-computed set (proving the ref→node-id lowering + the swap + the plain-string leaf).
+    test-relation-edges-byte-equal = {
+      expr = builtins.sort (a: b: a.id < b.id) edgesFleet.den.relationEdges;
+      expected = expectedRelationEdges;
+    };
+    # the plain-string leaf is den.query-CONSUMABLE: forward memberOf from user:sini → [group:admins].
+    test-relation-edges-query-consumable = {
+      expr = denHoag.query {
+        edges = edgesFleet.den.relationEdges;
+        from = "user:sini";
+        follow = "memberOf";
+        mode = "all";
+      };
+      expected = [ "group:admins" ];
+    };
+    # the SWAPPED inverse edge is queryable forward: from group:admins, follow the inverse label → [user:sini].
+    test-relation-edges-inverse-consumable = {
+      expr = denHoag.query {
+        edges = edgesFleet.den.relationEdges;
+        from = "group:admins";
+        follow = "members";
+        mode = "all";
+      };
+      expected = [ "user:sini" ];
+    };
+    # CORPUS-INERT: a fleet with no relations / no `.edges` emits `[ ]` (the memberProducer gate).
+    test-relation-edges-corpus-inert = {
+      expr = noRelFleet.den.relationEdges;
+      expected = [ ];
+    };
+    # THE GUARD IS WOVEN onto the producer's critical path: forcing den.relationEdges fires the undeclared-
+    # relation guard (a malformed `.edges` throws NAMED even when only den.relationEdges — not den.relations — is
+    # read), making the validate-then-transform contract real for every producer consumer.
+    test-relation-edges-guard-woven = {
+      expr = throws undeclaredEdgesFleet.den.relationEdges;
       expected = true;
     };
   };
