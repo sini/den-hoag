@@ -558,10 +558,78 @@ firing throws" is enforced at BOTH depths, one pure check per phase where its da
 singular-arity concern only); `checkSingularDefinition` returns `intents` unfiltered on every pass path (it
 inspects the unconditional subset only to decide the throw, never to reshape the result).
 
-**Forward.** The live family mount + the opt-in artifact edge consume these contributions today (the root entity
-is receiver-dispatched like every other outer); collector aggregates are the remaining consumer. Should per-edge
+**Forward.** The live family mount, the opt-in artifact edge, and the collector aggregate (§4.7, below) consume
+these contributions today (the root entity is receiver-dispatched like every other outer). Should per-edge
 dispatch profile hot, a per-fleet resolver-hoist seam (`mkReceiverResolver`, closing the dispatch once over one
 fleet's compiled kinds) is the natural addition.
+
+## Collectors — aggregate entities (`den.collectors`, spec §4.7) — `lib/concern-collectors.nix`
+
+An aggregate IS an entity. A collector gathers a selector-driven set of member entities, content-nests their
+product into an aggregate (colmena `RawModulesInfo`, no re-eval), and artifact-nests that aggregate into the
+root — ONE kernel mechanism, receiver-dispatched like every other entity, with NO second N→1 folding arm (a
+shadow folding semantics was rejected as the v1-multi-mechanism disease). A collector carries its OWN content —
+a hive's `meta.*` is the collector's own class bucket, the test that separates a real entity from a routing
+fiction: `classSubtreeAt "collector:<name>" <class>` holds the collector's own content, DISTINCT from any
+member's.
+
+**The framework `collector` kind.** `den.collectors.<name> = { class; members ? null; consumes ? null; render ? null; }`
+is a first-class ENTITY. The kind is FRAMEWORK-OWNED: it enters `denMeta` by a `//`-augment GATED on
+`den.collectors != { }` (a fleet with no collectors has no collector kind/registry — corpus-inert), NOT fed
+through `discoverKinds` (whose reserved-name guard would throw on the framework kind); a user schema kind
+literally named `collector` aborts NAMED at discovery (the `kinds`/`root` reserved posture). `den.collectors`
+bridges into the entity registry `den.collector.<name>` (an id_hash-bearing root node). The collector's
+PRODUCING class is a per-instance FUNCTION of its own `class` field (`contentClass.collector = e: effectiveClassEntries.${e.class}`, the schema's per-host function precedent); an absent/null class OR an
+unregistered class aborts catchable-NAMED on both the compiled `den.collectors` surface (eager) and the classOf
+path — the `.${null}` selector is null-guarded before it is reached (the tryEval-uncatchable coercion class).
+
+**Selector-driven membership (`hasClass`, member edges).** `members` is a scope-node SELECTOR; membership is
+selector-driven membership-EDGE emission (query-conditioned edge emission at the resolution stratum, §2.3 — no
+new primitive). `hasClass <name>` is a TOP-LEVEL, composable selector VALUE (the `hasSetting` posture): it
+matches a scope node whose PRODUCING class name is `<name>`, reading a `classOf` accessor the membership gather
+injects into the run context (`scopeAdapter.matchIdWith` merges the extension over gen-select's scope context —
+`select.matches` threads it straight to the selector, so NO gen-select change). Null-guarded: a class-neutral
+node yields `classOf id == null`, short-circuited before a name comparison. The member producer emits one
+`member` edge per matching node — `collector → member` (from = the collector, to = the member) — a read-only
+surface (`den.memberEdges`) the aggregate FOLDS over (never a mount re-select — a second selector scan would
+fork the graph-fidelity the edges establish).
+
+**The aggregate render + gather-then-render + THE SEAM.** A collector's render is an AGGREGATE crossing: its
+`evaluator` takes a NAME-KEYED member map `{ <memberName> = <product> }` → `HiveInfo`, called ONCE over the
+gathered members (distinct from the per-config `{ modules; specialArgs } → system` evaluator; a render row's
+`aggregate` bool tags the arity, so a per-config/aggregate misuse names itself NAMED in BOTH directions). The
+gather is a graph FOLD over the collector's member edges → the member map, each payload read ALREADY-RESOLVED
+(see genericity below). The prebuilt `HiveInfo` value-nests into the root via the render's `output` family (the
+family stays the RECEIVER, the collector the PRODUCER); `render.produces` must equal `family.consumes` (a silent
+shape mismatch aborts NAMED). **THE RENDER-EVALUATOR SEAM (binding).** The aggregate crossing stays the render's
+`evaluator` FIELD — swappable data, never hardcoded in the mount flow. den-hoag's own tests use a stub
+`memberMap: { … }`; the real `makeHive` rides corpus/ship-time behind the seam. The mount ORCHESTRATION (gather
+→ one render call → value-nest) is den's; the crossing is pluggable — **the gen-flake re-scope INHERITS this
+member-map → `HiveInfo` contract, and den's collector evaluator swaps to gen-flake's aggregate terminal via a
+ONE-LINE evaluator swap** (exactly as the class render already delegates its per-config crossing to
+`flake.terminals.mkSystemTerminal`).
+
+**`consumes` IS the genericity abstraction.** A collector differs from another ONLY in `consumes` (+ its
+render): the member-product extraction dispatches on the consumed product's MODE alone — content
+(`RawModulesInfo`) → the member's raw class slice (`classSubtreeAt`, uncatchable-clean: `[ ]` for a
+content-empty member); artifact (`SystemInfo`) → the member's already-built system
+(`output.systems.<class>.<id>`, NAMED-guarded: a selected member absent from `output.systems` aborts NAMED,
+never a bare miss). No colmena/deploy-rs field in the kernel — a colmena `RawModulesInfo` collector and a
+deploy-rs-shaped `SystemInfo` collector over the SAME member set differ ONLY in those two fields (the two
+compiled records, minus identity + `{consumes, render}`, are EQUAL). Hydra jobsets and nixosTests matrices are
+the same shape.
+
+**The `members` family-level sugar (desugar → anonymous collector).** `den.outputs.<family>.members = { of = <selector>; consumes = <memberProduct>; }` is the family-level SPELLING: it elaborates to a REAL anonymous
+collector entity via a config→config rewrite run BEFORE the pipeline (a structural probe synthesizes
+`den.collectors."members:<family>"` and appends it to the fleet's modules), so the anon collector flows through
+the EXACT SAME kernel as a named one (discover → bridge → registry → member edges → render → mount) — NO second
+arm. The synthesized fields come from the family's own declaration (class ← `contentClass`, render ← `render`
+whose `output` names the family, so the anon mounts into `<family>` itself; the member selector + product from
+the `members` record). CORPUS-INERT BY CONSTRUCTION: no `members`-bearing family synthesizes nothing, so the
+module list is byte-untouched. The synthetic name colliding with a user collector aborts NAMED. **Kernel
+identity:** over the same member set + render, a named collector and the sugar-synthesized one produce a
+BYTE-IDENTICAL `HiveInfo` aggregate value (the member-name-keyed map) — the face keys differ by construction
+(family key + leaf name), so identity is proven by VALUE, not face.
 
 ## Theory citations (§6)
 

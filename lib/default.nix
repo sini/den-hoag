@@ -622,7 +622,7 @@ let
       # den.channelGather — the PER-NODE CHANNEL-AUGMENTATION seam (#62a). A consumer may augment the channel
       # values bound to a node's class-module formals with contributions GATHERED from beyond the node's own
       # emissions: the hook `{ id; result } -> { <channel> = [ contribution ]; }` runs inside `channelBindingsAt`
-      # (output-modules.nix), its result appended AFTER the node's local emissions per channel (F4: bound =
+      # (output-modules.nix), its result appended AFTER the node's local emissions per channel (bound =
       # local ++ gathered). The gathered records share local-collection-data's contribution shape
       # (`.deferred`/`.value`/`.producer`) so they extract through the SAME deferred-thunk path (a gathered
       # deferred value resolves at ITS OWN producing scope). THE LAZINESS LAW (A17): `result` is the eval passed
@@ -635,7 +635,7 @@ let
         options.den.channelGather = merge.mkOption {
           type = merge.types.raw;
           default = _: { };
-          description = "Per-node channel-augmentation hook `{ id; result } -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; the gathered contributions are appended after the node's own emissions (F4: local ++ gathered); must stay lazy over the id spine (A17). Native default `_: { }` (identity path).";
+          description = "Per-node channel-augmentation hook `{ id; result } -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; the gathered contributions are appended after the node's own emissions (local ++ gathered); must stay lazy over the id spine (A17). Native default `_: { }` (identity path).";
         };
       };
 
@@ -1494,7 +1494,7 @@ let
       # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a
       # content product (RawModulesInfo) = the member's raw class slice (`classSubtreeAt`); an artifact product
       # (SystemInfo) = the member's built system (`output.systems`). An unknown mode aborts NAMED (never a bare
-      # crash). This is the abstraction genericity floor 4 rests on — a collector differs from another ONLY in
+      # crash). This is the abstraction the genericity floor rests on — a collector differs from another ONLY in
       # its `consumes` (+ render), the extraction dispatches on the consumed product's mode alone.
       extractMemberProduct =
         product: memberNodeId: memberClass:

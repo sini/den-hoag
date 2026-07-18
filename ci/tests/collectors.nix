@@ -511,6 +511,48 @@ let
       };
     }
   ];
+
+  # a user schema kind named `collector` — the framework reserved-name collision (aborts NAMED at discovery).
+  reservedKindFleet = denHoag.mkDen [ { config.den.schema.collector.parent = null; } ];
+
+  # a members-sugar family with ONE required field omitted — each omission is a distinct NAMED throw in the
+  # desugar pre-pass (the collision branch is tested above; these witness the four field-missing guards).
+  mkMembersFamFleet =
+    {
+      of ? null,
+      memberConsumes ? null,
+      contentClass ? null,
+      render ? null,
+    }:
+    denHoag.mkDen [
+      {
+        config.den.schema.nixosHost.parent = null;
+        config.den.contentClass.nixosHost = "nixos";
+        config.den.classes.colmena = { };
+        config.den.renders.r1 = {
+          evaluator = m: {
+            built = m;
+          };
+          produces = "HiveInfo";
+          aggregate = true;
+          output = "f";
+        };
+        config.den.nixosHost.a = { };
+        config.den.outputs.f = {
+          at = _point: e: [
+            "f"
+            e.name
+          ];
+          consumes = "HiveInfo";
+          members =
+            { }
+            // (if of != null then { inherit of; } else { })
+            // (if memberConsumes != null then { consumes = memberConsumes; } else { });
+        }
+        // (if contentClass != null then { inherit contentClass; } else { })
+        // (if render != null then { inherit render; } else { });
+      }
+    ];
 in
 {
   flake.tests.collectors = {
@@ -738,6 +780,57 @@ in
     # the synthetic name colliding with a user den.collectors entry aborts CATCHABLE-NAMED.
     test-members-sugar-collision-aborts = {
       expr = throws collisionFleet.den.collectors;
+      expected = true;
+    };
+
+    # the framework `collector` kind name is RESERVED: a user schema kind named `collector` aborts NAMED at
+    # discovery (the `kinds`/`root` reserved posture).
+    test-collector-reserved-kind-name-aborts = {
+      expr = throws reservedKindFleet.den.registries;
+      expected = true;
+    };
+    # the four members-sugar field-missing NAMED guards (each a distinct throw): members.of …
+    test-members-sugar-missing-of-aborts = {
+      expr =
+        throws
+          (mkMembersFamFleet {
+            memberConsumes = "RawModulesInfo";
+            contentClass = "colmena";
+            render = "r1";
+          }).den.collectors;
+      expected = true;
+    };
+    # … members.consumes …
+    test-members-sugar-missing-consumes-aborts = {
+      expr =
+        throws
+          (mkMembersFamFleet {
+            of = hasClass "nixos";
+            contentClass = "colmena";
+            render = "r1";
+          }).den.collectors;
+      expected = true;
+    };
+    # … the family's contentClass …
+    test-members-sugar-missing-contentclass-aborts = {
+      expr =
+        throws
+          (mkMembersFamFleet {
+            of = hasClass "nixos";
+            memberConsumes = "RawModulesInfo";
+            render = "r1";
+          }).den.collectors;
+      expected = true;
+    };
+    # … the family's render.
+    test-members-sugar-missing-render-aborts = {
+      expr =
+        throws
+          (mkMembersFamFleet {
+            of = hasClass "nixos";
+            memberConsumes = "RawModulesInfo";
+            contentClass = "colmena";
+          }).den.collectors;
       expected = true;
     };
   };
