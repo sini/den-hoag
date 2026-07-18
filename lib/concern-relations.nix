@@ -121,6 +121,74 @@ let
       follow = kind;
       where = if sel == null then (_: true) else whereFor sel;
     };
+
+  # mkRelAccessor — the per-entity relation accessor (§5), the `mkNarrowAccessor` POSTURE: a LAZY per-node fn
+  # `id → { <kind> = { targets; inverse; closure; paths; }; }` over the fleet's relation kinds, each field a
+  # den.query over `relationEdges` FROM the node. (mkNarrowAccessor itself is aspect-specific — it reads
+  # resolved-aspects — so this mirrors its lazy-per-node-fn shape rather than reusing it.) Keyed by relation
+  # KIND; the inverse LABEL is a query direction on the forward kind, not a separate key. Lazy: forcing one
+  # field runs one den.query, not the fleet.
+  #   targets = the 1-hop forward (`follow = kind`);
+  #   inverse = the reverse (`follow = <inverse label>`, reading the producer's SWAPPED edges; `[ ]` when the
+  #             relation declares no inverse — never a den.query with a null follow);
+  #   closure = the TRANSITIVE set: the `+` (one-or-more) in `follow = "${kind}+"` walks the full chain,
+  #             `mode = "fixpoint"` folds that reach through the CONCRETE set-union monoid (the registry closure
+  #             CAPABILITY + the set-union DISCIPLINE law-gating are a downstream concern);
+  #   paths   = the path witnesses (paths mode).
+  mkRelAccessor =
+    {
+      denQuery,
+      relationEdges,
+      relationKinds,
+    }:
+    id:
+    builtins.mapAttrs (
+      kind: kindRow:
+      let
+        inverseLabel = kindRow.inverse or null;
+        base = {
+          edges = relationEdges;
+          from = id;
+        };
+      in
+      {
+        targets = denQuery (
+          base
+          // {
+            follow = kind;
+            mode = "all";
+          }
+        );
+        inverse =
+          if inverseLabel == null then
+            [ ]
+          else
+            denQuery (
+              base
+              // {
+                follow = inverseLabel;
+                mode = "all";
+              }
+            );
+        closure = denQuery (
+          base
+          // {
+            follow = "${kind}+";
+            mode = "fixpoint";
+            empty = [ ];
+            combine = acc: xs: acc ++ builtins.filter (x: !(builtins.elem x acc)) xs;
+            valueOf = x: [ x ];
+          }
+        );
+        paths = denQuery (
+          base
+          // {
+            follow = kind;
+            mode = "paths";
+          }
+        );
+      }
+    ) relationKinds;
 in
 {
   inherit
@@ -128,5 +196,6 @@ in
     relationCollisionMessage
     edgesRelationMessage
     mkRelQuery
+    mkRelAccessor
     ;
 }

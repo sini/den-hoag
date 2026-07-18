@@ -1604,6 +1604,13 @@ let
         inherit relationEdges;
         whereFor = matchIdStructural;
       };
+      # relAt (§5) — the per-entity relation accessor, built here PER-MKDEN from the fleet's den.query + relation
+      # edges + kinds (the accessor's shape/semantics are on the mkRelAccessor builder doc). Exposed as den.relAt.
+      relAt = relationsLib.mkRelAccessor {
+        denQuery = queryLib.denQuery;
+        inherit relationEdges;
+        relationKinds = relationEdgeKinds;
+      };
       # ── §4.7: the member-product EXTRACTION — read a member's `consumes` product ALREADY-RESOLVED (never
       # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a
       # content product (RawModulesInfo) = the member's raw class slice (`classSubtreeAt`); an artifact product
@@ -1976,6 +1983,10 @@ let
         # `relQuery { from; kind; sel ? null; mode ? "all" }`. Per-mkDen (closes over the fleet's scope +
         # relation edges); corpus-inert — a new read-only surface nothing in the corpus calls.
         relQuery = relQuery;
+        # relAt (§5): the per-entity relation accessor — `relAt <nodeId> = { <kind> = { targets; inverse;
+        # closure; paths }; }` (the aspectsAt-sibling narrow accessor; this per-node record is what a node's
+        # `ctx.rel` reads). Per-mkDen, lazy; corpus-inert — nothing in the corpus reads it.
+        relAt = relAt;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/

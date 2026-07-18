@@ -124,6 +124,25 @@ let
     )
   ];
 
+  # ── ctx.rel: the per-entity relation accessor (§5, the mkNarrowAccessor posture) ──
+  # a memberOf CHAIN a → b → c (so closure is genuinely MULTI-HOP transitive) + a no-inverse relation `plainRel`.
+  relAccessorFleet = denHoag.mkDen [
+    (
+      { config, ... }:
+      {
+        config.den.schema.node.parent = null;
+        config.den.relations.memberOf = {
+          inverse = "members";
+        };
+        config.den.relations.plainRel = { };
+        config.den.node.a.edges.memberOf = [ config.den.node.b ];
+        config.den.node.b.edges.memberOf = [ config.den.node.c ];
+        config.den.node.a.edges.plainRel = [ config.den.node.c ];
+        config.den.node.c = { };
+      }
+    )
+  ];
+
   # the hand-computed relation edge set for `edgesFleet` (memberOf inverse=members, user.sini →[group.admins]):
   # one FORWARD + one SWAPPED inverse edge, plain-string node-id endpoints.
   expectedRelationEdges = [
@@ -316,6 +335,48 @@ in
         sel = denHoag.hasClass "nixos";
       };
       expected = [ "nixosHost:a" ];
+    };
+
+    # ── ctx.rel.<kind>.{ targets; inverse; closure; paths } — the per-entity relation accessor (§5) ──
+    # the accessor is keyed by RELATION KIND (den.relations names) — NO `members` key (the inverse is a
+    # label-only query direction on the forward kind, not a separate ctx.rel kind).
+    test-ctxrel-keyed-by-kind = {
+      expr = builtins.sort builtins.lessThan (builtins.attrNames (relAccessorFleet.den.relAt "node:a"));
+      expected = [
+        "memberOf"
+        "plainRel"
+      ];
+    };
+    # targets = the 1-hop forward (follow = <kind>): a's direct memberOf target is b (NOT c).
+    test-ctxrel-targets-1hop = {
+      expr = (relAccessorFleet.den.relAt "node:a").memberOf.targets;
+      expected = [ "node:b" ];
+    };
+    # closure = the TRANSITIVE set (fixpoint, follow = <kind>+, concrete set-union monoid): a → {b, c} — a
+    # 1-hop-only impl returning just {b} FAILS this; the transitive reach is the `+` (one-or-more) in
+    # follow = <kind>+, not fixpoint-mode iteration.
+    test-ctxrel-closure-transitive = {
+      expr = builtins.sort builtins.lessThan (relAccessorFleet.den.relAt "node:a").memberOf.closure;
+      expected = [
+        "node:b"
+        "node:c"
+      ];
+    };
+    # inverse = den.query for the inverse LABEL (reads the producer's SWAPPED edges): at b, who points to b via
+    # memberOf → a (non-empty, genuinely reads the reverse).
+    test-ctxrel-inverse-swapped = {
+      expr = (relAccessorFleet.den.relAt "node:b").memberOf.inverse;
+      expected = [ "node:a" ];
+    };
+    # inverse == [ ] for a relation with NO inverse (short-circuit — never a den.query with a null follow).
+    test-ctxrel-inverse-null-empty = {
+      expr = (relAccessorFleet.den.relAt "node:a").plainRel.inverse;
+      expected = [ ];
+    };
+    # paths = the path witnesses (paths mode): a's 1-hop memberOf reaches b.
+    test-ctxrel-paths = {
+      expr = map (p: p.node) (relAccessorFleet.den.relAt "node:a").memberOf.paths;
+      expected = [ "node:b" ];
     };
   };
 }
