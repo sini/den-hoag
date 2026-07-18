@@ -363,6 +363,95 @@ let
       }
     )
   ];
+
+  # ── THE L2 COLLECTOR-FED TEMPLATE (the composition capstone): a SystemInfo collector's member map feeds the
+  # hosted flake-parts eval as an EXPLICIT TYPED EDGE — the fragile `self.nixosConfigurations` self-read replaced
+  # by a collector edge. `sysColl` (members = hasClass "nixos", consumes = SystemInfo) gathers the hosts' built
+  # systems into a name-keyed member map; its flake-parts render (real mkFlakeTerminal, needsSelf) THREADS that
+  # map into the hosted module (`flake.memberSystems = attrNames memberMap` — member NAMES, `==`-comparable, no
+  # artifact forced) AND reads `self.srcFam.srcColl.v` across the knot (Case A). Composes the SystemInfo
+  # member-product collector arm (the memberMap the aggregate arm already hands the evaluator) with the real
+  # flake-parts crossing; NO new mechanism — the evaluator is the swappable seam that threads the map in.
+  # Override-gated (real mkFlakeTerminal), same posture as W1/W2.
+  l2Fleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.flake = { };
+      config.den.nixosHost.a = { };
+      config.den.nixosHost.b = { };
+      # the sibling SOURCE family for the Case A self cross-family read (a known string leaf).
+      config.den.collectors.srcColl = {
+        class = "flake";
+        render = "srcR";
+      };
+      config.den.renders.srcR = {
+        evaluator = _memberMap: {
+          v = "KNOWN";
+        };
+        produces = "FlakeInfo";
+        aggregate = true;
+        output = "srcFam";
+      };
+      config.den.outputs.srcFam = {
+        at = _point: e: [
+          "srcFam"
+          e.name
+        ];
+        consumes = "FlakeInfo";
+      };
+      # the SystemInfo collector → the hosted flake-parts render (the typed edge + the Case A self read).
+      config.den.collectors.sysColl = {
+        class = "flake";
+        members = denHoag.hasClass "nixos";
+        consumes = "SystemInfo";
+        render = "l2R";
+      };
+      config.den.renders.l2R = {
+        evaluator =
+          { self }:
+          memberMap:
+          mkFlakeTerminal {
+            inherit self;
+            inputs = { inherit nixpkgs; };
+            modules = [
+              {
+                # THE TYPED EDGE: the collector's SystemInfo member map, threaded into the hosted eval. Its NAMES
+                # (spine only — the built-system leaves are `==`-incomparable) surface as a flake output.
+                flake.memberSystems = builtins.sort (x: y: x < y) (builtins.attrNames memberMap);
+                # CASE A alongside: a sibling family's leaf read across the knot.
+                flake.crossRead = self.srcFam.srcColl.v;
+              }
+            ];
+            systems = [ "x86_64-linux" ];
+          };
+        produces = "FlakeInfo";
+        aggregate = true;
+        needsSelf = true;
+        output = "l2fam";
+      };
+      config.den.outputs.l2fam = {
+        at = _: _: [ ];
+        consumes = "FlakeInfo";
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.aspects.hc.nixos.tag = "t";
+        config.den.include = [
+          {
+            at = config.den.nixosHost.a;
+            aspects = [ config.den.aspects.hc ];
+          }
+          {
+            at = config.den.nixosHost.b;
+            aspects = [ config.den.aspects.hc ];
+          }
+        ];
+      }
+    )
+  ];
 in
 {
   flake.tests.flakeparts = {
@@ -471,6 +560,24 @@ in
         in
         ((cf.nixosConfigurations or { }) ? h) && (cf ? darwinConfigurations);
       expected = true;
+    };
+
+    # ── THE L2 COLLECTOR-FED TEMPLATE (override-gated — real mkFlakeTerminal) ──
+    # L2a TYPED EDGE: the SystemInfo collector's name-keyed member map reaches the hosted flake-parts eval — the
+    # member NAMES surface as a flake output (`flake.memberSystems = attrNames memberMap`), so the hosted eval
+    # consumes its members' systems via a COLLECTOR EDGE, not a fragile `self.nixosConfigurations` self-read.
+    test-l2-collector-map-feeds-hosted-eval = {
+      expr = l2Fleet.outputs.memberSystems;
+      expected = [
+        "a"
+        "b"
+      ];
+    };
+    # L2b CASE A alongside the typed edge: the SAME hosted render reads a sibling family's leaf across the knot
+    # and resolves to the known string — the self cross-family read composes with the collector-fed member map.
+    test-l2-self-cross-family-resolves = {
+      expr = l2Fleet.outputs.crossRead;
+      expected = "KNOWN";
     };
   };
 }
