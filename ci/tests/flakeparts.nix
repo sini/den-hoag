@@ -90,6 +90,56 @@ let
       };
     }
   ];
+
+  # ── the FLAKE-PARTS FAMILY MOUNT + root transposition (composes on the collector aggregate arm (§4.7) + the
+  # self-knot curry — NO new mount code). A flake-parts family is a ZERO-MEMBER collector `fp` with an aggregate
+  # render (needsSelf=true, produces FlakeInfo) whose `output` family declares `at = _: _: [ ]` — so the render's
+  # transposed attrset merges FLAT AT ROOT (nest.nix `[ ]`⇒flat) alongside the built-in `nixosConfigurations`.
+  # The flake-parts modules are CLOSED OVER in the stub evaluator (not a collector content bucket). Beside a
+  # real nixos host `h`, the stub emits a DISJOINT key (`flakeOut`) AND a COLLIDING one (`nixosConfigurations.
+  # fpExtra`) so both the flat-merge and the recursive familyMerge (collision → coexist, never last-wins) show.
+  flakePartsFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.flake = { };
+      config.den.collectors.fp = {
+        class = "flake";
+        render = "fpRender";
+      };
+      config.den.renders.fpRender = {
+        evaluator =
+          { self }:
+          _memberMap: {
+            flakeOut = "TRANSPOSED";
+            nixosConfigurations = {
+              fpExtra = "COEXIST";
+            };
+          };
+        produces = "FlakeInfo";
+        aggregate = true;
+        needsSelf = true;
+        output = "fpFamily";
+      };
+      config.den.outputs.fpFamily = {
+        at = _: _: [ ];
+        consumes = "FlakeInfo";
+      };
+      config.den.nixosHost.h = { };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.aspects.hostContent.nixos.tag = "h-content";
+        config.den.include = [
+          {
+            at = config.den.nixosHost.h;
+            aspects = [ config.den.aspects.hostContent ];
+          }
+        ];
+      }
+    )
+  ];
 in
 {
   flake.tests.flakeparts = {
@@ -121,6 +171,30 @@ in
     test-needsself-false-untouched = {
       expr = selfKnotFleet.outputs.fpA.srcColl.v;
       expected = "KNOWN";
+    };
+
+    # the flake-parts render's transposed attrset merges FLAT AT ROOT (at = _: _: [ ]) — its disjoint key sits
+    # at the fleet root alongside the built-in families.
+    test-flakeparts-transposes-at-root = {
+      expr = flakePartsFleet.outputs.flakeOut;
+      expected = "TRANSPOSED";
+    };
+    # the built-in fold is INTACT — the nixos host still surfaces as nixosConfigurations.<host> (the guard-widen
+    # composes the flake-parts arm ALONGSIDE the built-in fold, never replacing it).
+    test-flakeparts-builtin-fold-intact = {
+      expr = (flakePartsFleet.outputs.nixosConfigurations or { }) ? h;
+      expected = true;
+    };
+    # KEY COLLISION: the transposed output shares the `nixosConfigurations` key with the built-in family →
+    # `familyMerge` RECURSES and BOTH entries coexist (the built-in host `h` AND the flake-parts `fpExtra`),
+    # never last-wins clobber — the spine-deepening merge path the disjoint-keys case doesn't exercise.
+    test-flakeparts-collision-coexist = {
+      expr =
+        let
+          nc = flakePartsFleet.outputs.nixosConfigurations or { };
+        in
+        (nc ? h) && (nc ? fpExtra);
+      expected = true;
     };
   };
 }
