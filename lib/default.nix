@@ -37,6 +37,9 @@ let
     inherit (receiversLib) resolveReceiver;
     inherit (nestLib) executeNest checkSingular;
   };
+  # den.relations (§5): the relation registry desugared onto the den.edges edge-kind registry (§2.2
+  # one-registry) — a relation → one edge-kind @resolution carrying its inverse label. See concern-relations.nix.
+  relationsLib = import ./concern-relations.nix { inherit prelude; };
   entity = import ./entity.nix { inherit prelude schema merge; };
   # The collectors concern (§4.7): the framework `collector` entity kind — the `den.collectors` option, the
   # denMeta `//`-augment (gated on collectors present), the schema-decl + registry bridge, the compiled-surface
@@ -406,6 +409,19 @@ let
         };
       };
 
+      # den.relations.<name> — the relation registry (§5). Each entry `{ inverse ? null; data ? {}; }` desugars
+      # to ONE `den.edges` kind @resolution (closure = false), carrying `inverse` as the reverse-query label
+      # (§2.2 one-registry). `raw` holds each record unmerged. Absent ⇒ a fleet with no relations (the producer
+      # emits nothing). The registry DESCRIBES relations; the live edge SOURCE + the per-entity accessor are the
+      # downstream steps.
+      relationsDecl = {
+        options.den.relations = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Relation registry (§5): `<name> = { inverse ? null; data ? {}; }` — desugars to a den.edges kind @resolution, closure = false (§2.2 one-registry); `inverse` is the reverse-query label.";
+        };
+      };
+
       # den.disciplines.<name> — the merge-discipline registry (§5). Each entry declares the algebra a
       # merge site obeys: `{ laws; empty; combine; dedup ? null; order ? null; }` — `laws` names the
       # ladder class (ordered-monoid / commutative-monoid / join-semilattice / shadow), `empty`/`combine`
@@ -710,6 +726,7 @@ let
           settingsDecl
           strataDecl
           edgesDecl
+          relationsDecl
           disciplinesDecl
           productsDecl
           conversionsDecl
@@ -966,8 +983,16 @@ let
       # `den.edges` registrations, validated (reserved-name, closure-gate, stratum ∈ the compiled order).
       # The closure gate validates a closure kind's discipline against `disciplinesTable` (present +
       # join-semilattice laws). Threaded to the kernel via `den.edges`, mirroring `classesByName`.
+      # den.relations desugared to edge-kinds (§5/§2.2 one-registry): one kind per relation @resolution,
+      # //-merged BESIDE the user den.edges kinds into the ONE compile. The collision guard (relation names +
+      # inverse labels, pairwise-distinct + disjoint from user kinds + reserved) fires here when forced.
+      relationEdgeKinds = relationsLib.relationsToEdgeKinds {
+        relations = ent.config.den.relations or { };
+        userEdgeKinds = builtins.attrNames (ent.config.den.edges or { });
+        reservedNames = edgesLib.reservedNames;
+      };
       edgeKindTable = edgesLib.compile {
-        kinds = ent.config.den.edges or { };
+        kinds = (ent.config.den.edges or { }) // relationEdgeKinds;
         strataOrder = compiledStrata;
         disciplines = disciplinesTable;
       };
@@ -1972,6 +1997,9 @@ in
     # pre-registered strata + framework strata inserts.
     compileEdges = edgesLib.compile;
     edgeKinds = edgesLib;
+    # The relation registry desugar (§5): `relationsToEdgeKinds`/`relationCollisionMessage`, for the suite's
+    # desugar + collision-message scenarios (the NAMED contract is a value, since tryEval can't capture a throw).
+    relations = relationsLib;
     # The merge-discipline registry compile (§5) + the lib (its `reservedNames`/`lawClasses`), for the
     # suite's laws-ladder validation scenarios. `compileDisciplines { disciplines }`.
     compileDisciplines = concernDisciplines.compile;

@@ -41,6 +41,7 @@ let
     "concern-quirks.nix"
     "concern-classes.nix"
     "concern-collectors.nix"
+    "concern-relations.nix"
     "concern-disciplines.nix"
     "linearization.nix"
     "settings.nix"

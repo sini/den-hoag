@@ -23,6 +23,7 @@ let
     "concern-quirks.nix"
     "concern-classes.nix"
     "concern-collectors.nix"
+    "concern-relations.nix"
     "outputs.nix"
     "query.nix"
     "nest.nix"
