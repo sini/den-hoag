@@ -118,6 +118,168 @@ let
   ];
   memberEdges = memberFleet.den.memberEdges;
   memberTargets = map (edge: edge.to.entityId) memberEdges;
+
+  # ── §4.7: the AGGREGATE render → HiveInfo + the gather-then-render mount ──
+  # A collector `cluster` (class colmena, consumes RawModulesInfo) over TWO nixos members (a, b) each carrying
+  # DISTINCT resolved content. Its aggregate render `colmenaAgg` (evaluator memberMap → HiveInfo, tagged
+  # `aggregate = true`) is called ONCE over the gathered member map and VALUE-mode nests into root via the
+  # render's `output` family `colmenaHive` (consumes HiveInfo). The stub evaluator proves the aggregate crossing
+  # is a swappable `evaluator` FIELD (the seam), never hardcoded in the mount flow.
+  mkAggFleet =
+    evaluator:
+    denHoag.mkDen [
+      {
+        config.den.schema.nixosHost.parent = null;
+        config.den.contentClass.nixosHost = "nixos";
+        config.den.classes.colmena = { };
+        config.den.collectors.cluster = {
+          class = "colmena";
+          members = hasClass "nixos";
+          consumes = "RawModulesInfo";
+          render = "colmenaAgg";
+        };
+        config.den.renders.colmenaAgg = {
+          inherit evaluator;
+          produces = "HiveInfo";
+          aggregate = true;
+          output = "colmenaHive";
+        };
+        config.den.outputs.colmenaHive = {
+          at = _point: e: [
+            "colmenaHive"
+            e.name
+          ];
+          consumes = "HiveInfo";
+        };
+        config.den.nixosHost.a = { };
+        config.den.nixosHost.b = { };
+      }
+      (
+        { config, ... }:
+        {
+          config.den.aspects.aContent.nixos.tag = "a-content";
+          config.den.aspects.bContent.nixos.tag = "b-content";
+          config.den.include = [
+            {
+              at = config.den.nixosHost.a;
+              aspects = [ config.den.aspects.aContent ];
+            }
+            {
+              at = config.den.nixosHost.b;
+              aspects = [ config.den.aspects.bContent ];
+            }
+          ];
+        }
+      )
+    ];
+  aggFleet = mkAggFleet (memberMap: {
+    built = memberMap;
+  });
+  aggSwapped = mkAggFleet (memberMap: {
+    swapped = memberMap;
+  });
+  aggHive = aggFleet.outputs.colmenaHive.cluster;
+
+  # ── the three misuse guards (all CATCHABLE-NAMED, never bare crashes) ──
+  # a collector whose render is NOT an aggregate render (aggregate defaults false).
+  nonAggFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.colmena = { };
+      config.den.collectors.cluster = {
+        class = "colmena";
+        members = hasClass "nixos";
+        consumes = "RawModulesInfo";
+        render = "perConfig";
+      };
+      config.den.renders.perConfig = {
+        evaluator = _: { };
+        produces = "HiveInfo";
+        output = "colmenaHive";
+      };
+      config.den.outputs.colmenaHive = {
+        at = _point: e: [
+          "colmenaHive"
+          e.name
+        ];
+        consumes = "HiveInfo";
+      };
+      config.den.nixosHost.a = { };
+    }
+  ];
+  # render.produces (HiveInfo) ≠ family.consumes (SystemInfo) — the mounted-out shape mismatch.
+  mismatchFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.colmena = { };
+      config.den.collectors.cluster = {
+        class = "colmena";
+        members = hasClass "nixos";
+        consumes = "RawModulesInfo";
+        render = "colmenaAgg";
+      };
+      config.den.renders.colmenaAgg = {
+        evaluator = m: m;
+        produces = "HiveInfo";
+        aggregate = true;
+        output = "mismFam";
+      };
+      config.den.outputs.mismFam = {
+        at = _point: e: [
+          "mismFam"
+          e.name
+        ];
+        consumes = "SystemInfo";
+      };
+      config.den.nixosHost.a = { };
+    }
+  ];
+  # a per-config artifact opt-in family pointed at an AGGREGATE render (the symmetric guard).
+  symFleet = denHoag.mkDen [
+    {
+      config.den.schema.user.parent = null;
+      config.den.contentClass.user = "nixos";
+      config.den.user.u.outputs.badFam = { };
+      config.den.renders.aggR = {
+        evaluator = m: m;
+        produces = "SystemInfo";
+        aggregate = true;
+      };
+      config.den.outputs.badFam = {
+        at = _point: e: [
+          "badFam"
+          e.name
+        ];
+        consumes = "SystemInfo";
+        render = "aggR";
+        contentClass = "nixos";
+      };
+    }
+  ];
+  # an aggregate render OMITTING `output` — the compiled render row always carries `output` (default null), so
+  # a `.output or (throw)` would be dead and `outputsTable.${null}` a bare `.${null}` crash escaping tryEval;
+  # the explicit null-guard makes it CATCHABLE-NAMED.
+  noOutputFleet = denHoag.mkDen [
+    {
+      config.den.schema.nixosHost.parent = null;
+      config.den.contentClass.nixosHost = "nixos";
+      config.den.classes.colmena = { };
+      config.den.collectors.cluster = {
+        class = "colmena";
+        members = hasClass "nixos";
+        consumes = "RawModulesInfo";
+        render = "noOut";
+      };
+      config.den.renders.noOut = {
+        evaluator = m: m;
+        produces = "HiveInfo";
+        aggregate = true;
+      };
+      config.den.nixosHost.a = { };
+    }
+  ];
 in
 {
   flake.tests.collectors = {
@@ -205,6 +367,60 @@ in
     test-no-collectors-no-member-edges = {
       expr = plainFleet.den.memberEdges;
       expected = [ ];
+    };
+
+    # the aggregate render receives the AGGREGATED member map (BOTH a and b under their names) — ONE render
+    # call over the gathered members, not a per-config build. HiveInfo goes producerless → produced.
+    test-aggregate-hiveinfo-has-both-members = {
+      expr = builtins.attrNames aggHive.built;
+      expected = [
+        "a"
+        "b"
+      ];
+    };
+    # NON-VACUITY: each member's payload is its REAL resolved class-subtree content (never a null placeholder) —
+    # a's payload == a's own nixos slice, and a's payload differs from b's (distinct resolved content).
+    test-aggregate-member-payload-is-real-content = {
+      expr =
+        aggHive.built.a == aggFleet.den.output.classSubtreeAt "nixosHost:a" "nixos"
+        && aggHive.built.a != aggHive.built.b;
+      expected = true;
+    };
+    # SEAM: swapping the render's stub evaluator CHANGES the built HiveInfo — the aggregate crossing is a
+    # pluggable `evaluator` field, never hardcoded in the mount (the top key follows the evaluator).
+    test-aggregate-evaluator-is-pluggable = {
+      expr = builtins.attrNames aggSwapped.outputs.colmenaHive.cluster;
+      expected = [ "swapped" ];
+    };
+    # GUARD-WIDEN: collectors are ADDITIVE — the nixos members still surface as built-in nixosConfigurations
+    # (the widened guard takes the all-three-arms branch without dropping the built-in fold).
+    test-aggregate-builtin-arm-intact = {
+      expr = builtins.attrNames (aggFleet.nixosConfigurations or { });
+      expected = [
+        "a"
+        "b"
+      ];
+    };
+
+    # a collector render that is not an aggregate render aborts CATCHABLE-NAMED.
+    test-collector-nonaggregate-render-aborts = {
+      expr = throws nonAggFleet.outputs.colmenaHive;
+      expected = true;
+    };
+    # render.produces ≠ family.consumes aborts CATCHABLE-NAMED (a silent shape mismatch made loud).
+    test-collector-produces-consumes-mismatch-aborts = {
+      expr = throws mismatchFleet.outputs.mismFam;
+      expected = true;
+    };
+    # a per-config artifact family pointed at an aggregate render aborts CATCHABLE-NAMED (symmetric guard).
+    test-per-config-family-aggregate-render-aborts = {
+      expr = throws symFleet.outputs.badFam;
+      expected = true;
+    };
+    # an aggregate render with no `output` family aborts CATCHABLE-NAMED (the null-output uncatchable closed).
+    test-collector-no-output-family-aborts = {
+      expr = throws noOutputFleet.outputs;
+      expected = true;
     };
   };
 }

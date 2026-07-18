@@ -195,17 +195,23 @@ let
             let
               renderRow = renders.${row.render};
             in
-            mkContribution "artifact" {
-              at = atPath;
-              artifact =
-                let
-                  eval = renderRow.evaluator {
-                    modules = payload;
-                    specialArgs = removeAttrs ctx.paramPoint [ "name" ];
-                  };
-                in
-                if renderRow.face != null then renderRow.face eval else eval;
-            }
+            # §4.7 arity guard (the symmetric twin of the collector arm's `aggregate == true` assert): a
+            # PER-CONFIG artifact mount calls `evaluator { modules; specialArgs }`, so an AGGREGATE render
+            # (evaluator memberMap → HiveInfo) here is a shape misuse — abort NAMED, never a bare crash.
+            if renderRow.aggregate then
+              throw "den.nest: '${row.consumes}' is a per-config artifact mount but render '${row.render}' is an aggregate render (its evaluator crosses a member map → HiveInfo, not a single config's { modules; specialArgs }) — an aggregate render belongs to a collector (§4.7)"
+            else
+              mkContribution "artifact" {
+                at = atPath;
+                artifact =
+                  let
+                    eval = renderRow.evaluator {
+                      modules = payload;
+                      specialArgs = removeAttrs ctx.paramPoint [ "name" ];
+                    };
+                  in
+                  if renderRow.face != null then renderRow.face eval else eval;
+              }
         else if row.mode == "extend" then
           # EXTEND mode: legal ONLY when the consulted render declares `extendsVia` (§4.3 — the capability lives
           # on the render row). A null `row.render`, or a render without `extendsVia`, is the MISSING-CAPABILITY

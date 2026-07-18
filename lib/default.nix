@@ -1477,6 +1477,23 @@ let
         collectors = ent.registries.collector or { };
         inherit memberIdsFor classNameOf;
       };
+      # ── §4.7: the member-product EXTRACTION — read a member's `consumes` product ALREADY-RESOLVED (never
+      # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a
+      # content product (RawModulesInfo) = the member's raw class slice (`classSubtreeAt`); an artifact product
+      # (SystemInfo) = the member's built system (`output.systems`). An unknown mode aborts NAMED (never a bare
+      # crash). This is the abstraction genericity floor 4 rests on — a collector differs from another ONLY in
+      # its `consumes` (+ render), the extraction dispatches on the consumed product's mode alone.
+      extractMemberProduct =
+        product: memberNodeId: memberClass:
+        let
+          mode = productsLib.modeOf productsTable product;
+        in
+        if mode == "content" then
+          output.classSubtreeAt memberNodeId memberClass
+        else if mode == "artifact" then
+          output.systems.${memberClass}.${memberNodeId}
+        else
+          throw "den.collectors: member product '${product}' has mode '${mode}' — a collector aggregates content (raw modules) or artifact (built systems) products, not ${mode}-mode";
 
       # ── THE LIVE FAMILY MOUNT (§4.4/§4.6): the output map assembled VIA the root family dispatch ──
       # `familyOutputs` is the root entity's PRODUCT — the plain attrset `{ <family> = { <entityName> =
@@ -1612,6 +1629,101 @@ let
                 }
               )
           ) optInsEnriched;
+          # ── the collector AGGREGATE mount (§4.7): each collector with a render GATHERS its member edges
+          # into a NAME-KEYED member map (a FOLD over `collectorMemberEdges` — never a mount re-select), calls
+          # the aggregate render's `evaluator` ONCE (memberMap → HiveInfo — the aggregate crossing behind the
+          # swappable evaluator seam), and VALUE-mode nests the PREBUILT HiveInfo into root via the render's
+          # `output` family. The member payload is the collector's `consumes` product read already-resolved
+          # (`extractMemberProduct`, mode-dispatched). Three product roles stay distinct: `collector.consumes`
+          # (aggregated-IN) ≠ `render.produces` = `family.consumes` (mounted-OUT) — the render/family match is
+          # asserted NAMED. The render is asserted an AGGREGATE render (arity misuse → NAMED). GUARDED below
+          # (with optIns): a fleet with no collector contributions is the byte-identical built-in fold.
+          collectorContributions = prelude.concatMap (
+            cName:
+            let
+              c = ent.registries.collector.${cName};
+            in
+            if (c.render or null) == null then
+              [ ]
+            else
+              let
+                renderRow =
+                  rendersRows.${c.render}
+                    or (throw "den.collectors: collector '${cName}' names unregistered render '${c.render}'");
+                # The render must be an AGGREGATE render (memberMap → HiveInfo), not a per-config one.
+                aggChecked =
+                  if renderRow.aggregate then
+                    true
+                  else
+                    throw "den.collectors: collector '${cName}' render '${c.render}' is not an aggregate render (its evaluator is per-config { modules; specialArgs } → system) — set `aggregate = true` on the render to cross a member map → HiveInfo (§4.7)";
+                # The compiled render row always carries `output` (default null), so a `.output or (throw)`
+                # would be DEAD (fires only on a missing attr) and a null `output` would flow to a bare
+                # `outputsTable.${null}` / `resolveReceiver slot=null` — the tryEval-uncatchable `.${null}` class.
+                # Null-guard explicitly (the aggChecked/producesChecked idiom) so an omitted `output` aborts NAMED.
+                family =
+                  if renderRow.output == null then
+                    throw "den.collectors: collector '${cName}' render '${c.render}' declares no `output` — an aggregate render must name its output family (§4.7)"
+                  else
+                    renderRow.output;
+                famRow =
+                  outputsTable.${family}
+                    or (throw "den.collectors: collector '${cName}' render '${c.render}' names output family '${family}', which is not a registered den.outputs family");
+                # render.produces must equal family.consumes (the mounted-OUT product) — a silent shape
+                # mismatch is the tryEval-uncatchable class, so it aborts NAMED.
+                producesChecked =
+                  if renderRow.produces == famRow.consumes then
+                    true
+                  else
+                    throw "den.collectors: collector '${cName}' render '${c.render}' produces '${renderRow.produces}' but its output family '${family}' consumes '${famRow.consumes}' (§4.7)";
+                # THE GATHER: this collector's member edges → { <memberName> = <member product payload> }. The
+                # member name is the member node's entity name (edge.to → node → __entry.name); the payload is
+                # the collector's `consumes` product read already-resolved (mode-dispatched).
+                cMemberEdges = builtins.filter (e: e.from.entityId == "collector:${cName}") collectorMemberEdges;
+                memberMap = builtins.listToAttrs (
+                  map (
+                    e:
+                    let
+                      memberId = e.to.entityId;
+                      # guarded read + raw-id fallback, mirroring the built-in mount (an entry-less node keeps
+                      # its raw id rather than a bare `.__entry.name` crash — the gather runs over the broader
+                      # selector-matched set, so it stays at least as defensive as the mount it mirrors).
+                      entry = (structural.eval.node memberId).decls.__entry or null;
+                    in
+                    {
+                      name = if entry != null then entry.name else memberId;
+                      value = extractMemberProduct c.consumes memberId e.to.class;
+                    }
+                  ) cMemberEdges
+                );
+                # THE RENDER: ONE call over the aggregated map — the aggregate crossing behind the seam.
+                hiveInfo = builtins.seq aggChecked (builtins.seq producesChecked (renderRow.evaluator memberMap));
+                row = receiversLib.resolveReceiver {
+                  compiledKinds = receivesTable;
+                  outerKind = "root";
+                  slot = family;
+                  class = c.class;
+                };
+              in
+              [
+                (nestLib.executeNest {
+                  inherit row;
+                  # VALUE-mode: the PREBUILT HiveInfo injected verbatim (the render already ran ONCE above), the
+                  # built-in system mount's ArtifactRef arm — never re-evaluated at the mount.
+                  inner = {
+                    product = "ArtifactRef ${renderRow.produces}";
+                    artifactRef = {
+                      product = renderRow.produces;
+                      value = hiveInfo;
+                    };
+                    name = cName;
+                    kind = c.class;
+                  };
+                  ctx.paramPoint = {
+                    name = cName;
+                  };
+                })
+              ]
+          ) (builtins.attrNames (ent.registries.collector or { }));
           # the placed value per contribution mode: the value arm carries `value` (the prebuilt system), the
           # artifact arm `artifact` (the render-built face), the extend arm `extended` (the render's `extendsVia`
           # applied to the inner handle), the content arm the RAW (un-placed) module slice wrapped as a SINGLE
@@ -1629,12 +1741,14 @@ let
             else
               c.value;
         in
-        # GUARD: with no opt-ins the built-in fold is byte-identical (the opt-in path is structurally absent).
-        if optIns == [ ] then
+        # GUARD: with no opt-ins AND no collector contributions the built-in fold is byte-identical (both extra
+        # arms are structurally absent — the corpus path). The guard gates BOTH: a collectors-but-no-opt-ins
+        # fleet must take the all-arms branch, else its collector aggregates would be silently dropped.
+        if optIns == [ ] && collectorContributions == [ ] then
           prelude.foldl' (acc: c: familyMerge acc (familyNestAtPath c.at c.value)) emptyFamilies contributions
         else
           prelude.foldl' (acc: c: familyMerge acc (familyNestAtPath c.at (placedValue c))) emptyFamilies (
-            contributions ++ optInContributions
+            contributions ++ optInContributions ++ collectorContributions
           );
 
       # The built-in aliases (§4.4): each is the corresponding family projected off the root product
