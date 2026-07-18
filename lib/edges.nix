@@ -9,6 +9,14 @@
   prelude,
   identity,
   edge,
+  # the graft-site dispatch (receivers.nix) + the mode-execution engine (nest.nix), threaded in for the
+  # cell/containment nest-edge producer: `resolveReceiver` is the receiver-gate predicate, `executeNest` the
+  # content-arm graft, `checkSingular` the wiring-time singular mount check. Used ONLY by `nestProducer`; the
+  # registry/override/assembly surfaces never touch them (so forcing those never forces the receivers/nest
+  # libs).
+  resolveReceiver,
+  executeNest,
+  checkSingular,
 }:
 let
   # The framework-pre-registered kinds and their strata (spec §2.2): contains/include/kindOf are
@@ -233,12 +241,11 @@ let
         {
           inherit from to;
           record = edge.edge {
-            # SYNTHETIC record: the intent's data is the value source, KEYED by the intent's readable
-            # `id` — the source identity that rides into the trace (a stable producer-supplied string,
-            # never a hash). The target root is keyed by the `to` instanceId (the placement). A live
-            # producer's source/target arms arrive with later spec steps — here the record carries the
-            # STAMPED kind + the frozen (T,P,S,M,K) key. The edge's derived identity is the source key,
-            # not an `annotations` stamp: gen-edge annotations are provenance/diagnostics, never read by
+            # The intent's data is the value source, KEYED by the intent's readable `id` — the source
+            # identity that rides into the trace (a stable producer-supplied string, never a hash). The
+            # target root is keyed by the `to` instanceId (the placement). The record carries the STAMPED
+            # kind + the frozen (T,P,S,M,K) key. The edge's derived identity is the source key, not an
+            # `annotations` stamp: gen-edge annotations are provenance/diagnostics, never read by
             # materialize, and its `traceEntryOf` folds the SOURCE identity (this key) into the trace.
             source = edge.sources.keyedValue {
               key = i.id;
@@ -249,6 +256,22 @@ let
               class = i.to.class;
             };
             kind = i.kind;
+            # PLACEMENT: `merge` at the root (`path = [ ]`) is the DEFAULT — an un-decorated intent rides
+            # exactly as before. A nest intent opts into `mode = "nest"` + its placement `path` (the
+            # producer resolves the path from the receives row's `at`, so assembleEdges stays receives-
+            # agnostic), making the nest edge a substrate citizen: its placement enters the (T,P,S,M,K)
+            # trace.
+            #
+            # ENDURING INVARIANT (the two-facet kernel — the Backpack content-vs-artifact facet split,
+            # §4.2): this record's `path` is TRACE / IDENTITY only. The content GRAFT is OWNED by the
+            # mode-execution engine (nest.nix `executeNest`), which places a content slice PER MODULE
+            # (`placeSlice at payload` — one wrap per module). gen-edge's own nest-materialize wraps the
+            # WHOLE value once (`setAttrByPath path <list>`); the two are NOT equal for a module-list
+            # payload, so the whole-list materialize is NEVER the content path. A future live fold must
+            # consume nest content through `executeNest`, never by feeding this record's `path` to gen-edge
+            # `materialize` — the trace facet and the content facet are distinct and never conflated.
+            mode = i.mode or "merge";
+            path = i.path or [ ];
           };
         }
       ) survivors;
@@ -310,6 +333,120 @@ let
       # checkFillAcyclic runs once per assembly; a cycle aborts NAMED (identity module). `seq` forces the
       # check before the records are handed back, so a cyclic assembly aborts rather than emitting.
       builtins.seq (identity.checkFillAcyclic fillGraph) (map (r: r.record) resolved);
+
+  # ── nestProducer: the cell/containment nest-edge producer (§4.2/§4.6) ─────────────────────────────────
+  # Reads the fleet's containment pairs (fleet.nix `containmentPairs`) and, for each parent→child pair whose
+  # parent kind carries a receives row the pair DISPATCHES (slot ≻ class), emits a NEST production. Each
+  # production is three coherent views of ONE mount: an `intent` (the `{ id; kind; from; to; data; mode;
+  # path; when? }` shape — ridden by `assembleEdges` for identity/override/acyclicity + the trace), a
+  # `contribution` (the `executeNest` content-arm graft — the payload placed at the row's `at`), and the
+  # resolved `row`/`inner`/`ctx` handles. THE RECEIVER-GATE PREDICATE (corpus-inertness): a pair is emitted
+  # IFF its parent kind is a registered receiver AND `resolveReceiver` returns non-null. A corpus host/user
+  # kind registers NO receives rows, so `compiledKinds ? parentKind` is false and the pair is skipped — the
+  # corpus producer set is EMPTY by construction (the payload/class are forced only PAST the guard). THE
+  # MOUNT CHECK: at a
+  # singular graft site (`row.arity == "singular"`) the producer runs `checkSingular` over the site's post-
+  # `when` live intents — two live edges into one singular mount abort NAMED (naming the mount + every tied
+  # id). `classOf kind` = the content-class string (den-side `contentClass` stays null on `meta`); `payloadFor
+  # childId` = the inner's content slice; `whenFor childId` = the mount condition (default: always live).
+  nestProducer =
+    {
+      compiledKinds,
+      pairs,
+      classOf,
+      payloadFor,
+      whenFor ? (_: true),
+    }:
+    let
+      mkProduction =
+        p: row: childClass: parentClass:
+        let
+          payload = payloadFor p.childId;
+          inner = {
+            product = "ModulesInfo";
+            inherit payload;
+            name = p.childName;
+            kind = p.childKind;
+          };
+          # structural handles ONLY (§2.1 corollary — `at` never sees the payload).
+          ctx = {
+            paramPoint = {
+              name = p.childName;
+              kind = p.childKind;
+              slot = p.childKind;
+            };
+          };
+          innerFace = removeAttrs inner [ "payload" ];
+          path = row.at ctx.paramPoint innerFace;
+          id = "nest:${p.parentId}/${p.childId}:${p.childKind}";
+        in
+        {
+          inherit
+            id
+            row
+            inner
+            ctx
+            ;
+          # the graft site — a singular row admits ≤ 1 live intent at ONE (parent, slot).
+          mount = "${p.parentId}:${p.childKind}";
+          intent = {
+            inherit id path;
+            kind = "nest";
+            mode = "nest";
+            from = {
+              entityId = p.childId;
+              class = childClass;
+            };
+            to = {
+              entityId = p.parentId;
+              class = parentClass;
+            };
+            data = payload;
+            when = whenFor p.childId;
+          };
+          # the CONTENT-arm graft (executeNest) — the payload placed at the row's `at`, PER MODULE: the
+          # content-facet half of the two-facet invariant documented on the assembleEdges record above
+          # (§4.2). placeSlice is lazy, so building the production never forces the payload.
+          contribution = executeNest { inherit row inner ctx; };
+        };
+      # gate + build one production per dispatching pair. The `compiledKinds ? parentKind` pre-guard keeps
+      # resolveReceiver total (it throws on an unknown outer kind): a skipped pair takes the `else null`
+      # branch without reaching resolveReceiver, and `childClass`/`payloadFor` are lazy lets forced only when
+      # a row is built — so a corpus pair (parent kind ∉ receivers) costs nothing.
+      gated = builtins.concatMap (
+        p:
+        let
+          childClass = classOf p.childKind;
+          parentClass = classOf p.parentKind;
+          row =
+            if compiledKinds ? ${p.parentKind} then
+              resolveReceiver {
+                inherit compiledKinds;
+                outerKind = p.parentKind;
+                slot = p.childKind;
+                class = childClass;
+              }
+            else
+              null;
+        in
+        if row == null then [ ] else [ (mkProduction p row childClass parentClass) ]
+      ) pairs;
+      # THE MOUNT CHECK: per graft site, `checkSingular` filters the post-`when` live set (singular → ≤ 1 or
+      # a NAMED throw; many → every edge rides through). Map the checked intents back to their productions.
+      byMount = prelude.groupBy (g: g.mount) gated;
+      checkedGroups = prelude.mapAttrsToList (
+        mount: group:
+        let
+          row = (builtins.head group).row;
+          liveIds = map (i: i.id) (checkSingular {
+            inherit row mount;
+            edges = map (g: g.intent) group;
+          });
+        in
+        builtins.filter (g: builtins.elem g.id liveIds) group
+      ) byMount;
+    in
+    builtins.concatLists checkedGroups;
 in
 {
   inherit
@@ -319,5 +456,6 @@ in
     compile
     applyOverrides
     assembleEdges
+    nestProducer
     ;
 }

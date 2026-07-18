@@ -26,10 +26,17 @@ let
   # substrate consumers reach it there.
   identity = import ./identity.nix { inherit prelude; };
   # The edge-kind registry (den.edges): pre-registered vocabulary + validation (§2.2), the override tier
-  # (§2.4), and the synthetic edge-assembly pipeline (§2.1). Its `output` stratum is dogfooded into the
-  # fleet strata order below; the compiled table rides `den.edges`. `assembleEdges` needs the identity
-  # module + the gen-edge lib (to stamp `kind` on the constructed records).
-  edgesLib = import ./edges.nix { inherit prelude identity edge; };
+  # (§2.4), the synthetic edge-assembly pipeline (§2.1), and the cell/containment nest-edge producer
+  # (§4.2/§4.6). Its `output` stratum is dogfooded into the fleet strata order below; the compiled table
+  # rides `den.edges`. `assembleEdges` needs the identity module + the gen-edge lib (to stamp `kind` on the
+  # constructed records); `nestProducer` additionally threads the graft dispatch + mode engine — the
+  # forward references to `receiversLib`/`nestLib` (defined below) are cycle-free (neither depends on
+  # `edgesLib`, and only `nestProducer` forces them).
+  edgesLib = import ./edges.nix {
+    inherit prelude identity edge;
+    inherit (receiversLib) resolveReceiver;
+    inherit (nestLib) executeNest checkSingular;
+  };
   entity = import ./entity.nix { inherit prelude schema merge; };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
@@ -1635,8 +1642,13 @@ in
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
     # match/rewrite pass framework edge intents take BEFORE edgeId, for the suite's override scenarios.
     # `assembleEdges { kinds; overrides; intents }` — the §2.1 synthetic assembly pipeline (override →
-    # identity → acyclicity → stamped gen-edge record), for the suite's end-to-end scenario.
-    inherit (edgesLib) applyOverrides assembleEdges;
+    # identity → acyclicity → stamped gen-edge record), for the suite's end-to-end scenario. `nestProducer`
+    # (§4.2/§4.6) — the cell/containment nest-edge producer, for the nest-producer suite (emits nest
+    # intents + graft contributions from `containmentPairs`, gated corpus-inert by `resolveReceiver`).
+    inherit (edgesLib) applyOverrides assembleEdges nestProducer;
+    # `containmentPairs { fleet; meta }` (§4.2/§4.6) — the fleet's immediate parent→child cell edges, the
+    # thin containment accessor `nestProducer` reads.
+    inherit (fleet) containmentPairs;
     # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
     # key-classification consistency suite reads `facets` to pin the structural-key agreement.
     # `artifactExclusive` (§4.1) is the pure prebuilt-arm buckets-empty check, for the suite's exclusivity

@@ -125,9 +125,52 @@ let
         }
       ) cells
     );
+  # Containment (immediate parent → child) pairs of the fleet, for the nest-edge producers (§4.2/§4.6).
+  # Each restricted-product cell (Law A5) contributes one pair per coordinate dim that HAS a parent dim
+  # (`meta.<dim>.parent`) ALSO present in the same cell — the containment edge from that coordinate's
+  # immediate parent to the coordinate. A dim whose parent is a scope ROOT absent from the product (the
+  # corpus's env, carried by a relation not a product axis) contributes NO pair — it is not a cell edge.
+  # `product.cells` enumerates the sparse cells; the pair assembly is A1 wiring. The child's content class
+  # is NOT derived here (den-side `contentClass` stays null on `meta`); the producer supplies its own map.
+  containmentPairs =
+    {
+      fleet,
+      meta,
+    }:
+    prelude.concatMap (
+      c:
+      prelude.concatMap (
+        childDim:
+        let
+          parentDim = meta.${childDim}.parent or null;
+        in
+        if parentDim != null && (c ? ${parentDim}) then
+          let
+            childEntry = c.${childDim};
+            parentEntry = c.${parentDim};
+            parentId = "${parentDim}:${parentEntry.name}";
+          in
+          [
+            {
+              inherit parentId;
+              parentKind = parentDim;
+              childKind = childDim;
+              childName = childEntry.name;
+              childId = "${childDim}:${childEntry.name}@${parentId}";
+            }
+          ]
+        else
+          [ ]
+      ) (builtins.attrNames c)
+    ) (product.cells fleet);
 in
 {
-  inherit factorOf mkFleet cellChildrenFor;
+  inherit
+    factorOf
+    mkFleet
+    cellChildrenFor
+    containmentPairs
+    ;
   # The slice-order chain over the fleet product (§2.7) — re-exported so the settings resolution
   # (attribute 13) and output assembly read one den-hoag surface. The algorithm is gen-product's
   # (Law A1); den-hoag only names it.
