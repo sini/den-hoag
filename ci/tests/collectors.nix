@@ -393,6 +393,124 @@ let
       config.den.nixosHost.void = { };
     }
   ];
+
+  # ── §4.7: the `members` family-level SUGAR (desugar → anonymous collector) ──
+  # A NAMED collector `hive` vs the family-level SUGAR `den.outputs.hive2.members = { of; consumes }`, both over
+  # the SAME member set with the SAME aggregate render evaluator + member product. The sugar synthesizes a REAL
+  # anonymous collector `members:hive2` (a registry entity with an id_hash) that flows through the SAME kernel —
+  # so the HiveInfo AGGREGATE VALUE (the member-name-keyed map INSIDE) is byte-identical across named/sugar,
+  # though the face keys (family key + leaf name) differ by construction.
+  aggEvaluator = memberMap: {
+    built = memberMap;
+  };
+  memberBase = {
+    config.den.schema.nixosHost.parent = null;
+    config.den.contentClass.nixosHost = "nixos";
+    config.den.classes.colmena = { };
+    config.den.nixosHost.a = { };
+    config.den.nixosHost.b = { };
+  };
+  memberContent = (
+    { config, ... }:
+    {
+      config.den.aspects.aContent.nixos.tag = "a-content";
+      config.den.aspects.bContent.nixos.tag = "b-content";
+      config.den.include = [
+        {
+          at = config.den.nixosHost.a;
+          aspects = [ config.den.aspects.aContent ];
+        }
+        {
+          at = config.den.nixosHost.b;
+          aspects = [ config.den.aspects.bContent ];
+        }
+      ];
+    }
+  );
+  namedFleet = denHoag.mkDen [
+    memberBase
+    memberContent
+    {
+      config.den.collectors.hive = {
+        class = "colmena";
+        members = hasClass "nixos";
+        consumes = "RawModulesInfo";
+        render = "namedAgg";
+      };
+      config.den.renders.namedAgg = {
+        evaluator = aggEvaluator;
+        produces = "HiveInfo";
+        aggregate = true;
+        output = "hiveFam";
+      };
+      config.den.outputs.hiveFam = {
+        at = _point: e: [
+          "hiveFam"
+          e.name
+        ];
+        consumes = "HiveInfo";
+      };
+    }
+  ];
+  sugarFleet = denHoag.mkDen [
+    memberBase
+    memberContent
+    {
+      config.den.renders.sugarAgg = {
+        evaluator = aggEvaluator;
+        produces = "HiveInfo";
+        aggregate = true;
+        output = "hive2";
+      };
+      config.den.outputs.hive2 = {
+        at = _point: e: [
+          "hive2"
+          e.name
+        ];
+        consumes = "HiveInfo";
+        contentClass = "colmena";
+        render = "sugarAgg";
+        members = {
+          of = hasClass "nixos";
+          consumes = "RawModulesInfo";
+        };
+      };
+    }
+  ];
+  namedAggVal = namedFleet.outputs.hiveFam.hive.built;
+  sugarAggVal = sugarFleet.outputs.hive2."members:hive2".built;
+
+  # a family-level members sugar whose synthetic name `members:hive2` collides with a user den.collectors entry.
+  collisionFleet = denHoag.mkDen [
+    memberBase
+    {
+      config.den.collectors."members:hive2" = {
+        class = "colmena";
+        members = hasClass "nixos";
+        consumes = "RawModulesInfo";
+        render = "sugarAgg";
+      };
+      config.den.renders.sugarAgg = {
+        evaluator = aggEvaluator;
+        produces = "HiveInfo";
+        aggregate = true;
+        output = "hive2";
+      };
+      config.den.outputs.hive2 = {
+        at = _point: e: [
+          "hive2"
+          e.name
+        ];
+        consumes = "HiveInfo";
+        contentClass = "colmena";
+        render = "sugarAgg";
+        members = {
+          of = hasClass "nixos";
+          consumes = "RawModulesInfo";
+        };
+      };
+    }
+  ];
 in
 {
   flake.tests.collectors = {
@@ -588,6 +706,38 @@ in
     # the SystemInfo artifact read NAMED-throws on a selected member with no built system (never a bare miss).
     test-generic-missing-system-aborts = {
       expr = throws missSysFleet.outputs.sysHive;
+      expected = true;
+    };
+
+    # the family-level `members` sugar synthesizes a REAL anonymous collector ENTITY (with an id_hash) — the
+    # SAME kernel as a named collector, not a shadow.
+    test-members-sugar-synthesizes-entity = {
+      expr = sugarFleet.den.registries.collector ? "members:hive2";
+      expected = true;
+    };
+    test-members-sugar-entity-has-id-hash = {
+      expr = builtins.isString (sugarFleet.den.registries.collector."members:hive2".id_hash or null);
+      expected = true;
+    };
+    # the sugar-synthesized collector aggregates the SAME member set (a, b).
+    test-members-sugar-same-member-set = {
+      expr =
+        builtins.attrNames sugarAggVal == [
+          "a"
+          "b"
+        ];
+      expected = true;
+    };
+    # KERNEL-IDENTITY WITNESS: the HiveInfo AGGREGATE VALUE (member-name-keyed) is BYTE-IDENTICAL across the
+    # named collector and the sugar-synthesized one — one kernel, no shadow arm. (The face keys differ by
+    # construction: family hiveFam vs hive2, leaf hive vs members:hive2 — so we compare the aggregate value.)
+    test-members-sugar-aggregate-byte-identical = {
+      expr = sugarAggVal == namedAggVal;
+      expected = true;
+    };
+    # the synthetic name colliding with a user den.collectors entry aborts CATCHABLE-NAMED.
+    test-members-sugar-collision-aborts = {
+      expr = throws collisionFleet.den.collectors;
       expected = true;
     };
   };

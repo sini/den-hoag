@@ -208,6 +208,74 @@ let
           };
         }) (memberIdsFor c.members)
     ) (builtins.attrNames collectors);
+
+  # ── §4.7: the `members` family-level SUGAR → an anonymous collector (the config→config desugar) ────────
+  # `den.outputs.<f>.members = { of = <selector>; consumes = <memberProduct>; }` (the family-level spelling)
+  # elaborates to a REAL anonymous collector ENTITY: the desugar is a config-rewrite run BEFORE the pipeline,
+  # synthesizing `den.collectors."members:<f>" = { class; members; consumes; render }` so the anon collector
+  # flows through the EXACT SAME kernel as a named one (discoverCollectors → bridge → registry → member edges →
+  # render → mount). NO second N→1 arm. `render`/`contentClass` come from the family's OWN fields (the
+  # family's render.output = <f>, so the anon mounts into <f> itself — the family stays the RECEIVER, the anon is
+  # the PRODUCER); the member selector + product come from the `members` record (co-located, so the
+  # family's own `consumes` stays unambiguously the mounted-OUT HiveInfo).
+  #
+  # CORPUS-INERT BY CONSTRUCTION: a fleet with no `members`-bearing family synthesizes `{ }`, so the caller
+  # appends NOTHING to userModules (the module list stays byte-untouched). The `raw`/structural probe (the
+  # discoverCollectors idiom, no full module eval) reads the family fields; a missing required field aborts
+  # NAMED (never a bare attr-miss), and a synthetic name colliding with a user collector aborts NAMED.
+  membersPrefix = "members:";
+  synthesizeMembersSugar =
+    userModules:
+    let
+      probe = merge.evalModuleTree {
+        modules = [
+          {
+            options.den = merge.mkOption {
+              default = { };
+              type = merge.types.submodule {
+                freeformType = merge.types.lazyAttrsOf merge.types.anything;
+              };
+            };
+          }
+        ]
+        ++ userModules;
+      };
+      outputs = probe.config.den.outputs or { };
+      userCollectors = probe.config.den.collectors or { };
+      membersFamilies = builtins.filter (f: outputs.${f} ? members) (builtins.attrNames outputs);
+      synthOne =
+        f:
+        let
+          fam = outputs.${f};
+          anonName = membersPrefix + f;
+          cc = fam.contentClass or null;
+          m = fam.members or { };
+          of = m.of or null;
+          mc = m.consumes or null;
+          r = fam.render or null;
+        in
+        if userCollectors ? ${anonName} then
+          throw "den.outputs: family '${f}' members-sugar synthesizes collector '${anonName}', which collides with a user `den.collectors` entry — rename the collector or the family (§4.7)"
+        else if cc == null then
+          throw "den.outputs: members-sugar family '${f}' declares no contentClass — the synthesized collector needs a class (§4.7)"
+        else if of == null then
+          throw "den.outputs: members-sugar family '${f}' declares no `members.of` — the member selector (`members = { of = <selector>; consumes = <product>; }`) is required (§4.7)"
+        else if mc == null then
+          throw "den.outputs: members-sugar family '${f}' declares no `members.consumes` — the member product (`members = { of = <selector>; consumes = <product>; }`) is required (§4.7)"
+        else if r == null then
+          throw "den.outputs: members-sugar family '${f}' declares no render — the aggregate render (its `output` names this family) is required (§4.7)"
+        else
+          {
+            name = anonName;
+            value = {
+              class = cc;
+              members = of;
+              consumes = mc;
+              render = r;
+            };
+          };
+    in
+    builtins.listToAttrs (map synthOne membersFamilies);
 in
 {
   inherit
@@ -220,5 +288,6 @@ in
     contentClassFn
     hasClass
     memberProducer
+    synthesizeMembersSugar
     ;
 }

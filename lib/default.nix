@@ -221,8 +221,19 @@ let
   # (gen-schema) + the fleet restricted product (gen-product). Task 2: scope roots +
   # structural stratum (attributes 1–6) over gen-resolve/gen-scope.
   mkDen =
-    userModules:
+    userModules0:
     let
+      # ── §4.7: the `members` family-level SUGAR pre-pass (config→config desugar, run BEFORE the pipeline).
+      # `den.outputs.<f>.members = { of; consumes }` synthesizes a REAL anonymous collector
+      # `den.collectors."members:<f>"`, appended to the user modules HERE so it flows through the EXACT SAME
+      # kernel as a named collector (discoverCollectors → bridge → registry → member edges → render → mount) —
+      # no second N→1 arm. CORPUS-INERT BY CONSTRUCTION: no `members`-bearing family ⇒ `{ }` ⇒ NOTHING appended
+      # (the module list is byte-untouched, so `discoverCollectors userModules` is byte-identical).
+      synthCollectors = collectorsLib.synthesizeMembersSugar userModules0;
+      userModules =
+        userModules0
+        ++ prelude.optional (synthCollectors != { }) { config.den.collectors = synthCollectors; };
+
       # §2.2/§27 raw channel keys — probe the declared quirk channel names (a static-decl probe, like
       # `discoverKinds`), then build a CHANNEL-AWARE aspect schema: each channel key is a `raw` option
       # (so an emission rides untouched, never freeform-absorbed into a nested aspect) and `classifyKey`
@@ -458,7 +469,9 @@ let
       # (the fleet's nixosConfigurations/darwinConfigurations/a user target). `raw` holds each record unmerged
       # (its `at` is a function). Absent ⇒ a fleet declaring no output families. `at`/`consumes` are required;
       # `render` names a registered render, `params` names a known axis (today `system`, over `den.systems`),
-      # `requires` names registered products.
+      # `requires` names registered products. A family may ALSO carry `members = { of; consumes }` + `contentClass`
+      # — the §4.7 members-sugar fields, absorbed via this freeform `raw` row (a strict submodule here would
+      # silently break the sugar's structural probe).
       outputsDecl = {
         options.den.outputs = merge.mkOption {
           type = merge.types.lazyAttrsOf merge.types.raw;
