@@ -146,6 +146,23 @@ let
     stratum = "closure";
     derive = node: deps: deps;
   };
+
+  # stratum-gate fixtures (§2.3): a derive at stratum=resolution reading a resolution relation must be BLOCKED
+  # (same-stratum ≥ n → NAMED throw); the SAME body at stratum=closure is exposed (resolution < closure). over=[]
+  # so a non-empty over@resolution + stratum=resolution isn't rejected at the field guard FIRST — the gate, not
+  # the guard, is under test (node.rel exposes ALL kinds regardless of over).
+  gatedResolutionFleet = mkDerivedFleet "atResolution" {
+    over = [ ];
+    direction = "forward";
+    stratum = "resolution";
+    derive = node: _: node.rel.memberOf.targets;
+  };
+  gatedClosureFleet = mkDerivedFleet "atClosure" {
+    over = [ ];
+    direction = "forward";
+    stratum = "closure";
+    derive = node: _: node.rel.memberOf.targets;
+  };
 in
 {
   flake.tests.derived = {
@@ -222,6 +239,19 @@ in
         builtins.match ".*den.derived:.*value-composition.*" denHoag.internal.derived.depsPlaceholderMessage
         != null;
       expected = true;
+    };
+
+    # ── the stratum-gate on the node handle (capability scoping, §2.3) ──
+    # a derive at stratum=resolution reading a resolution relation is BLOCKED (same-stratum ≥ → NAMED throw).
+    test-derived-gate-same-stratum-throws = {
+      expr = throws (gatedResolutionFleet.den.derivedAt "atResolution" "node:a");
+      expected = true;
+    };
+    # the SAME body at stratum=closure reading the same resolution relation is EXPOSED (resolution < closure) —
+    # non-vacuous: the gate discriminates BY STRATUM (not always-throw), and the exposed value is correct.
+    test-derived-gate-later-stratum-ok = {
+      expr = gatedClosureFleet.den.derivedAt "atClosure" "node:a";
+      expected = [ "node:b" ];
     };
 
     # ── message-distinctness: each guard's NAMED message asserted in isolation via the DIRECT validator call

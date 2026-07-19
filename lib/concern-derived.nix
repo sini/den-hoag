@@ -1,8 +1,8 @@
 # den.derived — laws-gated synthesized attributes over the resolution graph (spec §5). A derived
 # `<name> = { over; direction; stratum; provides; discipline; closure; derive }` reads the relation graph (via
 # the per-node accessor) and synthesizes a value, capability-scoped by its `stratum` and laws-gated by its
-# `closure`/`discipline`. This file holds the DEFINITION-TIME field validation (the compute engine + the
-# stratum-gate + the closure-gate routing are later rungs).
+# `closure`/`discipline`. This file holds the DEFINITION-TIME field validation, the per-node compute engine, and
+# the stratum-gate; the closure-gate routing is a later rung.
 {
   prelude,
 }:
@@ -77,13 +77,15 @@ let
   # the capability handle `{ rel = relAt id; id = id; }` (the per-node relation binding); the derive body reads
   # relations via `node.rel.<kind>.{targets;inverse;closure}` (forward = targets, reverse = inverse). `over` /
   # `direction` are DECLARATIVE metadata (definition-time validated by derivedFieldMessage); `node.rel` exposes
-  # ALL relation kinds regardless of `over`, so the stratum-gate (a later rung), not `over`, is the real
-  # read-enforcement. `deps` is a throw-on-read placeholder — honest + loud, never a silent `{}`. `derivedIndex`
+  # ALL relation kinds regardless of `over`, so the stratum-gate (the gatedRel projection below), not `over`, is
+  # the real read-enforcement. `deps` is a throw-on-read placeholder — honest + loud, never a silent `{}`. `derivedIndex`
   # is the name→spec registry (`den.derived` itself), so `spec = derivedIndex.${name}`.
   mkDerived =
     {
       relAt,
       derivedIndex,
+      relationKinds,
+      strataOrder,
     }:
     name: id:
     let
@@ -92,8 +94,26 @@ let
       spec =
         derivedIndex.${name}
           or (throw "den.derived: no such derived '${name}' — not a name declared in den.derived (§5)");
+      # the stratum-gate (§2.3, the projectCtx throw-on-read pattern): node.rel exposes ONLY relation kinds whose
+      # stratum sits STRICTLY BELOW the derive's own — reading a kind tagged stratum ≥ the derive's stratum is
+      # REPLACED with a NAMED throw (enforcement-by-construction, never introspection: the derive cannot read a
+      # fact at or above its own layer). Each kind carries its relation's stratum (relationKinds.${kind}.stratum).
+      # The gate wraps `node.rel` ONLY — `node.id` is a sibling of `rel` (a plain string, never routed through
+      # gatedRel), so it always passes.
+      deriveStratum = spec.stratum;
+      deriveStratumIdx = indexOf strataOrder deriveStratum;
+      gatedRel = builtins.mapAttrs (
+        kind: entry:
+        let
+          kindStratum = relationKinds.${kind}.stratum or null;
+        in
+        if kindStratum != null && indexOf strataOrder kindStratum >= deriveStratumIdx then
+          throw "den.derived: '${name}' at stratum '${deriveStratum}' may not read relation '${kind}' — it is stratum '${kindStratum}' ≥ the derive's own (a derive reads strata strictly below its own, §2.3)"
+        else
+          entry
+      ) (relAt id);
       node = {
-        rel = relAt id;
+        rel = gatedRel;
         inherit id;
       };
       deps = throw depsPlaceholderMessage;
