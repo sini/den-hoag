@@ -1055,9 +1055,21 @@ let
         productNames = builtins.attrNames productsTable;
       };
       derivedGuard = if derivedGuardMessage != null then throw derivedGuardMessage else null;
-      # the guarded derived registry (forcing it forces the field guard first) — the name→spec index the compute
-      # engine reads (`spec = derivedTable.${name}`) and the `den.derived` return surface both share.
-      derivedTable = builtins.seq derivedGuard (ent.config.den.derived or { });
+      # guard (f): the closure/discipline laws-gate — a VALUE-DETECTOR (like guards (a)-(e)) validated by the
+      # SHARED edges closureMessage against the compiled disciplines registry (a closure=true derive needs a
+      # registered join-semilattice discipline, §2.2), thrown at the wiring.
+      derivedClosureGuardMessage = derivedLib.derivedClosureMessage {
+        closureMessage = edgesLib.closureMessage;
+        disciplines = disciplinesTable;
+        deriveds = ent.config.den.derived or { };
+      };
+      derivedClosureGuard =
+        if derivedClosureGuardMessage != null then throw derivedClosureGuardMessage else null;
+      # the guarded derived registry (forcing it forces the field guards first — (a)-(e) then (f)) — the name→spec
+      # index the compute engine reads (`spec = derivedTable.${name}`) and the `den.derived` return surface share.
+      derivedTable = builtins.seq derivedGuard (
+        builtins.seq derivedClosureGuard (ent.config.den.derived or { })
+      );
 
       # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated
       # (key well-formedness, no ArtifactRef endpoint). Global per-pair uniqueness holds by keying.

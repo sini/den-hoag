@@ -47,6 +47,41 @@ let
     };
   };
 
+  # closureMessage — the closure-capability law (spec §2.2) as a VALUE: null when the `{ closure; discipline }`
+  # pair is lawful (closure = false is a no-op), else the NAMED message. Factored out of `entryOf` so BOTH the
+  # edge registry AND the den.derived closure field-gate validate the SAME law (one source of truth —
+  # re-implementing would fork it), AND so the NAMED contract is CI-testable (Nix's `tryEval` cannot capture a
+  # throw's text). A closure declaration is legal ONLY under a registered join-semilattice discipline (idempotence
+  # is what makes the reachable-set fixpoint converge — Datafun). `disciplines` is the compiled disciplines
+  # registry; `subject` + `name` name the locus — `subject` defaults to the edge-registry prefix, and a caller
+  # (e.g. a den.derived field-gate) passes its own so the message names ITS surface.
+  closureMessage =
+    disciplines:
+    {
+      name,
+      closure,
+      discipline,
+      subject ? "den.edges: kind",
+    }:
+    if closure && discipline == null then
+      "${subject} '${name}' declares closure = true with no discipline — closure requires a declared discipline; discipline laws are validated by the disciplines registry"
+    else if closure && !(disciplines ? ${discipline}) then
+      "${subject} '${name}' declares closure = true with discipline '${discipline}', which is not in the disciplines registry — closure requires a registered join-semilattice discipline"
+    else if closure && disciplines.${discipline}.laws != "join-semilattice" then
+      "${subject} '${name}' declares closure = true with discipline '${discipline}' (laws '${disciplines.${discipline}.laws}') — closure is legal ONLY under a join-semilattice discipline"
+    else
+      null;
+
+  # closureGate — the thin throwing wrapper over closureMessage: aborts NAMED when the pair is unlawful, else
+  # null. `entryOf` uses this with the default subject, so the compiled edge-kind table's throw text (and thus the
+  # frozen-71 corpus + edges.nix's own suite) is byte-identical to the pre-extraction inline gate.
+  closureGate =
+    disciplines: args:
+    let
+      m = closureMessage disciplines args;
+    in
+    if m != null then throw m else null;
+
   # A registry entry's canonical fields (spec §2.2). `data` is the per-kind edge-data schema; `requires`/
   # `produces` are the product typing (relation/derived kinds; unused by nest, whose typing derives from
   # its endpoint registries); `discipline` names the algebraic laws; `inverse` enables reverse queries;
@@ -64,21 +99,12 @@ let
         stratum = raw.stratum or preRegisteredStrata.${name} or "resolution";
       };
     in
-    # closure is a capability gated on an algebraic law (spec §2.2: a closure kind is legal ONLY under a
-    # join-semilattice discipline — idempotence is what makes the reachable-set fixpoint converge). A
-    # closure kind with no discipline has no laws to validate it (the degenerate case); a closure kind
-    # naming a discipline that is absent from the registry, or whose laws are not join-semilattice, is
-    # unlawful. Abort NAMED in each case rather than admit an unlawful closure.
-    if e.closure && e.discipline == null then
-      throw "den.edges: kind '${name}' declares closure = true with no discipline — closure requires a declared discipline; discipline laws are validated by the disciplines registry"
-    else if e.closure && !(disciplines ? ${e.discipline}) then
-      throw "den.edges: kind '${name}' declares closure = true with discipline '${e.discipline}', which is not in the disciplines registry — closure requires a registered join-semilattice discipline"
-    else if e.closure && disciplines.${e.discipline}.laws != "join-semilattice" then
-      throw "den.edges: kind '${name}' declares closure = true with discipline '${e.discipline}' (laws '${
-        disciplines.${e.discipline}.laws
-      }') — closure is legal ONLY under a join-semilattice discipline"
-    else
-      e;
+    # the shared closureGate validates the closure capability (present discipline + join-semilattice laws),
+    # aborting NAMED on each degenerate case; `seq` forces the gate before the entry is handed back.
+    builtins.seq (closureGate disciplines {
+      inherit name;
+      inherit (e) closure discipline;
+    }) e;
 
   # `compile { kinds; strataOrder; disciplines }` → the validated compiled kind table (a `mapAttrs` +
   # validation fold, mirroring concern-classes' compile shape). Pre-registered kinds seed the table; a
@@ -453,6 +479,8 @@ in
     preRegisteredStrata
     reservedNames
     frameworkStrataInserts
+    closureMessage
+    closureGate
     compile
     applyOverrides
     assembleEdges

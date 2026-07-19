@@ -119,10 +119,39 @@ let
       deps = throw depsPlaceholderMessage;
     in
     spec.derive node deps;
+
+  # derivedClosureMessage — guard (f) as a VALUE-DETECTOR (mirrors derivedFieldMessage): null when every declared
+  # derived's `{ closure; discipline }` is lawful, else the first NAMED message. Validated by the SHARED edges
+  # `closureMessage` (§2.2 — one source of truth for the closure-capability law: a closure=true derive needs a
+  # REGISTERED join-semilattice discipline), with `subject = "den.derived:"` so the message names the derived
+  # surface, not the edge registry. A definition-time field gate (run at registry compile, NOT inside the compute
+  # engine). The `set-union` discipline + the `AclInfo` product + the `aclClosure` value-composition that CONSUME a
+  # closure derive are a downstream resolution-facet concern (§5).
+  derivedClosureMessage =
+    {
+      closureMessage,
+      disciplines,
+      deriveds,
+    }:
+    let
+      offenders = builtins.filter (m: m != null) (
+        prelude.mapAttrsToList (
+          name: spec:
+          closureMessage disciplines {
+            subject = "den.derived:";
+            inherit name;
+            closure = spec.closure or false;
+            discipline = spec.discipline or null;
+          }
+        ) deriveds
+      );
+    in
+    if offenders == [ ] then null else builtins.head offenders;
 in
 {
   inherit
     derivedFieldMessage
+    derivedClosureMessage
     depsPlaceholderMessage
     mkDerived
     ;

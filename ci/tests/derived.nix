@@ -163,6 +163,56 @@ let
     stratum = "closure";
     derive = node: _: node.rel.memberOf.targets;
   };
+
+  # guard (f) fixtures: a closure=true derive is laws-gated by the SHARED edges closureGate — its discipline must
+  # be REGISTERED + join-semilattice. Definition-time (no compute), so mkFleet suffices; `derive` is irrelevant.
+  # reach-closure is the pre-registered join-semilattice witness (concern-disciplines.nix); settings-layers is a
+  # registered but ordered-monoid (NON-join-semilattice) discipline.
+  closureCleanFleet = mkFleet {
+    over = [ ];
+    direction = "forward";
+    stratum = "closure";
+    closure = true;
+    discipline = "reach-closure";
+  };
+  closureNoDisciplineFleet = mkFleet {
+    over = [ ];
+    direction = "forward";
+    stratum = "closure";
+    closure = true;
+  };
+  closureUnregisteredFleet = mkFleet {
+    over = [ ];
+    direction = "forward";
+    stratum = "closure";
+    closure = true;
+    discipline = "bogusDiscipline";
+  };
+  closureNonJslFleet = mkFleet {
+    over = [ ];
+    direction = "forward";
+    stratum = "closure";
+    closure = true;
+    discipline = "settings-layers";
+  };
+  closureFalseFleet = mkFleet {
+    over = [ ];
+    direction = "forward";
+    stratum = "closure";
+    closure = false;
+  };
+
+  # closureMsgOf — the SHARED closure law called DIRECTLY as a VALUE (the value-split makes the NAMED message
+  # CI-testable), so the caller's locus prefix is asserted in isolation. Synthetic disciplines: reach-closure
+  # (join-semilattice) + settings-layers (ordered-monoid). Call only with UNLAWFUL args (a null message can't be
+  # regex-matched).
+  closureMsgOf =
+    args:
+    denHoag.internal.edgeKinds.closureMessage {
+      reach-closure.laws = "join-semilattice";
+      settings-layers.laws = "ordered-monoid";
+    } args;
+  closureMatches = re: args: builtins.match re (closureMsgOf args) != null;
 in
 {
   flake.tests.derived = {
@@ -252,6 +302,54 @@ in
     test-derived-gate-later-stratum-ok = {
       expr = gatedClosureFleet.den.derivedAt "atClosure" "node:a";
       expected = [ "node:b" ];
+    };
+
+    # ── guard (f): the closure/discipline laws-gate (§2.2, the SHARED edges closureGate) ──
+    # closure=true + a registered join-semilattice discipline (reach-closure) is lawful.
+    test-derived-closure-clean-no-throw = {
+      expr = throws closureCleanFleet.den.derived;
+      expected = false;
+    };
+    # closure=true with no discipline → NAMED throw (branch 1).
+    test-derived-closure-no-discipline-throws = {
+      expr = throws closureNoDisciplineFleet.den.derived;
+      expected = true;
+    };
+    # closure=true naming a discipline absent from the registry → NAMED throw (branch 2).
+    test-derived-closure-unregistered-throws = {
+      expr = throws closureUnregisteredFleet.den.derived;
+      expected = true;
+    };
+    # closure=true under a registered but NON-join-semilattice discipline (settings-layers) → NAMED throw (branch 3).
+    test-derived-closure-non-jsl-throws = {
+      expr = throws closureNonJslFleet.den.derived;
+      expected = true;
+    };
+    # closure=false needs no discipline — the gate is a no-op.
+    test-derived-closure-false-no-throw = {
+      expr = throws closureFalseFleet.den.derived;
+      expected = false;
+    };
+    # the locus message-match (writable via the value-split): the derived caller's message names the den.derived
+    # surface…
+    test-derived-closure-msg-locus = {
+      expr = closureMatches "den.derived: 'foo'.*no discipline.*" {
+        subject = "den.derived:";
+        name = "foo";
+        closure = true;
+        discipline = null;
+      };
+      expected = true;
+    };
+    # …and NEVER leaks the den.edges surface (the negative half — catches a wrong-subject regression).
+    test-derived-closure-msg-not-edges-locus = {
+      expr = closureMatches ".*den.edges.*" {
+        subject = "den.derived:";
+        name = "foo";
+        closure = true;
+        discipline = null;
+      };
+      expected = false;
     };
 
     # ── message-distinctness: each guard's NAMED message asserted in isolation via the DIRECT validator call
