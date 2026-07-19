@@ -1055,6 +1055,9 @@ let
         productNames = builtins.attrNames productsTable;
       };
       derivedGuard = if derivedGuardMessage != null then throw derivedGuardMessage else null;
+      # the guarded derived registry (forcing it forces the field guard first) — the name→spec index the compute
+      # engine reads (`spec = derivedTable.${name}`) and the `den.derived` return surface both share.
+      derivedTable = builtins.seq derivedGuard (ent.config.den.derived or { });
 
       # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated
       # (key well-formedness, no ArtifactRef endpoint). Global per-pair uniqueness holds by keying.
@@ -1639,6 +1642,13 @@ let
         inherit relationEdges;
         relationKinds = relationEdgeKinds;
       };
+      # derivedAt (§5) — the per-node derived-attribute accessor: `derivedAt <name> <nodeId>` computes
+      # `spec.derive node deps` over the node's relation handle (`node.rel = relAt <nodeId>`). Built PER-MKDEN from
+      # relAt + the guarded derived registry (semantics on the mkDerived builder doc). Exposed as den.derivedAt.
+      derivedAt = derivedLib.mkDerived {
+        inherit relAt;
+        derivedIndex = derivedTable;
+      };
       # ── §4.7: the member-product EXTRACTION — read a member's `consumes` product ALREADY-RESOLVED (never
       # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a
       # content product (RawModulesInfo) = the member's raw class slice (`classSubtreeAt`); an artifact product
@@ -1967,8 +1977,8 @@ let
         relations = builtins.seq edgesRelationGuard (ent.config.den.relations or { });
         # The derived-attribute registry (§5): the fleet's declared `den.derived`, guard-forced — reading this
         # surface fires the field guards (unknown relation / reverse-over-inverse-less / unknown or too-early
-        # stratum / unregistered provides). The compute engine + the stratum/closure gates are later rungs.
-        derived = builtins.seq derivedGuard (ent.config.den.derived or { });
+        # stratum / unregistered provides). The stratum/closure gates are later rungs.
+        derived = derivedTable;
         # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
         # (laws ladder): the framework merge-order instances seeded, plus any user registration.
         disciplines = disciplinesTable;
@@ -2019,6 +2029,10 @@ let
         # closure; paths }; }` (the aspectsAt-sibling narrow accessor; this per-node record is what a node's
         # `ctx.rel` reads). Per-mkDen, lazy; corpus-inert — nothing in the corpus reads it.
         relAt = relAt;
+        # derivedAt (§5): the per-node derived-attribute accessor — `derivedAt <name> <nodeId>` computes the
+        # declared derive's `spec.derive node deps` over the node's relation handle (`node.rel = relAt <nodeId>`).
+        # `deps` is a throw-on-read placeholder (value-composition is a later rung). Per-mkDen, lazy; corpus-inert.
+        derivedAt = derivedAt;
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/

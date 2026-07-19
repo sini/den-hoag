@@ -67,7 +67,43 @@ let
       offenders = builtins.filter (m: m != null) (prelude.mapAttrsToList checkOne deriveds);
     in
     if offenders == [ ] then null else builtins.head offenders;
+
+  # the `deps` placeholder message — the requires/provides VALUE-composition (spec §5) has no consumer in this
+  # facet, so a derive that reads `deps` aborts with this NAMED throw rather than silently seeing an empty set.
+  depsPlaceholderMessage = "den.derived: `deps` — the requires/provides value-composition (§5) has no consumer in this facet; a derive must not read it here";
+
+  # mkDerived — the per-node compute engine (§5): `derivedAt <name> <nodeId>` = `spec.derive node deps`, a LAZY
+  # per-node accessor (the mkRelAccessor posture — a plain `name: id:` fn, NOT a cross-call memo table). `node` is
+  # the capability handle `{ rel = relAt id; id = id; }` (the per-node relation binding); the derive body reads
+  # relations via `node.rel.<kind>.{targets;inverse;closure}` (forward = targets, reverse = inverse). `over` /
+  # `direction` are DECLARATIVE metadata (definition-time validated by derivedFieldMessage); `node.rel` exposes
+  # ALL relation kinds regardless of `over`, so the stratum-gate (a later rung), not `over`, is the real
+  # read-enforcement. `deps` is a throw-on-read placeholder — honest + loud, never a silent `{}`. `derivedIndex`
+  # is the name→spec registry (`den.derived` itself), so `spec = derivedIndex.${name}`.
+  mkDerived =
+    {
+      relAt,
+      derivedIndex,
+    }:
+    name: id:
+    let
+      # a typo'd name is a raw attr-select miss (tryEval-UNCATCHABLE) on a public accessor reachable from user
+      # input — convert it to a NAMED catchable throw (the `or (throw …)` idiom, extractMemberProduct's posture).
+      spec =
+        derivedIndex.${name}
+          or (throw "den.derived: no such derived '${name}' — not a name declared in den.derived (§5)");
+      node = {
+        rel = relAt id;
+        inherit id;
+      };
+      deps = throw depsPlaceholderMessage;
+    in
+    spec.derive node deps;
 in
 {
-  inherit derivedFieldMessage;
+  inherit
+    derivedFieldMessage
+    depsPlaceholderMessage
+    mkDerived
+    ;
 }

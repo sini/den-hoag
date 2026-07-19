@@ -101,6 +101,51 @@ let
       productNames = [ "SystemInfo" ];
     };
   matches = re: deriv: builtins.match re (msgOf deriv) != null;
+
+  # a fleet with a memberOf CHAIN a → b → c (so the closure read is genuinely multi-hop transitive) + edges, and
+  # one derived `<name>` = <deriv>, for exercising the compute engine (den.derivedAt).
+  mkDerivedFleet =
+    name: deriv:
+    denHoag.mkDen [
+      (
+        { config, ... }:
+        {
+          config.den.schema.node.parent = null;
+          config.den.relations.memberOf = {
+            inverse = "members";
+          };
+          config.den.strata.insert.closure = {
+            after = "resolution";
+          };
+          config.den.node.a.edges.memberOf = [ config.den.node.b ];
+          config.den.node.b.edges.memberOf = [ config.den.node.c ];
+          config.den.node.c = { };
+          config.den.derived.${name} = deriv;
+        }
+      )
+    ];
+
+  # reverse: the derive reads node.rel.memberOf.inverse (node:b's inverse = [node:a] via the producer's swap).
+  reverseFleet = mkDerivedFleet "reverseMembers" {
+    over = [ "memberOf" ];
+    direction = "reverse";
+    stratum = "closure";
+    derive = node: _: node.rel.memberOf.inverse;
+  };
+  # closure-flavored: the derive reads node.rel.memberOf.closure (transitive reach from node:a = [b, c]).
+  closureFleet = mkDerivedFleet "reachMembers" {
+    over = [ "memberOf" ];
+    direction = "forward";
+    stratum = "closure";
+    derive = node: _: node.rel.memberOf.closure;
+  };
+  # a derive that READS `deps` — must abort NAMED (the value-composition placeholder is loud, never silent).
+  depsReadFleet = mkDerivedFleet "readsDeps" {
+    over = [ "memberOf" ];
+    direction = "forward";
+    stratum = "closure";
+    derive = node: deps: deps;
+  };
 in
 {
   flake.tests.derived = {
@@ -139,6 +184,44 @@ in
     test-derived-reverse-with-inverse-clean = {
       expr = throws reverseWithInverseFleet.den.derived;
       expected = false;
+    };
+
+    # ── the per-node compute engine (den.derivedAt) ──
+    # the accessor surface EXISTS.
+    test-derived-at-present = {
+      expr = cleanFleet.den ? derivedAt;
+      expected = true;
+    };
+    # a typo'd name aborts NAMED (a raw attr-select miss would be tryEval-UNCATCHABLE on this public accessor —
+    # `spec` forces before `node`, so the nodeId is inert here).
+    test-derived-at-unknown-name-throws = {
+      expr = throws (cleanFleet.den.derivedAt "noSuchDerived" "node:a");
+      expected = true;
+    };
+    # non-vacuous: the reverse-memberOf derive reads node.rel.memberOf.inverse — node:b's inverse is [node:a].
+    test-derived-at-reverse = {
+      expr = reverseFleet.den.derivedAt "reverseMembers" "node:b";
+      expected = [ "node:a" ];
+    };
+    # closure-flavored: the transitive reach from node:a over the a → b → c chain.
+    test-derived-at-closure = {
+      expr = builtins.sort builtins.lessThan (closureFleet.den.derivedAt "reachMembers" "node:a");
+      expected = [
+        "node:b"
+        "node:c"
+      ];
+    };
+    # the deps placeholder is LOUD: a derive that reads `deps` aborts (the value-composition is a later concern).
+    test-derived-at-deps-throws = {
+      expr = throws (depsReadFleet.den.derivedAt "readsDeps" "node:a");
+      expected = true;
+    };
+    # …and the abort is NAMED (the placeholder message carries the `den.derived:` prefix + cites §5).
+    test-derived-at-deps-message-named = {
+      expr =
+        builtins.match ".*den.derived:.*value-composition.*" denHoag.internal.derived.depsPlaceholderMessage
+        != null;
+      expected = true;
     };
 
     # ── message-distinctness: each guard's NAMED message asserted in isolation via the DIRECT validator call
