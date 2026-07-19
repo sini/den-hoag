@@ -813,6 +813,52 @@ the adaptation the source-agnostic `den.query` spine deferred here. Built per-mk
 `valueOf = id: [ id ]`); `paths` = the path witnesses. The registry closure CAPABILITY + the set-union DISCIPLINE
 law-gating are a downstream ACL concern — the accessor supplies its own concrete monoid now.
 
+## Derived — laws-gated synthesized attributes (`den.derived` / `den.derivedAt`, spec §5) — `lib/concern-derived.nix`
+
+A derived attribute reads the relation graph (via the per-node accessor) and synthesizes a value, capability-scoped
+by its `stratum` and laws-gated by its `closure`/`discipline`. It sits ON the relations layer: the compute reads
+`node.rel` (= `den.relAt <nodeId>`), so the relation graph is its edge source, and it reuses the shipped substrate —
+the `den.strata` order (§2.3), the `den.products` registry (§4.1), and the `den.edges` closure-capability law
+(§2.2) — with no new machinery.
+
+**`den.derived.<name>` — the registry + field guards (§5).** `den.derived.<name> = { over ? [ ]; direction ? "forward"; stratum; provides ? null; discipline ? null; closure ? false; derive }` (a `lazyAttrsOf raw` option, default
+`{ }` — absent ⇒ byte-identical fleet). Reading the `den.derived` surface forces the DEFINITION-TIME field guards,
+a chain validating each declared derived against the fleet's relations / compiled strata order / products — each a
+VALUE-returning detector thrown at the wiring, so the NAMED contract is CI-testable (`tryEval` cannot capture a
+throw's text):
+
+- **(a)** every `over` name is a declared `den.relations` relation;
+- **(b)** `stratum` is a stratum in the compiled order (§2.3);
+- **(c)** `stratum` is STRICTLY LATER than the strata its `over` relations sit at — a derive reads strata below its own (§2.3);
+- **(d)** `direction = "reverse"` only over a relation whose `inverse` is non-null (else the reverse read is silently empty — a definition error);
+- **(e)** `provides` (when set) is a product registered in `den.products` (§4.1) — a plain membership check;
+- **(f)** `closure = true` requires a REGISTERED join-semilattice discipline — validated by the SHARED `closureMessage`/`closureGate` REUSED from the edge registry (§2.2), so the closure-capability law has ONE source of truth (the derived gate passes `subject = "den.derived:"` so the message names the derived surface). The `reach-closure` discipline is the pre-registered join-semilattice witness; `closure = false` is a no-op.
+
+**`den.derivedAt <name> <nodeId>` — the per-node compute engine (§5).** A fleet-level LAZY per-node accessor (the
+`den.relAt` narrow-accessor sibling — a plain `name: id:` fn keyed on scope-node id, NOT a `resolve.attr` fixpoint
+equation): `derivedAt <name> <nodeId> = spec.derive node deps`. `node = { rel = relAt <nodeId>; id = <nodeId>; }` is
+the per-node `ctx.rel` binding; the `derive` body reads relations via `node.rel.<kind>.{ targets; inverse; closure }`
+(forward = `targets`, reverse = `inverse`). `over`/`direction` are DECLARATIVE metadata (definition-time validated) —
+`node.rel` exposes ALL relation kinds regardless of `over`, so the stratum-gate, not `over`, is the real
+read-enforcement. A typo'd `<name>` aborts NAMED (a raw attr-select miss would be `tryEval`-uncatchable on a public
+accessor). Corpus-inert — a lazy accessor nothing in the corpus reads.
+
+**The stratum-gate — capability scoping on `node` (§2.3).** `node.rel` exposes ONLY relation kinds whose stratum sits
+STRICTLY BELOW the derive's own; reading a kind tagged stratum ≥ the derive's stratum is REPLACED with a NAMED throw
+(the `projectCtx` throw-on-read pattern, §2.3 — enforcement-by-construction, never introspection: the derive cannot
+read a fact at or above its own layer). Each kind carries its relation's stratum; `node.id` is untagged (structural)
+and passes. In the current all-`resolution` relation model the gate discriminates at the resolution boundary — a
+derive at `stratum = "resolution"` may not read a resolution relation (same-stratum), one at a later stratum (e.g. an
+inserted `closure`) may.
+
+**Deferred to a downstream ACL / resolution-facet concern (§5).** The `set-union` user join-semilattice discipline,
+the `AclInfo` product, and the `aclClosure` demonstrator that CONSUMES a closure derive land with the ACL concern (a
+closure derive is WITNESSABLE here via the pre-registered `reach-closure` discipline, but the set-union capability
+arrives there). The `deps` argument — the `requires`/`provides` VALUE-composition (a provides→derive index +
+recursive resolution) — has no consumer in this facet, so it is a THROW-ON-READ placeholder: a derive that reads
+`deps` aborts NAMED (honest + loud, never a silent `{ }`); `provides` stays VALIDATED (guard (e)), only the
+value-resolution defers.
+
 ## Theory citations (§6)
 
 The libraries den-hoag delegates to carry the theory; the citations that matter at this layer:
