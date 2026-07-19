@@ -832,7 +832,8 @@ throw's text):
 - **(c)** `stratum` is STRICTLY LATER than the strata its `over` relations sit at — a derive reads strata below its own (§2.3);
 - **(d)** `direction = "reverse"` only over a relation whose `inverse` is non-null (else the reverse read is silently empty — a definition error);
 - **(e)** `provides` (when set) is a product registered in `den.products` (§4.1) — a plain membership check;
-- **(f)** `closure = true` requires a REGISTERED join-semilattice discipline — validated by the SHARED `closureMessage`/`closureGate` REUSED from the edge registry (§2.2), so the closure-capability law has ONE source of truth (the derived gate passes `subject = "den.derived:"` so the message names the derived surface). The `reach-closure` discipline is the pre-registered join-semilattice witness; `closure = false` is a no-op.
+- **(f)** `closure = true` requires a REGISTERED join-semilattice discipline — validated by the SHARED `closureMessage`/`closureGate` REUSED from the edge registry (§2.2), so the closure-capability law has ONE source of truth (the derived gate passes `subject = "den.derived:"` so the message names the derived surface). The `reach-closure` discipline is the pre-registered join-semilattice witness; `closure = false` is a no-op;
+- **(g)** a `derive` function is present — a missing `derive` would otherwise be an uncatchable `spec.derive` attr-miss the moment `derivedAt` forces it (the same uncatchable class as the unknown-name guard), so the presence check makes it a catchable NAMED definition-time error.
 
 **`den.derivedAt <name> <nodeId>` — the per-node compute engine (§5).** A fleet-level LAZY per-node accessor (the
 `den.relAt` narrow-accessor sibling — a plain `name: id:` fn keyed on scope-node id, NOT a `resolve.attr` fixpoint

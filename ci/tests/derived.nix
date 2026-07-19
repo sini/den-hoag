@@ -30,12 +30,14 @@ let
       )
     ];
 
-  # clean: over a declared relation, a LATER stratum (closure > resolution), a registered product.
+  # clean: over a declared relation, a LATER stratum (closure > resolution), a registered product. A trivial
+  # `derive` satisfies guard (g) — the fixtures below that omit `derive` are the ones testing an EARLIER guard.
   cleanFleet = mkFleet {
     over = [ "memberOf" ];
     direction = "forward";
     stratum = "closure";
     provides = "SystemInfo";
+    derive = node: _: null;
   };
   # (a) over names a relation NOT in den.relations.
   unknownRelFleet = mkFleet {
@@ -73,6 +75,14 @@ let
   reverseWithInverseFleet = mkFleet {
     over = [ "memberOf" ];
     direction = "reverse";
+    stratum = "closure";
+    derive = node: _: null;
+  };
+  # (g) a derived that OMITS the required `derive` — an uncatchable `spec.derive` attr-miss the moment
+  # `derivedAt` forces it, made a catchable NAMED definition-time error by guard (g).
+  noDerivedFleet = mkFleet {
+    over = [ ];
+    direction = "forward";
     stratum = "closure";
   };
 
@@ -168,18 +178,22 @@ let
   # be REGISTERED + join-semilattice. Definition-time (no compute), so mkFleet suffices; `derive` is irrelevant.
   # reach-closure is the pre-registered join-semilattice witness (concern-disciplines.nix); settings-layers is a
   # registered but ordered-monoid (NON-join-semilattice) discipline.
+  # a trivial `derive` on every closure fixture so guard (g) passes and the closure laws-gate (guard f), not the
+  # missing-derive guard, is what the closure oracles exercise (non-masking).
   closureCleanFleet = mkFleet {
     over = [ ];
     direction = "forward";
     stratum = "closure";
     closure = true;
     discipline = "reach-closure";
+    derive = node: _: null;
   };
   closureNoDisciplineFleet = mkFleet {
     over = [ ];
     direction = "forward";
     stratum = "closure";
     closure = true;
+    derive = node: _: null;
   };
   closureUnregisteredFleet = mkFleet {
     over = [ ];
@@ -187,6 +201,7 @@ let
     stratum = "closure";
     closure = true;
     discipline = "bogusDiscipline";
+    derive = node: _: null;
   };
   closureNonJslFleet = mkFleet {
     over = [ ];
@@ -194,12 +209,14 @@ let
     stratum = "closure";
     closure = true;
     discipline = "settings-layers";
+    derive = node: _: null;
   };
   closureFalseFleet = mkFleet {
     over = [ ];
     direction = "forward";
     stratum = "closure";
     closure = false;
+    derive = node: _: null;
   };
 
   # closureMsgOf — the SHARED closure law called DIRECTLY as a VALUE (the value-split makes the NAMED message
@@ -226,7 +243,7 @@ in
       expected = false;
     };
 
-    # ── the 5 field guards (NAMED, tryEval-catchable) ──
+    # ── the field guards (NAMED, tryEval-catchable) ──
     test-derived-unknown-relation-throws = {
       expr = throws unknownRelFleet.den.derived;
       expected = true;
@@ -245,6 +262,11 @@ in
     };
     test-derived-provides-unregistered-throws = {
       expr = throws providesUnregisteredFleet.den.derived;
+      expected = true;
+    };
+    # (g) a missing `derive` aborts NAMED at definition time (else an uncatchable `spec.derive` attr-miss).
+    test-derived-no-derive-throws = {
+      expr = throws noDerivedFleet.den.derived;
       expected = true;
     };
     # (positive) reverse over a relation WITH an inverse is clean — the guard discriminates on null-inverse only.
@@ -388,6 +410,13 @@ in
         over = [ "memberOf" ];
         stratum = "closure";
         provides = "BogusProduct";
+      };
+      expected = true;
+    };
+    test-derived-msg-no-derive = {
+      expr = matches ".*den.derived:.*no .derive..*" {
+        over = [ ];
+        stratum = "closure";
       };
       expected = true;
     };

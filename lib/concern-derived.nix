@@ -1,8 +1,8 @@
 # den.derived — laws-gated synthesized attributes over the resolution graph (spec §5). A derived
 # `<name> = { over; direction; stratum; provides; discipline; closure; derive }` reads the relation graph (via
 # the per-node accessor) and synthesizes a value, capability-scoped by its `stratum` and laws-gated by its
-# `closure`/`discipline`. This file holds the DEFINITION-TIME field validation, the per-node compute engine, and
-# the stratum-gate; the closure-gate routing is a later rung.
+# `closure`/`discipline`. This file holds the DEFINITION-TIME field validation — the field guards plus the
+# closure/discipline laws-gate (guard f) — the per-node compute engine, and the stratum-gate.
 {
   prelude,
 }:
@@ -27,7 +27,9 @@ let
   # derived's fields against the fleet's relations / strata order / products. `relationKinds` is the desugared
   # relation edge-kinds (keyed by relation name, carrying `inverse` + `stratum`). Guards are an ordered chain —
   # `over`-validity first (later guards read `relationKinds.<rel>`), then the stratum guards (the §2.3
-  # capability-scope law), the reverse-direction guard, and the `provides` product membership.
+  # capability-scope law), the reverse-direction guard, the `provides` product membership, and a `derive`
+  # presence check LAST (a missing `derive` would otherwise be an uncatchable `spec.derive` attr-miss the moment
+  # `derivedAt` forces it — the same uncatchable class as the unknown-name guard, made catchable at definition).
   derivedFieldMessage =
     {
       deriveds,
@@ -62,6 +64,8 @@ let
           "den.derived: '${name}' direction = \"reverse\" over a relation whose `inverse` is null — the reverse read would be silently empty; declare the relation's inverse (§5)"
         else if provides != null && !(builtins.elem provides productNames) then
           "den.derived: '${name}' provides '${provides}', which is not a product registered in den.products (§4.1)"
+        else if !(spec ? derive) then
+          "den.derived: '${name}' declares no `derive` — a derived must declare a `derive = node: deps: …` function (§5)"
         else
           null;
       offenders = builtins.filter (m: m != null) (prelude.mapAttrsToList checkOne deriveds);
