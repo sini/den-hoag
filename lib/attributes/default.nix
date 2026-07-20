@@ -23,6 +23,7 @@
   class,
   merge,
   errors,
+  graph,
 }:
 let
   # The A10 class-share build path (gen-class tier-2/tier-3). Imported here so the output stratum can
@@ -85,6 +86,15 @@ let
       errors
       ;
   };
+  # §11 Phase 1 — the resolution-stratum relation/derived accessor equations (delivery moved off the top-level
+  # closures INTO the ONE equations map). Imports the concern libs directly (like the `classShare` import
+  # above) so the equations builder needs no new top-level lib args — only the per-fleet DATA is threaded.
+  resolutionRelations = import ./resolution-relations.nix {
+    inherit resolve;
+    relations = import ../concern-relations.nix { inherit prelude; };
+    derived = import ../concern-derived.nix { inherit prelude; };
+    query = import ../query.nix { inherit prelude graph; };
+  };
 in
 {
   # The full equation map. Structural attributes shape the graph (they never read a resolution
@@ -121,6 +131,10 @@ in
       containmentRelations ? { },
       classNames,
       classifyKey,
+      relationEdges ? [ ],
+      relationEdgeKinds ? { },
+      strataOrder ? [ ],
+      derivedTable ? { },
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // {
@@ -167,6 +181,14 @@ in
         projectors
         containmentRelations
         ;
+    })
+    // (resolutionRelations {
+      inherit
+        relationEdges
+        relationEdgeKinds
+        strataOrder
+        derivedTable
+        ;
     });
 
   # The narrow accessor (A10) builder — depends only on the aspect registry + the final eval, not the
@@ -207,9 +229,14 @@ in
       roots,
       equations,
       parseParent,
+      declaredEdges ? (_: [ ]),
     }:
     resolve.resolve {
-      inherit roots equations parseParent;
-      declaredEdges = _: [ ];
+      inherit
+        roots
+        equations
+        parseParent
+        declaredEdges
+        ;
     };
 }

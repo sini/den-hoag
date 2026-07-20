@@ -65,6 +65,7 @@ let
     "attributes/resolved-settings.nix"
     "attributes/class-modules.nix"
     "attributes/output-modules.nix"
+    "attributes/resolution-relations.nix"
     "output/terminal.nix"
     "output/class-share.nix"
     "output/flake-adapter.nix"

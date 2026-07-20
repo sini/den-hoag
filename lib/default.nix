@@ -169,6 +169,7 @@ let
       class
       merge
       errors
+      graph
       ;
     projects = projectsLib;
     declarations = declare;
@@ -1440,11 +1441,17 @@ let
           ;
         classNames = effectiveClassNames;
         inherit (denAspects) classifyKey;
+        inherit
+          relationEdges
+          relationEdgeKinds
+          derivedTable
+          ;
+        strataOrder = compiledStrata;
       };
 
       structural = runResolve {
         roots = scopeRoots;
-        inherit equations parseParent;
+        inherit equations parseParent declaredEdges;
       };
 
       # The output stratum (attribute 12, Law A15): the gen-edge fold's graph accessor + `outputFor`/
@@ -1665,30 +1672,32 @@ let
       # forcing `relationEdges` forces the undeclared-relation guard first, so a malformed `.edges` aborts NAMED
       # for ANY consumer of the producer output — not only when the `den.relations` surface is read.
       relationEdges = builtins.seq edgesRelationGuard relationEdgesRaw;
+      # GAP-2 (§11): the SOUND conservative consumer→producer declaration for warm-serve. A node's resolution
+      # (`rel-accessor`/`derived-accessor`) reads the relation graph reachable from it — `targets`/`inverse`/
+      # `closure` and every `node.query` follow the `relationEdges` pool — so declaring EVERY node's read-set as
+      # the full relation-endpoint set is the SAFE over-declaration (a superset of the actual reads: never
+      # stale; a tighter per-node reachable set is the tracked perf refinement, §13). Corpus-inert: no
+      # `relationEdges` ⇒ `[ ]` for every node ⇒ byte-identical to the empty default; and `declaredEdges` feeds
+      # ONLY the warm-serve/rebuild layer (DP3/DP4, unforced in the cold materialization path).
+      relationEndpoints = prelude.unique (
+        prelude.concatMap (e: [
+          e.from
+          e.to
+        ]) relationEdges
+      );
+      declaredEdges = _id: relationEndpoints;
       # relQuery (§5) — the sel→matchId `where`-adaptation over den.query, built PER-MKDEN from the fleet's scope.
-      # `whereFor` is the SAME `matchIdStructural` the collector membership filter runs (above) — reused, not
-      # re-spelled.
+      # `whereFor` is the SAME `matchIdStructural` the collector membership filter runs (memberIdsFor) — reused,
+      # not re-spelled. ★ §11 Phase 1: UNLIKE relAt/derivedAt (now scheduled `rel-accessor`/`derived-accessor`
+      # resolution attrs), relQuery STAYS a fleet-global helper — it is parameterized by `from` (not a per-node
+      # attribute), and its only eval-dependence (`whereFor = matchIdStructural`, a SHARED scope-selector adapter
+      # reading the ONE final eval) is a legitimate consumer, not a second evaluator. Folding it into the schedule
+      # would make a FUNCTION-valued attribute (violating "an attribute value is inert data") for no warm-serve
+      # gain; it is therefore NOT part of the second delivery-context Phase 1 deletes.
       relQuery = relationsLib.mkRelQuery {
         denQuery = queryLib.denQuery;
         inherit relationEdges;
         whereFor = matchIdStructural;
-      };
-      # relAt (§5) — the per-entity relation accessor, built here PER-MKDEN from the fleet's den.query + relation
-      # edges + kinds (the accessor's shape/semantics are on the mkRelAccessor builder doc). Exposed as den.relAt.
-      relAt = relationsLib.mkRelAccessor {
-        denQuery = queryLib.denQuery;
-        inherit relationEdges;
-        relationKinds = relationEdgeKinds;
-      };
-      # derivedAt (§5) — the per-node derived-attribute accessor: `derivedAt <name> <nodeId>` computes
-      # `spec.derive node deps` over the node's relation handle (`node.rel = relAt <nodeId>`). Built PER-MKDEN from
-      # relAt + the guarded derived registry (semantics on the mkDerived builder doc). Exposed as den.derivedAt.
-      derivedAt = derivedLib.mkDerived {
-        inherit relAt relationEdges;
-        derivedIndex = derivedTable;
-        relationKinds = relationEdgeKinds;
-        strataOrder = compiledStrata;
-        denQuery = queryLib.denQuery;
       };
       # ── §4.7: the member-product EXTRACTION — read a member's `consumes` product ALREADY-RESOLVED (never
       # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a
@@ -2066,14 +2075,22 @@ let
         # `relQuery { from; kind; sel ? null; mode ? "all" }`. Per-mkDen (closes over the fleet's scope +
         # relation edges); corpus-inert — a new read-only surface nothing in the corpus calls.
         relQuery = relQuery;
-        # relAt (§5): the per-entity relation accessor — `relAt <nodeId> = { <kind> = { targets; inverse;
-        # closure; paths }; }` (the aspectsAt-sibling narrow accessor; this per-node record is what a node's
-        # `ctx.rel` reads). Per-mkDen, lazy; corpus-inert — nothing in the corpus reads it.
-        relAt = relAt;
-        # derivedAt (§5): the per-node derived-attribute accessor — `derivedAt <name> <nodeId>` computes the
-        # declared derive's `spec.derive node deps` over the node's relation handle (`node.rel = relAt <nodeId>`).
-        # `deps` is a throw-on-read placeholder (value-composition is a later rung). Per-mkDen, lazy; corpus-inert.
-        derivedAt = derivedAt;
+        # relAt (§5): the per-entity relation accessor, delivered from the SCHEDULED `rel-accessor` resolution
+        # attr (§11 Phase 1 — no longer a top-level closure). `relAt id = structural.eval.get id "rel-accessor"`
+        # = `{ <kind> = { targets; inverse; closure; paths }; }` (this per-node record is what a node's `ctx.rel`
+        # reads). Lazy per field; corpus-inert.
+        relAt = id: structural.eval.get id "rel-accessor";
+        # derivedAt (§5): the per-node derived-attribute accessor, delivered from the SCHEDULED `derived-accessor`
+        # resolution attr (§11 Phase 1 — no longer a top-level closure). `derivedAt name id` =
+        # `(structural.eval.get id "derived-accessor").${name}`; the unknown-name check runs FIRST against
+        # `derivedTable`, so a typo'd name aborts NAMED before any eval read (the nodeId stays inert). `deps` is a
+        # throw-on-read placeholder; the stratum-gate + `node` handle live in the attr's `mkDerived` body.
+        derivedAt =
+          name: id:
+          if derivedTable ? ${name} then
+            (structural.eval.get id "derived-accessor").${name}
+          else
+            throw "den.derived: no such derived '${name}' — not a name declared in den.derived (§5)";
         # THE LIVE FAMILY MOUNT (§4.4/§4.6): the root entity's PRODUCT — `{ <family> = { <entityName> =
         # <artifact>; }; }` — assembled via the root family dispatch (`resolveReceiver`) + the value-mode
         # `executeNest` arm. This IS the output face: the top-level `outputs` and the nixosConfigurations/
