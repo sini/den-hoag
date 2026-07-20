@@ -187,6 +187,10 @@ let
   # compile + mode-set/reserved validation (§4.1). Materialization reads modes off the compiled table;
   # receivers call `checkConsumes` at a consumes position. Pure Law A1 (mapAttrs + validation).
   productsLib = import ./products.nix { inherit prelude; };
+  # The resolution-product registry (den.resolutionProducts): compile + reserved-name validation (§5). The
+  # resolution-facet counterpart of den.products — a derived's `provides` validates against THIS registry,
+  # a distinct namespace from the materialization faces. Pure Law A1 (mapAttrs + validation).
+  resolutionProductsLib = import ./resolution-products.nix { inherit prelude; };
   # The render registry (den.renders): the D7 promotion of the shipped `{ evaluator; output }`
   # instantiation record into a full §4.3 registry row. PER-FLEET compile (the built-in nixos/darwin
   # evaluators close over the fleet's own nixpkgs/darwin inputs) — invoked inside the mkDen closure.
@@ -433,7 +437,7 @@ let
         options.den.derived = merge.mkOption {
           type = merge.types.lazyAttrsOf merge.types.raw;
           default = { };
-          description = "Derived-attribute registry (§5): `<name> = { over; direction; stratum; provides; discipline ? null; closure ? false; derive }` — a laws-gated synthesized attribute over the resolution graph.";
+          description = "Derived-attribute registry (§5): `<name> = { over; direction; stratum; provides; discipline ? null; closure ? false; derive }` — a laws-gated synthesized attribute over the resolution graph; `provides` names a den.resolutionProducts face.";
         };
       };
 
@@ -461,6 +465,19 @@ let
           type = merge.types.lazyAttrsOf merge.types.raw;
           default = { };
           description = "Typed-product registry: `<name> = { mode; nestable ? true; }`, mode ∈ { content artifact extend value } (§4.1).";
+        };
+      };
+
+      # den.resolutionProducts.<name> — the resolution-product registry (§5). Each entry names a typed
+      # payload a resolution-facet synthesizer (a `den.derived`'s `provides`) emits: `{ schema ? null; }`.
+      # A DISTINCT namespace from den.products (materialization): a derived's `provides` validates here, so
+      # a materialization face named as a derived's `provides` fails naturally. `raw` holds each record
+      # unmerged. Absent ⇒ a fleet registering no resolution products (the framework seeds none yet).
+      resolutionProductsDecl = {
+        options.den.resolutionProducts = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Resolution-product registry: `<name> = { schema ? null; }` — the payload faces a den.derived `provides` (§5), distinct from den.products materialization faces.";
         };
       };
 
@@ -745,6 +762,7 @@ let
           derivedDecl
           disciplinesDecl
           productsDecl
+          resolutionProductsDecl
           conversionsDecl
           rendersDecl
           kindsDecl
@@ -1044,15 +1062,23 @@ let
         products = ent.config.den.products or { };
       };
 
+      # The compiled resolution-product table (§5): the fleet's `den.resolutionProducts` registrations,
+      # validated (reserved-name). A `den.derived`'s `provides` validates against THIS table (guard (e)),
+      # a distinct namespace from productsTable — so a materialization face as a `provides` fails naturally.
+      resolutionProductsTable = resolutionProductsLib.compile {
+        resolutionProducts = ent.config.den.resolutionProducts or { };
+      };
+
       # THE DERIVED FIELD GUARD (§5): definition-time validation of each `den.derived`'s fields against the
-      # fleet's relations (`relationEdgeKinds`), the compiled strata order, and the products table — a value
+      # fleet's relations (`relationEdgeKinds`), the compiled strata order, and the RESOLUTION-product table
+      # (§5, `provides` validates against den.resolutionProducts, not the materialization faces) — a value
       # detector thrown when non-null. Read-only + corpus-inert (empty `den.derived` ⇒ the detector is null ⇒
       # no throw). Forced by reading the `den.derived` return surface.
       derivedGuardMessage = derivedLib.derivedFieldMessage {
         deriveds = ent.config.den.derived or { };
         relationKinds = relationEdgeKinds;
         strataOrder = compiledStrata;
-        productNames = builtins.attrNames productsTable;
+        resolutionProductNames = builtins.attrNames resolutionProductsTable;
       };
       derivedGuard = if derivedGuardMessage != null then throw derivedGuardMessage else null;
       # guard (f): the closure/discipline laws-gate — a VALUE-DETECTOR (like guards (a)-(e)) validated by the

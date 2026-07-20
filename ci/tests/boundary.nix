@@ -51,6 +51,7 @@ let
     "identity.nix"
     "edges.nix"
     "products.nix"
+    "resolution-products.nix"
     "renders.nix"
     "receivers.nix"
     "query.nix"

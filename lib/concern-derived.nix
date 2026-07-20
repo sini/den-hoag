@@ -24,10 +24,10 @@ let
 
   # derivedFieldMessage — the DEFINITION-TIME field validator as a VALUE (`null` = clean, else the NAMED message),
   # so the NAMED contract is CI-testable (Nix's `tryEval` cannot capture a throw's text). It checks each declared
-  # derived's fields against the fleet's relations / strata order / products. `relationKinds` is the desugared
-  # relation edge-kinds (keyed by relation name, carrying `inverse` + `stratum`). Guards are an ordered chain —
-  # `over`-validity first (later guards read `relationKinds.<rel>`), then the stratum guards (the §2.3
-  # capability-scope law), the reverse-direction guard, the `provides` product membership, and a `derive`
+  # derived's fields against the fleet's relations / strata order / resolution products. `relationKinds` is the
+  # desugared relation edge-kinds (keyed by relation name, carrying `inverse` + `stratum`). Guards are an ordered
+  # chain — `over`-validity first (later guards read `relationKinds.<rel>`), then the stratum guards (the §2.3
+  # capability-scope law), the reverse-direction guard, the `provides` resolution-product membership, and a `derive`
   # presence check LAST (a missing `derive` would otherwise be an uncatchable `spec.derive` attr-miss the moment
   # `derivedAt` forces it — the same uncatchable class as the unknown-name guard, made catchable at definition).
   derivedFieldMessage =
@@ -35,7 +35,7 @@ let
       deriveds,
       relationKinds,
       strataOrder,
-      productNames,
+      resolutionProductNames,
     }:
     let
       relationNames = builtins.attrNames relationKinds;
@@ -62,8 +62,8 @@ let
           "den.derived: '${name}' stratum '${stratum}' is not LATER than the strata its `over` relations sit at — a derive reads strata below its own (§2.3)"
         else if reverseInverseless then
           "den.derived: '${name}' direction = \"reverse\" over a relation whose `inverse` is null — the reverse read would be silently empty; declare the relation's inverse (§5)"
-        else if provides != null && !(builtins.elem provides productNames) then
-          "den.derived: '${name}' provides '${provides}', which is not a product registered in den.products (§4.1)"
+        else if provides != null && !(builtins.elem provides resolutionProductNames) then
+          "den.derived: '${name}' provides '${provides}', which is not a resolution product registered in den.resolutionProducts (§5)"
         else if !(spec ? derive) then
           "den.derived: '${name}' declares no `derive` — a derived must declare a `derive = node: deps: …` function (§5)"
         else

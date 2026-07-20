@@ -25,6 +25,9 @@ let
           config.den.strata.insert.closure = {
             after = "resolution";
           };
+          # a synthetic resolution product (§5) so a clean derive's `provides` validates against the
+          # resolution-facet registry (den.resolutionProducts), distinct from the materialization faces.
+          config.den.resolutionProducts.ResolvedInfo = { };
           config.den.derived.foo = deriv;
         }
       )
@@ -33,6 +36,16 @@ let
   # clean: over a declared relation, a LATER stratum (closure > resolution), a registered product. A trivial
   # `derive` satisfies guard (g) — the fixtures below that omit `derive` are the ones testing an EARLIER guard.
   cleanFleet = mkFleet {
+    over = [ "memberOf" ];
+    direction = "forward";
+    stratum = "closure";
+    provides = "ResolvedInfo";
+    derive = node: _: null;
+  };
+  # (facet violation) `provides` names a MATERIALIZATION product (SystemInfo ∈ den.products, ∉
+  # den.resolutionProducts) — guard (e) validates against the resolution registry, so a cross-facet
+  # `provides` fails NAMED. Proves the two registries are distinct namespaces (§5 vs §4.1).
+  providesMaterializationFleet = mkFleet {
     over = [ "memberOf" ];
     direction = "forward";
     stratum = "closure";
@@ -63,7 +76,7 @@ let
     direction = "forward";
     stratum = "resolution";
   };
-  # (e) provides names a product NOT registered in den.products.
+  # (e) provides names a product NOT registered in den.resolutionProducts.
   providesUnregisteredFleet = mkFleet {
     over = [ "memberOf" ];
     direction = "forward";
@@ -108,7 +121,7 @@ let
         "resolution"
         "closure"
       ];
-      productNames = [ "SystemInfo" ];
+      resolutionProductNames = [ "ResolvedInfo" ];
     };
   matches = re: deriv: builtins.match re (msgOf deriv) != null;
 
@@ -406,10 +419,26 @@ in
       expected = true;
     };
     test-derived-msg-provides-unregistered = {
-      expr = matches ".*not a product registered.*" {
+      expr = matches ".*not a resolution product registered.*" {
         over = [ "memberOf" ];
         stratum = "closure";
         provides = "BogusProduct";
+      };
+      expected = true;
+    };
+    # (facet violation) a `provides` naming a MATERIALIZATION product (SystemInfo) throws NAMED — guard (e)
+    # validates against den.resolutionProducts, not den.products, so a cross-facet claim fails at definition.
+    test-derived-provides-materialization-throws = {
+      expr = throws providesMaterializationFleet.den.derived;
+      expected = true;
+    };
+    # …and the NAMED message locates the resolution registry (den.resolutionProducts, §5), not the
+    # materialization surface — the value-split makes the cross-facet message CI-testable.
+    test-derived-msg-provides-materialization = {
+      expr = matches ".*den.resolutionProducts.*" {
+        over = [ "memberOf" ];
+        stratum = "closure";
+        provides = "SystemInfo";
       };
       expected = true;
     };
