@@ -78,19 +78,61 @@ let
 
   # mkDerived — the per-node compute engine (§5): `derivedAt <name> <nodeId>` = `spec.derive node deps`, a LAZY
   # per-node accessor (the mkRelAccessor posture — a plain `name: id:` fn, NOT a cross-call memo table). `node` is
-  # the capability handle `{ rel = relAt id; id = id; }` (the per-node relation binding); the derive body reads
-  # relations via `node.rel.<kind>.{targets;inverse;closure}` (forward = targets, reverse = inverse). `over` /
-  # `direction` are DECLARATIVE metadata (definition-time validated by derivedFieldMessage); `node.rel` exposes
-  # ALL relation kinds regardless of `over`, so the stratum-gate (the gatedRel projection below), not `over`, is
-  # the real read-enforcement. `deps` is a throw-on-read placeholder — honest + loud, never a silent `{}`. `derivedIndex`
-  # is the name→spec registry (`den.derived` itself), so `spec = derivedIndex.${name}`.
+  # the capability handle `{ rel = relAt id; id = id; query = …; }` (the per-node relation binding); the derive body
+  # reads relations via `node.rel.<kind>.{targets;inverse;closure}` (forward = targets, reverse = inverse) and runs
+  # arbitrary §3 follow-grammar queries via `node.query`. `over` / `direction` are DECLARATIVE metadata (definition-
+  # time validated by derivedFieldMessage); `node.rel` exposes ALL relation kinds regardless of `over`, so the
+  # stratum-gate (the gatedRel projection below), not `over`, is the real read-enforcement. `deps` is a throw-on-read
+  # placeholder — honest + loud, never a silent `{}`. `derivedIndex` is the name→spec registry (`den.derived`
+  # itself), so `spec = derivedIndex.${name}`.
+  #
+  # `node.query args` (§3 over §2.3): a `denQuery` over `relationEdges` SCOPED to relations at strata STRICTLY BELOW
+  # the derive's own — the SAME capability boundary gatedRel enforces per-kind, but applied to the query SOURCE
+  # (scoping the edge list scopes the capability). The caller supplies `from`/`follow`/`mode`/… ; the `edges` arg is
+  # framework-forced (the rightmost `//` wins), so a caller cannot widen the source. An out-of-scope `follow`
+  # yields EMPTY (the edge is silently absent from the scoped source) — the query MODE difference from node.rel,
+  # which THROWS: a query is an exploratory read whose out-of-capability reach is naturally empty, not an error.
   mkDerived =
     {
       relAt,
       derivedIndex,
       relationKinds,
       strataOrder,
+      relationEdges,
+      denQuery,
     }:
+    let
+      # inverse-label → relation-name index (node-independent). A relation registers ONE edge-kind `<name>`; its
+      # producer ALSO emits SWAPPED edges labelled `<inverse>` (concern-relations.nix), whose `kind` is therefore
+      # NOT a relationKinds key. This index makes `relationStratumOf` TOTAL over BOTH arms — a relation and its
+      # inverse label share ONE stratum (the inverse is a query direction on the same edge-kind, §2.2).
+      inverseToRelation = builtins.listToAttrs (
+        builtins.filter (x: x != null) (
+          prelude.mapAttrsToList (
+            rel: row:
+            let
+              inv = row.inverse or null;
+            in
+            if inv != null then
+              {
+                name = inv;
+                value = rel;
+              }
+            else
+              null
+          ) relationKinds
+        )
+      );
+      # relationStratumOf — the stratum of the relation an edge belongs to, resolving BOTH a forward kind (a
+      # relationKinds key) AND a swapped inverse label (via the inverse index). Total: an unknown label ⇒ null
+      # (excluded from the scoped source), never a raw `relationKinds.<label>` attr-miss (tryEval-uncatchable).
+      relationStratumOf =
+        e:
+        let
+          rel = if relationKinds ? ${e.kind} then e.kind else inverseToRelation.${e.kind} or null;
+        in
+        if rel != null then relationKinds.${rel}.stratum or null else null;
+    in
     name: id:
     let
       # a typo'd name is a raw attr-select miss (tryEval-UNCATCHABLE) on a public accessor reachable from user
@@ -116,9 +158,22 @@ let
         else
           entry
       ) (relAt id);
+      # the STRATUM-SCOPED query source (§2.3): every relation edge whose stratum sits STRICTLY BELOW the derive's
+      # own — the same boundary gatedRel gates per-kind, applied to the edge list. An out-of-scope (≥ own stratum)
+      # or unknown-label edge is SILENTLY excluded (no throw — the query mode is exploratory, its out-of-capability
+      # reach is naturally empty).
+      scopedEdges = builtins.filter (
+        e:
+        let
+          s = relationStratumOf e;
+        in
+        s != null && indexOf strataOrder s < deriveStratumIdx
+      ) relationEdges;
       node = {
         rel = gatedRel;
         inherit id;
+        # `edges` is framework-forced (rightmost `//` wins): the caller cannot widen the scoped source.
+        query = args: denQuery (args // { edges = scopedEdges; });
       };
       deps = throw depsPlaceholderMessage;
     in

@@ -1684,10 +1684,11 @@ let
       # `spec.derive node deps` over the node's relation handle (`node.rel = relAt <nodeId>`). Built PER-MKDEN from
       # relAt + the guarded derived registry (semantics on the mkDerived builder doc). Exposed as den.derivedAt.
       derivedAt = derivedLib.mkDerived {
-        inherit relAt;
+        inherit relAt relationEdges;
         derivedIndex = derivedTable;
         relationKinds = relationEdgeKinds;
         strataOrder = compiledStrata;
+        denQuery = queryLib.denQuery;
       };
       # ── §4.7: the member-product EXTRACTION — read a member's `consumes` product ALREADY-RESOLVED (never
       # re-derived), DISPATCHED on the product's mode (the mode-generic backbone a later L2 lift extracts): a

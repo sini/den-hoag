@@ -170,6 +170,38 @@ let
     derive = node: deps: deps;
   };
 
+  # node.query (§3 over §5): the REVERSE transitive closure `members+` (the inverse LABEL of memberOf) folded
+  # through the set-union monoid — genuinely multi-hop over the a → b → c chain, so the swapped-edge arm is
+  # exercised (an edge whose `kind` is the inverse label `members`, NOT a relation-kind key: the total
+  # `relationStratumOf` must resolve it via the inverse index, never a raw `relationKinds.members` attr-miss).
+  membersClosureQuery =
+    node:
+    node.query {
+      from = node.id;
+      follow = "members+";
+      mode = "fixpoint";
+      empty = [ ];
+      combine = acc: xs: acc ++ builtins.filter (x: !(builtins.elem x acc)) xs;
+      valueOf = x: [ x ];
+    };
+  # at stratum=closure: memberOf sits at resolution (strictly BELOW closure), so its edges are in the scoped
+  # source and the reverse closure resolves.
+  queryReverseClosureFleet = mkDerivedFleet "reachViaQuery" {
+    over = [ ];
+    direction = "forward";
+    stratum = "closure";
+    derive = node: _: membersClosureQuery node;
+  };
+  # capability bound (§2.3): the SAME query body at stratum=resolution — memberOf sits at resolution, NOT
+  # strictly below the derive's own stratum, so its edges are EXCLUDED from the scoped source. The follow
+  # yields EMPTY (silent capability scoping — never a throw, never a leak of a same-stratum relation).
+  queryCapabilityBoundFleet = mkDerivedFleet "capViaQuery" {
+    over = [ ];
+    direction = "forward";
+    stratum = "resolution";
+    derive = node: _: membersClosureQuery node;
+  };
+
   # stratum-gate fixtures (§2.3): a derive at stratum=resolution reading a resolution relation must be BLOCKED
   # (same-stratum ≥ n → NAMED throw); the SAME body at stratum=closure is exposed (resolution < closure). over=[]
   # so a non-empty over@resolution + stratum=resolution isn't rejected at the field guard FIRST — the gate, not
@@ -337,6 +369,28 @@ in
     test-derived-gate-later-stratum-ok = {
       expr = gatedClosureFleet.den.derivedAt "atClosure" "node:a";
       expected = [ "node:b" ];
+    };
+
+    # ── node.query (§3 follow-grammar over the §2.3 stratum-scoped relation source) ──
+    # the REVERSE transitive closure `members+` from node:c over the a → b → c chain is genuinely MULTI-HOP
+    # (c ← b ← a): the swapped inverse-label edges are followed and the fixpoint fold accumulates the full
+    # reach — a 1-hop or forward-only impl would miss node:a. Also exercises the swapped-arm total-stratum
+    # index (the `members`-labelled edges carry a non-relation-kind `kind`).
+    test-derived-query-reverse-closure = {
+      expr = builtins.sort builtins.lessThan (
+        queryReverseClosureFleet.den.derivedAt "reachViaQuery" "node:c"
+      );
+      expected = [
+        "node:a"
+        "node:b"
+      ];
+    };
+    # capability bound (§2.3): the SAME query body at stratum=resolution reads a resolution relation (memberOf) —
+    # NOT strictly below the derive's own stratum, so the edge is EXCLUDED from the scoped source. The result is
+    # EMPTY (silent scoping), never a throw and never a same-stratum leak — the source IS the capability.
+    test-derived-query-capability-bound-empty = {
+      expr = queryCapabilityBoundFleet.den.derivedAt "capViaQuery" "node:c";
+      expected = [ ];
     };
 
     # ── guard (f): the closure/discipline laws-gate (§2.2, the SHARED edges closureGate) ──
