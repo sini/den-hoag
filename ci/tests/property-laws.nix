@@ -78,7 +78,7 @@ let
     else
       throw "den.disciplines: '${name}' declares unknown laws '${laws}' (harness)";
 
-  # ── ONE LAWFUL SYNTHETIC PER LADDER CLASS (all four sampler branches execute) ────────────────────
+  # ── LAWFUL SYNTHETICS: one per ladder class (all four sampler branches) + a user-instance witness ─
   # ordered-monoid: list concatenation — associative with `[ ]` identity, NOT commutative (order-bearing,
   #   exactly the settings-layers / collections-neron discipline shape the framework instances declare).
   # commutative-monoid: per-key NUMERIC SUM merge — commutative + associative + a `{ }` identity, and
@@ -88,6 +88,9 @@ let
   # join-semilattice: attrset-of-unit union (`//` over presence attrsets) — genuinely ACI (idempotent
   #   `a // a == a`, commutative + associative on unit values); the LAWFUL twin of the unlawful `a ++ b`.
   # shadow: attrset `//` last-wins over OVERLAPPING keys — Leijen's scoped-label record merge.
+  # set-union: list append-then-membership-dedup (whole-value) — the SAME join-semilattice as join-unit but
+  #   over PLAIN elements, not unit-attrsets. NOT a ladder representative: a deliberate USER-registered
+  #   instance (a second join-semilattice), the witness that a user can register any lawful discipline (§5).
   # per-key numeric-sum merge: over the key union, add the two contributions (absent ⇒ 0).
   sumMerge =
     a: b:
@@ -117,6 +120,11 @@ let
       laws = "shadow";
       empty = { };
       combine = a: b: a // b;
+    };
+    set-union = {
+      laws = "join-semilattice";
+      empty = [ ];
+      combine = a: b: a ++ builtins.filter (x: !(builtins.elem x a)) b;
     };
   };
 
@@ -193,6 +201,23 @@ let
         { key = "b"; }
       ]
       [ { key = "a"; } ]
+    ];
+    # set-union (a USER-registered instance, §2.7 / §5): plain-element lists folded by append-then-membership-
+    # dedup — the SAME append-then-dedup algebra as reach-closure, a JOIN-SEMILATTICE up to the SET the list
+    # induces (idempotent: re-unioning a member collapses). Like reach-closure, commutativity holds only UP TO
+    # THE SET QUOTIENT — on the raw list carrier `combine [1] [2] = [1 2] ≠ [2 1]`, so the samples are OVERLAP-
+    # CLOSED (every non-empty pair shares element `1`, making `combine x y` and `combine y x` both set-equal AND
+    # list-equal here: `combine [1] [1 2] = [1 2] = combine [1 2] [1]`); a set-DISJOINT pair (e.g. `[ 2 ]` alone)
+    # would RED the harness's commutativity check — the list order would differ. The empty list + a repeated
+    # whole-list sample (`[ 1 ]` twice) witness identity + idempotence (`combine [1 2] [1 2] = [1 2]`).
+    set-union = [
+      [ ]
+      [ 1 ]
+      [
+        1
+        2
+      ]
+      [ 1 ]
     ];
   };
 
@@ -320,12 +345,13 @@ in
   flake.tests.property-laws = {
     # ── the lawful table: every registered discipline satisfies its declared laws ──
     # the harness iterates the COMPILED den.disciplines table and passes every entry (all four ladder
-    # branches exercised by the four lawful synthetics — future framework instances join automatically).
+    # branches exercised by the five lawful synthetics — set-union is a second join-semilattice; future
+    # framework instances join automatically).
     test-lawful-table-all-pass = {
       expr = allLawful;
       expected = true;
     };
-    # the table the harness checked is the four registered synthetics PLUS the three seeded framework
+    # the table the harness checked is the five registered synthetics PLUS the three seeded framework
     # instances (settings-layers / collections-neron / reach-closure) — the iteration is real (it reads the
     # COMPILED table, which the framework seeds, not the raw fixture) — a self-documenting coverage pin.
     test-lawful-table-coverage = {
@@ -336,6 +362,7 @@ in
         "join-unit"
         "ord-append"
         "reach-closure"
+        "set-union"
         "settings-layers"
         "shadow-lastwins"
       ];
