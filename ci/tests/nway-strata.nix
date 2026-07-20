@@ -20,6 +20,18 @@ let
       config.den.node.a = { };
     }
   ];
+  # the claim-kind precedence (spec §B2 / resume): route > database > secret > connect. In strictly-below
+  # (compute-order) terms the LEAST-precedence claim resolves first, so the base-ward chain is the reverse.
+  claimChain = denHoag.declare.strataChain {
+    after = "resolution";
+    chain = [
+      "connect"
+      "secret"
+      "database"
+      "route"
+    ];
+  };
+  claimOrder = denHoag.declare.compileStrata { inserts = claimChain; };
 in
 {
   flake.tests.nway-strata = {
@@ -41,6 +53,35 @@ in
         "collection"
         "demand"
         "output"
+      ];
+    };
+    # B2: the precedence chain desugars to dense after-links.
+    test-strata-chain-desugar = {
+      expr = claimChain;
+      expected = {
+        connect.after = "resolution";
+        secret.after = "connect";
+        database.after = "secret";
+        route.after = "database";
+      };
+    };
+    # B2: compiled order places the chain strictly-below-ascending between resolution and collection —
+    # so a `route` production reads database/secret/connect (all strictly-below); the N-way engine
+    # (Task 1) accepts exactly that direction and rejects the reverse. NB: `declare.compileStrata` is the
+    # RAW seed [structural resolution collection demand] + the claimChain inserts ONLY — it does NOT apply
+    # the framework `output` insert (that merges only at default.nix's fleet-level compiledStrata). So NO
+    # trailing "output" here (unlike fleet.den.strata in test-compiled-order-nway).
+    test-claim-order-compiled = {
+      expr = claimOrder;
+      expected = [
+        "structural"
+        "resolution"
+        "connect"
+        "secret"
+        "database"
+        "route"
+        "collection"
+        "demand"
       ];
     };
   };

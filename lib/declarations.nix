@@ -132,6 +132,26 @@ let
     else
       final.order;
 
+  # strataChain (§B2) — map an ordered claim-kind precedence onto a dense strictly-below `strata.insert`
+  # chain. `chain` is BASE-WARD ascending (least-precedence / earliest-computed first): the head is placed
+  # after `after`, and each subsequent kind after its predecessor, so `compileStrata` yields
+  # after < chain[0] < chain[1] < … A production at a later kind may read every earlier kind (the N-way
+  # positive-dep rule); the reverse is a schedule violation. This is the B2 mechanism the claim/provide
+  # witness (Phase 5) consumes to turn `route > database > secret > connect` into resolution strata.
+  strataChain =
+    {
+      after,
+      chain,
+    }:
+    builtins.listToAttrs (
+      builtins.genList (i: {
+        name = builtins.elemAt chain i;
+        value = {
+          after = if i == 0 then after else builtins.elemAt chain (i - 1);
+        };
+      }) (builtins.length chain)
+    );
+
   # The compiled order with ZERO inserts is byte-identical to the seed — every existing stratum consumer
   # (`kindToStratum`, the gen-resolve schedule feed) reads THIS list (the full suite is the proof).
   strata = compileStrata { inserts = { }; };
@@ -374,6 +394,7 @@ actions
     strata
     seedStrata
     compileStrata
+    strataChain
     stratumOf
     kindOf
     kindToStratum
