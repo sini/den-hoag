@@ -184,8 +184,8 @@ let
   # `closureMessage` (§2.2 — one source of truth for the closure-capability law: a closure=true derive needs a
   # REGISTERED join-semilattice discipline), with `subject = "den.derived:"` so the message names the derived
   # surface, not the edge registry. A definition-time field gate (run at registry compile, NOT inside the compute
-  # engine). The `set-union` discipline + the `AclInfo` product + the `aclClosure` value-composition that CONSUME a
-  # closure derive are a downstream resolution-facet concern (§5).
+  # engine). The `set-union` discipline, the `AclInfo`/`DepInfo` resolution products, and the `aclClosure`/`depClosure`
+  # witnesses that CONSUME a closure derive are DELIVERED — the resolution-facet capstone (§5, `ci/tests/acl.nix`).
   derivedClosureMessage =
     {
       closureMessage,
