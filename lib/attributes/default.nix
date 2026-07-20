@@ -230,6 +230,10 @@ in
       equations,
       parseParent,
       declaredEdges ? (_: [ ]),
+      strataOrder ? [
+        "structural"
+        "resolution"
+      ],
     }:
     resolve.resolve {
       inherit
@@ -237,6 +241,7 @@ in
         equations
         parseParent
         declaredEdges
+        strataOrder
         ;
     };
 }

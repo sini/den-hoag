@@ -1451,7 +1451,12 @@ let
 
       structural = runResolve {
         roots = scopeRoots;
-        inherit equations parseParent declaredEdges;
+        inherit
+          equations
+          parseParent
+          declaredEdges
+          ;
+        strataOrder = compiledStrata;
       };
 
       # The output stratum (attribute 12, Law A15): the gen-edge fold's graph accessor + `outputFor`/
