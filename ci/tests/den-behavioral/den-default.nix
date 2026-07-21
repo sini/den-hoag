@@ -64,12 +64,13 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE: v1-expected "pingu" (`den.default.includes` of a `{ user, ... }:` bare-fn
-    # aspect is walked per fleet user, materializing `nixos.users.users.tux.description = user.userName`)
-    # vs den-hoag-actual: `igloo.users.users.tux` never materializes — `attribute 'tux' missing` at
-    # `igloo.users.users.tux.description`. The sibling `{ host, ... }:` form (test-includes-host-function,
-    # above) DOES fire; only the `{ user, ... }:` closure form of a `den.default.includes` fn fails to
-    # walk. Not altered to route around the gap.
+    # BLOCKED-WSB (user→host content delivery; missing-surface): a `den.default.includes` `{ user, ... }:`
+    # bare-fn aspect walked per fleet user, materializing `nixos.users.users.tux.description`. den-hoag
+    # actual: `attribute 'tux' missing` — user-cell content never folds to the host's `users.users.<u>` on
+    # the bridge path (the stubbed fleet-resolution / env fan-out surface, board #49). Confirmed NOT a
+    # scaffold gap: the sibling `{ host, ... }:` form (test-includes-host-function, live above) DOES land,
+    # and the canonical os-user (`user.description` → `users.users.tux`) fails identically. WS-B, not a
+    # value divergence.
     # test-includes-user-function = denTest (
     #   {
     #     den,

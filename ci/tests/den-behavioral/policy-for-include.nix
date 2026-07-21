@@ -23,7 +23,7 @@ let
 in
 {
   flake.tests.den-policy = {
-    # PARKED-BLOCKED-WSB: `den.lib.policy.for` — den-hoag's migrationLib `den.lib.policy` surface
+    # BLOCKED-WSB: `den.lib.policy.for` — den-hoag's migrationLib `den.lib.policy` surface
     # (flake.nix migrationLib.policy) ports {route,provide,include,exclude,spawn,mkPolicy,pipe,resolve,
     # instantiate} — `for` is NOT among them (v1 policy-effects.nix's `for` combinator was never carried
     # over to the compat lib). Forcing `policy.for` throws `attribute 'for' missing`. Left in place,
@@ -53,7 +53,7 @@ in
     #   }
     # );
 
-    # PARKED-BLOCKED-WSB: same `policy.for` gap as above.
+    # BLOCKED-WSB: same `policy.for` gap as above.
     # test-for-include-suppressed = denTest (
     #   { den, igloo, ... }:
     #   let
@@ -78,7 +78,7 @@ in
     #   }
     # );
 
-    # PARKED-BLOCKED-WSB: `den.lib.policy.when` — same migrationLib surface, same absence (`when` is
+    # BLOCKED-WSB: `den.lib.policy.when` — same migrationLib surface, same absence (`when` is
     # not ported either). Forcing throws `attribute 'when' missing`.
     # test-when-include-fires = denTest (
     #   { den, igloo, ... }:
@@ -102,7 +102,7 @@ in
     #   }
     # );
 
-    # PARKED-BLOCKED-WSB: same `policy.when` gap as above.
+    # BLOCKED-WSB: same `policy.when` gap as above.
     # test-when-inline-aspect = denTest (
     #   { den, igloo, ... }:
     #   let

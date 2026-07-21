@@ -25,7 +25,7 @@ in
 {
   flake.tests.den-hasAspect = {
 
-    # PARKED-BLOCKED-WSB: `den.lib.policy.when` — den-hoag's migrationLib `den.lib.policy` surface
+    # BLOCKED-WSB: `den.lib.policy.when` — den-hoag's migrationLib `den.lib.policy` surface
     # (flake.nix migrationLib.policy) ports {route,provide,include,exclude,spawn,mkPolicy,pipe,resolve,
     # instantiate}; `when` is NOT among them. Every test in this file guards on `policy.when`, so forcing
     # it throws `attribute 'when' missing` before the `host.hasAspect` semantics under test are ever
@@ -56,7 +56,7 @@ in
     #   }
     # );
 
-    # PARKED-BLOCKED-WSB: same `policy.when` gap as above.
+    # BLOCKED-WSB: same `policy.when` gap as above.
     # test-sibling-include-does-not-leak-reversed = denTest (
     #   {
     #     den,
@@ -83,7 +83,7 @@ in
     #   }
     # );
 
-    # PARKED-BLOCKED-WSB: same `policy.when` gap as above.
+    # BLOCKED-WSB: same `policy.when` gap as above.
     # test-own-include-fires = denTest (
     #   {
     #     den,
@@ -110,7 +110,7 @@ in
     #   }
     # );
 
-    # PARKED-BLOCKED-WSB: same `policy.when` gap as above.
+    # BLOCKED-WSB: same `policy.when` gap as above.
     # test-default-include-inherited-fires = denTest (
     #   {
     #     den,

@@ -28,23 +28,18 @@ in
 {
   flake.tests.den-schema = {
 
-    # PARKED-DIVERGENCE: v1-expected "polar-station" vs den-hoag-actual: `attribute 'hosts' missing`
-    # reading `den.hosts.x86_64-linux.igloo.hostName` off the scaffold's `den` helper — the same
-    # scaffold-level `helpers.den` read-back gap noted in flat-hosts.nix (an `options.den` named
-    # sub-option doesn't read back through `expr`, though the crossed `igloo`/`config.flake` faces do).
-    # Not altered to route around the gap.
-    # test-custom-hostname-attr = denTest (
-    #   { den, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo = {
-    #       hostName = "polar-station";
-    #       users.tux = { };
-    #     };
-    #
-    #     expr = den.hosts.x86_64-linux.igloo.hostName;
-    #     expected = "polar-station";
-    #   }
-    # );
+    test-custom-hostname-attr = denTest (
+      { den, ... }:
+      {
+        den.hosts.x86_64-linux.igloo = {
+          hostName = "polar-station";
+          users.tux = { };
+        };
+
+        expr = den.hosts.x86_64-linux.igloo.hostName;
+        expected = "polar-station";
+      }
+    );
 
     test-hostname-used-in-networking = denTest (
       { den, igloo, ... }:
@@ -58,12 +53,21 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE: v1-expected "from-custom" (a host's `.aspect = den.aspects.<ref>` field selects
-    # a NAMED aspect in place of the self-provide-by-name default) vs den-hoag-actual: "nixos" (the
-    # NixOS-default hostname — the custom `.aspect` selection is never applied; igloo resolves as if
-    # `.aspect` were unset). This is a genuine value MISMATCH (not a missing-attribute throw), so it rode
-    # through the scaffold's own comparator, printing the nix-unit diff directly. Not altered to route
-    # around the gap.
+    test-default-aspect-is-name = denTest (
+      { den, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+
+        expr = den.hosts.x86_64-linux.igloo.name;
+        expected = "igloo";
+      }
+    );
+
+    # PARKED-DIVERGENCE (genuine den-hoag-vs-den value mismatch → owner gate): a host's `.aspect =
+    # den.aspects.<ref>` field selects a NAMED aspect in place of the self-provide-by-name default. v1
+    # applies it (hostName "from-custom"); den-hoag resolves as if `.aspect` were unset → the NixOS default
+    # "nixos". A real value mismatch (rode the comparator, not a throw), so the host `.aspect` selection
+    # semantic genuinely differs. NOT a scaffold/harness gap.
     # test-custom-aspect-name = denTest (
     #   { den, config, ... }:
     #   {
@@ -79,24 +83,13 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE: same `den.hosts` scaffold read-back gap as test-custom-hostname-attr above.
-    # v1-expected "igloo".
-    # test-default-aspect-is-name = denTest (
-    #   { den, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #
-    #     expr = den.hosts.x86_64-linux.igloo.name;
-    #     expected = "igloo";
-    #   }
-    # );
-
-    # PARKED-DIVERGENCE: v1-expected true (a `policies.to-users` fn — `{ host, user, ... }:` — routed
-    # through `policy.include { includes = [ den.batteries.define-user ]; }` — walks per fleet user,
-    # materializing the `penguin` OS account) vs den-hoag-actual: `attribute 'penguin' missing`. Same
-    # shape as den-default.nix's test-includes-user-function (a `{ user, ... }:`-closing fn never fires
-    # its per-user walk) and primary-user.nix's test-on-nixos-included-at-user. Not altered to route
-    # around the gap.
+    # BLOCKED-WSB (user→host content delivery; missing-surface): a `policies.to-users` fn walked per fleet
+    # user, routing `den.batteries.define-user` to materialize the `penguin` OS account. den-hoag actual:
+    # `attribute 'penguin' missing`. Same root as den-default.nix test-includes-user-function and
+    # primary-user.nix test-on-nixos-included-at-user AND the canonical os-user (`user.description` →
+    # `users.users.tux`): user-cell content never folds to the host's `users.users.<u>` on the bridge path
+    # (the stubbed fleet-resolution / env fan-out surface, board #49). A `{ host, ... }:` write to the same
+    # path DOES land, so it is not a scaffold gap. WS-B, not a value divergence.
     # test-user-custom-username = denTest (
     #   {
     #     den,

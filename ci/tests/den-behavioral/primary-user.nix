@@ -28,13 +28,13 @@ in
 {
   flake.tests.den-batteries = {
 
-    # PARKED-DIVERGENCE: v1-expected ["wheel" "networkmanager"] (`den.aspects.tux` self-provides at the
-    # user entity named "tux"; its `includes = [ den.batteries.primary-user ]` battery — a bare
-    # `{ user, host, ... }:` fn — walks per host-user pair, materializing `nixos.users.users.tux`) vs
-    # den-hoag-actual: `attribute 'tux' missing` — `igloo.users.users.tux` never materializes. Same shape
-    # as den-default.nix's test-includes-user-function and host-options.nix's test-user-custom-username
-    # (a `{ user, ... }:`-closing fn/battery never fires its per-user walk). Not altered to route around
-    # the gap.
+    # BLOCKED-WSB (user→host content delivery; missing-surface): `den.aspects.tux` self-provides at the user
+    # entity "tux"; its `includes = [ den.batteries.primary-user ]` (a `{ user, host, ... }:` battery) should
+    # materialize `nixos.users.users.tux.extraGroups`. den-hoag actual: `attribute 'tux' missing` — user-cell
+    # content never folds to the host's `users.users.<u>` on the bridge path (the stubbed fleet-resolution /
+    # env fan-out surface, board #49). Same root as den-default.nix test-includes-user-function,
+    # host-options.nix test-user-custom-username, and the canonical os-user. NOT a scaffold gap (a
+    # `{ host, ... }:` write to the same path lands). WS-B, not a value divergence.
     # test-on-nixos-included-at-user = denTest (
     #   {
     #     den,

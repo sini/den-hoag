@@ -54,11 +54,12 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE: v1-expected { hasA = true; hasB = false; } (v1's `provides.<k>` is sugar
-    # ALIASING the same nested-aspect node as a direct `.<k>` — so `includes = [ den.aspects.root.a ]`
-    # reaches the content declared as `provides.a`) vs den-hoag-actual: `attribute 'a' missing` reading
-    # `den.aspects.root.a` — den-hoag's freeform absorption treats `provides.a` as a plain literal nested
-    # key, distinct from `.a` directly; the alias isn't implemented. Not altered to route around the gap.
+    # BLOCKED-WSB (`provides.<k>` alias surface; missing-surface): v1's `provides.<k>` is sugar ALIASING the
+    # same nested-aspect node as a direct `.<k>`, so `includes = [ den.aspects.root.a ]` reaches content
+    # declared under `provides.a`. den-hoag actual: `attribute 'a' missing` reading `den.aspects.root.a` —
+    # the compat nav surface treats `provides.a` as a literal nested key distinct from `.a` (the
+    # provides-alias/nested-provides desugar is absent; same surface family as nested-provides-forwarding's
+    # §2.2 abort). WS-B, not a value divergence.
     # test-provides-includes-scoping-regression-nested-includes-scoping = denTest (
     #   { den, igloo, ... }:
     #   {

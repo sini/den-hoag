@@ -25,14 +25,21 @@ let
 in
 {
   flake.tests.den-aspects-core = {
-    # PARKED-DIVERGENCE: v1-expected { FOO = "igloo"; hello = true; } (a bare-function aspect at
-    # `den.aspects.foo` merged, across TWO `imports` modules, with a static-attrset extension of the
-    # SAME key — the #408 fix: the fn's `host.name` write and the static module's `pkgs.hello` package
-    # both survive) vs den-hoag-actual: `attribute 'FOO' missing` reading
-    # `igloo.environment.sessionVariables.FOO` — the bare-fn half of the merge never lands on the crossed
-    # nixos config. Not altered to route around the gap.
+    # BLOCKED-BRIDGE-CEILING (den-hoag-vs-den behavior; bridge merge semantics, fixable in den-hoag, NOT a
+    # scaffold gap): the two `imports` modules define the SAME aspect key `den.aspects.foo` as a bare
+    # FUNCTION (`{ host, ... }:`) and as an ATTRSET (`{ nixos = { pkgs, ... }: … }`). v1's `aspectsType`
+    # merge COLLECTS BOTH (the #408 fix); the compat bridge's `v1DeepMerge` (bridge.nix `options.aspects`)
+    # does LAST-DEF-WINS on a fn-vs-attrset collision — the documented "adopt collect-both when a real
+    # 2-module same-key class def appears" ceiling — so the bare-fn half is dropped and
+    # `igloo.environment.sessionVariables.FOO` is `attribute 'FOO' missing`. The fix is in the bridge
+    # (v1DeepMerge → collect-both for fn-vs-attrset), not the scaffold. Re-run once that lands.
     # test-function-aspect-with-static-merge-regression-408 = denTest (
-    #   { den, lib, igloo, ... }:
+    #   {
+    #     den,
+    #     lib,
+    #     igloo,
+    #     ...
+    #   }:
     #   {
     #     den.hosts.x86_64-linux.igloo.users.tux = { };
     #     den.aspects.igloo.includes = [ den.aspects.foo ];
