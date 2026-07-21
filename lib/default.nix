@@ -1536,6 +1536,7 @@ let
           derivedTable
           ;
         productions = productionsTable;
+        claimKinds = productionClaimKinds;
         strataOrder = compiledStrata;
       };
 
@@ -1810,6 +1811,27 @@ let
       # sound at an acyclic stratum (a who-connects-whom cycle is NOT a stratum cycle). Empty user productions
       # ⇒ `[ ]` (the settings seed is emit = attr) ⇒ the pool is byte-identical.
       productionClaimEdges = (productionsLib.compile { productions = productionsTable; }).claimEdges;
+      # §9 the claim-kind → `{ stratum }` index for the claim-accessor reverse-read: the NAMES of the leaf-claim
+      # productions (`emit = edges` CONSTANT, from = ∅ — the same predicate `claimEdgesOf` expands), each keyed
+      # to its declared stratum. This is the SEMANTIC claim-kind test (not the "claim:" id-prefix), and doubles
+      # as the edge-kind → stratum index the accessor's `edgesBelowStratum` ceiling reads. Empty (no leaf claims)
+      # ⇒ `{ }` ⇒ the claim-accessor handle is inert (byte-identical).
+      productionClaimKinds = builtins.listToAttrs (
+        builtins.filter (x: x != null) (
+          prelude.mapAttrsToList (
+            name: prod:
+            if (prod.emit or null) == "edges" && (prod.from or [ ]) == [ ] then
+              {
+                inherit name;
+                value = {
+                  inherit (prod) stratum;
+                };
+              }
+            else
+              null
+          ) productionsTable
+        )
+      );
       relationEdgesRaw = forwardRelationEdges ++ inverseRelationEdges ++ productionClaimEdges;
       # WEAVE THE GUARD onto the producer's critical path (the validate-then-transform contract made real):
       # forcing `relationEdges` forces the undeclared-relation guard first, so a malformed `.edges` aborts NAMED

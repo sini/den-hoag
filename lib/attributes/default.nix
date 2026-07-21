@@ -100,6 +100,13 @@ let
   # the ONE equations map like the relation/derived accessors. The vocabulary + laws validation is the
   # definition-time guard (default.nix); this only builds the attr records. See concern-productions.nix.
   resolutionProductions = import ../concern-productions.nix { inherit prelude strataScope resolve; };
+  # §5 / §9 — the claim-accessor: the reverse-read (who-claims-me) resolution equation over the off-trace
+  # claim pool, the transpose (Mokhov 2017 §4.3) of the leaf-claim forward adjacency. Sibling of the relation
+  # accessors; its per-node handle carries the node.query/node.rel silent-vs-throwing contract. See the file.
+  claimAccessor = import ./claim-accessor.nix {
+    inherit prelude resolve strataScope;
+    transpose = graph.transpose;
+  };
 in
 {
   # The full equation map. Structural attributes shape the graph (they never read a resolution
@@ -136,6 +143,10 @@ in
       # (attr / nta / two-equation), whose `.equations` merge into the map (claim-edge intents thread out to
       # the relation pool in default.nix). Empty ⇒ `{ }` ⇒ byte-identical to the pre-productions equation map.
       productions ? { },
+      # §9 — the claim-kind → `{ stratum }` index (the names of the `emit = edges` from = ∅ leaf-claim
+      # productions, with their strata) driving the claim-accessor reverse-read. Empty ⇒ the claim-accessor's
+      # handle is inert (`.query` constantly `[ ]`, `.rel` `{ }`) ⇒ byte-identical.
+      claimKinds ? { },
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // {
@@ -181,6 +192,13 @@ in
         relationEdgeKinds
         strataOrder
         derivedTable
+        ;
+    })
+    // (claimAccessor {
+      inherit
+        relationEdges
+        strataOrder
+        claimKinds
         ;
     })
     // (resolutionProductions.compile { inherit productions; }).equations;
