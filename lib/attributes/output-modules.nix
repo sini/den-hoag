@@ -745,6 +745,21 @@ let
   # (`consumeAt`), not the local binding. The corpus's two bare-arg consumers (`firewall`,
   # `age-secrets`) are host-local channels with no collect/broadcast policy (nix-config
   # policies/pipes.nix declares none for either), so local ≡ received for both.
+  # ── Axis-6 settings-injection seam (§2.10 attribute 13 → the terminal) ─────────────────────────────
+  # The resolved settings-product (`resolved-settings`, attribute 13) delivered as a `settings` module
+  # arg, MIRRORING path-B's `host` harvest below: a SIBLING key in the binding set, purely ADDITIVE.
+  # gen-bind's `wrapAll` binds a module arg IFF its key exists AND the module declares it (`boundArgNames`),
+  # so a class-content module that declares no `settings` arg is byte-unwrapped — a corpus with no such
+  # consumer is byte-unchanged, and this thunk (below) is never forced there (a node that never demands
+  # `settings` never folds resolved-settings through this surface). The value is the per-node fold of every
+  # PRESENT aspect's resolved `.value`: for a SINGLE-aspect consumer (the seam) exactly that aspect's folded
+  # settings; multi-aspect field COMPOSITION is the productions-substrate per-host union (P5b), not here.
+  settingsBindingAt =
+    id:
+    prelude.foldl' (acc: a: acc // a.value) { } (
+      builtins.attrValues (result.get id "resolved-settings")
+    );
+
   bindingsAt =
     id:
     # The consumer-supplied post-resolution enrichment (default = identity, native den-hoag untouched).
@@ -756,7 +771,10 @@ let
       bindings =
         (result.get id "enriched-context")
         // prelude.genAttrs channelNames (_: [ ])
-        // channelBindingsAt id;
+        // channelBindingsAt id
+        // {
+          settings = settingsBindingAt id;
+        };
     };
 
   memberClassName =
