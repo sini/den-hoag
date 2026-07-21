@@ -153,25 +153,34 @@ let
 
   # claimEdgesOf — the off-trace EDB leaf claim edge facts for an `emit = edges` CONSTANT production (§7 off-
   # trace, from = ∅ EDB law, edge-uniform). A leaf claim (connect/secret/database/…) SUPPLIES its ground facts:
-  # its constant `compute` returns a LIST of endpoint records `{ from; to; data ? {} }` (the EDB — extensional,
-  # not derived), applied against `edbStubSelf` + a null id (EDB ignores both; the LIST shape is validated at
-  # registration by `productionMessage`, so this expansion trusts it). Each fact EXPANDS into one pool edge
-  # `{ id = "claim:<name>:<i>"; kind = <name>; from = <real source>; to = <real target>; data; stratum }`, off-
-  # trace in the `den.relationEdges` pool (never on the materialization trace). `from = ∅` is LOAD-BEARING: a
-  # pure EDB constant means cyclic connect data (arr→prowlarr AND prowlarr→arr) is TWO independent facts at ONE
-  # acyclic stratum — a cycle in who-connects-whom is NOT a stratum cycle. The forward view (a source reads its
-  # egress) is queryable now via the query spine; the transpose reverse view (a target reads its ingress) is a
-  # later task. So one CONSTANT emits ONE directed edge per relationship — never two. It is appended to the
-  # relation-edge pool, so `transpose`/`node.query`/the relation accessors see it exactly like a `den.relations`
-  # desugar edge.
+  # its constant `compute` returns a LIST of endpoint records `{ from; to; data ? {}; kind ? name; stratum ?
+  # prod.stratum }` (the EDB — extensional, not derived), applied against `edbStubSelf` + a null id (EDB ignores
+  # both; the LIST shape is validated at registration by `productionMessage`, so this expansion trusts it). Each
+  # fact EXPANDS into one pool edge `{ id = "claim:<name>:<i>"; kind; from = <real source>; to = <real target>;
+  # data; stratum }`, off-trace in the `den.relationEdges` pool (never on the materialization trace).
+  #
+  # THE COMPOSITE DESUGAR (strataChain composite-above-subclaims). A leaf claim omits per-fact `kind`/`stratum`,
+  # so each fact defaults to the production's own name/stratum (the homogeneous leaf EDB, unchanged). A COMPOSITE
+  # claim (a `route` fronting a host) instead RETURNS its SUB-CLAIM facts, each tagged with its OWN `kind` +
+  # `stratum` (a `secret` fact at the secret stratum + a `connect` fact at the connect stratum) — the composite's
+  # constant `compute` is a pure COMPILE-TIME fold (Vogt 1989 finiteness realized statically: the spawn tree is
+  # finite + a content-function of the own decl; §G — NOT a resolve.nta, since the claim pool is materialized
+  # before the resolve schedule so a resolve-time spawn would never join the static pool this transpose reads).
+  # So ONE composite production emits HETEROGENEOUS sub-claim edges at strata STRICTLY BELOW its own — the
+  # composite desugars away, only the sub-claim kinds/strata land in the pool.
+  #
+  # `from = ∅` is LOAD-BEARING: a pure EDB constant means cyclic connect data (arr→prowlarr AND prowlarr→arr) is
+  # TWO independent facts at ONE acyclic stratum — a cycle in who-connects-whom is NOT a stratum cycle. It is
+  # appended to the relation-edge pool, so `transpose`/`node.query`/the relation accessors see it exactly like a
+  # `den.relations` desugar edge.
   claimEdgesOf =
     name: prod:
     prelude.imap0 (i: fact: {
       id = "claim:${name}:${toString i}";
-      kind = name;
+      kind = fact.kind or name;
       inherit (fact) from to;
       data = fact.data or { };
-      stratum = prod.stratum;
+      stratum = fact.stratum or prod.stratum;
     }) (prod.compute edbStubSelf null);
 
   # lowerOne — the corrected P5b lowering taxonomy for one guard-validated production (spec §5 ★REVISION):
@@ -184,8 +193,10 @@ let
   #                             concern (a later task); this lands the two schedulable equations + the L5 guard.
   # Each yields `{ equations; claimEdges; claimKinds }` (the shape `compile` folds). Passthrough is preserved:
   # edge-intent supplies data, nta supplies spawn-from-own-decl, attr supplies compute. The leaf-claim branch
-  # ALSO emits `claimKinds = { <name> = { stratum }; }` — the SINGLE source of the leaf-claim → stratum index
-  # the §9 claim-accessor reverse-read scopes by (so the leaf-claim predicate is tested in ONE place, here).
+  # ALSO emits `claimKinds` — the SINGLE source of the claim-kind → stratum index the §9 claim-accessor reverse-
+  # read scopes by (so the leaf-claim predicate is tested in ONE place, here), unioned over each expanded fact's
+  # EFFECTIVE kind→stratum so a COMPOSITE's heterogeneous sub-claim kinds register at THEIR strata, not the
+  # composite name (a homogeneous leaf unions to the single `{ <name> = { stratum }; }` — the homogeneous leaf).
   lowerOne =
     name: prod:
     let
@@ -193,12 +204,31 @@ let
       from = prod.from or [ ];
     in
     if emit == "edges" && from == [ ] then
+      let
+        edges = claimEdgesOf name prod;
+      in
       {
         equations = { };
-        claimEdges = claimEdgesOf name prod;
-        claimKinds.${name} = {
-          inherit (prod) stratum;
-        };
+        claimEdges = edges;
+        # the claim-kind → `{ stratum }` index the §9 claim-accessor reverse-read scopes by — the DECLARED-
+        # REGISTRY enumeration the L4 negation consumes via `.rel` (distinguishing out-of-scope from absent),
+        # so it must be stable under ZERO facts (a declared leaf keeps its present-returning-empty `.rel` gate,
+        # never an attr-miss). A HOMOGENEOUS leaf (every fact's kind = name, or zero facts) seeds its OWN decl —
+        # `all` over empty edges = true, so a fact-less leaf still registers `{ ${name} = { stratum }; }` (the
+        # homogeneous leaf is byte-identical). A COMPOSITE (strataChain composite-above-subclaims) desugars into
+        # HETEROGENEOUS sub-claim facts (some fact.kind ≠ name) — `all` false, so the composite's OWN name is NOT
+        # seeded (it stays desugared away); only its sub-claim kinds register at THEIR strata (strictly below the
+        # composite's own), becoming reverse-readable.
+        claimKinds =
+          (if builtins.all (e: e.kind == name) edges then { ${name} = { inherit (prod) stratum; }; } else { })
+          // builtins.listToAttrs (
+            map (e: {
+              name = e.kind;
+              value = {
+                inherit (e) stratum;
+              };
+            }) edges
+          );
       }
     else if emit == "edges" then
       {
