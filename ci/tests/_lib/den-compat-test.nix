@@ -137,8 +137,15 @@ let
       pinguHm = igloo.home-manager.users.pingu;
 
       helpers = {
-        # The bridge's own merged v1 `den` navigation surface (lazy — forced only if `expr` reads `den`).
-        den = eval.config._module.args.den or { };
+        # The merged v1 `den` navigation surface (lazy — forced only if `expr` reads `den`). SOURCED FROM
+        # `eval.config.den`, NOT `eval.config._module.args.den`: flake-parts does not reflect a config-set
+        # `_module.args` back through `config._module.args` (it reads `[ ]`), whereas `eval.config.den` is
+        # the FULL merged v1 surface (hosts/aspects/schema/policies/… — the bridge's `options.den` submodule
+        # output) — exactly what the bridge binds as the in-eval `den` arg. So a migrated test's `expr`
+        # reading `den.hosts.<h>.name` / `den.aspects.<x>` resolves as it did in v1. (`den.lib` is NOT on
+        # this surface — a config-time `den.lib.policy.*` read still resolves via the bridge's real in-eval
+        # `den` module arg; no migrated `expr` reads `den.lib`.)
+        den = eval.config.den;
         inherit
           lib
           igloo
