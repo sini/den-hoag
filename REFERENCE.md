@@ -915,6 +915,109 @@ in. ★ The set-union ALGEBRA is written INLINE in each derive's `combine` — t
 guard (f) laws-gate DECLARATION only (the derive receives `node`/`deps`, never the disciplines table), so the registry
 CERTIFIES the closure's algebra (its laws are property-proved) while the derive APPLIES a matching concrete monoid.
 
+## Productions substrate — the claim/provide engine (§5 / §10 Witness 2) — `lib/concern-productions.nix` / `lib/attributes/claim-accessor.nix` / `lib/production-guard.nix`
+
+`den.productions.<name>` is a REGISTRATION surface (not a query+fold DSL — the production SUPPLIES its own `compute`
+passthrough, the fold already ran on the one conductor). Its P5b vocabulary realizes spec §10 "Witness 2" — the
+claim/provide interaction — with ZERO per-witness bespoke code: ONE general engine (the grown vocabulary + `compile`
+lowering + the claim-accessor reverse-read) resolves every piece, and a single synthetic media-style fleet
+(`ci/tests/claim-provide-witness.nix`) proves the pieces COMPOSE in one `den.productions` + one `strataChain` + one
+`structural.eval`. This is a SYNTHETIC witness — native expressibility, no parity bar (owner: pre-ship), nix-config
+build out of scope. `emit != nodes`/no-claim corpora keep every leaf inert ⇒ byte-identical to the pre-productions
+output.
+
+**The lowering taxonomy (§5 ★revision) — `concern-productions.nix` `lowerOne`/`compile`.** `emit ∈ { attr, edges, nodes }` lowers by a corrected taxonomy; `compile` returns `{ equations; claimEdges; claimKinds }` (not a bare
+equations map). `emit = attr` → one `resolve.attr` (the P5a synthesized-attr shape, unchanged). `emit = edges` with
+`from = ∅` (a CONSTANT leaf) → off-trace edge FACTS (no equation) into the claim pool. `emit = edges` with `from ≠ ∅`
+→ `resolve.nta` (a Vogt 1989 latent spawn reading its OWN decl, `readsAttrs = [ ]` — a non-claim). `emit = nodes` →
+TWO equations (the dedup split, below). `compile` folds `.equations` into the ONE equations map, `.claimEdges` out to
+`den.relationEdges`, `.claimKinds` (the leaf-claim → `{ stratum }` index) to the claim-accessor. `emit = cascade`/unknown
+is NAMED-rejected (it constructs compute, breaking passthrough — settings/C8 only); `mode = fixpoint` is NAMED-rejected
+(a later phase); `from` kinds admit `{ query, pool, reverse-query }`. A reserved `__spawn`-suffix name is NAMED-rejected
+(it is synthesized as the `emit = nodes` spawn-equation key). Empty productions ⇒ `{ equations = { }; claimEdges = [ ]; claimKinds = { }; }` ⇒ byte-identical to the pre-productions state (Law A1 — a validation fold plus one lower, no effect
+runtime; the validator is a VALUE, `null`-or-first-message, so the NAMED contract is CI-testable where `tryEval` cannot
+capture throw text).
+
+**Edge-uniform EDB leaf claims — the off-trace claim pool (§7 off-trace / from = ∅ EDB law) — `claimEdgesOf`.** A leaf
+claim (`connect`/`secret`/`database`/`route`) is pure EDB: its constant `compute` returns a LIST of endpoint records
+`{ from; to; data ? { }; kind ? name; stratum ? prod.stratum }`, and `claimEdgesOf` expands each into one pool edge
+`{ id = "claim:<name>:<i>"; kind; from; to; data; stratum }`, appended to `den.relationEdges` — so `transpose`/`node.query`/the
+relation accessors see it EXACTLY like a `den.relations` desugar edge, and (like relation edges, §7 `to = "query"`) it
+never enters the materialization trace. EDB purity is enforced BY CONSTRUCTION: the constant is forced at registration
+against a THROW-ON-READ stub `self` (`edbStubSelf`), so a leaf `compute` reading `self.get` aborts NAMED (an EDB claim
+reads no schedule), and the LIST-of-records SHAPE is validated at registration (against the same stub), never a cryptic
+index throw deep in expansion. **`from = ∅` is LOAD-BEARING:** a pure-EDB constant means CYCLIC connect data
+(arr→prowlarr AND prowlarr→arr) is TWO independent facts at ONE acyclic stratum — a who-connects-whom cycle is NOT a
+stratum cycle. Claim strata sit densely below `resolution` via `declare.strataChain { after = "structural"; chain = [ "connect" "secret" "database" "route" ]; }` (the §2.3 base-ward-ascending precedence mapped onto a strictly-below
+`den.strata.insert` chain — `connect < secret < database < route < resolution`), so the pool is well-founded and every
+reverse-read is in scope.
+
+**The claim-accessor — the GAP-3 reverse-read via transpose (§9 / §2.3) — `lib/attributes/claim-accessor.nix`.** GAP-3
+(the who-claims-me reverse-read §9 flagged deferred) is CLOSED. The claim-accessor is a `resolve.attr` at the
+`resolution` stratum with `readsAttrs = [ ]` (its producer is the STATIC, registry-derived claim pool — GAP-5, so the
+compute ignores `self`); a provider/consumer reads it at its OWN node — an INTRA-stratum positive read (A9,
+Apt–Blair–Walker 1988 — same-stratum positive reads are permitted), the SAME posture `derived-accessor` reads
+`rel-accessor`. Its per-node value delivers the §9 algebraic-graph TRANSPOSE of the leaf-claim forward adjacency
+(Mokhov 2017 §4.3, adjacency reversal over the overlay algebra) — NOT a hand-rolled from/to swap, and NOT
+`scope.queryReverse` (which is hardwired to the scope "imports" label). The handle carries the L4 silent-vs-throwing
+contract (the `node.query`/`node.rel` capability posture, §2.3): `.query <kind>` is SILENT (a missing OR out-of-scope
+claim kind yields `[ ]`, the exploratory-query mode) and `.rel.<kind>` is THROWING (an out-of-scope kind is REPLACED
+with a NAMED throw — the capability-by-construction gate a stratified negation consumes, unable to mistake absent for
+out-of-scope). The capability boundary is the accessor's OWN `resolution` stratum: a claim kind is IN SCOPE iff its
+stratum sits STRICTLY BELOW `resolution` (all shipped claim strata qualify); both variants share ONE `edgesBelowStratum`
+ceiling over the pool (scoping the source scopes the capability). Corpus-inert — an empty `claimKinds` ⇒ `.query`
+constantly `[ ]`, `.rel` `{ }`, and nothing outside a claim fleet reads it, so it never reaches the trace.
+
+**Route-desugar — composite claim → sub-claim facts as a compile-time fold (strataChain composite-above-subclaims).** A
+COMPOSITE claim (a `route` fronting a host) returns HETEROGENEOUS sub-claim facts — a `secret` fact at the secret
+stratum + a `connect` fact at the connect stratum — each tagged with its OWN `kind`/`stratum` STRICTLY BELOW the
+composite's. The desugar is a pure COMPILE-TIME fold into the STATIC claim pool, NOT a `resolve.nta`: the claim pool is
+materialized BEFORE the resolve schedule, so a resolve-time spawn would never join the static pool the transpose
+reverse-read consumes. Vogt 1989 finiteness is realized STATICALLY (the spawn tree is finite + a content-function of the
+own decl). `strataChain` orders `route > database > secret > connect`, so a composite sits strictly ABOVE its sub-claims;
+`compile`'s `claimKinds` unions each EFFECTIVE `kind → stratum` (single-sourced in `lowerOne`'s leaf branch — the
+leaf-claim predicate is tested ONCE) so a composite's heterogeneous sub-claim kinds register at THEIR strata (a
+homogeneous leaf unions to its single `{ <name> = { stratum }; }`; a composite's own name is NOT seeded — it desugars
+away, only the sub-claim kinds become reverse-readable).
+
+**Dedup — the `emit = nodes` two-equation shape + the demand-guaranteed residual (§8 law 5, L5) — `lib/production-guard.nix`.**
+`emit = nodes` is the value-invention boundary (Fagin, Kolaitis, Miller & Popa 2005, weak acyclicity / the chase),
+admitted ONLY in Vogt's 1989 bounded-NTA form — the L5 guard's four registration clauses: `mode = all` (a single
+ordered pass, not a within-stratum fixpoint), every `from` STRICTLY BELOW the emit stratum (a well-founded pool), never
+self-reading the spawned keyspace, and content-addressed node identity (the finiteness witness). Because `resolve.nta`
+hardcodes `readsAttrs = [ ]` + `stratum = "structural"`, an nta cannot itself read the below-stratum claim pool, so the
+read is SPLIT: an attr-GATHER `${name}` (the production's `compute` reads the claim pool via `readsAttrs`, groups
+claimants by `dedupKey` → this node's `{ dedupKey; aggregate }`) plus an nta-SPAWN `${name}__spawn` reading EXCLUSIVELY
+the gather on its own node (`self.get id ${name}`) and handing it to a content-addressed `spawnNode` (gather → the
+spawned decl, keyed by a content hash of the dedupKey). Content-addressing is the finiteness witness: N claimants of one
+`dedupKey` all spawn the SAME node id ⇒ collapse to ONE shared node. The `spawnNode : gather → decl` signature is the
+STRUCTURAL closure — it receives only the gather VALUE (never `self`/`id`/the pool), so the spawn cannot re-introduce a
+schedule-invisible below-stratum read. **Honest residual:** the gather → spawn ordering is DEMAND-guaranteed (the spawn
+forces the gather; the gather is pure + acyclic, never reading the spawn), NOT schedule-verified — the nta's hardcoded
+`readsAttrs = [ ]` + `stratum = "structural"` make the gather→spawn edge statically invisible to the schedule. The full
+static fix is a DEFERRED `resolve.nta` accepting `stratum` + `readsAttrs` (a gen-resolve change); until then the
+demand-order is a real, documented residual.
+
+**Stratified claim negation — the L4 contract generalized to claims (Apt–Blair–Walker 1988).** A negation is NON-MONOTONE
+(it EXCLUDES), so it is disciplined by two soundness laws generalizing the shipped `den.derived` `negates` contract
+(negation-gate.nix) to the off-trace pool: (a) THROWING-GATE ROUTING — a negated claim is read through `.rel.<kind>`
+(NAMED-throws on out-of-scope), NEVER the silent-empty `.query`, because a negation over a silently-empty predicate
+cannot distinguish "absent" from "out-of-scope"; (b) STRICTLY-ABOVE — a negation reads a COMPLETE predicate, so the
+negating production must sit STRICTLY ABOVE the max claim stratum (the L2 `from`-strictly-below gate enforces it). The
+LOCKDOWN witness is the concrete negation: only ROOT claimants survive, `@self` excluded — a root is a claimant whose
+reverse view is empty (nobody claims it), the claim cycle (midapp↔hub) staying sound at the acyclic `connect` stratum.
+The root predicate is realized via the reverse-read (an empty reverse view = a root); `genGraphLib.roots` as a
+framework-accessor variant is a noted follow-on.
+
+**★ Honest limits.** (1) The demand-vs-schedule dedup residual above — the gather→spawn edge is statically invisible, so
+ordering rests on demand, not the schedule; the static fix (`resolve.nta` taking `stratum` + `readsAttrs`) is deferred.
+(2) The claim-accessor's stratum-scoping ASSUMES the leaf-claim NAMES are DISJOINT from the `den.relations` edge-kinds
+(`claimKinds` doubles as the edge-kind → stratum index; a relation edge whose kind collided with a claim name would be
+admitted and mis-scoped by the claim stratum). That name-disjointness is the FRAMEWORK-WIDE name-uniqueness invariant
+(owned by the shared registration pass), NOT re-guarded locally (a local throw would be a half-measure patch on a global
+concern). The SAME class of concern is `compile`'s cross-production `claimKinds` merge (`foldl' (acc: l: acc // l.claimKinds) { }`, last-wins): two productions registering the SAME claim kind at DIFFERENT strata would silently resolve to the later — idempotent in-corpus (the witness's leaf `connect` and the route-desugared `connect` sub-claim merge cleanly, same stratum), but a divergent-stratum same-kind collision is a modeling error owned by the same framework-wide registration-uniqueness pass, not re-guarded here. (3) `genGraphLib.roots` as a first-class lockdown accessor is a follow-on — lockdown is realized here via a
+reverse-read predicate, not the framework accessor.
+
 ## Theory citations (§6)
 
 The libraries den-hoag delegates to carry the theory; the citations that matter at this layer:
