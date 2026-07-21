@@ -37,12 +37,21 @@ let
     inherit (receiversLib) resolveReceiver;
     inherit (nestLib) executeNest checkSingular;
   };
+  # stratum-scope (§2.3): the capability-scope arithmetic (edgesBelowStratum / ceilingGate / indexOf /
+  # strataLt) shared by the relation accessors and the derive compute. See stratum-scope.nix.
+  strataScopeLib = import ./stratum-scope.nix { inherit prelude; };
   # den.relations (§5): the relation registry desugared onto the den.edges edge-kind registry (§2.2
   # one-registry) — a relation → one edge-kind @resolution carrying its inverse label. See concern-relations.nix.
-  relationsLib = import ./concern-relations.nix { inherit prelude; };
+  relationsLib = import ./concern-relations.nix {
+    inherit prelude;
+    strataScope = strataScopeLib;
+  };
   # den.derived (§5): laws-gated synthesized attributes over the resolution graph — the field validator. See
   # concern-derived.nix.
-  derivedLib = import ./concern-derived.nix { inherit prelude; };
+  derivedLib = import ./concern-derived.nix {
+    inherit prelude;
+    strataScope = strataScopeLib;
+  };
   entity = import ./entity.nix { inherit prelude schema merge; };
   # The collectors concern (§4.7): the framework `collector` entity kind — the `den.collectors` option, the
   # denMeta `//`-augment (gated on collectors present), the schema-decl + registry bridge, the compiled-surface
@@ -173,6 +182,7 @@ let
       ;
     projects = projectsLib;
     declarations = declare;
+    strataScope = strataScopeLib;
   };
 
   # The classes concern (§2.4) + the terminal crossing (§2.10, Law A15). `concernClasses.compile`
@@ -2216,6 +2226,9 @@ in
     # The derived-attribute field validator (§5): `derivedFieldMessage`, for the suite's field-guard scenarios
     # (the NAMED contract as a value).
     derived = derivedLib;
+    # The stratum-scope arithmetic (§2.3): `edgesBelowStratum`/`ceilingGate`/`indexOf`/`strataLt`, for the
+    # suite's capability-scope scenarios (the extraction's own witnesses beside the derived/acl behavior tests).
+    strataScope = strataScopeLib;
     # The merge-discipline registry compile (§5) + the lib (its `reservedNames`/`lawClasses`), for the
     # suite's laws-ladder validation scenarios. `compileDisciplines { disciplines }`.
     compileDisciplines = concernDisciplines.compile;

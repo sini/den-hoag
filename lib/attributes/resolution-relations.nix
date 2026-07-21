@@ -39,8 +39,13 @@
       _self: id:
       relations.mkRelAccessor {
         denQuery = query.denQuery;
-        inherit relationEdges;
+        inherit relationEdges strataOrder;
         relationKinds = relationEdgeKinds;
+        # `ceiling = null` = the full relation pool (§2.3). In the shipped single-stratum facet the relation
+        # accessor AND its relations both sit at `resolution`, so a strictly-below ceiling would exclude every
+        # relation; the derive gate (mkDerived's `ceilingGate`) enforces the boundary per the DERIVE's stratum.
+        # The per-relation reader-stratum ceiling arrives with §11 L2 (per-relation strata).
+        ceiling = null;
       } id;
   };
 

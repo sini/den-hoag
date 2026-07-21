@@ -11,6 +11,7 @@
 # (the surface has no closure field); the closure CAPABILITY is a downstream (discipline-registering) concern.
 {
   prelude,
+  strataScope,
 }:
 let
   # relationCollisionMessage — the collision detector as a VALUE (`null` = clean, else the NAMED message). It is
@@ -103,12 +104,27 @@ let
   # when `sel == null`). This is the adaptation the source-agnostic den.query spine deferred here: den.query's
   # `where` is a RAW node→bool, and a gen-select selector needs a scope — relQuery holds it, and relation
   # endpoints ARE scope node-ids (matchId's domain).
+  #
+  # `ceiling` (§2.3, default `null` = full pool) — a stratum-order INDEX above which relation edges are OUT OF
+  # this reader's capability; when non-null the query SOURCE is pre-filtered through `edgesBelowStratum` (a
+  # relation ≥ ceiling is silently absent). Null keeps the fleet-global `relQuery` reading every relation
+  # (it is parameterized by `from`, not by a reader stratum); a per-relation ceiling arrives with §11 L2.
   mkRelQuery =
     {
       denQuery,
       relationEdges,
       whereFor,
+      relationKinds ? { },
+      strataOrder ? [ ],
+      ceiling ? null,
     }:
+    let
+      scopedEdges =
+        if ceiling == null then
+          relationEdges
+        else
+          strataScope.edgesBelowStratum { inherit strataOrder relationKinds relationEdges; } ceiling;
+    in
     {
       from,
       kind,
@@ -116,7 +132,7 @@ let
       mode ? "all",
     }:
     denQuery {
-      edges = relationEdges;
+      edges = scopedEdges;
       inherit from mode;
       follow = kind;
       where = if sel == null then (_: true) else whereFor sel;
@@ -135,19 +151,33 @@ let
   #             `mode = "fixpoint"` folds that reach through the CONCRETE set-union monoid (the registry closure
   #             CAPABILITY + the set-union DISCIPLINE law-gating are a downstream concern);
   #   paths   = the path witnesses (paths mode).
+  #   `ceiling` (§2.3, default `null` = full pool) — a stratum-order INDEX above which relation edges are OUT
+  #   OF this reader's capability; when non-null the accessor's query SOURCE is pre-filtered through
+  #   `edgesBelowStratum` (a relation ≥ ceiling is silently absent). Null keeps the shipped single-stratum
+  #   behavior (the relation accessor and its resolution relations share the `resolution` stratum, so the
+  #   downstream derive gate — not the accessor — enforces the boundary); a per-relation ceiling arrives with §11 L2.
   mkRelAccessor =
     {
       denQuery,
       relationEdges,
       relationKinds,
+      strataOrder ? [ ],
+      ceiling ? null,
     }:
+    let
+      scopedEdges =
+        if ceiling == null then
+          relationEdges
+        else
+          strataScope.edgesBelowStratum { inherit strataOrder relationKinds relationEdges; } ceiling;
+    in
     id:
     builtins.mapAttrs (
       kind: kindRow:
       let
         inverseLabel = kindRow.inverse or null;
         base = {
-          edges = relationEdges;
+          edges = scopedEdges;
           from = id;
         };
       in

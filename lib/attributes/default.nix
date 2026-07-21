@@ -24,6 +24,7 @@
   merge,
   errors,
   graph,
+  strataScope,
 }:
 let
   # The A10 class-share build path (gen-class tier-2/tier-3). Imported here so the output stratum can
@@ -91,8 +92,8 @@ let
   # above) so the equations builder needs no new top-level lib args — only the per-fleet DATA is threaded.
   resolutionRelations = import ./resolution-relations.nix {
     inherit resolve;
-    relations = import ../concern-relations.nix { inherit prelude; };
-    derived = import ../concern-derived.nix { inherit prelude; };
+    relations = import ../concern-relations.nix { inherit prelude strataScope; };
+    derived = import ../concern-derived.nix { inherit prelude strataScope; };
     query = import ../query.nix { inherit prelude graph; };
   };
 in

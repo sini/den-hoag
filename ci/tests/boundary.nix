@@ -43,6 +43,7 @@ let
     "concern-collectors.nix"
     "concern-relations.nix"
     "concern-derived.nix"
+    "stratum-scope.nix"
     "concern-disciplines.nix"
     "linearization.nix"
     "settings.nix"

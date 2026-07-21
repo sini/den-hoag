@@ -5,22 +5,11 @@
 # closure/discipline laws-gate (guard f) — the per-node compute engine, and the stratum-gate.
 {
   prelude,
+  strataScope,
 }:
 let
-  # index of `x` in the ordered list `xs`, or -1 if absent (the strata-order comparison for the §2.3 gate).
-  indexOf =
-    xs: x:
-    let
-      go =
-        i: rest:
-        if rest == [ ] then
-          -1
-        else if builtins.head rest == x then
-          i
-        else
-          go (i + 1) (builtins.tail rest);
-    in
-    go 0 xs;
+  # the strata-order position + strictly-below primitives (§2.3), shared with the relation accessors.
+  inherit (strataScope) indexOf strataLt;
 
   # derivedFieldMessage — the DEFINITION-TIME field validator as a VALUE (`null` = clean, else the NAMED message),
   # so the NAMED contract is CI-testable (Nix's `tryEval` cannot capture a throw's text). It checks each declared
@@ -48,9 +37,10 @@ let
           provides = spec.provides or null;
           strat = if builtins.isString stratum then stratum else "<none>";
           unknownRel = builtins.filter (r: !(builtins.elem r relationNames)) over;
-          # (past guard (a)) the strata the `over` relations sit at; a derive must sit strictly LATER.
+          # (past guard (a)) the strata the `over` relations sit at; a derive must sit strictly LATER — reject
+          # when its stratum is NOT strictly above some `over` relation's (`!(s ≺ stratum)` = `stratum ≼ s`).
           overStrata = map (r: relationKinds.${r}.stratum) over;
-          notLater = builtins.any (s: indexOf strataOrder stratum <= indexOf strataOrder s) overStrata;
+          notLater = builtins.any (s: !(strataLt strataOrder s stratum)) overStrata;
           reverseInverseless =
             direction == "reverse" && builtins.any (r: (relationKinds.${r}.inverse or null) == null) over;
         in
@@ -101,38 +91,6 @@ let
       relationEdges,
       denQuery,
     }:
-    let
-      # inverse-label → relation-name index (node-independent). A relation registers ONE edge-kind `<name>`; its
-      # producer ALSO emits SWAPPED edges labelled `<inverse>` (concern-relations.nix), whose `kind` is therefore
-      # NOT a relationKinds key. This index makes `relationStratumOf` TOTAL over BOTH arms — a relation and its
-      # inverse label share ONE stratum (the inverse is a query direction on the same edge-kind, §2.2).
-      inverseToRelation = builtins.listToAttrs (
-        builtins.filter (x: x != null) (
-          prelude.mapAttrsToList (
-            rel: row:
-            let
-              inv = row.inverse or null;
-            in
-            if inv != null then
-              {
-                name = inv;
-                value = rel;
-              }
-            else
-              null
-          ) relationKinds
-        )
-      );
-      # relationStratumOf — the stratum of the relation an edge belongs to, resolving BOTH a forward kind (a
-      # relationKinds key) AND a swapped inverse label (via the inverse index). Total: an unknown label ⇒ null
-      # (excluded from the scoped source), never a raw `relationKinds.<label>` attr-miss (tryEval-uncatchable).
-      relationStratumOf =
-        e:
-        let
-          rel = if relationKinds ? ${e.kind} then e.kind else inverseToRelation.${e.kind} or null;
-        in
-        if rel != null then relationKinds.${rel}.stratum or null else null;
-    in
     name: id:
     let
       # a typo'd name is a raw attr-select miss (tryEval-UNCATCHABLE) on a public accessor reachable from user
@@ -143,32 +101,28 @@ let
       # the stratum-gate (§2.3, the projectCtx throw-on-read pattern): node.rel exposes ONLY relation kinds whose
       # stratum sits STRICTLY BELOW the derive's own — reading a kind tagged stratum ≥ the derive's stratum is
       # REPLACED with a NAMED throw (enforcement-by-construction, never introspection: the derive cannot read a
-      # fact at or above its own layer). Each kind carries its relation's stratum (relationKinds.${kind}.stratum).
-      # The gate wraps `node.rel` ONLY — `node.id` is a sibling of `rel` (a plain string, never routed through
-      # gatedRel), so it always passes.
+      # fact at or above its own layer). `strataScope.ceilingGate` holds the `>= ceilingIdx` arithmetic; the gate
+      # wraps `node.rel` ONLY — `node.id` is a sibling of `rel` (a plain string, never gated), so it always passes.
       deriveStratum = spec.stratum;
       deriveStratumIdx = indexOf strataOrder deriveStratum;
-      gatedRel = builtins.mapAttrs (
-        kind: entry:
-        let
-          kindStratum = relationKinds.${kind}.stratum or null;
-        in
-        if kindStratum != null && indexOf strataOrder kindStratum >= deriveStratumIdx then
-          throw "den.derived: '${name}' at stratum '${deriveStratum}' may not read relation '${kind}' — it is stratum '${kindStratum}' ≥ the derive's own (a derive reads strata strictly below its own, §2.3)"
-        else
-          entry
-      ) (relAt id);
+      gatedRel =
+        strataScope.ceilingGate
+          {
+            inherit strataOrder relationKinds;
+          }
+          {
+            inherit name;
+            stratum = deriveStratum;
+            ceilingIdx = deriveStratumIdx;
+          }
+          (relAt id);
       # the STRATUM-SCOPED query source (§2.3): every relation edge whose stratum sits STRICTLY BELOW the derive's
-      # own — the same boundary gatedRel gates per-kind, applied to the edge list. An out-of-scope (≥ own stratum)
-      # or unknown-label edge is SILENTLY excluded (no throw — the query mode is exploratory, its out-of-capability
-      # reach is naturally empty).
-      scopedEdges = builtins.filter (
-        e:
-        let
-          s = relationStratumOf e;
-        in
-        s != null && indexOf strataOrder s < deriveStratumIdx
-      ) relationEdges;
+      # own — the same boundary gatedRel gates per-kind, applied to the edge list (`strataScope.edgesBelowStratum`).
+      # An out-of-scope (≥ own stratum) or unknown-label edge is SILENTLY excluded (no throw — the query mode is
+      # exploratory, its out-of-capability reach is naturally empty).
+      scopedEdges = strataScope.edgesBelowStratum {
+        inherit strataOrder relationKinds relationEdges;
+      } deriveStratumIdx;
       node = {
         rel = gatedRel;
         inherit id;
