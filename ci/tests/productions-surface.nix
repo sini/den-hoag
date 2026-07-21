@@ -1,14 +1,13 @@
-# The PRODUCTIONS-SURFACE suite (§5 resolution facet, Phase 5a). `den.productions.<name> = { stratum; from;
-# emit; discipline; mode; readsAttrs; compute }` is a REGISTRATION + CONTRACT + LAWS-GATING surface — NOT a
-# generic query+fold DSL. A production SUPPLIES its own PASSTHROUGH `compute` (self: id: value); the surface
-# compiles it to a gen-resolve synthesized attr equation (the exact `resolve.attr` shape resolved-settings
-# produces) and threads it into the ONE equations map, so `den.structural.eval.get id <name>` reads the
-# passthrough on the scheduled / warm-served eval. Phase 5a is LOWER-ONLY: emit = attr, mode = all, `from`
-# sources ∈ { query, pool }, discipline ∈ the compiled registry — any other value is a NAMED "Phase 5a
-# (Phase 5b)" rejection AT REGISTRATION (an explicit boundary, not a silent throw-on-force). The P3 L2 law
-# gates the declared `from` SOURCES ONLY (each reads a stratum STRICTLY BELOW the emit stratum) — NEVER
-# `readsAttrs` (a same-stratum positive read is A9-legit; a readsAttrs-wide gate would false-reject). See
-# REFERENCE.md.
+# The PRODUCTIONS-SURFACE suite (§5 resolution facet). `den.productions.<name> = { stratum; from; emit;
+# discipline; mode; readsAttrs; compute }` is a REGISTRATION + CONTRACT + LAWS-GATING surface — NOT a generic
+# query+fold DSL. A production SUPPLIES its own PASSTHROUGH `compute` (self: id: value); the surface LOWERS it
+# per the P5b taxonomy (§5 ★REVISION): emit = attr → a `resolve.attr` equation; emit = edges with from = ∅ →
+# an off-trace claim-edge intent (to = "query") into the relation pool; emit = edges with from = own fields →
+# a `resolve.nta` spawn; emit = nodes → a two-equation attr-gather + L5-guarded `nta` spawn. `emit = cascade`/
+# unknown and `mode = fixpoint` are NAMED rejections AT REGISTRATION (an explicit boundary, not a silent
+# throw-on-force); `from` kinds ∈ { query, pool, reverse-query }. The P3 L2 law gates the declared `from`
+# SOURCES ONLY (each reads a stratum STRICTLY BELOW the emit stratum) — NEVER `readsAttrs` (a same-stratum
+# positive read is A9-legit; a readsAttrs-wide gate would false-reject). See REFERENCE.md.
 {
   denHoag,
   ...
@@ -43,11 +42,50 @@ let
   };
   cleanFleet = mkProdFleet "x" cleanProd;
 
-  # non-P5a vocabulary — each a NAMED Phase-5b rejection at registration:
-  emitNodesFleet = mkProdFleet "n" (cleanProd // { emit = "nodes"; });
+  # the compile lib called DIRECTLY (the lowering mechanism, independent of a fleet schedule): each production
+  # lowers to `{ equations; claimEdges }` per the P5b taxonomy.
+  compile =
+    prod:
+    denHoag.internal.productions.compile {
+      productions = {
+        p = prod;
+      };
+    };
+
+  # out-of-vocabulary — a NAMED rejection at registration:
+  emitCascadeFleet = mkProdFleet "c" (cleanProd // { emit = "cascade"; });
   modeFixpointFleet = mkProdFleet "f" (cleanProd // { mode = "fixpoint"; });
   fromKindBogusFleet = mkProdFleet "b" (cleanProd // { from = [ { kind = "graph"; } ]; });
   unknownDisciplineFleet = mkProdFleet "d" (cleanProd // { discipline = "bogusDiscipline"; });
+
+  # emit = nodes is now VALID vocabulary, gated by the L5 bounded-NTA law: a BARE emit = nodes (no keyspace /
+  # content identity) is L5-rejected; a bounded-NTA-CONFORMANT one (§8 law 5 clauses) registers clean.
+  emitNodesBareFleet = mkProdFleet "nBare" (cleanProd // { emit = "nodes"; });
+  conformantNodes = cleanProd // {
+    emit = "nodes";
+    keyspace = "claims";
+    identity = "content";
+    from = [
+      {
+        kind = "pool";
+        stratum = "structural";
+      }
+    ];
+  };
+  emitNodesConformantFleet = mkProdFleet "nOk" conformantNodes;
+
+  # emit = edges CONSTANT (from = ∅) → an off-trace claim-edge intent (to = "query"), landed in the pool.
+  constantEdgeProd = cleanProd // {
+    emit = "edges";
+    from = [ ];
+  };
+  claimFleet = mkProdFleet "seedClaim" constantEdgeProd;
+  # emit = edges SPAWN (from = own fields) → an nta equation.
+  spawnEdgeProd = cleanProd // {
+    emit = "edges";
+  };
+  # a production literally named `<x>__spawn` collides with the synthesized emit = nodes spawn key → rejected.
+  reservedSpawnFleet = mkProdFleet "x__spawn" cleanProd;
 
   # L2: a `from` source reading AT/above the emit stratum → NAMED reject; a strictly-below source → clean.
   fromAtStratumFleet = mkProdFleet "atS" (
@@ -126,10 +164,119 @@ in
       expected = 42;
     };
 
-    # ── lower-only vocabulary (NAMED Phase-5b rejection AT REGISTRATION) ──
-    test-production-emit-nodes-rejected = {
-      expr = throws emitNodesFleet.den.productions;
+    # ── P5b lowering taxonomy (the compile mechanism, called directly) ──
+    # attr → one synthesized `resolve.attr`, no claim edge (P5a, unchanged).
+    test-production-lower-attr = {
+      expr = {
+        kind = (compile cleanProd).equations.p.kind;
+        claims = (compile cleanProd).claimEdges;
+      };
+      expected = {
+        kind = "synthesized";
+        claims = [ ];
+      };
+    };
+    # edges CONSTANT (from = ∅) → ONE off-trace claim-edge intent (to = "query"), NO equation.
+    test-production-lower-edges-constant = {
+      expr = {
+        equations = builtins.attrNames (compile constantEdgeProd).equations;
+        claims = map (e: {
+          inherit (e)
+            id
+            kind
+            from
+            to
+            ;
+        }) (compile constantEdgeProd).claimEdges;
+      };
+      expected = {
+        equations = [ ];
+        claims = [
+          {
+            id = "claim:p";
+            kind = "p";
+            from = "p";
+            to = "query";
+          }
+        ];
+      };
+    };
+    # edges SPAWN (from = own fields) → an `nta` equation (Vogt spawn), no claim edge.
+    test-production-lower-edges-spawn = {
+      expr = {
+        kind = (compile spawnEdgeProd).equations.p.kind;
+        claims = (compile spawnEdgeProd).claimEdges;
+      };
+      expected = {
+        kind = "nta";
+        claims = [ ];
+      };
+    };
+    # nodes → TWO equations: the emitted attr-gather (`p`) + the `nta` spawn (`p__spawn`).
+    test-production-lower-nodes-two-equations = {
+      expr = {
+        names = builtins.sort (a: b: a < b) (builtins.attrNames (compile conformantNodes).equations);
+        spawnKind = (compile conformantNodes).equations."p__spawn".kind;
+        gatherKind = (compile conformantNodes).equations.p.kind;
+      };
+      expected = {
+        names = [
+          "p"
+          "p__spawn"
+        ];
+        spawnKind = "nta";
+        gatherKind = "synthesized";
+      };
+    };
+    # empty ⇒ `{ equations = { }; claimEdges = [ ]; }` (byte-identical to the pre-P5b state).
+    test-production-lower-empty = {
+      expr = denHoag.internal.productions.compile { productions = { }; };
+      expected = {
+        equations = { };
+        claimEdges = [ ];
+      };
+    };
+
+    # ── the off-trace claim pool: an emit = edges CONSTANT production lands ONE intent in `den.relationEdges` ──
+    test-production-claim-edge-lands = {
+      expr = map (e: {
+        inherit (e)
+          id
+          kind
+          from
+          to
+          ;
+      }) claimFleet.den.relationEdges;
+      expected = [
+        {
+          id = "claim:seedClaim";
+          kind = "seedClaim";
+          from = "seedClaim";
+          to = "query";
+        }
+      ];
+    };
+
+    # ── vocabulary + L5 (NAMED rejection AT REGISTRATION) ──
+    # emit = cascade is out of vocabulary (constructs compute, breaks passthrough — settings/C8 only).
+    test-production-emit-cascade-rejected = {
+      expr = throws emitCascadeFleet.den.productions;
       expected = true;
+    };
+    # a production named `<x>__spawn` clashes with the synthesized emit = nodes spawn key → NAMED reject.
+    test-production-reserved-spawn-suffix-rejected = {
+      expr = throws reservedSpawnFleet.den.productions;
+      expected = true;
+    };
+    # emit = nodes is valid vocab but L5-gated: a bare spawn (no keyspace / content identity) rejects...
+    test-production-emit-nodes-bare-rejected = {
+      expr = throws emitNodesBareFleet.den.productions;
+      expected = true;
+    };
+    # ...a bounded-NTA-conformant emit = nodes registers clean (the L5 guard is the identity).
+    test-production-emit-nodes-conformant-clean = {
+      expr = throws emitNodesConformantFleet.den.productions;
+      expected = false;
     };
     test-production-mode-fixpoint-rejected = {
       expr = throws modeFixpointFleet.den.productions;
@@ -162,7 +309,20 @@ in
     # ── message locus (the rejection names the surface + the phase boundary) ──
     test-production-emit-message-named = {
       expr =
-        builtins.match ".*den.productions:.*Phase 5a.*Phase 5b.*" (msgOf {
+        builtins.match ".*den.productions:.*not supported — constructs compute.*" (msgOf {
+          emit = "cascade";
+          mode = "all";
+          from = [ ];
+          stratum = "resolution";
+          readsAttrs = [ ];
+          compute = _: _: 0;
+        }) != null;
+      expected = true;
+    };
+    # the L5 bounded-NTA law is wired into registration: a bare emit = nodes names the content-identity clause.
+    test-production-nodes-l5-message-named = {
+      expr =
+        builtins.match ".*den.productions:.*content-function.*" (msgOf {
           emit = "nodes";
           mode = "all";
           from = [ ];

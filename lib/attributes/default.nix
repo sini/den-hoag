@@ -132,8 +132,9 @@ in
       relationEdgeKinds ? { },
       strataOrder ? [ ],
       derivedTable ? { },
-      # §5 Phase 5a — the guard-validated `den.productions` table; each entry compiles to a passthrough attr
-      # equation merged into the map. Empty ⇒ `{ }` ⇒ byte-identical to the pre-Phase-5a equation map.
+      # §5 — the guard-validated `den.productions` table; `compile` lowers each entry to the P5b taxonomy
+      # (attr / nta / two-equation), whose `.equations` merge into the map (claim-edge intents thread out to
+      # the relation pool in default.nix). Empty ⇒ `{ }` ⇒ byte-identical to the pre-productions equation map.
       productions ? { },
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
@@ -182,7 +183,7 @@ in
         derivedTable
         ;
     })
-    // (resolutionProductions.compile { inherit productions; });
+    // (resolutionProductions.compile { inherit productions; }).equations;
 
   # The narrow accessor (A10) builder — depends only on the aspect registry + the final eval, not the
   # resolved-settings instance args, so den-hoag applies it once at the top level. `mkSettingsProduction`

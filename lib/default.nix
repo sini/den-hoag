@@ -1803,7 +1803,12 @@ let
             }) (reversed.edges node)
           ) nodes
       ) (builtins.attrNames relationEdgeKinds);
-      relationEdgesRaw = forwardRelationEdges ++ inverseRelationEdges;
+      # §5 P5b: the off-trace claim-edge INTENTS from `emit = edges` CONSTANT productions (from = ∅). compile
+      # lowers each to a plain edge fact (`to = "query"`, off-trace) — appended to the relation-edge pool, so
+      # `transpose`/`node.query`/the relation accessors see it exactly like a `den.relations` desugar edge.
+      # Empty user productions ⇒ `[ ]` (the settings seed is emit = attr) ⇒ the pool is byte-identical.
+      productionClaimEdges = (productionsLib.compile { productions = productionsTable; }).claimEdges;
+      relationEdgesRaw = forwardRelationEdges ++ inverseRelationEdges ++ productionClaimEdges;
       # WEAVE THE GUARD onto the producer's critical path (the validate-then-transform contract made real):
       # forcing `relationEdges` forces the undeclared-relation guard first, so a malformed `.edges` aborts NAMED
       # for ANY consumer of the producer output — not only when the `den.relations` surface is read.
