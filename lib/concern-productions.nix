@@ -125,6 +125,13 @@ let
           }' not strictly below its own stratum '${stratum}' — a production reads strata strictly below its emit stratum (§2.3 L2)"
         else if ntaMessage != null then
           ntaMessage
+        else if emit == "nodes" && !(prod ? spawnNode) then
+          # (L5) an emit = nodes production is the two-equation split: the `compute` is the attr-GATHER
+          # (reads the below-stratum claim pool, groupBy dedupKey), and `spawnNode` is the CONTENT-ADDRESSED
+          # spawn-builder the `${name}__spawn` nta applies to the gather output (gather → the spawned decl,
+          # keyed by a content hash of the dedupKey — the Vogt 1989 finiteness witness). A missing spawnNode
+          # would be an uncatchable `prod.spawnNode` attr-miss inside `lowerOne`, so it is caught here NAMED.
+          "den.productions: '${name}' emit = nodes declares no `spawnNode` — a node-spawning production supplies a content-addressed spawn-builder `spawnNode = gather: <spawned decl>` the `${name}__spawn` nta applies to its gather (§5, §8 law 5, Vogt 1989)"
         else if !(prod ? readsAttrs) then
           "den.productions: '${name}' declares no `readsAttrs` — the compute-internal `self.get` reads are explicitly declared (§5)"
         else if !(prod ? compute) then
@@ -187,10 +194,12 @@ let
   #   attr                    → one `resolve.attr` (P5a, unchanged).
   #   edges, from = ∅          → off-trace EDB leaf claim edge FACTS (no equation) into the claim pool.
   #   edges, from = own fields → `resolve.nta` (Vogt spawn: reads its OWN decl, readsAttrs = [], emits sub-edges).
-  #   nodes                   → TWO equations: an attr-gather (reads the claim pool via `readsAttrs`) keyed by
-  #                             the emitted name, plus an `nta` spawn (`<name>__spawn`). The gather+spawn wiring
-  #                             (the spawn consuming the gather's inventory) is the claim engine's behavioral
-  #                             concern (a later task); this lands the two schedulable equations + the L5 guard.
+  #   nodes                   → TWO equations (the two-equation split): an attr-gather `${name}` (`prod.compute`
+  #                             reads the claim pool via `readsAttrs`, groups by dedupKey) plus an `nta` spawn
+  #                             `${name}__spawn` that reads EXCLUSIVELY the gather on its own node and hands it to
+  #                             the content-addressed `prod.spawnNode`. The structural closure (spawnNode's
+  #                             `gather → decl` signature) keeps the spawn from closing over the pool; the
+  #                             gather→spawn ordering is demand-guaranteed, not schedule-verified (see the branch).
   # Each yields `{ equations; claimEdges; claimKinds }` (the shape `compile` folds). Passthrough is preserved:
   # edge-intent supplies data, nta supplies spawn-from-own-decl, attr supplies compute. The leaf-claim branch
   # ALSO emits `claimKinds` — the SINGLE source of the claim-kind → stratum index the §9 claim-accessor reverse-
@@ -240,12 +249,32 @@ let
         claimKinds = { };
       }
     else if emit == "nodes" then
+      # THE emit = nodes TWO-EQUATION SHAPE (spec §5 ★REVISION). `resolve.nta` hardcodes readsAttrs = [ ]
+      # + stratum = "structural" (equation.nix), so an nta CANNOT itself read the below-stratum claim pool —
+      # the read must be SPLIT into a schedulable attr the nta then consumes:
+      #   `${name}`        = the attr-GATHER: `prod.compute` (self: id: reads the below-stratum claim pool via
+      #                      readsAttrs = ["claim-accessor"], groups the claimants by dedupKey → this node's
+      #                      { dedupKey; aggregate-of-all-sharers }). A resolution-stratum attr, scheduled.
+      #   `${name}__spawn` = the nta-SPAWN: reads EXCLUSIVELY the gather on its OWN node (`self.get id ${name}`)
+      #                      and hands it to `prod.spawnNode` — the CONTENT-ADDRESSED spawn-builder (gather →
+      #                      the spawned decl, keyed by a content hash of the dedupKey). Content-addressing is
+      #                      the L5 finiteness witness: N claimants of one dedupKey all spawn the SAME node id
+      #                      ⇒ collapse to ONE shared node (§8 law 5, Vogt 1989 bounded-NTA).
+      #
+      # THE STRUCTURAL CLOSURE (the spawn reads ONLY the gather). `spawnNode`'s signature is `gather → decl` — it
+      # receives ONLY the gather VALUE, never `self`/`id`/the pool. So the spawn STRUCTURALLY cannot re-introduce
+      # a schedule-invisible below-stratum read inside the nta: the framework-authored `spawn` closure is the
+      # SOLE `self`-holder and reads exactly `${name}`. The gather → spawn ordering is DEMAND-guaranteed (the
+      # spawn forces the gather; the gather is pure + acyclic — it never reads the spawn), NOT schedule-verified:
+      # the nta's hardcoded readsAttrs = [ ] + stratum = "structural" make the gather→spawn edge statically
+      # invisible, so the schedule cannot order it. The full static fix = `resolve.nta` accepting stratum +
+      # readsAttrs (a DEFERRED gen-resolve change); until then the demand-order is the honest residual.
       {
         equations = {
           ${name} = attrEquation name prod;
           "${name}__spawn" = resolve.nta {
             name = "${name}__spawn";
-            spawn = prod.compute;
+            spawn = self: id: prod.spawnNode (self.get id name);
           };
         };
         claimEdges = [ ];

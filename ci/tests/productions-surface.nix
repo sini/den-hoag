@@ -71,6 +71,9 @@ let
         stratum = "structural";
       }
     ];
+    # the two-equation contract: an emit = nodes production supplies a content-addressed spawn-builder
+    # `spawnNode = gather: <spawned decl>` the `${name}__spawn` nta applies to the gather on its own node.
+    spawnNode = _gather: { };
   };
   emitNodesConformantFleet = mkProdFleet "nOk" conformantNodes;
 
