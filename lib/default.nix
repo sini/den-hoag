@@ -441,14 +441,15 @@ let
       };
 
       # den.derived.<name> — laws-gated synthesized attributes (§5). Each entry `{ over; direction; stratum;
-      # provides; discipline ? null; closure ? false; derive }` synthesizes a value over the resolution graph,
-      # capability-scoped by `stratum` (§2.3) and laws-gated by `closure`/`discipline`. `raw` holds each record
-      # unmerged (its `derive` is a function). Absent ⇒ a fleet with no derived attributes.
+      # provides; discipline ? null; closure ? false; negates ? [ ]; derive }` synthesizes a value over the
+      # resolution graph, capability-scoped by `stratum` (§2.3) and laws-gated by `closure`/`discipline`. `negates`
+      # names the relation kinds read under NEGATION (throwing-gate + strictly-above disciplined, §2.3). `raw`
+      # holds each record unmerged (its `derive` is a function). Absent ⇒ a fleet with no derived attributes.
       derivedDecl = {
         options.den.derived = merge.mkOption {
           type = merge.types.lazyAttrsOf merge.types.raw;
           default = { };
-          description = "Derived-attribute registry (§5): `<name> = { over; direction; stratum; provides; discipline ? null; closure ? false; derive }` — a laws-gated synthesized attribute over the resolution graph; `provides` names a den.resolutionProducts face.";
+          description = "Derived-attribute registry (§5): `<name> = { over; direction; stratum; provides; discipline ? null; closure ? false; negates ? [ ]; derive }` — a laws-gated synthesized attribute over the resolution graph; `provides` names a den.resolutionProducts face, `negates` the relation kinds read under stratified negation.";
         };
       };
 

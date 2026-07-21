@@ -1,5 +1,5 @@
 # den.derived — laws-gated synthesized attributes over the resolution graph (spec §5). A derived
-# `<name> = { over; direction; stratum; provides; discipline; closure; derive }` reads the relation graph (via
+# `<name> = { over; direction; stratum; provides; discipline; closure; negates ? [ ]; derive }` reads the relation graph (via
 # the per-node accessor) and synthesizes a value, capability-scoped by its `stratum` and laws-gated by its
 # `closure`/`discipline`. This file holds the DEFINITION-TIME field validation — the field guards plus the
 # closure/discipline laws-gate (guard f) — the per-node compute engine, and the stratum-gate.
@@ -35,6 +35,10 @@ let
           direction = spec.direction or "forward";
           stratum = spec.stratum or null;
           provides = spec.provides or null;
+          # `negates` (L4) — the relation kinds this derive reads under NEGATION (§2.3 stratified negation). A NEW
+          # optional field, default `[ ]`: INERT on a derive that omits it (both negation guards below skip). The
+          # precursor Phase-5's `exclude`/lockdown consumes.
+          negates = spec.negates or [ ];
           strat = if builtins.isString stratum then stratum else "<none>";
           unknownRel = builtins.filter (r: !(builtins.elem r relationNames)) over;
           # (past guard (a)) the strata the `over` relations sit at; a derive must sit strictly LATER — reject
@@ -43,6 +47,20 @@ let
           notLater = builtins.any (s: !(strataLt strataOrder s stratum)) overStrata;
           reverseInverseless =
             direction == "reverse" && builtins.any (r: (relationKinds.${r}.inverse or null) == null) over;
+          # (L4 (a) throwing-gate routing) a NEGATED predicate must be read through the THROWING gate (node.rel,
+          # which throws on out-of-scope), NEVER the silent-empty node.query (an out-of-scope follow yields `[]`).
+          # Structurally: a `negates` entry must be a relation KIND (a node.rel key). A non-relation predicate —
+          # e.g. an inverse LABEL, query-reachable via swapped edges but NOT a node.rel key — is reachable ONLY via
+          # the silent route, and a negation over a silently-empty predicate cannot distinguish "absent" from
+          # "out-of-scope" (unsound, Apt–Blair–Walker §2.3). So a non-relation `negates` entry is rejected.
+          negatesUnroutable = builtins.filter (r: !(builtins.elem r relationNames)) negates;
+          # (L4 (b) strictly-above) a negation reads a COMPLETE predicate, so the derive must sit STRICTLY ABOVE
+          # every producer of each negated relation (reading it before it is fully produced is non-monotone). The
+          # SAME strictly-below ceiling the positive `over` read enforces, made EXPLICIT for negation — reject when
+          # some negated relation's stratum is NOT strictly below the derive's own (only reached once `negates`
+          # entries are known relations, so `relationKinds.${r}.stratum` is total).
+          negatesStrata = map (r: relationKinds.${r}.stratum) negates;
+          negatesNotAbove = builtins.any (s: !(strataLt strataOrder s stratum)) negatesStrata;
         in
         if unknownRel != [ ] then
           "den.derived: '${name}' over names unknown relation '${builtins.head unknownRel}' — not a relation in den.relations (§5)"
@@ -52,6 +70,10 @@ let
           "den.derived: '${name}' stratum '${stratum}' is not LATER than the strata its `over` relations sit at — a derive reads strata below its own (§2.3)"
         else if reverseInverseless then
           "den.derived: '${name}' direction = \"reverse\" over a relation whose `inverse` is null — the reverse read would be silently empty; declare the relation's inverse (§5)"
+        else if negatesUnroutable != [ ] then
+          "den.derived: '${name}' negates '${builtins.head negatesUnroutable}', which is not a relation in den.relations — a negated predicate must be read through the THROWING gate (node.rel), never the silent-empty node.query; a negation over a silently-empty predicate cannot distinguish absent from out-of-scope (§2.3 stratified negation)"
+        else if negatesNotAbove then
+          "den.derived: '${name}' stratum '${stratum}' is not strictly above the strata its `negates` relations sit at — a negation reads a COMPLETE predicate, so a negated relation must be produced strictly below the derive's own stratum (§2.3 stratified negation)"
         else if provides != null && !(builtins.elem provides resolutionProductNames) then
           "den.derived: '${name}' provides '${provides}', which is not a resolution product registered in den.resolutionProducts (§5)"
         else if !(spec ? derive) then
