@@ -2161,6 +2161,13 @@ let
       den = {
         schema = ent.kinds;
         inherit (ent) registries meta roots;
+        # Internal passthrough (underscore-prefixed = OFF the output/parity surface): the evaluated
+        # option-DECLARATION tree + its provenance, which the entity build otherwise discards. The
+        # declared-schema face — an attrset of gen-merge option leaves (each `_type == "option"`)
+        # mirrored by a provenance tree — reachable WITHOUT forcing `.config`, for a downstream
+        # options-projection lib to walk.
+        _options = ent.options;
+        _provenance = ent.provenance;
         aspects = ent.config.den.aspects;
         fleet = theFleet;
         cells = product.cells theFleet;

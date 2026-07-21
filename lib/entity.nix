@@ -176,6 +176,12 @@ let
       topology = tree.config.den.schema._topology;
       roots = tree.config.den.schema._roots;
       config = tree.config;
+      # The evaluated option-DECLARATION tree + its provenance (gen-merge `evalModuleTree` outputs,
+      # modules.nix). The build otherwise projects only `.config`; these surface the declared schema
+      # (each leaf `_type == "option"`) and the WHO-defined-what tree for a downstream options
+      # projection to read WITHOUT forcing `.config`.
+      options = tree.options;
+      provenance = tree.provenance;
     };
 
   # classOf a scope node (§2.5): the producing scope's class entry (or null).
