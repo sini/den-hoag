@@ -10,7 +10,7 @@
 #
 # THE P5b LOWERING TAXONOMY (spec §5 ★REVISION). `emit ∈ { attr, edges, nodes }`:
 #   attr                    → `resolve.attr` (the exact synthesized-attr shape resolved-settings emits).
-#   edges, from = ∅          → a plain off-trace claim-edge INTENT (no equation kind) into the claim pool.
+#   edges, from = ∅          → off-trace EDB leaf claim edge FACTS (no equation kind) into the claim pool.
 #   edges, from = own fields → `resolve.nta` (Vogt spawn: reads its OWN decl, emits sub-edges).
 #   nodes                   → TWO equations: an attr-gather (reads the claim pool) + an `nta` spawn (L5-guarded).
 # `emit = cascade`/unknown is REJECTED NAMED (it constructs compute, breaking the passthrough posture —
@@ -61,6 +61,16 @@ let
 
   # the raw-field render for a message (a non-string field prints `<none>` rather than crashing the message).
   strOf = v: if builtins.isString v then v else "<none>";
+
+  # edbStubSelf — the THROW-ON-READ `self` a leaf claim's constant `compute` is applied against (both the
+  # registration-time LIST-shape guard and the claimEdgesOf expansion). A leaf claim is pure EDB (extensional,
+  # from = ∅, readsAttrs = []); it must NOT read the schedule. Reading `self.get` proves impurity and aborts
+  # NAMED, so the EDB-purity law is enforced by construction, not by convention.
+  edbStubSelf = {
+    get =
+      _id: _attr:
+      throw "den.productions: an emit=edges CONSTANT leaf claim is pure EDB (from=∅, readsAttrs=[]) — its `compute` must not read `self` (§7 off-trace, from=∅ EDB law)";
+  };
 
   # productionMessage — the DEFINITION-TIME validator as a VALUE (`null` = clean, else the first NAMED
   # message), so the NAMED contract is CI-testable (the derivedFieldMessage / boundedNtaMessage posture). It
@@ -119,6 +129,12 @@ let
           "den.productions: '${name}' declares no `readsAttrs` — the compute-internal `self.get` reads are explicitly declared (§5)"
         else if !(prod ? compute) then
           "den.productions: '${name}' declares no `compute` — a production supplies its own passthrough `compute = self: id: value` (§5)"
+        else if emit == "edges" && from == [ ] && !(builtins.isList (prod.compute edbStubSelf null)) then
+          # the emit = edges CONSTANT (from = ∅) EDB leaf-claim shape law: its `compute` is a CONSTANT returning
+          # the ground edge FACTS as a LIST of endpoint records. Forcing it here (against edbStubSelf) is free —
+          # a leaf claim is pure EDB, so it reads no self, and the NAMED value keeps the shape rejection testable
+          # AT REGISTRATION (the file's contract) rather than a cryptic length/index throw deep in claimEdgesOf.
+          "den.productions: '${name}' emit=edges CONSTANT (from=∅) `compute` must return a LIST of endpoint records {from;to;data?} (§5 EDB leaf claim)"
         else
           null;
       offenders = builtins.filter (m: m != null) (prelude.mapAttrsToList checkOne productions);
@@ -135,25 +151,32 @@ let
       inherit (prod) stratum readsAttrs compute;
     };
 
-  # claimEdgeOf — an off-trace claim-edge INTENT for an `emit = edges` CONSTANT production (from = ∅). It is
-  # a plain edge fact (NO equation kind), shaped `{ id; kind; from; to; data; stratum }`: `to = "query"` (the
-  # §7 off-trace projection target — the claim pool, never on the materialization trace), `data` (the
-  # passthrough `compute` supplies the intent payload), `stratum` (the emit stratum, carried for the later
-  # provider engine's §2.3 comparison). The provider engine refines the endpoints/kind. It is appended to the
-  # relation-edge pool, so `transpose`/`node.query`/the relation accessors see it, off-trace, exactly like a
-  # `den.relations` desugar edge.
-  claimEdgeOf = name: prod: {
-    id = "claim:${name}";
-    kind = name;
-    from = name;
-    to = "query";
-    data = prod.compute;
-    stratum = prod.stratum;
-  };
+  # claimEdgesOf — the off-trace EDB leaf claim edge facts for an `emit = edges` CONSTANT production (§7 off-
+  # trace, from = ∅ EDB law, edge-uniform). A leaf claim (connect/secret/database/…) SUPPLIES its ground facts:
+  # its constant `compute` returns a LIST of endpoint records `{ from; to; data ? {} }` (the EDB — extensional,
+  # not derived), applied against `edbStubSelf` + a null id (EDB ignores both; the LIST shape is validated at
+  # registration by `productionMessage`, so this expansion trusts it). Each fact EXPANDS into one pool edge
+  # `{ id = "claim:<name>:<i>"; kind = <name>; from = <real source>; to = <real target>; data; stratum }`, off-
+  # trace in the `den.relationEdges` pool (never on the materialization trace). `from = ∅` is LOAD-BEARING: a
+  # pure EDB constant means cyclic connect data (arr→prowlarr AND prowlarr→arr) is TWO independent facts at ONE
+  # acyclic stratum — a cycle in who-connects-whom is NOT a stratum cycle. The forward view (a source reads its
+  # egress) is queryable now via the query spine; the transpose reverse view (a target reads its ingress) is a
+  # later task. So one CONSTANT emits ONE directed edge per relationship — never two. It is appended to the
+  # relation-edge pool, so `transpose`/`node.query`/the relation accessors see it exactly like a `den.relations`
+  # desugar edge.
+  claimEdgesOf =
+    name: prod:
+    prelude.imap0 (i: fact: {
+      id = "claim:${name}:${toString i}";
+      kind = name;
+      inherit (fact) from to;
+      data = fact.data or { };
+      stratum = prod.stratum;
+    }) (prod.compute edbStubSelf null);
 
   # lowerOne — the corrected P5b lowering taxonomy for one guard-validated production (spec §5 ★REVISION):
   #   attr                    → one `resolve.attr` (P5a, unchanged).
-  #   edges, from = ∅          → an off-trace claim-edge INTENT (no equation) into the claim pool.
+  #   edges, from = ∅          → off-trace EDB leaf claim edge FACTS (no equation) into the claim pool.
   #   edges, from = own fields → `resolve.nta` (Vogt spawn: reads its OWN decl, readsAttrs = [], emits sub-edges).
   #   nodes                   → TWO equations: an attr-gather (reads the claim pool via `readsAttrs`) keyed by
   #                             the emitted name, plus an `nta` spawn (`<name>__spawn`). The gather+spawn wiring
@@ -170,7 +193,7 @@ let
     if emit == "edges" && from == [ ] then
       {
         equations = { };
-        claimEdges = [ (claimEdgeOf name prod) ];
+        claimEdges = claimEdgesOf name prod;
       }
     else if emit == "edges" then
       {

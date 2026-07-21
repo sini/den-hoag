@@ -1803,10 +1803,12 @@ let
             }) (reversed.edges node)
           ) nodes
       ) (builtins.attrNames relationEdgeKinds);
-      # §5 P5b: the off-trace claim-edge INTENTS from `emit = edges` CONSTANT productions (from = ∅). compile
-      # lowers each to a plain edge fact (`to = "query"`, off-trace) — appended to the relation-edge pool, so
-      # `transpose`/`node.query`/the relation accessors see it exactly like a `den.relations` desugar edge.
-      # Empty user productions ⇒ `[ ]` (the settings seed is emit = attr) ⇒ the pool is byte-identical.
+      # §5 P5b: the off-trace EDB leaf claim edge FACTS from `emit = edges` CONSTANT productions (from = ∅).
+      # compile expands each constant's ground endpoint records into off-trace pool edges (real from/to,
+      # kind = the claim kind) — appended to the relation-edge pool, so `transpose`/`node.query`/the relation
+      # accessors see them exactly like `den.relations` desugar edges. from = ∅ EDB ⇒ cyclic connect data is
+      # sound at an acyclic stratum (a who-connects-whom cycle is NOT a stratum cycle). Empty user productions
+      # ⇒ `[ ]` (the settings seed is emit = attr) ⇒ the pool is byte-identical.
       productionClaimEdges = (productionsLib.compile { productions = productionsTable; }).claimEdges;
       relationEdgesRaw = forwardRelationEdges ++ inverseRelationEdges ++ productionClaimEdges;
       # WEAVE THE GUARD onto the producer's critical path (the validate-then-transform contract made real):

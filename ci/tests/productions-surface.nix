@@ -2,7 +2,7 @@
 # discipline; mode; readsAttrs; compute }` is a REGISTRATION + CONTRACT + LAWS-GATING surface — NOT a generic
 # query+fold DSL. A production SUPPLIES its own PASSTHROUGH `compute` (self: id: value); the surface LOWERS it
 # per the P5b taxonomy (§5 ★REVISION): emit = attr → a `resolve.attr` equation; emit = edges with from = ∅ →
-# an off-trace claim-edge intent (to = "query") into the relation pool; emit = edges with from = own fields →
+# off-trace EDB leaf claim edge FACTS (real from/to) into the relation pool; emit = edges with from = own fields →
 # a `resolve.nta` spawn; emit = nodes → a two-equation attr-gather + L5-guarded `nta` spawn. `emit = cascade`/
 # unknown and `mode = fixpoint` are NAMED rejections AT REGISTRATION (an explicit boundary, not a silent
 # throw-on-force); `from` kinds ∈ { query, pool, reverse-query }. The P3 L2 law gates the declared `from`
@@ -74,10 +74,18 @@ let
   };
   emitNodesConformantFleet = mkProdFleet "nOk" conformantNodes;
 
-  # emit = edges CONSTANT (from = ∅) → an off-trace claim-edge intent (to = "query"), landed in the pool.
+  # emit = edges CONSTANT (from = ∅) → off-trace EDB leaf claim edge FACTS, landed in the pool. Its constant
+  # `compute` returns the ground endpoint records (real from/to); each expands into one pool edge.
   constantEdgeProd = cleanProd // {
     emit = "edges";
     from = [ ];
+    readsAttrs = [ ];
+    compute = _self: _id: [
+      {
+        from = "node:src";
+        to = "node:tgt";
+      }
+    ];
   };
   claimFleet = mkProdFleet "seedClaim" constantEdgeProd;
   # emit = edges SPAWN (from = own fields) → an nta equation.
@@ -176,7 +184,7 @@ in
         claims = [ ];
       };
     };
-    # edges CONSTANT (from = ∅) → ONE off-trace claim-edge intent (to = "query"), NO equation.
+    # edges CONSTANT (from = ∅) → the EDB leaf claim's ground edge FACTS (real from/to), NO equation.
     test-production-lower-edges-constant = {
       expr = {
         equations = builtins.attrNames (compile constantEdgeProd).equations;
@@ -193,10 +201,10 @@ in
         equations = [ ];
         claims = [
           {
-            id = "claim:p";
+            id = "claim:p:0";
             kind = "p";
-            from = "p";
-            to = "query";
+            from = "node:src";
+            to = "node:tgt";
           }
         ];
       };
@@ -237,7 +245,7 @@ in
       };
     };
 
-    # ── the off-trace claim pool: an emit = edges CONSTANT production lands ONE intent in `den.relationEdges` ──
+    # ── the off-trace claim pool: an emit = edges CONSTANT leaf claim lands its EDB edge FACTS in the pool ──
     test-production-claim-edge-lands = {
       expr = map (e: {
         inherit (e)
@@ -249,10 +257,10 @@ in
       }) claimFleet.den.relationEdges;
       expected = [
         {
-          id = "claim:seedClaim";
+          id = "claim:seedClaim:0";
           kind = "seedClaim";
-          from = "seedClaim";
-          to = "query";
+          from = "node:src";
+          to = "node:tgt";
         }
       ];
     };
