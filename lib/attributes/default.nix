@@ -62,7 +62,6 @@ let
   resolvedSettings = import ./resolved-settings.nix {
     inherit
       prelude
-      resolve
       product
       settings
       settingsLib
@@ -127,14 +126,6 @@ in
       # `lib`-arg injection; null on the pure/nixpkgs-free path (§2.10 inert-config seam).
       consumerLib ? null,
       localDemandData,
-      fleet,
-      lin,
-      settingsLayers ? [ ],
-      dimKinds,
-      projectors ? [ ],
-      # The staged pre-pass's containment relations (nodeId -> [ ancestor slice ]) — the settings-chain
-      # env slice (§3c-UNIFIED). Default `{ }` ⇒ no env slice (byte-identical to the pre-§3c chain).
-      containmentRelations ? { },
       classNames,
       classifyKey,
       relationEdges ? [ ],
@@ -180,17 +171,9 @@ in
     // {
       local-demand-data = localDemandData;
     }
-    // (resolvedSettings.mkEquation {
-      inherit
-        fleet
-        lin
-        settingsLayers
-        dimKinds
-        allAspects
-        projectors
-        containmentRelations
-        ;
-    })
+    # The settings resolution facet (`resolved-settings`) is no longer a hand-wired equation here — the
+    # framework SEEDS it as a `den.productions` entry (mkSettingsProduction, keyed by the attr it emits) and
+    # it arrives through the same `resolutionProductions.compile` pass as every other production (below).
     // (resolutionRelations {
       inherit
         relationEdges
@@ -202,8 +185,9 @@ in
     // (resolutionProductions.compile { inherit productions; });
 
   # The narrow accessor (A10) builder — depends only on the aspect registry + the final eval, not the
-  # resolved-settings instance args, so den-hoag applies it once at the top level.
-  inherit (resolvedSettings) mkNarrowAccessor;
+  # resolved-settings instance args, so den-hoag applies it once at the top level. `mkSettingsProduction`
+  # builds the settings resolution facet AS a `den.productions` record (the framework's own seed, §5).
+  inherit (resolvedSettings) mkNarrowAccessor mkSettingsProduction;
 
   # The output builder (attribute 12) — the gen-edge fold's graph accessor + `outputFor`/`traceFor`,
   # and the per-class terminal crossing. Reads the FINAL eval (not an in-flight `self`), so den-hoag

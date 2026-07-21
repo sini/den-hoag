@@ -21,14 +21,15 @@
 #   - `policy`   — `configure` declarations at this node (attribute 4's resolution group), always in
 #                  the terminal slot (A8, authority-wins by position).
 #
-# Deps: prelude (folds/filters), resolve (attr), product (containmentChain), settings (resolveAll),
-# settingsLib (schema/layer compilation), errors (absentAspectSetting). Instance args: fleet (the
+# Deps: prelude (folds/filters), product (containmentChain), settings (resolveAll),
+# settingsLib (schema/layer compilation), errors (absentAspectSetting). The facet is emitted as a
+# `den.productions` record (`mkSettingsProduction`); concern-productions' `compile` wraps its `compute`
+# in the synthesized `resolve.attr` — no direct `resolve` dep here. Instance args: fleet (the
 # restricted gen-product), lin (the linearization record), settingsLayers (compiled den-layer
 # records), dimKinds (product dimension names, for the full-cell test), containmentRelations (the
 # staged pre-pass's env→host / env→cluster ancestor slices — the §3c-UNIFIED chain extension).
 {
   prelude,
-  resolve,
   product,
   settings,
   settingsLib,
@@ -79,8 +80,13 @@ let
         builtins.filter (a: a.__action == "configure" && a.of.id_hash == aspectEntry.id_hash) resolutionActs
       );
 
-  # The equation builder. Instance args pin the fleet product + linearization + compiled layers.
-  mkEquation =
+  # The settings resolution facet AS a den.productions record (§5, Phase 5a — dogfooded through the surface).
+  # Instead of a hand-wired `resolve.attr`, the framework SEEDS this production (keyed by the attr it emits,
+  # `resolved-settings`) into `den.productions`; concern-productions' `compile` turns it back into the exact
+  # same synthesized `resolve.attr` it always was (PASSTHROUGH over this `compute`). Behavior is byte-identical
+  # — only the declaration PATH changed (from a bespoke equation to the general production surface). Instance
+  # args pin the fleet product + linearization + compiled layers, captured by the `compute` closure.
+  mkSettingsProduction =
     {
       fleet,
       lin,
@@ -154,69 +160,82 @@ let
         map settingsLib.toGenLayer (projection ++ direct);
     in
     {
-      "resolved-settings" = resolve.attr {
-        name = "resolved-settings";
-        kind = "synthesized";
-        stratum = "resolution";
-        readsAttrs = [
-          "resolved-aspects"
-          "declarations"
-        ];
-        compute =
-          self: id:
-          let
-            node = self.node id;
-            coords = coordsOfNode node;
-            # containmentChain needs a full cell; a flat root fixes ≤1 dim, whose only subsets
-            # (∅ ⊂ own-slice) are ⊆-comparable and need no linearization tie-break.
-            isFullCell = builtins.length (builtins.attrNames coords) == builtins.length dimKinds;
-            baseChain =
-              if isFullCell then
-                map (e: e.fixed) (product.containmentChain fleet coords lin)
-              else
-                [
-                  { }
-                  coords
-                ];
-            # §3c-UNIFIED chain extension: prepend the containment-relation ancestor slices (env→host /
-            # env→cluster) AFTER the empty slice, so the fold order is default < env < host < user (the
-            # owner's cascade). A cell inherits its parent root's ancestors (`node.parent`); a root reads
-            # its own (`id`). `baseChain` always leads with the empty slice, so [ ∅ ] ++ ancestors ++ tail
-            # keeps every product slice in its original relative order (byte-neutral when ancestors = [ ]).
-            ancSlices = if node.parent == null then ancestorsOf id else ancestorsOf node.parent;
-            chain = [ (builtins.head baseChain) ] ++ ancSlices ++ (builtins.tail baseChain);
+      # §5 production record — the settings resolution facet. LOWER-ONLY: emit = attr @ the `resolution`
+      # stratum, mode = all (a within-stratum passthrough, never a fixpoint). `from` is the DECLARED SOURCE
+      # CONTRACT (drives the L2 gate for user productions, documents it here): the containment `query` reads
+      # STRUCTURAL coordinates (`product.containmentChain`, strictly below `resolution`); the layer `pool` is
+      # EDB (`settingsLayers`/projection, no stratum ⇒ compares below every stratum, L2-clean). `readsAttrs`
+      # names the compute-internal `self.get` reads — `resolved-aspects` (SAME-stratum, A9-legit) and
+      # `declarations` (structural); these are NEVER `from`-sources (L2 gates `from` only, §5 L2).
+      stratum = "resolution";
+      from = [
+        {
+          kind = "query";
+          stratum = "structural";
+        }
+        { kind = "pool"; }
+      ];
+      emit = "attr";
+      mode = "all";
+      discipline = "settings-layers";
+      readsAttrs = [
+        "resolved-aspects"
+        "declarations"
+      ];
+      compute =
+        self: id:
+        let
+          node = self.node id;
+          coords = coordsOfNode node;
+          # containmentChain needs a full cell; a flat root fixes ≤1 dim, whose only subsets
+          # (∅ ⊂ own-slice) are ⊆-comparable and need no linearization tie-break.
+          isFullCell = builtins.length (builtins.attrNames coords) == builtins.length dimKinds;
+          baseChain =
+            if isFullCell then
+              map (e: e.fixed) (product.containmentChain fleet coords lin)
+            else
+              [
+                { }
+                coords
+              ];
+          # §3c-UNIFIED chain extension: prepend the containment-relation ancestor slices (env→host /
+          # env→cluster) AFTER the empty slice, so the fold order is default < env < host < user (the
+          # owner's cascade). A cell inherits its parent root's ancestors (`node.parent`); a root reads
+          # its own (`id`). `baseChain` always leads with the empty slice, so [ ∅ ] ++ ancestors ++ tail
+          # keeps every product slice in its original relative order (byte-neutral when ancestors = [ ]).
+          ancSlices = if node.parent == null then ancestorsOf id else ancestorsOf node.parent;
+          chain = [ (builtins.head baseChain) ] ++ ancSlices ++ (builtins.tail baseChain);
 
-            present = self.get id "resolved-aspects";
-            resolutionActs = (self.get id "declarations").actions.resolution or [ ];
+          present = self.get id "resolved-aspects";
+          resolutionActs = (self.get id "declarations").actions.resolution or [ ];
 
-            # ONE resolveAll batch over every present aspect at this node (cross-aspect `ref` routing
-            # is by id_hash across the batch, §2.8). Keyed by aspect name for the narrow accessor.
-            batch = map (
-              a:
-              let
-                aspectEntry = entryOf a.content;
-              in
-              {
-                schema = settingsLib.mkSchemaFor aspectEntry (a.content.settings or { });
-                layers =
-                  prelude.concatMap (sliceFixed: layersAtSlice aspectEntry sliceFixed) chain
-                  ++ policyLayersAt resolutionActs coords aspectEntry;
-                key = a.content.name;
-              }
-            ) present;
-            resolved = settings.resolveAll { inherit batch; };
-          in
-          prelude.foldl' (
-            acc: a:
-            acc
-            // {
-              ${a.content.name} = {
-                value = resolved.value.${a.content.name};
-                provenance = resolved.provenance.${a.content.name};
-              };
+          # ONE resolveAll batch over every present aspect at this node (cross-aspect `ref` routing
+          # is by id_hash across the batch, §2.8). Keyed by aspect name for the narrow accessor.
+          batch = map (
+            a:
+            let
+              aspectEntry = entryOf a.content;
+            in
+            {
+              schema = settingsLib.mkSchemaFor aspectEntry (a.content.settings or { });
+              layers =
+                prelude.concatMap (sliceFixed: layersAtSlice aspectEntry sliceFixed) chain
+                ++ policyLayersAt resolutionActs coords aspectEntry;
+              key = a.content.name;
             }
-          ) { } present;
-      };
+          ) present;
+          resolved = settings.resolveAll { inherit batch; };
+        in
+        prelude.foldl' (
+          acc: a:
+          acc
+          // {
+            ${a.content.name} = {
+              value = resolved.value.${a.content.name};
+              provenance = resolved.provenance.${a.content.name};
+            };
+          }
+        ) { } present;
     };
 
   # The narrow accessor (A10, §2.8) — the `aspects` module arg at output assembly. For every declared
@@ -239,5 +258,5 @@ let
     }) allAspects;
 in
 {
-  inherit mkEquation mkNarrowAccessor;
+  inherit mkSettingsProduction mkNarrowAccessor;
 }

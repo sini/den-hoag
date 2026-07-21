@@ -1172,7 +1172,27 @@ let
         disciplineNames = builtins.attrNames disciplinesTable;
       } (ent.config.den.productions or { });
       productionsGuard = if productionsGuardMessage != null then throw productionsGuardMessage else null;
-      productionsTable = builtins.seq productionsGuard (ent.config.den.productions or { });
+      # The framework's OWN settings resolution facet, re-declared THROUGH this surface (dogfood, §5): the
+      # settings production record (its `compute` closes over the fleet product / linearization / compiled
+      # layers), keyed by the attr it emits (`resolved-settings`, per the surface's key = emitted-attr rule).
+      # concern-productions' `compile` turns it back into the exact synthesized `resolve.attr` it always was —
+      # only the declaration PATH changed (byte-identical value/schedule; see resolved-settings.nix).
+      settingsProduction = attributesLib.mkSettingsProduction {
+        fleet = theFleet;
+        allAspects = ent.config.den.aspects;
+        inherit (prePass) containmentRelations;
+        inherit
+          lin
+          settingsLayers
+          dimKinds
+          projectors
+          ;
+      };
+      # The user's declared productions (guard-forced) BESIDE the framework's settings seed. Right-biased so
+      # the framework's `resolved-settings` always wins (the internal attr name is framework-owned).
+      productionsTable = builtins.seq productionsGuard (
+        (ent.config.den.productions or { }) // { "resolved-settings" = settingsProduction; }
+      );
 
       # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated
       # (key well-formedness, no ArtifactRef endpoint). Global per-pair uniqueness holds by keying.
@@ -1505,16 +1525,9 @@ let
         # import-pure. A `lib`-demanding parametric emit rides unresolved when null (the named ceiling).
         consumerLib = if npkgs == null then null else npkgs.lib or null;
         localDemandData = demandLib.localDemandData;
-        fleet = theFleet;
-        # The staged pre-pass's containment relations (nodeId -> [ ancestor slice ]) — the settings-chain
-        # env slice (§3c-UNIFIED). Empty for a fleet with no `containTo`-marked members → byte-identical.
-        inherit (prePass) containmentRelations;
-        inherit
-          lin
-          settingsLayers
-          dimKinds
-          projectors
-          ;
+        # The settings resolution facet no longer threads its instance args (fleet/lin/settingsLayers/
+        # dimKinds/projectors/containmentRelations) here — it is seeded into `productionsTable` as a
+        # `den.productions` record (settingsProduction, below) and arrives via the `productions` arg.
         classNames = effectiveClassNames;
         inherit (denAspects) classifyKey;
         inherit

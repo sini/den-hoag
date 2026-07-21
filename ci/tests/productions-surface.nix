@@ -100,8 +100,21 @@ in
   flake.tests.productions-surface = {
     # ── registration + schedule (the passthrough attr production) ──
     test-production-registers = {
+      # the framework SEEDS its own settings production (`resolved-settings`) through this surface (dogfood),
+      # so every fleet's `den.productions` carries it BESIDE the user's declarations.
       expr = builtins.attrNames cleanFleet.den.productions;
-      expected = [ "x" ];
+      expected = [
+        "resolved-settings"
+        "x"
+      ];
+    };
+    # ── the settings dogfood: settings is now DECLARED through den.productions, not a hand-wired attr ──
+    # The framework re-declares its own settings resolution facet AS a production (keyed by the attr it emits,
+    # `resolved-settings`, per the surface's key = emitted-attr invariant), proving the surface hosts the real
+    # settings production. settings-attribute.nix stays byte-identical (same compute, same `resolved-settings`).
+    test-settings-dogfooded-via-productions = {
+      expr = cleanFleet.den.productions ? "resolved-settings";
+      expected = true;
     };
     test-production-clean-no-throw = {
       expr = throws cleanFleet.den.productions;
