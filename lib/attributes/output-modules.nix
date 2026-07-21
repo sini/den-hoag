@@ -57,6 +57,12 @@
   # absent-key defect the law closes).
   channelNames,
   demandEdges ? [ ],
+  # The §7 projection filter — `[edges] -> [edges]` keeping only `to ∈ { materialize, both }` kinds (the
+  # `edgesLib.materializeEdges <compiledKinds>` closure, wired at mkDen). It formalizes the off-trace seam:
+  # relation (`to = query`) edges never reach the materialize trace. Default = identity, so a fixture that
+  # instantiates mkOutputModules directly (no filter wired) is byte-identical, and the corpus is unaffected
+  # (relation edges live in a separate pool never merged into `edgesForRoot`, so the filter drops nothing).
+  materializeFilter ? (edges: edges),
   # The gen-edge source interpreters (`{ synthesize ? …; rewalk ? …; }`), threaded through `den.interpret`.
   # Native den-hoag constructs no synthesize/rewalk edge, so the default `{ }` is complete; an external consumer
   # supplies its external source interpreters here WITHOUT editing this file (spec §2.6, the A15 external-source seam).
@@ -631,16 +637,22 @@ let
   };
 
   # The full edge set folded at a root: the per-root default-fold edges (gen-edge derivation over the
-  # graph accessor) PLUS the fleet-global demand edges. Concatenation is A1 wiring; the derivation is the
+  # graph accessor) PLUS the fleet-global demand edges, PROJECTED to the materialization trace (§7). The
+  # `materializeFilter` keeps only `to ∈ { materialize, both }` kinds — a `to = query` relation edge is off
+  # the trace. It is INERT on the corpus (relation edges live in a separate pool never merged in here; the
+  # content edges are unlabeled → materialize, the demand edges are `kind = "demand"` → materialize), so it
+  # FORMALIZES the off-trace seam rather than creating it. Concatenation is A1 wiring; the derivation is the
   # lib call. This is the single edge set both `outputFor` (materialize) and `traceFor` (the frozen trace)
   # consume, so the demand edges join the fleet edge set exactly once and consistently in both views.
   edgesForRoot =
     root:
-    edge.edgesFor {
-      graph = graphAccessor;
-      inherit root;
-    }
-    ++ demandEdges;
+    materializeFilter (
+      edge.edgesFor {
+        graph = graphAccessor;
+        inherit root;
+      }
+      ++ demandEdges
+    );
 
   # config(root) = the gen-edge fold (Law A15 — the exact E1 signature; `toposort` and `project`'s
   # `graph` are both mandatory). No content path outside this fold.

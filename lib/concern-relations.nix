@@ -61,7 +61,11 @@ let
   # relationsToEdgeKinds — desugar `den.relations` into the edge-kind additions //-merged into the edge
   # compile's `kinds` arg, gated by `relationCollisionMessage` (one clean NAMED throw pre-empting the silent
   # `//`-overwrite). Each relation → one kind at its OWN stratum `rel:<name>` (§5 L2 — EDB, distinct-per-relation,
-  # bottom-pinned via `relationStrataInserts`), closure = false, carrying its `inverse` label + `data`.
+  # bottom-pinned via `relationStrataInserts`), closure = false, carrying its `inverse` label + `data`, and
+  # `to = "query"` (§7 the projection seam): a relation edge-production projects OFF the materialization trace,
+  # so the edge-kind default `materialize` is overridden to `query` here — this is what keeps relation edges
+  # provably off the frozen trace (the parity-load-bearing tag), formalizing the already-holding `relationEdges`
+  # off-`edgesForRoot` separation.
   relationsToEdgeKinds =
     {
       relations,
@@ -78,6 +82,7 @@ let
             closure = false;
             inverse = relations.${n}.inverse or null;
             data = relations.${n}.data or { };
+            to = "query";
           };
         }) (builtins.attrNames relations)
       );

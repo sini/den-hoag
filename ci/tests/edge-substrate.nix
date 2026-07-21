@@ -686,7 +686,9 @@ in
         };
       };
     };
-    # a bare registry (no user kinds) compiles the 8 framework rows with the §2.2 field defaults.
+    # a bare registry (no user kinds) compiles the 8 framework rows with the §2.2 field defaults. A framework
+    # kind defaults `to = "materialize"` (§7): only the den.relations desugar overrides it to `query` — a
+    # framework resolution kind is on-trace by default.
     test-edges-compile-defaults = {
       expr =
         let
@@ -704,6 +706,7 @@ in
         inverse = null;
         closure = false;
         stratum = "resolution";
+        to = "materialize";
       };
     };
     # a user kind merges beside the framework rows (both present in the compiled table).

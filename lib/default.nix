@@ -1506,6 +1506,10 @@ let
           demandEdges
           channelNames
           ;
+        # The §7 projection filter: keep only `to ∈ { materialize, both }` edge kinds on the materialization
+        # trace. Relation kinds (`den.relations` desugar) carry `to = "query"` and are filtered off — inert on
+        # the corpus (relation edges never join `edgesForRoot`), formalizing the off-trace parity seam.
+        materializeFilter = edgesLib.materializeEdges edgeKindTable;
         interpret = ent.config.den.interpret or { };
         # The post-resolution binding-enrichment hook (native default = identity, byte-identical). A11-lazy:
         # applied inside `bindingsAt`, so forcing the systems spine never forces it, and a hook that stamps a

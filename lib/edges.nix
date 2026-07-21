@@ -93,6 +93,11 @@ let
   # `produces` are the product typing (relation/derived kinds; unused by nest, whose typing derives from
   # its endpoint registries); `discipline` names the algebraic laws; `inverse` enables reverse queries;
   # `closure` is legal ONLY under a join-semilattice discipline (validated against the disciplines registry).
+  # `to ∈ { query, materialize, both }` (spec §7) is the PROJECTION TARGET — the parity-load-bearing tag: an
+  # edge-production declares WHERE its edges land. `query` is OFF the materialization trace (a relation/query
+  # edge — parity-safe); `materialize` is ON the trace (real config, like demandEdges); `both` lands on both.
+  # The DEFAULT is `materialize` — a framework/user/cascade kind is on-trace; the `den.relations` desugar
+  # (`relationsToEdgeKinds`) overrides it to `query`, keeping relation edges provably off the frozen trace.
   entryOf =
     disciplines: name: raw:
     let
@@ -104,6 +109,7 @@ let
         inverse = raw.inverse or null;
         closure = raw.closure or false;
         stratum = raw.stratum or preRegisteredStrata.${name} or "resolution";
+        to = raw.to or "materialize";
       };
     in
     # the shared closureGate validates the closure capability (present discipline + join-semilattice laws),
@@ -148,6 +154,24 @@ let
       }' (not in the compiled order)"
     else
       compiled;
+
+  # ── the projection filter (spec §7, the parity-load-bearing seam) ──────────────────────────────────────
+  # `projectsMaterialize compiledKinds edge` — does this edge land ON the materialization trace? It reads the
+  # edge's `kind` label, looks up the kind's `to` projection target in the compiled table, and keeps `to ∈
+  # { materialize, both }`. An UNLABELED edge (`kind = null` — the corpus content-edge majority) and a kind
+  # ABSENT from the table both default `materialize` (on-trace): the filter NEVER silently drops an edge it
+  # cannot classify — a parity-preserving default. Only a registered `to = query` kind (the `den.relations`
+  # desugar) is excluded, and relation edges never reach `edgesForRoot` anyway, so this is INERT on the corpus
+  # (it FORMALIZES the already-holding off-trace separation, it does not create it — spec §7). `materializeEdges`
+  # is the list filter output-modules.nix applies to `edgesForRoot`.
+  projectsMaterialize =
+    compiledKinds: e:
+    let
+      k = e.kind or null;
+      to = if k == null then "materialize" else (compiledKinds.${k}.to or "materialize");
+    in
+    to == "materialize" || to == "both";
+  materializeEdges = compiledKinds: edges: builtins.filter (projectsMaterialize compiledKinds) edges;
 
   # ── den.overrides: the pre-identity-freeze match/rewrite tier (spec §2.4) ──
   # Framework-emitted NEW-substrate edge INTENTS (`{ kind; from; to; data ? {}; }`) pass through the
@@ -489,6 +513,8 @@ in
     closureMessage
     closureGate
     compile
+    projectsMaterialize
+    materializeEdges
     applyOverrides
     assembleEdges
     nestProducer
