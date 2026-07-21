@@ -44,6 +44,7 @@ let
     "concern-relations.nix"
     "concern-derived.nix"
     "stratum-scope.nix"
+    "production-guard.nix"
     "concern-disciplines.nix"
     "linearization.nix"
     "settings.nix"

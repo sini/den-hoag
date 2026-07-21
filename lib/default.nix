@@ -40,6 +40,10 @@ let
   # stratum-scope (§2.3): the capability-scope arithmetic (edgesBelowStratum / ceilingGate / indexOf /
   # strataLt) shared by the relation accessors and the derive compute. See stratum-scope.nix.
   strataScopeLib = import ./stratum-scope.nix { inherit prelude; };
+  # production-guard (§8 law 5): the bounded-NTA registration law for a node-spawning production (`emit =
+  # nodes`). A STANDALONE guard — no `den.productions` user surface yet (Phase 5); Phase-5's productions compile
+  # calls it at registration. Inert on every current corpus. See production-guard.nix.
+  productionGuardLib = import ./production-guard.nix { strataScope = strataScopeLib; };
   # den.relations (§5): the relation registry desugared onto the den.edges edge-kind registry (§2.2
   # one-registry) — a relation → one edge-kind @resolution carrying its inverse label. See concern-relations.nix.
   relationsLib = import ./concern-relations.nix {
@@ -2248,6 +2252,10 @@ in
     # The stratum-scope arithmetic (§2.3): `edgesBelowStratum`/`ceilingGate`/`indexOf`/`strataLt`, for the
     # suite's capability-scope scenarios (the extraction's own witnesses beside the derived/acl behavior tests).
     strataScope = strataScopeLib;
+    # The bounded-NTA registration law (§8 law 5): `boundedNtaMessage`/`boundedNtaGuard` over a production-shaped
+    # record, for the suite's synthetic `emit = nodes` scenarios (the NAMED contract as a value — no fleet
+    # declares a node-spawning production yet; Phase 5 lands the surface + its consumer).
+    productionGuard = productionGuardLib;
     # The merge-discipline registry compile (§5) + the lib (its `reservedNames`/`lawClasses`), for the
     # suite's laws-ladder validation scenarios. `compileDisciplines { disciplines }`.
     compileDisciplines = concernDisciplines.compile;
