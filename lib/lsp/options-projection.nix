@@ -32,7 +32,40 @@ let
       builtins.mapAttrs (_: walk) node
     else
       node;
+
+  # The aspect-registry projection (§ options-projection): synthesize one nixd-walkable SUBMODULE option
+  # node per DECLARED aspect instance so an LSP completes aspect names as submodules and each aspect's
+  # settings (§2.6 schema) as sub-options. Its input is `den.aspects` (= `config.den.aspects`, keyed by
+  # aspect name) — the ONE projection that reads resolved config, but only the aspect DECLARATION merge:
+  # a field-spec's `{ default; merge ? }` record (§2.6 source 1, concern-aspects settingsModule) is static
+  # data forced without entering the resolution fixpoint or materialization, so the walk stays fx-free.
+  #
+  # A settings field VALUE is a `{ default; merge ? "replace"; }` RECORD, NOT a `mkOption` decl — the leaf
+  # is SYNTHESIZED from it (leaf `default = record.default`; `type = raw` since settings are lazyAttrsOf raw).
+  synthSetting = fieldVal: {
+    _type = "option";
+    default = fieldVal.default or null;
+    description = "";
+    type = {
+      name = "raw";
+    };
+  };
+  # One aspect → a submodule option node. `getSubOptions` yields the synthesized settings leaves (a nixd
+  # submodule descends through it); `description` falls back to the built-in `"Aspect ${name}"` default.
+  aspectNode = name: a: {
+    _type = "option";
+    description = a.description or "Aspect ${name}";
+    type = {
+      name = "submodule";
+      getSubOptions = _: builtins.mapAttrs (_: synthSetting) (a.settings or { });
+    };
+  };
 in
 {
   optionsProjection = { options }: walk options;
+
+  # KNOWN LIMIT: this projects DECLARED aspect instances (`attrNames aspects`), not a fixed catalog (den
+  # has none) — an empty/new fleet (`aspects == { }`) projects nothing. Correct + sufficient for listing +
+  # completing already-declared aspects and their settings; it does NOT discover undeclared aspects.
+  aspectsProjection = { aspects }: builtins.mapAttrs aspectNode aspects;
 }
