@@ -1,4 +1,5 @@
 result
+lsp-mcp/target/
 .direnv
 .gcroots
 .worktrees/

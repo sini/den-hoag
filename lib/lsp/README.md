@@ -44,18 +44,26 @@ serve a subset.
 
 ## Consumer wiring
 
-Expose the projections at any flake output, then point each nixd `options.<name>.expr` at it. A flake
-output is chosen (over inlining the whole `mkDen` in the `expr` string) so nixd re-reads it cheaply
-and the expression stays short:
+Expose the projections under ONE namespaced flake output, `den-lsp`, then point each nixd
+`options.<name>.expr` at its `options` view. One output carries both consumer surfaces — `options` (the raw
+projections nixd walks, here) and `enumerate` (the JSON-safe view the [den LSP MCP server](../../lsp-mcp)
+reads). A flake output is chosen (over inlining the whole `mkDen` in the `expr` string) so nixd re-reads it
+cheaply and the expression stays short:
 
 ```nix
-# flake.nix — expose the projection surface for nixd
+# flake.nix — expose the den LSP surface (both views)
 {
   outputs = { self, den, ... }: {
     # … your fleet's modules live somewhere, e.g. `self.fleetModules` …
-    lspOptions = den.lib.lsp.forNixd {
-      den = (den.lib.mkDen self.fleetModules).den;
-      inherit (den.lib) internal;
+    den-lsp = {
+      options = den.lib.lsp.forNixd {
+        den = (den.lib.mkDen self.fleetModules).den;
+        inherit (den.lib) internal;
+      };
+      enumerate = den.lib.lsp.forNixdJSON {   # the MCP server's JSON-safe view (optional if no MCP)
+        den = (den.lib.mkDen self.fleetModules).den;
+        inherit (den.lib) internal;
+      };
     };
   };
 }
@@ -67,13 +75,13 @@ Then the nixd config — as JSON (`.nixd.json` / editor `settings`):
 {
   "options": {
     "den": {
-      "expr": "(builtins.getFlake (builtins.toString ./.)).lspOptions.den"
+      "expr": "(builtins.getFlake (builtins.toString ./.)).\"den-lsp\".options.den"
     },
     "den-aspects": {
-      "expr": "(builtins.getFlake (builtins.toString ./.)).lspOptions.\"den-aspects\""
+      "expr": "(builtins.getFlake (builtins.toString ./.)).\"den-lsp\".options.\"den-aspects\""
     },
     "gen": {
-      "expr": "(builtins.getFlake (builtins.toString ./.)).lspOptions.gen"
+      "expr": "(builtins.getFlake (builtins.toString ./.)).\"den-lsp\".options.gen"
     }
   }
 }
@@ -83,9 +91,9 @@ Then the nixd config — as JSON (`.nixd.json` / editor `settings`):
 
 ```nix
 nixd.settings.options = {
-  den.expr = ''(builtins.getFlake (builtins.toString ./.)).lspOptions.den'';
-  "den-aspects".expr = ''(builtins.getFlake (builtins.toString ./.)).lspOptions."den-aspects"'';
-  gen.expr = ''(builtins.getFlake (builtins.toString ./.)).lspOptions.gen'';
+  den.expr = ''(builtins.getFlake (builtins.toString ./.))."den-lsp".options.den'';
+  "den-aspects".expr = ''(builtins.getFlake (builtins.toString ./.))."den-lsp".options."den-aspects"'';
+  gen.expr = ''(builtins.getFlake (builtins.toString ./.))."den-lsp".options.gen'';
 };
 ```
 

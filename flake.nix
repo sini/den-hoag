@@ -236,5 +236,45 @@
       formatter = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
         system: inputs.nixpkgs.legacyPackages.${system}.nixfmt-tree
       );
+
+      # ── The LSP enumeration MCP server (M1 Task 7) ────────────────────────────────────────────────
+      # An ADDITIVE package output — the thin stdio MCP server (`lsp-mcp/`, Rust) that exposes the den/gen
+      # API surface to agents as read-only enumeration tools. It embeds NO Nix evaluator: each tool drives
+      # the customer's own `nix` (from PATH — interpreter-agnostic) over a fleet's `lspEnumerate` output
+      # (`den.lib.lsp.forNixdJSON`, the JSON-safe enumeration view of the projections). This output touches
+      # only nixpkgs (the same formatter-only input; the lib/ substrate stays nixpkgs-lib-free) and does not
+      # perturb `lib` / `compat` / `flakeModule` (the ci/ flake reads only those). `nix build .#lsp-mcp`
+      # builds the binary; `nix run .#lsp-mcp -- --fleet <ref>` runs it. `doCheck = false`: the cargo smoke
+      # test spawns a real `nix` and cannot run inside the hermetic build sandbox — it runs in dev/CI via
+      # `cargo test` (lsp-mcp/tests/smoke.rs), beside the Nix-side JSON contract (ci/tests/lsp-mcp-enumerate).
+      packages = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
+        system:
+        let
+          pkgs = inputs.nixpkgs.legacyPackages.${system};
+        in
+        {
+          lsp-mcp = pkgs.rustPlatform.buildRustPackage {
+            pname = "den-lsp-mcp";
+            version = "0.1.0";
+            # Only the crate's own files (never `target/`), via fileset — a stable build source whether
+            # evaluated from a clean git tree or a dirty working copy.
+            src = pkgs.lib.fileset.toSource {
+              root = ./lsp-mcp;
+              fileset = pkgs.lib.fileset.unions [
+                ./lsp-mcp/Cargo.toml
+                ./lsp-mcp/Cargo.lock
+                ./lsp-mcp/src
+                ./lsp-mcp/tests
+              ];
+            };
+            cargoLock.lockFile = ./lsp-mcp/Cargo.lock;
+            doCheck = false;
+            meta = {
+              description = "den LSP enumeration MCP server (drives the customer's nix; interpreter-agnostic)";
+              mainProgram = "lsp-mcp";
+            };
+          };
+        }
+      );
     };
 }

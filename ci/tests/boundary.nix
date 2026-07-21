@@ -62,6 +62,7 @@ let
     "nest.nix"
     "graph-escape.nix"
     "lsp/options-projection.nix"
+    "lsp/enumerate.nix"
     "lsp/positions.nix"
     "attributes/default.nix"
     "attributes/structural.nix"

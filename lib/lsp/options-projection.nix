@@ -162,6 +162,27 @@ let
       "den-aspects" = aspectsProjection { aspects = den.aspects; };
       gen = genLibProjection { inherit internal; };
     };
+
+  # The JSON-safe enumeration VIEW over the projections (§ enumerate). ONE projection, TWO views: `forNixd`
+  # is the IN-PROCESS view a nixd worker walks (an option leaf's `.type` is a function-carrying type record,
+  # an aspect node's `getSubOptions` a function — nixd calls them in its own evaluator); `forNixdJSON` is the
+  # WIRE view — `builtins.toJSON` (the MCP enumeration server's `nix eval --json`) cannot serialize functions,
+  # so `enumerate` re-projects each tree into JSON-safe records (leaf → `_type`/description/type-NAME/(JSON-
+  # safe default)/formals; aspect → settings descended one level; gen passes through). Pure builtins, no gen
+  # dep — the second E0 consumer surface beside forNixd. Keeping BOTH here (not one in Rust) makes the lib the
+  # single source of truth and leaves the MCP server a dumb thin transport (shell `nix eval --json`, no logic).
+  enumerate = import ./enumerate.nix { };
+
+  # The MCP-enumeration consumer entry: the same `{ den, internal }` forNixd takes, but returning the three
+  # JSON-safe enumeration trees (`enumerate.fromForNixd` over forNixd). A fleet exposes BOTH views under one
+  # namespaced flake output — `den-lsp = { options = forNixd {…}; enumerate = forNixdJSON {…}; }` — so the MCP
+  # server `nix eval --json`s `den-lsp.enumerate.<sel>` while a nixd worker points at `den-lsp.options.den`.
+  # Both are keyed identically (`den` / `den-aspects` / `gen`).
+  forNixdJSON =
+    { den, internal }:
+    enumerate.fromForNixd (forNixd {
+      inherit den internal;
+    });
 in
 {
   # The generic source-position layer, exposed on `den.lib.lsp.positions` for a later graph/nav consumer
@@ -172,5 +193,7 @@ in
     aspectsProjection
     genLibProjection
     forNixd
+    enumerate
+    forNixdJSON
     ;
 }
