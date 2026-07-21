@@ -324,7 +324,7 @@ let
   # compile the dedup production STANDALONE and grab the raw spawn equation's compute — the framework-authored
   # `self: id: prod.spawnNode (self.get id "dedup")`. Applied against a stub `self` returning the canned gather
   # for the "dedup" attr and THROWING for anything else: it succeeds ⇒ the spawn read EXCLUSIVELY its gather
-  # (else the emit = nodes two-equation MR-hole re-opens — a schedule-invisible below-stratum read in the nta).
+  # (else the emit = nodes two-equation hole re-opens — a schedule-invisible below-stratum read in the nta).
   lowered = denHoag.internal.productions.compile { productions.dedup = dedupProd; };
   spawnFn = lowered.equations."dedup__spawn".compute;
   cannedGather = {

@@ -251,7 +251,7 @@ in
     };
 
     # ── (2) a provider/consumer reverse-reads the DESUGARED sub-claims strictly-below → RESOLVED values ──
-    # (via structural.eval.get, MR6 — warm-served resolution, never a manifest). BOTH sub-claims target
+    # (via structural.eval.get, the resolved-value contract — warm-served resolution, never a manifest). BOTH sub-claims target
     # gateway (arr → gateway), so gateway's reverse view sees arr as its connect AND secret claimer — proving
     # the composite desugared into BOTH sub-claim kinds, each reverse-readable strictly below `resolution`.
     test-provider-reverse-desugared-connect = {

@@ -26,7 +26,7 @@ let
   cid = k: "cnode:${builtins.hashString "sha256" k}";
 
   # THE DEDUP PRODUCTION (§5, emit = nodes). Declared ONCE + reused: in the fleet (config.den.productions.dedup)
-  # AND in the standalone `compile` for the Blocker-C structural proof. stratum = resolution (the gather reads
+  # AND in the standalone `compile` for the structural-closure proof. stratum = resolution (the gather reads
   # claim-accessor INTRA-stratum, A9); `from` names the claim stratum strictly below (L2-clean); identity =
   # content + keyspace + mode = all satisfy the L5 bounded-NTA guard.
   dedupProd = {
