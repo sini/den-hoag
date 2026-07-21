@@ -8,6 +8,19 @@
 # structure-only + reads a leaf's static `.type`: it never forces resolved fleet `.config`.
 { }:
 let
+  # The generic source-position layer (§ options-projection): `positions.positionsOf { fields } raw` maps a
+  # raw attrset to its fields' declaration sites (`unsafeGetAttrPos` over the un-merged AST). Reused here to
+  # attach `declarationPositions` to option leaves; standalone-reusable by later graph/nav consumers.
+  positions = import ./positions.nix { };
+  # The fields a MERGED option leaf carries whose source position IS its declaration site (its `mkOption`
+  # block): `type` first (a real option always declares it), `default`/`description` as fallbacks for a
+  # leaf whose `type` position is reconstructed. First hit → the declaration anchor (positions.nix).
+  optionLeafFields = [
+    "type"
+    "default"
+    "description"
+  ];
+
   # A gen-merge option leaf: an attrset tagged `_type == "option"`.
   isOptionDecl = v: builtins.isAttrs v && v ? _type && v._type == "option";
   # The refinement strip (gen-schema bridge.nix): a refined type (`__schema` carrying `refinements`) is
@@ -16,11 +29,14 @@ let
   # Project one leaf: keep every option field (`description`/`default`/…), cleaning refinement metadata
   # off `.type` (a typeless leaf projects `type = null`). A non-refined submodule/attrsOf type passes
   # through by identity, so its descent shape (`getSubOptions` / `nestedTypes.elemType`) is preserved.
+  # `declarationPositions` is read from the ORIGINAL `opt` (the un-merged leaf), NOT the `opt // { … }`
+  # result — `unsafeGetAttrPos` on the rebuilt attrset would locate this file's `//`, not the source decl.
   projectLeaf =
     opt:
     opt
     // {
       type = if opt ? type then stripRefinements opt.type else null;
+      declarationPositions = positions.positionsOf { fields = optionLeafFields; } opt;
     };
   # The tree walk: project at each option leaf, recurse through every other attrset, pass non-attrs
   # through — a leaf's own nested types ride inside its projected `.type`, never re-walked (no flatten).
@@ -119,6 +135,10 @@ let
     if builtins.isAttrs lib then builtins.mapAttrs (projectGenLibMember libName) lib else { };
 in
 {
+  # The generic source-position layer, exposed on `den.lib.lsp.positions` for a later graph/nav consumer
+  # to reuse independently of options (`positions.positionsOf { fields } raw` → nixd goto records).
+  inherit positions;
+
   optionsProjection = { options }: walk options;
 
   # KNOWN LIMIT: this projects DECLARED aspect instances (`attrNames aspects`), not a fixed catalog (den
