@@ -51,10 +51,11 @@ let
   # pair is lawful (closure = false is a no-op), else the NAMED message. Factored out of `entryOf` so BOTH the
   # edge registry AND the den.derived closure field-gate validate the SAME law (one source of truth —
   # re-implementing would fork it), AND so the NAMED contract is CI-testable (Nix's `tryEval` cannot capture a
-  # throw's text). A closure declaration is legal ONLY under a registered join-semilattice discipline (idempotence
-  # is what makes the reachable-set fixpoint converge — Datafun). `disciplines` is the compiled disciplines
-  # registry; `subject` + `name` name the locus — `subject` defaults to the edge-registry prefix, and a caller
-  # (e.g. a den.derived field-gate) passes its own so the message names ITS surface.
+  # throw's text). A closure declaration is legal ONLY under a registered join-semilattice discipline whose
+  # carrier is ACC (idempotence is what makes the reachable-set fixpoint converge — Datafun — and the
+  # ascending-chain condition is what bounds its iteration to a finite fixpoint). `disciplines` is the compiled
+  # disciplines registry; `subject` + `name` name the locus — `subject` defaults to the edge-registry prefix,
+  # and a caller (e.g. a den.derived field-gate) passes its own so the message names ITS surface.
   closureMessage =
     disciplines:
     {
@@ -69,6 +70,12 @@ let
       "${subject} '${name}' declares closure = true with discipline '${discipline}', which is not in the disciplines registry — closure requires a registered join-semilattice discipline"
     else if closure && disciplines.${discipline}.laws != "join-semilattice" then
       "${subject} '${name}' declares closure = true with discipline '${discipline}' (laws '${disciplines.${discipline}.laws}') — closure is legal ONLY under a join-semilattice discipline"
+    # the ACC obligation: a JSL discipline whose carrier is not ACC (finite-height) cannot bound the fixpoint
+    # iteration. This branch NEVER fires on the corpus — the only shipped JSL discipline (reach-closure) is
+    # acc = true (a join-semilattice compiles acc = true FREE, concern-disciplines.nix `entryOf`) — so it is a
+    # NEW message that leaves every existing closure edge / derived closure green.
+    else if closure && !(disciplines.${discipline}.acc or false) then
+      "${subject} '${name}' declares closure = true with discipline '${discipline}' (join-semilattice but not ACC) — closure requires an ACC / finite-height carrier: the ascending-chain condition is what bounds the reachable-set fixpoint iteration"
     else
       null;
 

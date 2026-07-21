@@ -189,6 +189,15 @@ let
   # (the fold-engine reference, framework instances only); absent ⇒ null. Their SUB-SHAPE is passed
   # through unvalidated here — the sub-field checks land with the framework instance declarations that
   # populate them (the instances are the only writers of dedup/order/engine in this step).
+  #
+  # `acc` — the DECLARED ascending-chain / finite-height capability bit (spec §5, the closure obligation):
+  # a fixpoint closure needs a carrier whose join-chains STABILIZE (the ascending-chain condition is what
+  # bounds the reachable-set iteration — Datafun's finite-domain restriction). ACC is DECLARED, not
+  # machine-checked ("finite-carrier" is not decidable from the combine), so it is defaulted CRISPLY: a
+  # join-semilattice gets acc = true FREE (the admitted JSL disciplines are bounded-height lattices —
+  # reach-closure's key-set carrier is finite over the aspect pool), else it is `raw.acc or false`. The
+  # closure gate (edges.nix `closureMessage`) reads this bit: a closure is legal ONLY under a
+  # join-semilattice AND acc = true.
   entryOf =
     name: raw:
     let
@@ -206,6 +215,9 @@ let
       {
         inherit laws;
         inherit (raw) empty combine;
+        # a join-semilattice is ACC by construction (the admitted JSL disciplines are bounded-height); any
+        # other class must DECLARE acc explicitly (default false).
+        acc = if laws == "join-semilattice" then true else (raw.acc or false);
         dedup = raw.dedup or null;
         order = raw.order or null;
         engine = raw.engine or null;
