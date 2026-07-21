@@ -60,6 +60,63 @@ let
       getSubOptions = _: builtins.mapAttrs (_: synthSetting) (a.settings or { });
     };
   };
+
+  # The gen-lib API-surface projection (§ options-projection): project the 19 gen substrate libraries as an
+  # option-tree of members so an LSP completes/hovers a gen-lib member. THIN BY DESIGN (den-map finding: the
+  # gen libs are FLAT function attrsets carrying no type/signature metadata) — this projects member NAMES +
+  # `functionArgs` PARTIAL formals, NEVER typed signatures. The `internal` input MIXES the 19 libs with ~30
+  # den helper closures (buildRoots/runResolve/structural/compilePolicies/…, lib/default.nix internal block),
+  # so membership is an EXPLICIT allowlist — never `attrNames internal`. The walk reads only `attrNames` +
+  # `functionArgs` (config-free): it never enters the fx pipeline, so no fleet `.config` is forced.
+  genLibNames = [
+    "prelude"
+    "dispatch"
+    "resolve"
+    "scope"
+    "select"
+    "product"
+    "aspects"
+    "pipe"
+    "settings"
+    "algebra"
+    "demand"
+    "edge"
+    "bind"
+    "class"
+    "merge"
+    "flake"
+    "schema"
+    "identity"
+    "genGraph"
+  ];
+  # The allowlist as an attrset (any value): `intersectAttrs allow internal` keeps only the 19 lib keys,
+  # dropping every den helper — the filter that makes the projection lib-only.
+  genLibAllow = builtins.listToAttrs (
+    map (n: {
+      name = n;
+      value = null;
+    }) genLibNames
+  );
+  # DEFERRED ENRICHMENT (doc citations): the plan wants per-lib doc text (README / gen-specs REFERENCE.md) as
+  # a member's hover `description`, but no doc source is reachable from a lib's pure function VALUE — the libs
+  # are flake inputs (READMEs live in input store paths, absent from the `.lib` attrset) and gen-specs live in
+  # a separate papers repo, not den-hoag. So `docFor` stubs to "" (empty description, never an error); wiring
+  # real docs needs the lib-source paths threaded, out of this projection's pure `{ internal }` scope.
+  docFor = _libName: _member: "";
+  # One member → an option leaf: names + doc (deferred) + `functionArgs` formals when the member is a lambda
+  # (a non-function member — a nested sub-namespace like `flake.terminals` — projects a bare leaf, no formals).
+  projectGenLibMember =
+    libName: member: fn:
+    {
+      _type = "option";
+      description = docFor libName member;
+    }
+    // (if builtins.isFunction fn then { formals = builtins.functionArgs fn; } else { });
+  # One lib → an attrset of its projected members. A lib carried as a bare function (none today; the guard is
+  # defensive) projects an empty member set rather than tripping `mapAttrs`.
+  projectGenLib =
+    libName: lib:
+    if builtins.isAttrs lib then builtins.mapAttrs (projectGenLibMember libName) lib else { };
 in
 {
   optionsProjection = { options }: walk options;
@@ -68,4 +125,11 @@ in
   # has none) — an empty/new fleet (`aspects == { }`) projects nothing. Correct + sufficient for listing +
   # completing already-declared aspects and their settings; it does NOT discover undeclared aspects.
   aspectsProjection = { aspects }: builtins.mapAttrs aspectNode aspects;
+
+  # KNOWN LIMIT (thin by design): this projects member NAMES + `functionArgs` formals, NOT typed signatures —
+  # the gen libs carry no type metadata (den-map). Doc citations are a deferred enrichment (see `docFor`): a
+  # member's `description` is empty until lib-source paths are threaded. The allowlist keeps the projection
+  # lib-only against `internal`'s mixed helper+lib content.
+  genLibProjection =
+    { internal }: builtins.mapAttrs projectGenLib (builtins.intersectAttrs genLibAllow internal);
 }
