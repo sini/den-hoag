@@ -56,6 +56,13 @@ let
     inherit prelude;
     strataScope = strataScopeLib;
   };
+  # den.productions (§5, Phase 5a): the resolution-facet production surface — the definition-time vocabulary +
+  # laws validator (`productionMessage`) and the compile-to-equation (`compile`, one `resolve.attr` per
+  # production). See concern-productions.nix.
+  productionsLib = import ./concern-productions.nix {
+    inherit prelude resolve;
+    strataScope = strataScopeLib;
+  };
   entity = import ./entity.nix { inherit prelude schema merge; };
   # The collectors concern (§4.7): the framework `collector` entity kind — the `den.collectors` option, the
   # denMeta `//`-augment (gated on collectors present), the schema-decl + registry bridge, the compiled-surface
@@ -502,6 +509,22 @@ let
         };
       };
 
+      # den.productions.<name> — the resolution-facet production surface (§5, Phase 5a). Each entry is a
+      # REGISTRATION + CONTRACT + LAWS-GATING record `{ stratum; from; emit; discipline; mode; readsAttrs;
+      # compute }` — a production SUPPLIES its own PASSTHROUGH `compute = self: id: value`, compiled to a
+      # gen-resolve synthesized attr equation and threaded into the ONE equations map. `from` is the DECLARED
+      # SOURCE CONTRACT (drives the L2 gate, not executed); `readsAttrs` names the compute-internal reads.
+      # Phase 5a is LOWER-ONLY (emit = attr, mode = all, from kinds ∈ { query, pool }); anything else is a
+      # NAMED Phase-5b rejection at registration. `raw` holds each record unmerged (its `compute` is a
+      # function). Absent ⇒ a fleet registering no productions (byte-identical to the pre-Phase-5a map).
+      productionsDecl = {
+        options.den.productions = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Resolution-facet production registry (§5, Phase 5a): `<name> = { stratum; from; emit; discipline; mode; readsAttrs; compute }` — a passthrough attr production compiled to a synthesized attr equation; LOWER-ONLY (emit = attr, mode = all, from ∈ { query, pool }).";
+        };
+      };
+
       # den.conversions."<from>-><to>" — the single-step conversion registry (§4.1). Each entry declares the
       # materialization for a (produces, consumes) mismatch: `{ via = fn; }`. `raw` holds each record
       # unmerged (its `via` is a function). Uniqueness is GLOBAL per pair by keying; conversions are
@@ -784,6 +807,7 @@ let
           disciplinesDecl
           productsDecl
           resolutionProductsDecl
+          productionsDecl
           conversionsDecl
           rendersDecl
           kindsDecl
@@ -1136,6 +1160,20 @@ let
         builtins.seq derivedClosureGuard (ent.config.den.derived or { })
       );
 
+      # THE PRODUCTIONS GUARD (§5, Phase 5a): the definition-time vocabulary + laws validation of each
+      # `den.productions` entry against the LOWER-ONLY vocabulary (emit/mode/from-kind — the Phase-5b
+      # boundary), the compiled disciplines registry (`discipline` membership), the compiled strata order
+      # (`stratum` membership + the P3 L2 from-source gate), and required-field presence — a VALUE-DETECTOR
+      # thrown when non-null (the derivedGuard posture). Read-only + corpus-inert (empty `den.productions` ⇒
+      # the detector is null ⇒ no throw). The guarded table `productionsTable` seq's the guard, so forcing it
+      # (via the equations-map compile OR the `den.productions` surface) fires the validation.
+      productionsGuardMessage = productionsLib.productionMessage {
+        strataOrder = compiledStrata;
+        disciplineNames = builtins.attrNames disciplinesTable;
+      } (ent.config.den.productions or { });
+      productionsGuard = if productionsGuardMessage != null then throw productionsGuardMessage else null;
+      productionsTable = builtins.seq productionsGuard (ent.config.den.productions or { });
+
       # The compiled single-step conversion table (§4.1): the fleet's `den.conversions` pairs, validated
       # (key well-formedness, no ArtifactRef endpoint). Global per-pair uniqueness holds by keying.
       conversionsTable = productsLib.compileConversions {
@@ -1484,6 +1522,7 @@ let
           relationEdgeKinds
           derivedTable
           ;
+        productions = productionsTable;
         strataOrder = compiledStrata;
       };
 
@@ -2116,6 +2155,12 @@ let
         # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated
         # (laws ladder): the framework merge-order instances seeded, plus any user registration.
         disciplines = disciplinesTable;
+        # The resolution-facet production registry (§5, Phase 5a): the fleet's `den.productions`, guard-forced
+        # — reading this surface fires the vocabulary + laws validation (a non-P5a emit/mode/from-kind, an
+        # unregistered discipline, an unknown/too-early stratum, or the L2 from-source gate all abort NAMED).
+        # Each entry compiles to a synthesized attr equation threaded into the equations map (read via
+        # `structural.eval.get id <name>`).
+        productions = productionsTable;
         # The compiled typed-product table (§4.1): framework faces + `den.products` registrations, validated
         # (mode-set). Materialization derives each receiver's mode from it (F1's canonical machine form).
         products = productsTable;
@@ -2298,6 +2343,9 @@ in
     # The stratum-scope arithmetic (§2.3): `edgesBelowStratum`/`ceilingGate`/`indexOf`/`strataLt`, for the
     # suite's capability-scope scenarios (the extraction's own witnesses beside the derived/acl behavior tests).
     strataScope = strataScopeLib;
+    # The resolution-facet production surface (§5, Phase 5a): the lib (`productionMessage` validator +
+    # `compile`), for the suite's vocabulary/laws-gate scenarios (the NAMED contract as a value).
+    productions = productionsLib;
     # The bounded-NTA registration law (§8 law 5): `boundedNtaMessage`/`boundedNtaGuard` over a production-shaped
     # record, for the suite's synthetic `emit = nodes` scenarios (the NAMED contract as a value — no fleet
     # declares a node-spawning production yet; Phase 5 lands the surface + its consumer).

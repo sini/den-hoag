@@ -96,6 +96,11 @@ let
     derived = import ../concern-derived.nix { inherit prelude strataScope; };
     query = import ../query.nix { inherit prelude graph; };
   };
+  # §5 Phase 5a — the resolution-facet production equations. Each `den.productions` entry compiles to a
+  # synthesized attr equation (`resolve.attr`, PASSTHROUGH over the production's own `compute`), merged into
+  # the ONE equations map like the relation/derived accessors. The vocabulary + laws validation is the
+  # definition-time guard (default.nix); this only builds the attr records. See concern-productions.nix.
+  resolutionProductions = import ../concern-productions.nix { inherit prelude strataScope resolve; };
 in
 {
   # The full equation map. Structural attributes shape the graph (they never read a resolution
@@ -136,6 +141,9 @@ in
       relationEdgeKinds ? { },
       strataOrder ? [ ],
       derivedTable ? { },
+      # §5 Phase 5a — the guard-validated `den.productions` table; each entry compiles to a passthrough attr
+      # equation merged into the map. Empty ⇒ `{ }` ⇒ byte-identical to the pre-Phase-5a equation map.
+      productions ? { },
     }:
     (structural { inherit policiesRules fleetChildren linkTarget; })
     // {
@@ -190,7 +198,8 @@ in
         strataOrder
         derivedTable
         ;
-    });
+    })
+    // (resolutionProductions.compile { inherit productions; });
 
   # The narrow accessor (A10) builder — depends only on the aspect registry + the final eval, not the
   # resolved-settings instance args, so den-hoag applies it once at the top level.

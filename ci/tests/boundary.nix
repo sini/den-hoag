@@ -43,6 +43,7 @@ let
     "concern-collectors.nix"
     "concern-relations.nix"
     "concern-derived.nix"
+    "concern-productions.nix"
     "stratum-scope.nix"
     "production-guard.nix"
     "concern-disciplines.nix"
