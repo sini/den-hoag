@@ -6,6 +6,7 @@
 # aspect at the same key). Test key suffixed `-regression-408` per the deadbug-origin convention.
 {
   denHoagFlakeModule,
+  homeManagerModule,
   genInputs,
   nixpkgs,
   nixpkgsLib,
@@ -13,7 +14,12 @@
 }:
 let
   denTest = import ../_lib/den-compat-test.nix {
-    inherit denHoagFlakeModule nixpkgs nixpkgsLib;
+    inherit
+      denHoagFlakeModule
+      homeManagerModule
+      nixpkgs
+      nixpkgsLib
+      ;
     flakeParts = genInputs.flake-parts;
   };
 in

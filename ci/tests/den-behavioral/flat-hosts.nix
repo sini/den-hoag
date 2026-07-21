@@ -4,6 +4,7 @@
 # flat/by-name addressing — the bridge's `flattenHosts` two-level fold, ci/tests/compat-flat-host.nix).
 {
   denHoagFlakeModule,
+  homeManagerModule,
   genInputs,
   nixpkgs,
   nixpkgsLib,
@@ -11,7 +12,12 @@
 }:
 let
   denTest = import ../_lib/den-compat-test.nix {
-    inherit denHoagFlakeModule nixpkgs nixpkgsLib;
+    inherit
+      denHoagFlakeModule
+      homeManagerModule
+      nixpkgs
+      nixpkgsLib
+      ;
     flakeParts = genInputs.flake-parts;
   };
 in

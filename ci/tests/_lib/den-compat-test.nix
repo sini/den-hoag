@@ -35,6 +35,7 @@
 {
   denHoagFlakeModule,
   flakeParts,
+  homeManagerModule,
   nixpkgs,
   nixpkgsLib,
 }:
@@ -45,11 +46,34 @@ let
   # system (its `crossNixos` fold, ship-gate M1) instead of the nixpkgs-free `collect`. `mkDefault` keeps
   # the v1 defaults yielding to a migrated test's own def; the bridge's `v1DeepMerge` for `den.default`
   # folds them cross-module.
+  #
   defaultsModule = {
     den.schema.user.classes = lib.mkDefault [ "homeManager" ];
     den.default.nixos.system.stateVersion = lib.mkDefault "25.11";
     den.default.homeManager.home.stateVersion = lib.mkDefault "25.11";
     den.nixpkgs = nixpkgs;
+  };
+
+  # FIX 2 (home-manager crossing). den v1's hm battery imports each host's CHANNEL `home-manager.module`
+  # into the host's nixos class GATED on the host carrying an HM-classed user (`hostHasClass`, home-env.nix);
+  # den-hoag CI has no channel, so the scaffold supplies the input's `home-manager.nixosModules.home-manager`
+  # as that per-host module. It rides the compat terminal's `hmModuleFor` path (which imports a host's
+  # `home-manager.module` when present, mkNixosInstantiate) via a HOST-KIND module: each host instance sets
+  # `home-manager.module` IFF it has ≥1 user (with the `den.schema.user.classes = ["homeManager"]` default an
+  # HM-classed user ⟺ any user). So a host WITH users realizes `igloo.home-manager.users.<u>` (tuxHm/pinguHm)
+  # + the `home-manager.*` options (use-global-pkgs), and a USER-LESS host imports nothing —
+  # `config ? home-manager` stays false (the v1 gate, kept intact). Gated per-instance (reads the host's own
+  # `config.users`), never a fleet-level fixpoint.
+  hmHostGateModule =
+    { config, ... }:
+    {
+      # Unconditional module shape, mkIf'd VALUE (a conditional module STRUCTURE that reads `config` recurses
+      # — the module system's `config in imports` trap). mkIf false ⇒ no def ⇒ `hmModuleFor` reads null ⇒ no
+      # import (v1's user-less-host gate); mkIf true ⇒ the hm module is imported for the host.
+      config.home-manager.module = lib.mkIf ((config.users or { }) != { }) homeManagerModule;
+    };
+  hmSeedModule = {
+    den.schema.host.imports = [ hmHostGateModule ];
   };
 
   # The builtinsModule `fleet-context-enrich` policy (lib/compat/builtins.nix → fleet-context.nix) enriches
@@ -123,6 +147,7 @@ let
               denHoagFlakeModule
               defaultsModule
               envSeedModule
+              hmSeedModule
               fleetModule
             ];
           };

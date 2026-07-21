@@ -5,6 +5,7 @@
 # hosts / must see inherited den.default membership).
 {
   denHoagFlakeModule,
+  homeManagerModule,
   genInputs,
   nixpkgs,
   nixpkgsLib,
@@ -12,7 +13,12 @@
 }:
 let
   denTest = import ../_lib/den-compat-test.nix {
-    inherit denHoagFlakeModule nixpkgs nixpkgsLib;
+    inherit
+      denHoagFlakeModule
+      homeManagerModule
+      nixpkgs
+      nixpkgsLib
+      ;
     flakeParts = genInputs.flake-parts;
   };
 in

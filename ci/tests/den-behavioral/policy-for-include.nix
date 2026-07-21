@@ -4,6 +4,7 @@
 # (policy.for / policy.when wrapping policy.include and inline aspects, on den.schema.host.includes).
 {
   denHoagFlakeModule,
+  homeManagerModule,
   genInputs,
   nixpkgs,
   nixpkgsLib,
@@ -11,7 +12,12 @@
 }:
 let
   denTest = import ../_lib/den-compat-test.nix {
-    inherit denHoagFlakeModule nixpkgs nixpkgsLib;
+    inherit
+      denHoagFlakeModule
+      homeManagerModule
+      nixpkgs
+      nixpkgsLib
+      ;
     flakeParts = genInputs.flake-parts;
   };
 in

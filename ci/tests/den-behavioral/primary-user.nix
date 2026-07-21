@@ -8,6 +8,7 @@
 # (lib/compat/batteries.nix `config.den.batteries = { primary-user = primaryUser; ... }`).
 {
   denHoagFlakeModule,
+  homeManagerModule,
   genInputs,
   nixpkgs,
   nixpkgsLib,
@@ -15,7 +16,12 @@
 }:
 let
   denTest = import ../_lib/den-compat-test.nix {
-    inherit denHoagFlakeModule nixpkgs nixpkgsLib;
+    inherit
+      denHoagFlakeModule
+      homeManagerModule
+      nixpkgs
+      nixpkgsLib
+      ;
     flakeParts = genInputs.flake-parts;
   };
 in
