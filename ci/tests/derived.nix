@@ -192,24 +192,24 @@ let
     stratum = "closure";
     derive = node: _: membersClosureQuery node;
   };
-  # capability bound (§2.3): the SAME query body at stratum=resolution — memberOf sits at resolution, NOT
-  # strictly below the derive's own stratum, so its edges are EXCLUDED from the scoped source. The follow
-  # yields EMPTY (silent capability scoping — never a throw, never a leak of a same-stratum relation).
+  # capability bound (§2.3): the SAME query body at the relation's OWN stratum (rel:memberOf) — memberOf sits
+  # at that stratum, NOT strictly below the derive's own, so its edges are EXCLUDED from the scoped source. The
+  # follow yields EMPTY (silent capability scoping — never a throw, never a leak of a same-stratum relation).
   queryCapabilityBoundFleet = mkDerivedFleet "capViaQuery" {
     over = [ ];
     direction = "forward";
-    stratum = "resolution";
+    stratum = "rel:memberOf";
     derive = node: _: membersClosureQuery node;
   };
 
-  # stratum-gate fixtures (§2.3): a derive at stratum=resolution reading a resolution relation must be BLOCKED
-  # (same-stratum ≥ n → NAMED throw); the SAME body at stratum=closure is exposed (resolution < closure). over=[]
-  # so a non-empty over@resolution + stratum=resolution isn't rejected at the field guard FIRST — the gate, not
+  # stratum-gate fixtures (§2.3): a derive AT a relation's own stratum (rel:memberOf) reading that relation must
+  # be BLOCKED (same-stratum ≥ n → NAMED throw); the SAME body at stratum=closure is exposed (rel:memberOf <
+  # closure). over=[] so a stratum=rel:memberOf derive isn't rejected at the field guard FIRST — the gate, not
   # the guard, is under test (node.rel exposes ALL kinds regardless of over).
-  gatedResolutionFleet = mkDerivedFleet "atResolution" {
+  gatedSameStratumFleet = mkDerivedFleet "atRelStratum" {
     over = [ ];
     direction = "forward";
-    stratum = "resolution";
+    stratum = "rel:memberOf";
     derive = node: _: node.rel.memberOf.targets;
   };
   gatedClosureFleet = mkDerivedFleet "atClosure" {
@@ -359,13 +359,13 @@ in
     };
 
     # ── the stratum-gate on the node handle (capability scoping, §2.3) ──
-    # a derive at stratum=resolution reading a resolution relation is BLOCKED (same-stratum ≥ → NAMED throw).
+    # a derive AT a relation's own stratum reading that relation is BLOCKED (same-stratum ≥ → NAMED throw).
     test-derived-gate-same-stratum-throws = {
-      expr = throws (gatedResolutionFleet.den.derivedAt "atResolution" "node:a");
+      expr = throws (gatedSameStratumFleet.den.derivedAt "atRelStratum" "node:a");
       expected = true;
     };
-    # the SAME body at stratum=closure reading the same resolution relation is EXPOSED (resolution < closure) —
-    # non-vacuous: the gate discriminates BY STRATUM (not always-throw), and the exposed value is correct.
+    # the SAME body at stratum=closure reading the same (below-closure) relation is EXPOSED (rel:memberOf <
+    # closure) — non-vacuous: the gate discriminates BY STRATUM (not always-throw), and the exposed value is correct.
     test-derived-gate-later-stratum-ok = {
       expr = gatedClosureFleet.den.derivedAt "atClosure" "node:a";
       expected = [ "node:b" ];
@@ -385,9 +385,9 @@ in
         "node:b"
       ];
     };
-    # capability bound (§2.3): the SAME query body at stratum=resolution reads a resolution relation (memberOf) —
-    # NOT strictly below the derive's own stratum, so the edge is EXCLUDED from the scoped source. The result is
-    # EMPTY (silent scoping), never a throw and never a same-stratum leak — the source IS the capability.
+    # capability bound (§2.3): the SAME query body at the relation's own stratum reads memberOf — NOT strictly
+    # below the derive's own stratum, so the edge is EXCLUDED from the scoped source. The result is EMPTY
+    # (silent scoping), never a throw and never a same-stratum leak — the source IS the capability.
     test-derived-query-capability-bound-empty = {
       expr = queryCapabilityBoundFleet.den.derivedAt "capViaQuery" "node:c";
       expected = [ ];

@@ -162,8 +162,9 @@ let
 in
 {
   flake.tests.relations = {
-    # the relation registers exactly ONE edge-kind @resolution, closure=false, carrying inverse="members" —
-    # and NO auto-created "members" kind (the inverse is label-only metadata).
+    # the relation registers exactly ONE edge-kind at its OWN stratum `rel:memberOf` (§5 L2 — EDB, distinct-per-
+    # relation, bottom-pinned below resolution), closure=false, carrying inverse="members" — and NO auto-created
+    # "members" kind (the inverse is label-only metadata).
     test-relation-registers-one-kind = {
       expr = {
         stratum = relFleet.den.edges.memberOf.stratum;
@@ -172,7 +173,7 @@ in
         membersKind = relFleet.den.edges ? members;
       };
       expected = {
-        stratum = "resolution";
+        stratum = "rel:memberOf";
         closure = false;
         inverse = "members";
         membersKind = false;

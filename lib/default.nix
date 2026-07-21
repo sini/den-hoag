@@ -999,22 +999,40 @@ let
       linkTarget = entry: entryNodeIndex.${entry.id_hash} or null;
 
       # The compiled stratum order (spec §5): the seeded four with the framework's OWN edge-registry
-      # inserts (the `output` stratum after `demand`, for nest/defer) plus each `den.strata.insert.<name>`,
-      # each placed densely after its anchor. Zero user inserts ⇒ seeded four + `output`. A user insert
-      # naming a framework-reserved stratum (`output`) aborts NAMED — the same posture as a seed-stratum
-      # shadow (compileStrata) or a reserved edge-kind (edges.nix): a framework stratum is not overridable.
-      # Threaded into policy compilation as the capability-scoped ctx projection's stratum order (the
-      # ctx-key map is seeded empty, so the projection is a no-op for the native fleet — ctx is structural).
+      # inserts (the `output` stratum after `demand`, for nest/defer), each declared `den.relations`
+      # relation's OWN stratum (`rel:<name>` after `structural` — §5 L2 EDB, bottom-pinned), plus each
+      # `den.strata.insert.<name>`, each placed densely after its anchor. Zero user/relation inserts ⇒ seeded
+      # four + `output`. A user insert naming a framework-reserved stratum aborts NAMED — the same posture as a
+      # seed-stratum shadow (compileStrata) or a reserved edge-kind (edges.nix): a framework stratum is not
+      # overridable. TWO reservations: the exact `output` name, AND the whole per-relation `rel:<name>` namespace
+      # (§5 L2 — a relation's stratum is MINTED by `den.relations`, never user-declared; reserving the prefix
+      # mirrors how relation LABELS are guarded against user edges, closing the silent //-overwrite class where a
+      # user `rel:<existing>` insert would last-wins over the desugared one). Threaded into policy compilation as
+      # the capability-scoped ctx projection's stratum order (ctx-key map seeded empty, so a no-op natively).
       userStrataInserts = ent.config.den.strata.insert or { };
-      reservedInsertOffenders = builtins.filter (n: edgesLib.frameworkStrataInserts ? ${n}) (
-        builtins.attrNames userStrataInserts
-      );
+      # the per-relation strata (§5 L2), //-merged BESIDE the user + framework inserts into the ONE compile so
+      # the compiled order carries every relation's `rel:<name>` (which `edgeKindTable` validates each
+      # relation-kind's `stratum` against below). Empty relations ⇒ `{ }` ⇒ byte-identical to the shipped order.
+      relationStrataInserts = relationsLib.relationStrataInserts {
+        relations = ent.config.den.relations or { };
+      };
+      reservedInsertOffenders = builtins.filter (
+        n: (edgesLib.frameworkStrataInserts ? ${n}) || prelude.hasPrefix "rel:" n
+      ) (builtins.attrNames userStrataInserts);
       compiledStrata =
         if reservedInsertOffenders != [ ] then
-          throw "den.strata: insert '${builtins.head reservedInsertOffenders}' is framework-reserved"
+          let
+            off = builtins.head reservedInsertOffenders;
+            reason =
+              if prelude.hasPrefix "rel:" off then
+                "names the framework-generated per-relation stratum namespace 'rel:*' — a relation's stratum is minted by den.relations (§5), not user-declared"
+              else
+                "is framework-reserved";
+          in
+          throw "den.strata: insert '${off}' ${reason}"
         else
           declare.compileStrata {
-            inserts = userStrataInserts // edgesLib.frameworkStrataInserts;
+            inserts = userStrataInserts // relationStrataInserts // edgesLib.frameworkStrataInserts;
           };
 
       # The compiled merge-discipline table (§5): the fleet's `den.disciplines` registrations, validated

@@ -850,6 +850,24 @@ in
         )).success;
       expected = false;
     };
+    # the per-relation `rel:<name>` namespace (§5 L2) is framework-generated — a user insert minting a `rel:`
+    # stratum aborts NAMED, closing the silent //-overwrite where a user `rel:<existing-relation>` insert would
+    # last-wins over the desugared one (mirrors how relation LABELS are reserved against user edges).
+    test-edges-reserved-rel-namespace-insert-throws = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq
+            (denHoag.mkDen [
+              {
+                config.den.strata.insert."rel:foo" = {
+                  after = "structural";
+                };
+              }
+            ]).den.strata
+            null
+        )).success;
+      expected = false;
+    };
     # THE USER-STRATUM × USER-KIND INTERACTION: a user-inserted stratum carries a user edge-kind through
     # the mount — `den.strata.insert.reify` + `den.edges.<k>.stratum = "reify"` compiles end-to-end (the
     # compiled table's kind resolves to the inserted stratum, present in the compiled order).

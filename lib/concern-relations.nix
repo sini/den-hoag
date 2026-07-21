@@ -14,6 +14,12 @@
   strataScope,
 }:
 let
+  # relStratumName — the per-relation stratum NAME (§5 L2). A relation is EDB (an extensional base fact),
+  # so it desugars to its OWN stratum rather than the shipped constant `resolution`. ONE source of truth for
+  # the `rel:<name>` convention, shared by `relationsToEdgeKinds` (stamps it on the kind) and
+  # `relationStrataInserts` (inserts it into the compiled order) so the two never drift.
+  relStratumName = name: "rel:${name}";
+
   # relationCollisionMessage — the collision detector as a VALUE (`null` = clean, else the NAMED message). It is
   # a value (not only a `throw` side-effect) so the NAMED contract is testable — Nix's `tryEval` cannot capture a
   # throw's text. Because the inverse is LABEL-ONLY (not a registered kind), the shipped `reservedOffenders`
@@ -54,7 +60,8 @@ let
 
   # relationsToEdgeKinds — desugar `den.relations` into the edge-kind additions //-merged into the edge
   # compile's `kinds` arg, gated by `relationCollisionMessage` (one clean NAMED throw pre-empting the silent
-  # `//`-overwrite). Each relation → one kind @resolution, closure = false, carrying its `inverse` label + `data`.
+  # `//`-overwrite). Each relation → one kind at its OWN stratum `rel:<name>` (§5 L2 — EDB, distinct-per-relation,
+  # bottom-pinned via `relationStrataInserts`), closure = false, carrying its `inverse` label + `data`.
   relationsToEdgeKinds =
     {
       relations,
@@ -67,7 +74,7 @@ let
         map (n: {
           name = n;
           value = {
-            stratum = "resolution";
+            stratum = relStratumName n;
             closure = false;
             inverse = relations.${n}.inverse or null;
             data = relations.${n}.data or { };
@@ -76,6 +83,25 @@ let
       );
     in
     if msg != null then throw msg else edgeKinds;
+
+  # relationStrataInserts — the per-relation `den.strata.insert`-shaped additions (§5 L2). Each relation gets
+  # a DISTINCT stratum `rel:<name>` inserted `after = "structural"`: relations have NO declared mutual order,
+  # so these are PARALLEL siblings (not a `strataChain`), and EDB-bottom-pinned — they land strictly below the
+  # `resolution` checkpoint (and thus below the IDB derives that read them). Folded into `compiledStrata`
+  # alongside the user inserts + framework inserts, so the compiled order contains every relation's stratum
+  # (which `edgesLib.compile` then validates each relation-kind's `stratum` against). Empty relations ⇒ `{ }`.
+  relationStrataInserts =
+    {
+      relations,
+    }:
+    builtins.listToAttrs (
+      map (n: {
+        name = relStratumName n;
+        value = {
+          after = "structural";
+        };
+      }) (builtins.attrNames relations)
+    );
 
   # edgesRelationMessage — the fleet-level UNDECLARED-RELATION guard (§5): every relation named in any entity's
   # `.edges` MUST be a declared `den.relations` relation. Value-returning (`null` = clean, else the NAMED
@@ -223,6 +249,7 @@ in
 {
   inherit
     relationsToEdgeKinds
+    relationStrataInserts
     relationCollisionMessage
     edgesRelationMessage
     mkRelQuery
