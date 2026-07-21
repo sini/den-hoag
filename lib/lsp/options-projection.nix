@@ -133,11 +133,6 @@ let
   projectGenLib =
     libName: lib:
     if builtins.isAttrs lib then builtins.mapAttrs (projectGenLibMember libName) lib else { };
-in
-{
-  # The generic source-position layer, exposed on `den.lib.lsp.positions` for a later graph/nav consumer
-  # to reuse independently of options (`positions.positionsOf { fields } raw` → nixd goto records).
-  inherit positions;
 
   optionsProjection = { options }: walk options;
 
@@ -152,4 +147,30 @@ in
   # lib-only against `internal`'s mixed helper+lib content.
   genLibProjection =
     { internal }: builtins.mapAttrs projectGenLib (builtins.intersectAttrs genLibAllow internal);
+
+  # The consumer entry (§ options-projection): given a BUILT den (`mkDen … .den`, carrying `_options` +
+  # `aspects`) and the gen-lib `internal` bundle (`den.lib.internal` — it rides the LIBRARY, not the built
+  # den value), return the three projections keyed exactly as a nixd option-provider config names them:
+  # `nixd.settings.options.den.expr` → the option-declaration tree, `.den-aspects.expr` → the aspect
+  # registry, `.gen.expr` → the gen-lib API surface. Each value is what a nixd worker evaluates ONCE (E0,
+  # cache-once) and walks for completion/hover/goto — so all three are declaration-only (the laziness
+  # guarantee, ci/tests/lsp-laziness.nix): none forces the fleet's resolved output / materialization.
+  forNixd =
+    { den, internal }:
+    {
+      den = optionsProjection { options = den._options; };
+      "den-aspects" = aspectsProjection { aspects = den.aspects; };
+      gen = genLibProjection { inherit internal; };
+    };
+in
+{
+  # The generic source-position layer, exposed on `den.lib.lsp.positions` for a later graph/nav consumer
+  # to reuse independently of options (`positions.positionsOf { fields } raw` → nixd goto records).
+  inherit
+    positions
+    optionsProjection
+    aspectsProjection
+    genLibProjection
+    forNixd
+    ;
 }
