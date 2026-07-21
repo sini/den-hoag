@@ -44,7 +44,11 @@ let
 
   # the STRATUM-SCOPED claim source (§2.3, the SILENT filter): only claim edges whose stratum is strictly
   # below the ceiling survive (`claimKinds` doubles as the edge-kind → stratum index, so a NON-claim relation
-  # edge — absent from `claimKinds` — resolves to a null stratum and is excluded: the claim pool alone).
+  # edge — absent from `claimKinds` — resolves to a null stratum and is excluded: the claim pool alone). This
+  # isolation assumes the leaf-claim NAMES are DISJOINT from the den.relations edge-kinds — a relation edge
+  # whose kind collided with a claim name would be admitted and mis-scoped by the claim stratum. That name-
+  # disjointness is a framework-wide name-uniqueness invariant (owned by the shared registration pass), NOT
+  # re-guarded here (a local throw would be a half-measure patch on a global concern).
   scopedPool = strataScope.edgesBelowStratum {
     inherit strataOrder relationEdges;
     relationKinds = claimKinds;

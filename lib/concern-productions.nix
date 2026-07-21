@@ -182,8 +182,10 @@ let
   #                             the emitted name, plus an `nta` spawn (`<name>__spawn`). The gather+spawn wiring
   #                             (the spawn consuming the gather's inventory) is the claim engine's behavioral
   #                             concern (a later task); this lands the two schedulable equations + the L5 guard.
-  # Each yields `{ equations; claimEdges }` (the shape `compile` folds). Passthrough is preserved: edge-intent
-  # supplies data, nta supplies spawn-from-own-decl, attr supplies compute.
+  # Each yields `{ equations; claimEdges; claimKinds }` (the shape `compile` folds). Passthrough is preserved:
+  # edge-intent supplies data, nta supplies spawn-from-own-decl, attr supplies compute. The leaf-claim branch
+  # ALSO emits `claimKinds = { <name> = { stratum }; }` — the SINGLE source of the leaf-claim → stratum index
+  # the §9 claim-accessor reverse-read scopes by (so the leaf-claim predicate is tested in ONE place, here).
   lowerOne =
     name: prod:
     let
@@ -194,6 +196,9 @@ let
       {
         equations = { };
         claimEdges = claimEdgesOf name prod;
+        claimKinds.${name} = {
+          inherit (prod) stratum;
+        };
       }
     else if emit == "edges" then
       {
@@ -202,6 +207,7 @@ let
           spawn = prod.compute;
         };
         claimEdges = [ ];
+        claimKinds = { };
       }
     else if emit == "nodes" then
       {
@@ -213,18 +219,22 @@ let
           };
         };
         claimEdges = [ ];
+        claimKinds = { };
       }
     else
       {
         equations.${name} = attrEquation name prod;
         claimEdges = [ ];
+        claimKinds = { };
       };
 
-  # compile — lower every production into `{ equations; claimEdges }`: `equations` is the attrset merged into
-  # the ONE equations map (attr / nta / two-equation), `claimEdges` is the off-trace intent LIST appended to
-  # the relation-edge pool. Assumes a guard-validated table (the mkDerived posture — the field guard runs at
-  # the wiring); folding forces the (guard-seq'd) table's spine, so the guard fires whenever compile is built.
-  # Empty productions ⇒ `{ equations = { }; claimEdges = [ ]; }` ⇒ byte-identical to the pre-P5b state.
+  # compile — lower every production into `{ equations; claimEdges; claimKinds }`: `equations` is the attrset
+  # merged into the ONE equations map (attr / nta / two-equation), `claimEdges` is the off-trace intent LIST
+  # appended to the relation-edge pool, and `claimKinds` is the leaf-claim → `{ stratum }` index the §9
+  # claim-accessor reverse-read scopes by (the SINGLE source of the leaf-claim predicate). Assumes a guard-
+  # validated table (the mkDerived posture — the field guard runs at the wiring); folding forces the (guard-
+  # seq'd) table's spine, so the guard fires whenever compile is built. Empty productions ⇒
+  # `{ equations = { }; claimEdges = [ ]; claimKinds = { }; }` ⇒ byte-identical to the pre-P5b state.
   compile =
     {
       productions ? { },
@@ -235,6 +245,7 @@ let
     {
       equations = builtins.foldl' (acc: l: acc // l.equations) { } lowered;
       claimEdges = builtins.concatMap (l: l.claimEdges) lowered;
+      claimKinds = builtins.foldl' (acc: l: acc // l.claimKinds) { } lowered;
     };
 in
 {

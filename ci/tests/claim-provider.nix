@@ -1,6 +1,6 @@
 # The PROVIDER/CONSUMER witness (§5 resolution facet / productions substrate, §9 transpose reverse-read).
-# T2 proved the FORWARD claim view (a source reads its egress, who-do-I-claim) is queryable over the §3 query
-# spine. This suite proves the REVERSE view and the provider/consumer wiring built on it:
+# The FORWARD claim view (a source reads its egress, who-do-I-claim) is queried over the §3 query spine in the
+# sibling `claim-pool.nix`; this suite proves the REVERSE view and the provider/consumer wiring built on it:
 #   claim-accessor — the who-claims-me handle, the §9 transpose (Mokhov 2017 §4.3) of the leaf-claim forward
 #     adjacency, delivered as a `resolution`-stratum `resolve.attr` (readsAttrs = [ ], a static-pool read).
 #   provider — a `den.productions` attr at `resolution` reading `claim-accessor` at its OWN node (an INTRA-
@@ -17,7 +17,7 @@
   ...
 }:
 let
-  # the provider/consumer fleet: the T2 leaf claims (connect/secret/database) BESIDE an out-of-scope claim at
+  # the provider/consumer fleet: the leaf claims (connect/secret/database, the claim-pool.nix fixture) BESIDE an out-of-scope claim at
   # `resolution` (the capability-boundary witness) + the provider + consumer productions. `lonely` is claimed
   # by nobody (the empty-reverse witness). The claim strata sit densely below `resolution` (structural <
   # connect < secret < database < route < resolution), so the provider at `resolution` reads them strictly
@@ -231,7 +231,7 @@ in
       expected = false;
     };
 
-    # ── the P5a L2 gate strictly-below the reverse-read (reused, value-split so the message is testable) ──
+    # ── the §2.3 L2 strictly-below gate over the reverse-read (value-split so the NAMED message is testable) ──
     # a provider whose `from` names a claim stratum NOT strictly below its own is a NAMED rejection.
     test-provider-l2-rejects-not-below = {
       expr = builtins.match ".*not strictly below.*" (msgOf badProvider) != null;

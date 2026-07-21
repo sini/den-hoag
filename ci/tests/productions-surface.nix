@@ -236,12 +236,13 @@ in
         gatherKind = "synthesized";
       };
     };
-    # empty ⇒ `{ equations = { }; claimEdges = [ ]; }` (byte-identical to the pre-P5b state).
+    # empty ⇒ `{ equations = { }; claimEdges = [ ]; claimKinds = { }; }` (byte-identical to the pre-P5b state).
     test-production-lower-empty = {
       expr = denHoag.internal.productions.compile { productions = { }; };
       expected = {
         equations = { };
         claimEdges = [ ];
+        claimKinds = { };
       };
     };
 
