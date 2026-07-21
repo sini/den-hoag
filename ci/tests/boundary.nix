@@ -61,6 +61,7 @@ let
     "outputs.nix"
     "nest.nix"
     "graph-escape.nix"
+    "lsp/options-projection.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
     "attributes/resolved-aspects.nix"

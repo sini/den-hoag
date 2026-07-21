@@ -21,6 +21,10 @@
 }:
 let
   errors = import ./errors.nix;
+  # The option-declaration PROJECTION (§ options-projection): re-keys `den._options` (the evaluated
+  # option-declaration tree) into the shape a Nix LSP walks, refinement-stripping each leaf's `.type`.
+  # Pure builtins (no gen dep); exposed at `den.lib.lsp` for a downstream LSP consumer.
+  lspLib = import ./lsp/options-projection.nix { };
   # Two-level edge identity (assembly/instance/edge hashes + fill-graph acyclicity) — pure over the
   # builtins, no gen dep (REFERENCE.md). Exposed through `internal` for the substrate suite; the
   # substrate consumers reach it there.
@@ -2298,6 +2302,10 @@ let
 in
 {
   inherit errors mkDen;
+  # The option-declaration projection (§ options-projection): `lsp.optionsProjection { options }` re-keys
+  # a den option-declaration tree (`den._options`) into the LSP-walk shape (option leaves preserved,
+  # gen-schema refinement metadata stripped off each `.type`). Independent of any one mkDen instance.
+  lsp = lspLib;
   # The greenfield v2 flake-parts mount (§4.4/§4.6, D8): `flakeAdapter <built den fleet>` → a flake-parts
   # module handing the fleet's transposed family map to `config.flake` — `imports = [ (den.flakeAdapter
   # (den.mkDen [ … ])) ]`. A v2 entry distinct from the drop-in v1 `flakeModule` (zero shared splice); see
