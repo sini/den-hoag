@@ -5,7 +5,8 @@
 #
 # NO second kind is registered for the inverse. den.query is source-agnostic — it string-compares a flat edge
 # list and never consults the edge-kind table — so the inverse label is followable unregistered: the producer
-# emits swapped `<inverse>`-labeled edges, and the per-entity accessor follows that label. The forward
+# emits `<inverse>`-labeled edges (the forward edges REVERSED via gen-graph.transpose, §9), and the per-entity
+# accessor follows that label. The forward
 # registration IS load-bearing, though: the one-registry is the source of truth the producer iterates to know
 # which relations exist and their inverse labels. `closure = false` makes the registry closure-gate a no-op
 # (the surface has no closure field); the closure CAPABILITY is a downstream (discipline-registering) concern.

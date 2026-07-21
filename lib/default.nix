@@ -225,6 +225,11 @@ let
   queryLib = import ./query.nix {
     inherit prelude graph;
   };
+  # The UNSHADOWED gen-graph lib alias — the relation producer (§9) reverses each relation kind's forward edges
+  # via `genGraphLib.transpose` (Mokhov 2017 §4.3) instead of a hand-rolled from/to swap. Inside the mkDen
+  # closure `graph` is shadowed by the read-only `graph = graphEscape {…}` surface (no `.transpose`), so the
+  # producer reaches the outer labeled-graph calculus through this alias (the seam receiversLib/queryLib ride).
+  genGraphLib = graph;
   # The output-families registry (den.outputs.<family>): the root-as-entity §4.4 rows — the fleet's
   # TOP-LEVEL output faces (nixosConfigurations/darwinConfigurations/a user target) as validated DATA, one
   # row per family. Mode derives via the products table; `render`/`params`/`requires` are name-checked
@@ -1673,10 +1678,9 @@ let
       # string-compares the flat list — NOT the `{entityId;class}` records the collector producer emits). `from`
       # is the DECLARING entity's node-id = the iteration key (no lowering); each TARGET ref is lowered to
       # `"${kind}:${name}"` via `entityKindOf` (the id_hash→kind index over all registries — records carry
-      # id_hash + name, not kind). When the relation declares `inverse`, ALSO emit the SWAPPED inverse-kind edge
-      # (den.query is forward-only, so the per-entity accessor's forward query finds the reverse here). Read-only
-      # + OFF `edgesForRoot` (never in the live trace) — corpus-inert by construction (no `.edges` ⇒ `[ ]`).
-      relationEdgesRaw = prelude.concatMap (
+      # id_hash + name, not kind). Read-only + OFF `edgesForRoot` (never in the live trace) — corpus-inert by
+      # construction (no `.edges` ⇒ `[ ]`).
+      forwardRelationEdges = prelude.concatMap (
         kindName:
         prelude.concatMap (
           name:
@@ -1686,30 +1690,68 @@ let
           in
           prelude.concatMap (
             rel:
-            let
-              inverseLabel = relationEdgeKinds.${rel}.inverse or null;
-            in
-            prelude.concatMap (
+            map (
               target:
               let
                 to = "${entityKindOf target}:${target.name}";
-                forward = {
-                  id = "rel:${rel}/${from}->${to}";
-                  kind = rel;
-                  inherit from to;
-                };
-                swapped = {
-                  id = "rel:${inverseLabel}/${to}->${from}";
-                  kind = inverseLabel;
-                  from = to;
-                  to = from;
-                };
               in
-              [ forward ] ++ prelude.optional (inverseLabel != null) swapped
+              {
+                id = "rel:${rel}/${from}->${to}";
+                kind = rel;
+                inherit from to;
+              }
             ) entityEdges.${rel}
           ) (builtins.attrNames entityEdges)
         ) (builtins.attrNames ent.registries.${kindName})
       ) (builtins.attrNames ent.registries);
+      # ── THE INVERSE EDGES via gen-graph.transpose (§9): the reverse-query edges are the FORWARD edges of a
+      # relation kind REVERSED — a per-kind `genGraphLib.transpose` (Mokhov 2017 §4.3), NOT a hand-rolled from/to
+      # swap. For each relation kind `k` carrying an `inverse` label `k⁻¹`: k's forward edges become a per-kind
+      # accessor `{ edges = from → [to]; nodes = k's endpoints }` (the synthesized `nodes` is the union of k's
+      # endpoints — transpose materializes over it); `transpose` reverses the adjacency (to → [from]); each
+      # reversed pair `(node, src)` is re-labelled kind `k⁻¹`. den.query is forward-only, so these
+      # `<inverse>`-labelled edges are what the per-entity accessor's forward `follow = <inverse>` query reads —
+      # byte-identical to the retired inline swap `{ id = "rel:${k⁻¹}/${to}->${from}"; kind = k⁻¹; … }`. A null
+      # inverse ⇒ no reverse edges (the relation is forward-only); a relation with no forward edges ⇒ `[ ]`.
+      inverseRelationEdges = prelude.concatMap (
+        rel:
+        let
+          inverseLabel = relationEdgeKinds.${rel}.inverse or null;
+        in
+        if inverseLabel == null then
+          [ ]
+        else
+          let
+            kindForward = builtins.filter (e: e.kind == rel) forwardRelationEdges;
+            adjacency = builtins.foldl' (
+              acc: e: acc // { ${e.from} = (acc.${e.from} or [ ]) ++ [ e.to ]; }
+            ) { } kindForward;
+            nodes = prelude.unique (
+              prelude.concatMap (e: [
+                e.from
+                e.to
+              ]) kindForward
+            );
+            # NB: transpose set-dedups the reversed adjacency (materialize's `prelude.unique`); the forward edges
+            # are NOT deduped. Divergent ONLY for a malformed duplicate-target `.edges` declaration (old: 2
+            # inverse records; new: 1) — the identical `id` means any id-keyed consumer already collapses them,
+            # and it is corpus/trace-inert (relation edges are morally a set). The deliberate asymmetry.
+            reversed = genGraphLib.transpose {
+              edges = id: adjacency.${id} or [ ];
+              inherit nodes;
+            };
+          in
+          prelude.concatMap (
+            node:
+            map (src: {
+              id = "rel:${inverseLabel}/${node}->${src}";
+              kind = inverseLabel;
+              from = node;
+              to = src;
+            }) (reversed.edges node)
+          ) nodes
+      ) (builtins.attrNames relationEdgeKinds);
+      relationEdgesRaw = forwardRelationEdges ++ inverseRelationEdges;
       # WEAVE THE GUARD onto the producer's critical path (the validate-then-transform contract made real):
       # forcing `relationEdges` forces the undeclared-relation guard first, so a malformed `.edges` aborts NAMED
       # for ANY consumer of the producer output — not only when the `den.relations` surface is read.
