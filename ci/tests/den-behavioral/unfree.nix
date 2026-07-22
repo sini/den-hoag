@@ -55,24 +55,16 @@ in
     #     expected = true;
     #   }
     # );
-    #
-    # BLOCKED: user→host route ensureEntry (empty `users.users.<u>`). The assertion forces
-    # `igloo.users.users.tux` expecting an EMPTY entry (no `unfree` field) — but the unfree battery emits only
-    # HOST `unfree.packages`, so this cell has NO `user`-class content and the parent-targeted user→host route
-    # remaps NOTHING, leaving `users.users.tux` uncreated (`attribute 'tux' missing`). v1's route ensureEntry
-    # creates `users.users.<name>` even with no content; adding that always-create semantic is a separate
-    # rung (its blast radius on the delivery trace is unassessed here). Reported to owner. (The route DOES
-    # land when the cell has `.user` content — see os-user-class.nix test-forwards-user-description.)
-    # test-unfree-user-class-works = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.aspects.tux.includes = [ (den.batteries.unfree [ "vscode" ]) ];
-    #
-    #     expr = !(igloo.users.users.tux ? unfree);
-    #     expected = true;
-    #   }
-    # );
+    test-unfree-user-class-works = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.aspects.tux.includes = [ (den.batteries.unfree [ "vscode" ]) ];
+
+        expr = !(igloo.users.users.tux ? unfree);
+        expected = true;
+      }
+    );
 
   };
 }

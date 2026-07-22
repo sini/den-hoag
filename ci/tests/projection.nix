@@ -78,14 +78,26 @@ in
     # and `nixos` gets the routed-DELTA anchor — together they prove projection = same-class fold PLUS the
     # route transform, precisely (spec §5 (b), owner ruling 2026-07-14).
 
-    # (a) ROUTED-DELTA (the NEW correct invariant for a routed class): `nixos` is routed by the built-in
-    #     os→nixos route (at=[]), so `projectClass igloo "nixos"` = the SAME-CLASS fold `classSubtreeAt igloo
-    #     "nixos"` PLUS the route remap. The os→nixos route has at=[] and reach==subtree, so its remap is
-    #     exactly the os-class subtree fold `classSubtreeAt igloo "os"` (each reached node's os slice, flat).
-    #     A clean, non-circular decomposition — the base same-class prefix ++ the route-remap delta.
+    # (a) ROUTED-DELTA (the NEW correct invariant for a routed class): `nixos` is routed at igloo by TWO
+    #     built-in routes, so `projectClass igloo "nixos"` (the route-MATERIALIZATION path) is the SAME-CLASS
+    #     fold `classSubtreeAt igloo "nixos"` PLUS both route remaps — and the equality stays EXACT (not a
+    #     superset; the RHS accounts for every route materialization in projectClass's emit order):
+    #       • the os→nixos route (at=[], reach==subtree) — its remap is exactly the os-class subtree fold
+    #         `classSubtreeAt igloo "os"` (each reached node's os slice, flat); then
+    #       • the user→host route (parent-targeted, at=[users users <u>]) — each user cell here emits NO
+    #         `.user` content, so the route contributes no remapped module but MATERIALIZES its target path
+    #         (v1 ensureTargetPath): an empty `users.users.<u> = {}` seed per cell, in descendant order. This
+    #         is why the anchor is ROUTE-AWARE — projectClass carries route materializations that the pure
+    #         content fold `classSubtreeAt` does not; the RHS includes them to keep the decomposition EXACT.
     test-anchor-projectClass-nixos-routed-delta = {
       expr =
-        out.projectClass igloo "nixos" == out.classSubtreeAt igloo "nixos" ++ out.classSubtreeAt igloo "os";
+        out.projectClass igloo "nixos" == out.classSubtreeAt igloo "nixos"
+        ++ out.classSubtreeAt igloo "os"
+        ++ map (u: { config.users.users.${u} = { }; }) [
+          "amy"
+          "pol"
+          "tux"
+        ];
       expected = true;
     };
     # (b) ROUTE-FREE EXACT (the PRESERVED strong same-class subsume proof): `home-manager` is NOT routed at

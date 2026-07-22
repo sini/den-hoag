@@ -363,6 +363,10 @@ let
     # (today the trace records only its PRESENCE as a boolean; the CLOSURE must reach the eval boundary).
     # `null` ⇒ no arg-env transform (the ordinary content route, Tasks 1/2 — the wrapper is identity).
     adaptArgs = d.adaptArgs or null;
+    # Parent-targeted (v1 appendToParent) — the route delivers to the containment PARENT (arm 2). Carried so
+    # the ensure-target-path seed (remapOver) fires ONLY on a parent-targeted route, excluding the flake-scope
+    # devshell route (arm 1) — the den-hoag proxy for v1's `!isFlakeRoute` ensureTargetPath gate.
+    appendToParent = d.appendToParent or false;
   };
 
   # `routesAt id` = the class-remaps of the OWN-scope routes fired at `id` — the deliveries that target the
@@ -590,26 +594,42 @@ let
     srcScope: route:
     let
       evalTimeGuard = route.guard != null && !(guardIsContentTime route.guard srcScope);
+      placed = prelude.concatMap (
+        n:
+        let
+          slices = map (e: e.module) (classSliceOf n route.from);
+        in
+        if route.at == [ ] then
+          # at=[] — flat merge into the target class (home-platform bucket b). No placement path, so no
+          # top-level threading is needed; keep the arg-env wrapper so a future at=[] adaptArgs/guard route
+          # still crosses correctly (FIX-3: not the bare slice).
+          map (m: argEnvWrap route srcScope m) slices
+        else if evalTimeGuard then
+          # at≠[] WITH an eval-time guard (case-3) — UNCHANGED: the guard reads the target submodule's own
+          # options, so it must stay nested-as-value (`argEnvWrap` case-3 runs the guard as that submodule).
+          placeSlice route.at (map (m: argEnvWrap route srcScope m) slices)
+        else
+          # at≠[] with NO eval-time guard (cases 1/2) — the v1-shape top-level placer threading host args +
+          # source-scope bindings + adaptArgs (fixes pkgs + peer-dev at the placed submodule).
+          map (m: placeRemapped route srcScope m) slices
+      ) (result.get srcScope "reach");
+      # v1 ensureTargetPath (pin 11866c16 route.nix:671 derived predicate → :283 `optional … { config =
+      # setAttrByPath path { }; }`): a parent-targeted (user→host) route with `adaptArgs`, a non-empty `at`,
+      # and ZERO whole-route content still SEEDS its target path — so the empty cell's `users.users.<u> = { }`
+      # entry EXISTS (content-driven placement would otherwise DROP the entry when the cell has no `.user`
+      # content). Computed on the WHOLE-route contribution (`placed == [ ]`), so the seed lands ONCE at
+      # `route.at` (not per reached node), riding the SAME arm-2 delivery to the HOST. `appendToParent` gates
+      # to the arm-2 (containment-parent) route, excluding the flake-scope devshell route (v1's `!isFlakeRoute`
+      # proxy); `adaptArgs != null` excludes hm-user-detect. In the corpus this reduces to the user→host route.
+      ensureSeed =
+        if
+          (route.appendToParent or false) && route.adaptArgs != null && route.at != [ ] && placed == [ ]
+        then
+          [ { config = nestAtPath route.at { }; } ]
+        else
+          [ ];
     in
-    prelude.concatMap (
-      n:
-      let
-        slices = map (e: e.module) (classSliceOf n route.from);
-      in
-      if route.at == [ ] then
-        # at=[] — flat merge into the target class (home-platform bucket b). No placement path, so no
-        # top-level threading is needed; keep the arg-env wrapper so a future at=[] adaptArgs/guard route
-        # still crosses correctly (FIX-3: not the bare slice).
-        map (m: argEnvWrap route srcScope m) slices
-      else if evalTimeGuard then
-        # at≠[] WITH an eval-time guard (case-3) — UNCHANGED: the guard reads the target submodule's own
-        # options, so it must stay nested-as-value (`argEnvWrap` case-3 runs the guard as that submodule).
-        placeSlice route.at (map (m: argEnvWrap route srcScope m) slices)
-      else
-        # at≠[] with NO eval-time guard (cases 1/2) — the v1-shape top-level placer threading host args +
-        # source-scope bindings + adaptArgs (fixes pkgs + peer-dev at the placed submodule).
-        map (m: placeRemapped route srcScope m) slices
-    ) (result.get srcScope "reach");
+    placed ++ ensureSeed;
 
   routeRemapFor =
     id: class:
