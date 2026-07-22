@@ -28,30 +28,26 @@ in
 {
   flake.tests.den-batteries = {
 
-    # BLOCKED-WSB (user→host content delivery; missing-surface): `den.aspects.tux` self-provides at the user
-    # entity "tux"; its `includes = [ den.batteries.primary-user ]` (a `{ user, host, ... }:` battery) should
-    # materialize `nixos.users.users.tux.extraGroups`. den-hoag actual: `attribute 'tux' missing` — user-cell
-    # content never folds to the host's `users.users.<u>` on the bridge path (the stubbed fleet-resolution /
-    # env fan-out surface, board #49). Same root as den-default.nix test-includes-user-function,
-    # host-options.nix test-user-custom-username, and the canonical os-user. NOT a scaffold gap (a
-    # `{ host, ... }:` write to the same path lands). WS-B, not a value divergence.
-    # test-on-nixos-included-at-user = denTest (
-    #   {
-    #     den,
-    #     lib,
-    #     igloo,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.aspects.tux.includes = [ den.batteries.primary-user ];
-    #     expr = igloo.users.users.tux.extraGroups;
-    #     expected = [
-    #       "wheel"
-    #       "networkmanager"
-    #     ];
-    #   }
-    # );
+    # A user self-aspect `den.aspects.tux` (at the user entity "tux") includes the `{ user, host, ... }:`
+    # primary-user battery, which emits `nixos.users.users.tux.extraGroups` — the cell's nixos content folds
+    # up its containment subtree to the host's assembly (a host-parented user cell carries both coords).
+    test-on-nixos-included-at-user = denTest (
+      {
+        den,
+        lib,
+        igloo,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.aspects.tux.includes = [ den.batteries.primary-user ];
+        expr = igloo.users.users.tux.extraGroups;
+        expected = [
+          "wheel"
+          "networkmanager"
+        ];
+      }
+    );
 
   };
 }

@@ -27,9 +27,13 @@ in
 {
   flake.tests.den-pipe = {
 
-    # BLOCKED-WSB (known gap, same as host-aspects-sibling-leak.nix "on-demand hm-users key"):
-    # home-manager.users.<name> entries are created ON-DEMAND (content-driven), not for every
-    # nominally-homeManager-classed user; forcing `tuxHm` throws `attribute 'tux' missing`.
+    # BLOCKED: channel-arg binding at a home-manager CELL. With the user-cell seed `tuxHm` now resolves (past
+    # the old "on-demand hm-users key" `attribute 'tux' missing`), but the tux cell's `homeManager =
+    # { peer-dev, ... }: …` facet forces `attribute 'peer-dev' missing` — the `peer-dev` channel is not bound
+    # as a module arg at the home-manager cell's class module (the channel-totality binding surface does not
+    # reach the HM cell here). Distinct from the `{ host, user }` ctx family this seed delivers (a HOST
+    # consumer of a broadcast lands — see test-broadcast-to-remote-host); a separate HM-cell channel-binding
+    # rung. Reported to owner. (The sibling HM-cell-consumer broadcast tests below share this blocker.)
     # # Basic all-to-all: each user broadcasts peer-dev to every user scope
     # # fleet-wide. tux's home sees its own base (tux) + alice's broadcast.
     # test-broadcast-basic = denTest (
@@ -74,68 +78,54 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (user-cell ctx gap — the broadcast ARM is now WIRED and correct; the blocker moved).
-    # The push-dual broadcast supplier lands (lib/compat/gather.nix `broadcastGatheredWith`, composed by
-    # `gather.mkGather`) and is proven end-to-end on the mkDen-direct path (a `{ host, user, ... }` user
-    # broadcast reaches a remote host binding). BUT through the behavioral BRIDGE (denTest scaffold →
-    # flake-parts `flakeModule`) a `den.hosts.<h>.users.<u>` renders as a ROOT user entity (`user:alice`,
-    # NOT a `user:alice@host:iceberg` cell) whose enriched-context carries ONLY `user` — no `host`. So the
-    # producer policy `broadcast-to-hosts = { host, user, ... }: …` never fires at alice (its `host` formal
-    # is absent from ctx → value-less-probe non-firing → no broadcast site-mark), and the gather finds no
-    # broadcast channel. v1's user entity is host-parented (the cell ctx carries host+user), which is what
-    # this fixture's own "alice@iceberg" expectation assumes. den-hoag makes host-parenting an EXPLICIT
-    # schema declaration (`den.schema.user.parent = "host"`, stated by the corpus); the v1 denTest fixture
-    # omits it. Seeding that default in the scaffold DOES make users cells and un-blocks this arm, but it is
-    # a fleet-wide topology change that breaks another behavioral witness (a `defaults.nixos.tags` option
-    # double-declaration surfaces once users are cells) — a structural user-cell decision for owner
-    # disposition, NOT part of the gather re-layer. Same root cause as the sibling BLOCKED-WSB broadcast
-    # tests (user cells created on-demand). v1 expected "alice@iceberg"; den-hoag: the producer never fires.
-    # # User → REMOTE host. alice (a user on iceberg) broadcasts her device
-    # # record to every HOST scope ({ host, ... }: true). igloo — a host on the
-    # # OTHER side of the fleet — consumes it at host scope. Crosses both the
-    # # entity-kind boundary (user → host) and the host boundary.
-    # test-broadcast-to-remote-host = denTest (
-    #   {
-    #     den,
-    #     igloo,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     den.aspects.alice = {
-    #       peer-dev = [ { who = "alice@iceberg"; } ];
-    #     };
-    #
-    #     # USER scope: broadcast to all HOST scopes fleet-wide.
-    #     den.policies.broadcast-to-hosts =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, ... }: true)) ]) ];
-    #     den.schema.user.includes = [ den.policies.broadcast-to-hosts ];
-    #
-    #     # igloo (remote relative to alice) consumes the broadcast at host scope.
-    #     den.aspects.igloo = {
-    #       includes = [ den.aspects.peer-consumer ];
-    #     };
-    #     den.aspects.peer-consumer = {
-    #       nixos =
-    #         { peer-dev, lib, ... }:
-    #         {
-    #           networking.domain = lib.concatStringsSep "," (lib.sort (a: b: a < b) (map (p: p.who) peer-dev));
-    #         };
-    #     };
-    #
-    #     expr = igloo.networking.domain;
-    #     expected = "alice@iceberg";
-    #   }
-    # );
+    # User → REMOTE host. alice (a user on iceberg) broadcasts her device
+    # record to every HOST scope ({ host, ... }: true). igloo — a host on the
+    # OTHER side of the fleet — consumes it at host scope. Crosses both the
+    # entity-kind boundary (user → host) and the host boundary. The push-dual
+    # gather arm applies alice's receiver predicate to the CONSUMER (igloo, a
+    # host), which a host passes, so alice's raw emit reaches it.
+    test-broadcast-to-remote-host = denTest (
+      {
+        den,
+        igloo,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
+
+        den.quirks.peer-dev.description = "per-user device records";
+
+        den.aspects.alice = {
+          peer-dev = [ { who = "alice@iceberg"; } ];
+        };
+
+        # USER scope: broadcast to all HOST scopes fleet-wide.
+        den.policies.broadcast-to-hosts =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, ... }: true)) ]) ];
+        den.schema.user.includes = [ den.policies.broadcast-to-hosts ];
+
+        # igloo (remote relative to alice) consumes the broadcast at host scope.
+        den.aspects.igloo = {
+          includes = [ den.aspects.peer-consumer ];
+        };
+        den.aspects.peer-consumer = {
+          nixos =
+            { peer-dev, lib, ... }:
+            {
+              networking.domain = lib.concatStringsSep "," (lib.sort (a: b: a < b) (map (p: p.who) peer-dev));
+            };
+        };
+
+        expr = igloo.networking.domain;
+        expected = "alice@iceberg";
+      }
+    );
 
     # BLOCKED-WSB (known gap, same as host-aspects-sibling-leak.nix "on-demand hm-users key"):
     # home-manager.users.<name> entries are created ON-DEMAND (content-driven), not for every

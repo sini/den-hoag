@@ -56,6 +56,11 @@ in
     #   }
     # );
     #
+    # BLOCKED: .user.* class-module forward — the assertion forces `igloo.users.users.tux`, but nothing in
+    # this fleet projects the `den.hosts.<h>.users.<u>` declaration into a nixos `users.users.<u>` entry (the
+    # os-user user→host route), so it is `attribute 'tux' missing`. That user→host `users.users.<u>`
+    # projection is a SEPARATE rung (os-user-class family), NOT the `{ host, user }` ctx family this seed
+    # delivers — the ctx family greens (primary-user's battery, which itself WRITES `users.users.tux`, lands).
     # test-unfree-user-class-works = denTest (
     #   { den, igloo, ... }:
     #   {

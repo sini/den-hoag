@@ -83,13 +83,12 @@ in
     #   }
     # );
 
-    # BLOCKED-WSB (user→host content delivery; missing-surface): a `policies.to-users` fn walked per fleet
-    # user, routing `den.batteries.define-user` to materialize the `penguin` OS account. den-hoag actual:
-    # `attribute 'penguin' missing`. Same root as den-default.nix test-includes-user-function and
-    # primary-user.nix test-on-nixos-included-at-user AND the canonical os-user (`user.description` →
-    # `users.users.tux`): user-cell content never folds to the host's `users.users.<u>` on the bridge path
-    # (the stubbed fleet-resolution / env fan-out surface, board #49). A `{ host, ... }:` write to the same
-    # path DOES land, so it is not a scaffold gap. WS-B, not a value divergence.
+    # BLOCKED: .user.* class-module forward via `policies.to-users` cross-delivery. The assertion forces
+    # `igloo.users.users.penguin`, materialized by a host `policies.to-users` per-user walk routing the
+    # `define-user` battery to create the OS account — but that user→host `users.users.<u>` projection does
+    # not land (`attribute 'penguin' missing`). A separate cross-delivery / os-user forward rung, NOT the
+    # `{ host, user }` ctx family this seed delivers (a `{ user, host }` battery included DIRECTLY at a user
+    # self-aspect and WRITING `users.users.<u>` does land — see primary-user.nix).
     # test-user-custom-username = denTest (
     #   {
     #     den,

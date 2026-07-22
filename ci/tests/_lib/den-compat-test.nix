@@ -49,6 +49,13 @@ let
   #
   defaultsModule = {
     den.schema.user.classes = lib.mkDefault [ "homeManager" ];
+    # v1's user entity is host-parented (the corpus declares `den.schema.user.parent = "host"`,
+    # topology.nix:7): `den.hosts.<h>.users.<u>` is a CELL under its host, whose ctx carries BOTH `host` and
+    # `user`, so a `{ host, user, … }:` policy/battery fires and the cell's content folds up to the host. The
+    # scaffold's omission left users as ROOTS (a `user`-only ctx). Seeded here (a raw last-wins scalar the
+    # bridge merges — no `mkDefault`; a migrated test setting its own `user.parent` still wins, imported
+    # after). Safe now that the cross-scope shared-aspect fold dedups `den.default` (no host+cell double).
+    den.schema.user.parent = "host";
     den.default.nixos.system.stateVersion = lib.mkDefault "25.11";
     den.default.homeManager.home.stateVersion = lib.mkDefault "25.11";
     den.nixpkgs = nixpkgs;

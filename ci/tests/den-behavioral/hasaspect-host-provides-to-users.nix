@@ -25,13 +25,13 @@ in
 {
   flake.tests.den-hasAspect = {
 
-    # BLOCKED-WSB (missing/broken surface): `den.aspects.igloo.provides.to-users.includes` cross-delivers
-    # to every user cell under igloo (legacy/provides.nix `isCross` → `sel.kind userKind`); the delivered
-    # aspect's `homeManager` bucket should materialize `home-manager.users.tux`. Empirically confirmed:
-    # forcing `igloo.home-manager.users.tux` throws `attribute 'tux' missing` — no content reaches the
-    # user cell at all via this `provides.to-users` cross-delivery path (distinct from the host-aspects
-    # BATTERY path, which does successfully materialize `home-manager.users.<u>` — see
-    # host-aspects-sibling-leak.nix).
+    # BLOCKED: function-valued class facet in a `provides.to-users`-delivered aspect. With the user-cell seed
+    # `home-manager.users.tux` now materializes, so this gets PAST the old `attribute 'tux' missing`, but the
+    # delivered `den.aspects.effect.homeManager = { host, ... }: {...}` is a bare FUNCTION-valued `homeManager`
+    # facet, which compile rejects (§2.2: "aspect-include declares key `homeManager` with a function value —
+    # neither a facet, a registered class, nor a quirk channel"). Distinct from the `{ host, user }` ctx
+    # family this seed delivers — a separate compile restriction on function-valued class facets (the same one
+    # that blocks pipe-broadcast.nix test-broadcast-home-pool-to-host). Re-parked; reported to owner.
     # test-host-sees-aspect-it-provides-to-users = denTest (
     #   {
     #     den,
