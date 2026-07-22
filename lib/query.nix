@@ -25,26 +25,29 @@ let
 
   # perLabelFromEdges — the flat-list → per-label accessor adapter gen-graph's `labeledFrom` expects (it takes
   # the accessors already-made). A flat `[{ kind; from; to }]` list becomes `{ <kind> = fromId: [ toId … ]; }`:
-  # one accessor per distinct edge kind, returning a node's out-neighbours along that kind. Pure; the kind set
-  # is the spine of the edge list (attrNames of a listToAttrs, so a duplicated kind collapses).
+  # one accessor per distinct edge kind, returning a node's out-neighbours along that kind.
+  #
+  # PREBUILT ADJACENCY (O(E) once, O(1) per lookup). The adjacency `{ label → { from → [ to ] } }` is built
+  # ONCE with two `builtins.groupBy` passes — `groupBy .kind` for the label spine, then `groupBy .from`
+  # within each label — so an accessor call is an `${fromId}` index, not a per-call linear scan of the whole
+  # edge list. The `query` traversal invokes each accessor once per node-visit during the DFS, so the old
+  # per-call `filter … edges` was O(E) × (nodes visited) — the avoidable O(E²) the gather expose arm
+  # inherited through this facade; the groupBy build is O(E) total (gen-graph/lib/global.nix takes the same
+  # "O(E) via groupBy instead of O(E²)" route). BYTE-IDENTICAL to the scan: the kind spine is `attrNames`
+  # over `groupBy .kind` (Nix-sorted, a duplicated kind collapses into one group — as `listToAttrs` did), and
+  # `groupBy` PRESERVES input order within each group, so a node's target list stays in edge-list order.
   perLabelFromEdges =
     edges:
     let
-      kinds = builtins.attrNames (
-        builtins.listToAttrs (
-          map (e: {
-            name = e.kind;
-            value = null;
-          }) edges
-        )
-      );
+      byLabelFrom = builtins.mapAttrs (
+        _kind: kindEdges:
+        builtins.mapAttrs (_from: grp: map (e: e.to) grp) (builtins.groupBy (e: e.from) kindEdges)
+      ) (builtins.groupBy (e: e.kind) edges);
     in
-    builtins.listToAttrs (
-      map (kind: {
-        name = kind;
-        value = fromId: map (e: e.to) (builtins.filter (e: e.kind == kind && e.from == fromId) edges);
-      }) kinds
-    );
+    builtins.mapAttrs (
+      _kind: fromMap: fromId:
+      fromMap.${fromId} or [ ]
+    ) byLabelFrom;
 
   # denQuery — lower the den surface onto `graph.query`. The guards are den-namespaced NAMED throws that
   # PRE-EMPT the tryEval-uncatchable class (an unknown mode reaching gen-graph's raw throw, a `where`/`combine`

@@ -68,12 +68,11 @@
 # ONLY residual is INHERENT all-pairs predicate matching (collectAll = each such consumer tests every
 # producer, broadcast = each tests every broadcaster of a channel — the `where` IS the work, genuinely n²
 # PAIRS when many consumers each match many producers), not reducible without cross-consumer predicate
-# dedup. The EXPOSE arm's per-channel edge LIST is memoized once (`exposeEdgesByChannel`), but it INHERITS
-# the shared `denHoag.query` facade's per-call adapter rebuild — `perLabelFromEdges` (lib/query.nix) linear-
-# scans the edge list per node-visit during the `queryPaths` DFS (an avoidable O(n²·channels) factor on a
-# fleet-spanning expose channel). Corpus-negligible (one shallow `resolved-users` channel), and out of scope
-# here — tracked as a follow-on `denQuery` adjacency-prebuild rung that fixes it at the facade for every
-# consumer, not per gather.
+# dedup. The EXPOSE arm's per-channel edge LIST is memoized once (`exposeEdgesByChannel`), AND the shared
+# `denHoag.query` facade prebuilds a label→from→targets adjacency once (`perLabelFromEdges`, O(E) via
+# `groupBy`) so the per-node-visit out-neighbour lookup during the `queryPaths` DFS is an O(1) index — no
+# per-call rescan of the edge list. So the expose ascent is O(E) over its (single, shallow `resolved-users`)
+# channel with no residual facade overhead; its only cost is the inherent gated-transitive walk itself.
 #
 # ── RESIDUALS (shared with the retired files; corpus-zero, documented ceilings, never silent) ──────────
 #   (#1) expose-WITH-transform-stages — v1 applies the pipe's `applyTransformStages` at the exposing node
