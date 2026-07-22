@@ -83,12 +83,12 @@ in
     #   }
     # );
 
-    # BLOCKED: .user.* class-module forward via `policies.to-users` cross-delivery. The assertion forces
-    # `igloo.users.users.penguin`, materialized by a host `policies.to-users` per-user walk routing the
-    # `define-user` battery to create the OS account — but that user→host `users.users.<u>` projection does
-    # not land (`attribute 'penguin' missing`). A separate cross-delivery / os-user forward rung, NOT the
-    # `{ host, user }` ctx family this seed delivers (a `{ user, host }` battery included DIRECTLY at a user
-    # self-aspect and WRITING `users.users.<u>` does land — see primary-user.nix).
+    # BLOCKED: define-user via `policies.to-users` POLICY fan-out (board #49) — a SEPARATE seam, NOT the
+    # `.user.*` route. A host `den.aspects.igloo.policies.to-users` fn fans the `define-user` battery onto
+    # each user (keyed by `userName = "penguin"` ≠ name) to create `users.users.penguin`; that resolve/
+    # provides per-user fan-out does not materialize the account (`attribute 'penguin' missing`), and it is
+    # unaffected by the parent-targeted user→host route this rung fixed (which projects a user cell's OWN
+    # `.user`-class content — os-user-class.nix — not a host-side to-users policy walk).
     # test-user-custom-username = denTest (
     #   {
     #     den,

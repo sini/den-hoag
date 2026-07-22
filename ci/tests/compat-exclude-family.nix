@@ -12,11 +12,12 @@
 #   • every compiled rule with a known v1 NAME consults the key before producing (compile.nix
 #     `gateSuppression`) — a suppressed policy fires as `[ ]`, exactly v1's dispatch filter.
 #
-# Witnesses:
+# Witnesses (the user-to-host route is parent-targeted — `appendToParent` — so its delivery edge roots at
+# the containment HOST, not the firing cell; suppression/firing is observed at the HOST root):
 #   (1) the CORPUS SHAPE — a value-conditional excluder (the drop-user-to-host-on-droid name, gated on
 #       `host.class == "droid"`) suppresses the named `user-to-host` route at the droid host's CELL
-#       (descendant inheritance): no user-class delivery edge at that cell;
-#   (2) SIBLING ISOLATION — the same fleet's nixos host cell keeps its user-to-host edge;
+#       (descendant inheritance): no user-class delivery edge lands at the droid host;
+#   (2) SIBLING ISOLATION — the same fleet's nixos host keeps its cell's user-to-host edge;
 #   (3) the NON-VACUOUS companion — withOUT the exclude, the droid cell's edge IS present (the
 #       suppression, not the fixture shape, removes it);
 #   (4) the DETECTED (unconditional) path — an excluder emitting unconditionally is probe-DETECTED into
@@ -90,9 +91,14 @@ let
       if (host.class or null) == "droid" then [ (exclude userToHostRef) ] else [ ];
   };
 
-  dCell = "user:tux@host:d1";
-  nCell = "user:pol@host:n1";
-  # the user-to-host route's delivery edges at a cell root (source class `user`).
+  dHost = "host:d1";
+  nHost = "host:n1";
+  # The user-to-host route's delivery edges observed at a root (source class `user`). The route is
+  # PARENT-TARGETED (`appendToParent`, os-user.nix — the hmUserDetect appendToParent convention,
+  # projection-routes.nix), so its delivery edge roots at the containment PARENT (the HOST), not the firing
+  # user cell — firing/suppression is therefore observed at the HOST root. The exclude SUPPRESSION is real,
+  # not edge-relocation: at the SAME droid host, without the exclude it fires (1) and with it is suppressed
+  # (0), and the nixos sibling host stays isolated (1).
   userEdgesAt =
     fleet: root:
     builtins.length (
@@ -102,26 +108,27 @@ let
 in
 {
   flake.tests.compat-exclude-family = {
-    # (1) suppression at the droid cell (descendant inheritance from the d1 root's suppression set).
+    # (1) suppression: the droid CELL's user-to-host route is suppressed (descendant inheritance from d1's
+    #     suppression set), so its parent-targeted edge never lands at the droid host.
     test-excluded-at-droid-cell = {
-      expr = userEdgesAt excluded dCell;
+      expr = userEdgesAt excluded dHost;
       expected = 0;
     };
-    # (2) sibling isolation: the nixos host's cell keeps its route (v1 #613).
+    # (2) sibling isolation: the nixos host keeps its cell's route (v1 #613) — the droid exclude is scoped.
     test-sibling-nixos-cell-unaffected = {
-      expr = userEdgesAt excluded nCell;
+      expr = userEdgesAt excluded nHost;
       expected = 1;
     };
-    # (3) non-vacuous: without the exclude the droid cell's route fires.
+    # (3) non-vacuous: without the exclude the droid cell's route fires (edge lands at the droid host).
     test-without-exclude-droid-cell-fires = {
-      expr = userEdgesAt plain dCell;
+      expr = userEdgesAt plain dHost;
       expected = 1;
     };
     # (4) the DETECTED (unconditional) path suppresses fleet-wide with no name-set entry.
     test-detected-excluder-suppresses-fleet-wide = {
       expr = {
-        d = userEdgesAt detected dCell;
-        n = userEdgesAt detected nCell;
+        d = userEdgesAt detected dHost;
+        n = userEdgesAt detected nHost;
       };
       expected = {
         d = 0;

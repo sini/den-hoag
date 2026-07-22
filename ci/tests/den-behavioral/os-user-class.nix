@@ -23,27 +23,28 @@ in
 {
   flake.tests.den-class-modules = {
 
-    # BLOCKED-WSB (user→host content delivery; missing-surface, board #49): every case in this file reads
-    # `igloo.users.users.tux.*` after content is authored at the USER-scoped `den.aspects.tux.user`/`.nixos`
-    # cell. Empirically confirmed (`attribute 'tux' missing` forcing `igloo.users.users.tux`): user-cell
-    # content never folds to the host's `users.users.<u>` on the bridge path (the stubbed fleet-resolution
-    # / env fan-out surface — same root as den-default.nix `test-includes-user-function`, primary-user.nix
-    # `test-on-nixos-included-at-user`, host-options.nix `test-user-custom-username`). A `{ host, ... }:`
-    # write to the same path DOES land (os-class-host.nix, os-class.nix), so this is not a scaffold gap.
-    # Left in place, commented, per the parking rule (never altered to route around the gap).
+    # The `user` class forwards owned `.user.*` fields to the host's OS `users.users.<u>`: content authored
+    # at the USER-scoped `den.aspects.tux.user` cell rides the parent-targeted user→host route up to the host.
+    test-forwards-user-description = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
 
-    # test-forwards-user-description = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #
-    #     den.aspects.tux.user.description = "pinguino";
-    #
-    #     expr = igloo.users.users.tux.description;
-    #     expected = "pinguino";
-    #   }
-    # );
-    #
+        den.aspects.tux.user.description = "pinguino";
+
+        expr = igloo.users.users.tux.description;
+        expected = "pinguino";
+      }
+    );
+
+    # BLOCKED: remap-target module-arg binding for a PARAMETRIC `.user` class facet. With the parent-targeted
+    # user→host route the `.user.*` forward now LANDS (see test-forwards-user-description +
+    # test-user-class-from-parametric-include, green), but a `.user = { pkgs, ... }: …` facet forces
+    # `attribute 'pkgs' missing` — the remapped user-class content is bound WITHOUT `pkgs` at the host's
+    # `users.users.<u>` target. A separate remap-target module-arg-binding seam, NOT the route (which lands
+    # static + parametric-include content). May share a root with the home-manager-cell channel-arg gap
+    # (pipe-broadcast.nix test-broadcast-basic `peer-dev` missing) — both are module-arg binding at a
+    # cell→host remap/delivery target; a later scout decides if they are one seam.
     # test-forwards-os-args = denTest (
     #   {
     #     den,
@@ -65,7 +66,7 @@ in
     #   }
     # );
     #
-    # test-forwards-mergeable-option = denTest (
+    # test-forwards-mergeable-option = denTest (   # same `pkgs`-arg gap as test-forwards-os-args
     #   {
     #     den,
     #     igloo,
@@ -113,32 +114,32 @@ in
     #     ];
     #   }
     # );
-    #
-    # test-user-class-from-parametric-include = denTest (
-    #   {
-    #     den,
-    #     lib,
-    #     igloo,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #
-    #     den.aspects.tux = {
-    #       user.description = "owned-description";
-    #       includes = [
-    #         (
-    #           { host, ... }:
-    #           lib.optionalAttrs (host.class == "nixos") {
-    #             user.extraGroups = [ "wheel" ];
-    #           }
-    #         )
-    #       ];
-    #     };
-    #
-    #     expr = igloo.users.users.tux.extraGroups;
-    #     expected = [ "wheel" ];
-    #   }
-    # );
+
+    test-user-class-from-parametric-include = denTest (
+      {
+        den,
+        lib,
+        igloo,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+
+        den.aspects.tux = {
+          user.description = "owned-description";
+          includes = [
+            (
+              { host, ... }:
+              lib.optionalAttrs (host.class == "nixos") {
+                user.extraGroups = [ "wheel" ];
+              }
+            )
+          ];
+        };
+
+        expr = igloo.users.users.tux.extraGroups;
+        expected = [ "wheel" ];
+      }
+    );
   };
 }

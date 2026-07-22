@@ -89,6 +89,12 @@ let
             user.name
           ];
           adaptArgs = args: args // { osConfig = args.config; };
+          # PARENT-TARGET the route so the cell-fired user→host remap gathers at the HOST (the containment
+          # parent), not the cell's isolated edge-root — `deliveryTargetRootOf cell = host` ⇒
+          # `parentTargetedRoutesAt host` picks it up ⇒ the cell's `user`-class slice lands at
+          # `<host>.users.users.<name>.*`. Mirrors `hmUserDetect`'s parent-targeted homeManager forward; v1
+          # renders the cell→host delivery as an appendToParent forward (the ratified trace-target ceiling).
+          __extra.appendToParent = true;
         })
       ];
   };
