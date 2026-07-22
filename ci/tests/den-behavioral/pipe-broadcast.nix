@@ -480,67 +480,62 @@ in
     #   }
     # );
 
-    # BLOCKED: bindsPipeLocally broadcast local-binding incomplete. A pure-receiver user reads the broadcast
-    # value BUT ALSO double-inherits its ancestor host's collected value (actual "alice,igloo-host,igloo-host"
-    # vs expected "alice") — the `bindsPipeLocally` broadcast clause that should suppress ancestor inheritance
-    # at a broadcast-receiving scope is missing/incomplete. A distinct broadcast-semantics rung, NOT the
-    # (now-closed) on-demand hm-users-key gap.
-    # # Pure-receiver binding: a user with NO own emit/effect, on a host that runs
-    # # a peer-dev policy (so its policyBoundAncestor is non-null), receives a
-    # # peer's broadcast. The bindsPipeLocally broadcast clause makes tux read the
-    # # broadcast ("alice"); WITHOUT it tux would fall through to ancestor
-    # # inheritance and read igloo host's collected value ("igloo-host").
-    # test-broadcast-pure-receiver-binds = denTest (
-    #   {
-    #     den,
-    #     tuxHm,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     # alice-specific broadcast (NOT schema.user — so tux has no peer-dev policy).
-    #     den.policies.broadcast-peer-dev =
-    #       { user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: true)) ]) ];
-    #     den.aspects.alice = {
-    #       peer-dev = [ { who = "alice"; } ];
-    #       includes = [ den.policies.broadcast-peer-dev ];
-    #     };
-    #
-    #     # igloo host binds peer-dev (policy effect → tux's policyBoundAncestor)
-    #     # with a DISTINCT value, so inheritance is observable.
-    #     den.policies.host-collect =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.collectAll ({ host, ... }: true)) ]) ];
-    #     den.aspects.igloo = {
-    #       peer-dev = [ { who = "igloo-host"; } ];
-    #       includes = [ den.policies.host-collect ];
-    #     };
-    #
-    #     # tux: pure receiver — only a home consumer.
-    #     den.aspects.tux.homeManager =
-    #       { peer-dev, ... }:
-    #       {
-    #         home.sessionVariables.PEERS = lib.concatStringsSep "," (
-    #           lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
-    #         );
-    #       };
-    #
-    #     expr = tuxHm.home.sessionVariables.PEERS;
-    #     expected = "alice";
-    #   }
-    # );
+    # Pure-receiver binding: a user with NO own emit/effect, on a host that runs
+    # a peer-dev policy (so its policyBoundAncestor is non-null), receives a
+    # peer's broadcast. The bindsPipeLocally broadcast clause makes tux read the
+    # broadcast ("alice"); WITHOUT it tux would fall through to ancestor
+    # inheritance and read igloo host's collected value ("igloo-host").
+    test-broadcast-pure-receiver-binds = denTest (
+      {
+        den,
+        tuxHm,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
+
+        den.quirks.peer-dev.description = "per-user device records";
+
+        # alice-specific broadcast (NOT schema.user — so tux has no peer-dev policy).
+        den.policies.broadcast-peer-dev =
+          { user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: true)) ]) ];
+        den.aspects.alice = {
+          peer-dev = [ { who = "alice"; } ];
+          includes = [ den.policies.broadcast-peer-dev ];
+        };
+
+        # igloo host binds peer-dev (policy effect → tux's policyBoundAncestor)
+        # with a DISTINCT value, so inheritance is observable.
+        den.policies.host-collect =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.collectAll ({ host, ... }: true)) ]) ];
+        den.aspects.igloo = {
+          peer-dev = [ { who = "igloo-host"; } ];
+          includes = [ den.policies.host-collect ];
+        };
+
+        # tux: pure receiver — only a home consumer.
+        den.aspects.tux.homeManager =
+          { peer-dev, ... }:
+          {
+            home.sessionVariables.PEERS = lib.concatStringsSep "," (
+              lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
+            );
+          };
+
+        expr = tuxHm.home.sessionVariables.PEERS;
+        expected = "alice";
+      }
+    );
 
     # BLOCKED-WSB (compile-time key-classification restriction, distinct from the broadcast-unwired
     # gap above): `den-hoag compat (§2.2): aspect-include \`<unnamed>\` declares key \`homeManager\`

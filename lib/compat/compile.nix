@@ -1089,16 +1089,12 @@ let
   # `__aspectInclude__<name>` (the reserved `__` namespace — collision-free vs user policies, and
   # name-stable because the collection dedups by name). Gate = `compilePolicy`'s own
   # `__condition = functionArgs (innerFn record)` — v1's `resolveArgsSatisfied` REQUIRED-formals presence
-  # gate verbatim (host-aspects-project's `{ host, user, ... }` fires at (user,host) cells). NO
-  # `__firesAtKinds`: the attachment scope set of a regular aspect is DYNAMIC (the corpus attaches
-  # `sini` via the dispatch-emitted user-aspect-auto-include), so no static kind confinement exists —
-  # the formals gate is the confinement. CEILING vs v1 (documented, P2-checked): v1 fires ONLY at scopes
-  # whose walk REGISTERED the record (aspect-attachment-local); the shim rule fires at EVERY
-  # formals-satisfying node (e.g. all user cells, not just the including user's). For the corpus's one
-  # record the over-fire emits `policy.spawn { classes }` → `declare.spawn` — childless-inert
-  # (fleetChildren is membership-driven, structural.nix children; the u4 parked-spawn posture), so the
-  # delta is P2-invisible; a future content-emitting record at this grain re-opens the scope-local
-  # question (board #57's general mechanism).
+  # gate verbatim (host-aspects-project's `{ host, user, ... }` fires at (user,host) cells) — AND
+  # `__firesAtKinds` (board #57, below): the record's REQUIRED entity-kind formals, confining the arm to
+  # OWNER-KIND nodes so a `{ host }` include no longer over-fires at a user cell that inherits its host's
+  # `host` coord. The finer aspect-ATTACHMENT locality (v1 fires ONLY at scopes whose walk REGISTERED the
+  # record — e.g. the including user's cell vs all cells) is v1's SECOND confinement, corpus-unexercised,
+  # left as a documented residual rung (NOT half-implemented — a distinct confinement).
   aspectIncludeRecords =
     let
       classSet = prelude.genAttrs allClassNames (_: true);
@@ -1182,15 +1178,35 @@ let
     dedup.recs;
   aspectIncludeDivertedNames = prelude.genAttrs (map (r: r.name) aspectIncludeRecords) (_: true);
   aspectIncludePolicies = builtins.listToAttrs (
-    map (ref: {
-      name = "__aspectInclude__${ref.name}";
-      # `compilePolicy`'s own gate (the record fn's formals = v1's required-coord presence gate) — no
-      # kind-coord union, no __firesAtKinds (see the grain header). R2 tag propagation for parity with
-      # the sibling grains (corpus-zero here).
-      value =
-        gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref)
-        // familyStamps ref;
-    }) aspectIncludeRecords
+    map (
+      ref:
+      let
+        # board #57 confinement: `__firesAtKinds` = the record fn's own REQUIRED entity-kind formals (v1
+        # `resolveArgsSatisfied`, schema.nix:188-190) — the same source `compilePolicy`'s `__condition`
+        # gates on, restricted to kinds. Mirrors `kindInclude`'s `[ kind ]` annotation. A DESCENDANT
+        # inherits an ancestor coord down its P edge (a user cell carries its host's `host` coord,
+        # structural.nix attr 1), so the formals-presence `__condition` ALONE over-fires a `{ host }`
+        # include at every user cell; the kind pre-filter pins v1's fire-AT-the-owner-kind. AND-ed with the
+        # `__condition` gate it only NARROWS — never adds a firing. OMITTED when the record has no
+        # entity-kind formal (a `{ class, … }` / ungated include keeps its DYNAMIC attachment; an empty
+        # `__firesAtKinds` would wrongly drop it at every node — the pre-filter is `elem nodeKind list`).
+        # RESIDUAL (documented, not half-done): v1's SECOND confinement — fire only where the aspect walk
+        # REGISTERED the record (aspect-attachment locality, e.g. the including user's cell vs all cells) —
+        # is a distinct, corpus-unexercised rung, left unimplemented.
+        firesAt =
+          let
+            args = fnArgsOf (innerFn ref);
+          in
+          builtins.filter (k: ing.schema ? ${k}) (builtins.filter (k: !args.${k}) (builtins.attrNames args));
+      in
+      {
+        name = "__aspectInclude__${ref.name}";
+        value =
+          gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref)
+          // familyStamps ref
+          // prelude.optionalAttrs (firesAt != [ ]) { __firesAtKinds = firesAt; };
+      }
+    ) aspectIncludeRecords
   );
 
   # Name → the FULL compiled aspect record den-hoag's resolution consumes: the compiled content
