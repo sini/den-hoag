@@ -518,17 +518,86 @@ let
   # Remap the class-`from` slice of every node in `reach srcScope`, placed at `at` — the shared body of both
   # the own-scope route (srcScope = the projecting scope) and the descendant-driven parent-targeted route
   # (srcScope = the descendant cell). `guardHolds route srcScope` gates against the SOURCE scope's bindings.
+  # ── placeRemapped — v1 `nestWithAdaptArgs`/`nestPlain` (route.nix:78-126 @ pin 11866c16), den-hoag-native.
+  # For a route with `at ≠ []` and NO eval-time guard (cases 1/2), a route-remapped slice becomes a
+  # TOP-LEVEL module in the terminal `evalModules` — `args: { config = setAttrByPath at (nestedEval).config }`
+  # — so it receives the terminal's top-level args (`pkgs`/`lib`/`config`), and its slice is resolved in a
+  # NESTED `evalModules` whose `specialArgs` thread BOTH provenances a parametric slice may read: the host
+  # top-level args (fixes `pkgs` at `users.users.<u>`) AND the SOURCE scope's channel/entity bindings
+  # (`bindingsAt srcScope` — fixes `peer-dev` at `home-manager.users.<u>`). This replaces the old nest-as-
+  # VALUE placement (`placeSlice` nested the wrapper as the submodule value, so gen-bind's wrapAll saw the
+  # outer attrset as content and never wrapped the inner fn → its args were the bare submodule's, missing
+  # pkgs/peer-dev). Case-3 (eval-time guard) is DELIBERATELY NOT handled here — it stays on the
+  # `argEnvWrap`+`placeSlice` path (below), because its guard reads the SUBMODULE's options (`options ?
+  # marker` declared inside the target submodule), which a top-level guard would not see.
+  #
+  # LEDGER (per-module vs v1's #572 COMBINED eval): v1 does ONE `nestWithAdaptArgs` over `{ imports =
+  # adapted }` for a MULTI-SOURCE route; this evals each slice module SEPARATELY. Corpus-inert — the only
+  # routed multi-source case (test-forwards-mergeable-option) merges LIST-valued content (associative concat,
+  # order-free), so per-module vs combined agree. A future multi-source route delivering a SCALAR or a
+  # priority-annotated field would need the combined `{ imports = slices }` eval (spread here) to match v1.
+  #
+  # LEDGER (priority-annotation collapse): the nested `evalModules` RESOLVES the slice before the outer merge
+  # sees it, so a `mkDefault`/`mkForce`/`mkMerge` annotation in a routed slice is COLLAPSED to its resolved
+  # value at the nested boundary. No active routed slice carries one (verified); the parked
+  # issue-311-nested-includes-are-parametric `homeManager.home.keyboard.model` mkDefault/mkForce pair rides
+  # the hm-user-detect route — when it is un-parked (a later rung), that rung must check whether the
+  # nested-eval collapse changes its cross-scope priority resolution.
+  placeRemapped =
+    route: srcScope: sliceMod:
+    let
+      srcBindings = bindingsAt srcScope; # den channel + entity + settings values (peer-dev lives here).
+    in
+    args:
+    let
+      # host top-level args (pkgs/lib/config) ++ terminal-published module args ++ source-scope den bindings
+      # (den channel values win — they are the authoritative resolved bindings).
+      fullArgs = args // (args.config._module.args or { }) // srcBindings;
+      special = if route.adaptArgs == null then fullArgs else route.adaptArgs fullArgs;
+      nested = args.lib.evalModules {
+        specialArgs = special;
+        modules = [
+          # Freeform absorber in the TERMINAL's own type system (`args.lib`), so the opaque slice's config
+          # keys land regardless of which terminal (nixpkgs / gen-merge) runs the crossing — matching the
+          # argEnvWrap case-3 absorber.
+          { config._module.freeformType = args.lib.types.lazyAttrsOf args.lib.types.raw; }
+          sliceMod
+        ];
+      };
+    in
+    {
+      config = args.lib.setAttrByPath route.at (
+        builtins.removeAttrs nested.config [
+          "_module"
+          "warnings"
+          "assertions"
+        ]
+      );
+    };
+
   remapOver =
     srcScope: route:
+    let
+      evalTimeGuard = route.guard != null && !(guardIsContentTime route.guard srcScope);
+    in
     prelude.concatMap (
-      # argEnvWrap wraps EACH slice module FIRST (so the arg-env `_module.args` lands at the SLICE's eval
-      # level), THEN placeSlice nests the wrapper at the route path — the `_module.args = adaptArgs args`
-      # must be INSIDE the target submodule's nested eval (e.g. inside `devshells.default`), NOT at the
-      # outer level (where it would not reach the nested submodule's args). Order is load-bearing.
       n:
-      placeSlice route.at (
-        map (m: argEnvWrap route srcScope m) (map (e: e.module) (classSliceOf n route.from))
-      )
+      let
+        slices = map (e: e.module) (classSliceOf n route.from);
+      in
+      if route.at == [ ] then
+        # at=[] — flat merge into the target class (home-platform bucket b). No placement path, so no
+        # top-level threading is needed; keep the arg-env wrapper so a future at=[] adaptArgs/guard route
+        # still crosses correctly (FIX-3: not the bare slice).
+        map (m: argEnvWrap route srcScope m) slices
+      else if evalTimeGuard then
+        # at≠[] WITH an eval-time guard (case-3) — UNCHANGED: the guard reads the target submodule's own
+        # options, so it must stay nested-as-value (`argEnvWrap` case-3 runs the guard as that submodule).
+        placeSlice route.at (map (m: argEnvWrap route srcScope m) slices)
+      else
+        # at≠[] with NO eval-time guard (cases 1/2) — the v1-shape top-level placer threading host args +
+        # source-scope bindings + adaptArgs (fixes pkgs + peer-dev at the placed submodule).
+        map (m: placeRemapped route srcScope m) slices
     ) (result.get srcScope "reach");
 
   routeRemapFor =

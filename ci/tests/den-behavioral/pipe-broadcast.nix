@@ -27,56 +27,51 @@ in
 {
   flake.tests.den-pipe = {
 
-    # BLOCKED: channel-arg binding at a home-manager CELL. With the user-cell seed `tuxHm` now resolves (past
-    # the old "on-demand hm-users key" `attribute 'tux' missing`), but the tux cell's `homeManager =
-    # { peer-dev, ... }: …` facet forces `attribute 'peer-dev' missing` — the `peer-dev` channel is not bound
-    # as a module arg at the home-manager cell's class module (the channel-totality binding surface does not
-    # reach the HM cell here). Distinct from the `{ host, user }` ctx family this seed delivers (a HOST
-    # consumer of a broadcast lands — see test-broadcast-to-remote-host); a separate HM-cell channel-binding
-    # rung. Reported to owner. (The sibling HM-cell-consumer broadcast tests below share this blocker.)
-    # # Basic all-to-all: each user broadcasts peer-dev to every user scope
-    # # fleet-wide. tux's home sees its own base (tux) + alice's broadcast.
-    # test-broadcast-basic = denTest (
-    #   {
-    #     den,
-    #     tuxHm,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     den.aspects.tux = {
-    #       peer-dev = [ { who = "tux@igloo"; } ];
-    #       homeManager =
-    #         { peer-dev, ... }:
-    #         {
-    #           home.sessionVariables.PEERS = lib.concatStringsSep "," (
-    #             lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
-    #           );
-    #         };
-    #     };
-    #     den.aspects.alice = {
-    #       peer-dev = [ { who = "alice@iceberg"; } ];
-    #     };
-    #
-    #     # USER scope: broadcast peer-dev to all user scopes fleet-wide.
-    #     den.policies.broadcast-peer-dev =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: true)) ]) ];
-    #     den.schema.user.includes = [ den.policies.broadcast-peer-dev ];
-    #
-    #     # tux's home sees BOTH its own and alice's broadcast peer-dev.
-    #     expr = tuxHm.home.sessionVariables.PEERS;
-    #     expected = "alice@iceberg,tux@igloo";
-    #   }
-    # );
+    # Basic all-to-all: each user broadcasts peer-dev to every user scope
+    # fleet-wide. tux's home sees its own base (tux) + alice's broadcast. The
+    # tux cell's parametric homeManager facet reads the `peer-dev` channel arg,
+    # bound at the cell's class module via the arg-threaded route remap.
+    test-broadcast-basic = denTest (
+      {
+        den,
+        tuxHm,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
+
+        den.quirks.peer-dev.description = "per-user device records";
+
+        den.aspects.tux = {
+          peer-dev = [ { who = "tux@igloo"; } ];
+          homeManager =
+            { peer-dev, ... }:
+            {
+              home.sessionVariables.PEERS = lib.concatStringsSep "," (
+                lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
+              );
+            };
+        };
+        den.aspects.alice = {
+          peer-dev = [ { who = "alice@iceberg"; } ];
+        };
+
+        # USER scope: broadcast peer-dev to all user scopes fleet-wide.
+        den.policies.broadcast-peer-dev =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: true)) ]) ];
+        den.schema.user.includes = [ den.policies.broadcast-peer-dev ];
+
+        # tux's home sees BOTH its own and alice's broadcast peer-dev.
+        expr = tuxHm.home.sessionVariables.PEERS;
+        expected = "alice@iceberg,tux@igloo";
+      }
+    );
 
     # User → REMOTE host. alice (a user on iceberg) broadcasts her device
     # record to every HOST scope ({ host, ... }: true). igloo — a host on the

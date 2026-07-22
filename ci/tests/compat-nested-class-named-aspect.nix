@@ -18,7 +18,7 @@
 #   (3) end-to-end: with the nested child explicitly included at the host, its `nixos` half lands at
 #       the host terminal AND the per-user delivered hm content carries NO class-keyed record
 #       (`nixos`/`os` keys absent inside home-manager.users.<u>).
-{ denCompat, ... }:
+{ denCompat, nixpkgsLib, ... }:
 let
   inherit (denCompat) route;
 
@@ -104,11 +104,19 @@ let
   ];
   hostTerm = fleet.den.output.systems.nixos.${igloo}.modules or [ ];
   hostTermTags = builtins.concatMap tags hostTerm;
-  userHm = builtins.concatMap (
-    m: if builtins.isAttrs m && m ? home-manager then [ (m.home-manager.users.tux or { }) ] else [ ]
-  ) hostTerm;
-  userHmTags = builtins.concatMap tags userHm;
-  userHmHasClassKeys = builtins.any (m: m ? nixos || m ? os || m ? darwin) userHm;
+  # The delivered per-user hm content OBSERVED at the crossed config (a top-level freeform absorber — the
+  # same `lazyAttrsOf raw` the terminal/placer use), not by walking the placed module's attr SHAPE (which the
+  # arg-threading rewrite makes a top-level function). `home-manager.users.tux` = the cell's resolved hm.
+  crossedHm =
+    (nixpkgsLib.evalModules {
+      modules = [
+        { config._module.freeformType = nixpkgsLib.types.lazyAttrsOf nixpkgsLib.types.raw; }
+      ]
+      ++ hostTerm;
+    }).config.home-manager or { };
+  userHmTux = crossedHm.users.tux or { };
+  userHmTags = tags userHmTux;
+  userHmHasClassKeys = (userHmTux ? nixos) || (userHmTux ? os) || (userHmTux ? darwin);
 in
 {
   flake.tests.compat-nested-class-named-aspect = {

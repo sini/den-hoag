@@ -23,19 +23,22 @@
 #       delivery with the flag renders exactly the self-targeted edge, annotated;
 #   (4) the descriptor surface — route's `__extra.appendToParent` sets the field (default false), and
 #       the edge annotation mirrors v1's routeEdge (:813).
-{ denCompat, ... }:
+{ denCompat, nixpkgsLib, ... }:
 let
   inherit (denCompat) route compile;
 
-  # every `tag` string reachable in a wrapped deferredModule (the walker the #66/#63 witnesses use),
-  # plus the #53c nest wrapper (home-manager.users.<n>).
-  tags =
-    m:
-    if builtins.isAttrs m then
-      (if m ? tag then [ m.tag ] else [ ])
-      ++ (if m ? imports then builtins.concatMap tags m.imports else [ ])
-    else
-      [ ];
+  # Cross a host's built nixos modules through a REAL evalModules (a top-level freeform absorber, the same
+  # `lazyAttrsOf raw` the terminal/placer use) and read the resolved `.config` — so a parent-targeted
+  # `home-manager.users.<u>` remap is OBSERVED at the crossed config value, not by walking the placed
+  # module's attr SHAPE (which the arg-threading rewrite makes a top-level function).
+  crossFreeform =
+    modules:
+    (nixpkgsLib.evalModules {
+      modules = [
+        { config._module.freeformType = nixpkgsLib.types.lazyAttrsOf nixpkgsLib.types.raw; }
+      ]
+      ++ modules;
+    }).config;
 
   # ── (1)/(2) a nixos host + one hm user cell; the cell fires a home-manager → host.class forward at
   #    itself (the userDetectFn shape); `withParent` toggles `__extra.appendToParent`. ──
@@ -89,21 +92,10 @@ let
       e: (e.source.class or null) == "home-manager" && (e.target.class or null) == "nixos"
     ) (fleet.den.graph.trace root);
 
-  # the nested hm module the host terminal carries: modules placing content at home-manager.users.<n>.
-  hostNestedHmUsers =
-    fleet:
-    builtins.concatMap (
-      m:
-      if builtins.isAttrs m && m ? home-manager then
-        builtins.attrNames (m.home-manager.users or { })
-      else
-        [ ]
-    ) (fleet.den.output.systems.nixos.${igloo}.modules or [ ]);
-  hostNestedHmTags =
-    fleet:
-    builtins.concatMap (
-      m: if builtins.isAttrs m && m ? home-manager then tags (m.home-manager.users.tux or { }) else [ ]
-    ) (fleet.den.output.systems.nixos.${igloo}.modules or [ ]);
+  # the host's hm-user projection OBSERVED at the crossed config: the parent-targeted forward's content
+  # resolved at `home-manager.users.<n>` on the host terminal.
+  hostHm =
+    fleet: (crossFreeform (fleet.den.output.systems.nixos.${igloo}.modules or [ ])).home-manager or { };
 
   # ── (3) parentless: a cell-less host (a parentless scope root) fires a quirk-channel route on itself
   #    with the flag — v1's `or sid` fallback ⇒ the ordinary self-targeted edge. ──
@@ -167,10 +159,14 @@ in
     # terminal (the delivery half is a projection-view transform, not an emission fold). The mark-pending
     # marker was mis-scoped (this is hm-FORWARD content, not a host-aspects reach-edge — that is Phase 5).
     test-parent-target-reaches-host-terminal = {
-      expr = {
-        users = hostNestedHmUsers withParent;
-        tags = hostNestedHmTags withParent;
-      };
+      expr =
+        let
+          hm = hostHm withParent;
+        in
+        {
+          users = builtins.attrNames (hm.users or { });
+          tags = [ (hm.users.tux.tag or "<missing>") ];
+        };
       expected = {
         users = [ "tux" ];
         tags = [ "hm-tux" ];
@@ -190,7 +186,7 @@ in
     # (2) identity companion: WITHOUT the flag the forward targets the cell root — nothing nested at the
     #     host terminal, the edge stays in the cell's edge set (pre-#53c behavior, byte-identical).
     test-no-flag-host-terminal-clean = {
-      expr = hostNestedHmUsers noParent;
+      expr = builtins.attrNames ((hostHm noParent).users or { });
       expected = [ ];
     };
     test-no-flag-edge-at-cell-root = {

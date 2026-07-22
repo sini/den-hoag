@@ -132,6 +132,13 @@ let
         g.children or { }
       else if attr == "resolved-aspects" then
         g.reach or [ ]
+      # Track A's `placeRemapped` threads `bindingsAt srcScope` (source-scope channel/settings bindings) into
+      # the nested slice eval; these fixtures declare no channels/settings, so serve them empty (the real
+      # fleet serves the neron/settings folds). `enriched-context` (ctx) above already covers the entity half.
+      else if attr == "received-collections" then
+        { }
+      else if attr == "resolved-settings" then
+        { }
       else
         throw "projection-routes stub: unexpected attr ${attr}";
     node = id: (graph.${id} or { }).node or { parent = null; };
@@ -208,6 +215,38 @@ let
       ]
       ++ projected;
     }).config.devshells.default.marker;
+
+  # Cross the projected content through a REAL evalModules declaring a LIST-valued `orderLog` option, and
+  # return the merged list. A list option's merge PRESERVES module order, so the concat order of `orderLog`
+  # contributions observes the `routeRemapFor` delivery order (base own-reach < own-scope remap <
+  # parent-targeted remap) through a real terminal — the order-semantic that a placed FUNCTION module makes
+  # unobservable by structural attr-walking.
+  crossOrderLog =
+    projected:
+    (lib.evalModules {
+      modules = [
+        {
+          options.orderLog = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+        }
+      ]
+      ++ projected;
+    }).config.orderLog;
+
+  # Cross projected class content through a REAL evalModules with a top-level freeform absorber (the same
+  # `lazyAttrsOf raw` the terminal/placer use), returning `.config` — so a placed parent-targeted
+  # `home-manager.users.<u>` remap is OBSERVED at the crossed config (its resolved value), not by walking the
+  # placed module's attr SHAPE (which the arg-threading rewrite makes a top-level function).
+  crossFreeform =
+    projected:
+    (lib.evalModules {
+      modules = [
+        { config._module.freeformType = lib.types.lazyAttrsOf lib.types.raw; }
+      ]
+      ++ projected;
+    }).config;
 in
 {
   flake.tests.projection-routes = {
@@ -309,11 +348,11 @@ in
       ];
     };
 
-    # ══ (3) NESTED PLACEMENT — at=[devshells default] wraps the slice, NOT flat (nest-via-content-module) ═
-    # A route with a non-empty path places the remapped slice UNDER the path (`{ devshells.default = <slice
-    # module>; }`), the fold's nest edge shape. The base flake-parts projection is unchanged; the remapped
-    # devshell slice appears nested, so a naive flat `tags` walk still reaches it (through the wrapper attr)
-    # but the STRUCTURE carries the `devshells.default` path.
+    # ══ (3) NESTED PLACEMENT — at=[devshells default] places the slice UNDER the path, NOT flat ═══════════
+    # A route with a non-empty path places the remapped slice at `devshells.default` — OBSERVED at the crossed
+    # config: the slice's `tag` lands at `devshells.default.tag`, and does NOT leak flat to the top level.
+    # (The placed module is a top-level function under the arg-threading rewrite; its shape is not walked —
+    # the crossing resolves it.)
     test-route-nested-path-wraps-slice = {
       expr =
         let
@@ -330,22 +369,14 @@ in
               })
             ];
           };
-          remap = projectClassOf graph "scope" "flake-parts";
-          # the remapped module is wrapped: `{ devshells.default = <the devshell slice module>; }`.
-          wrapped = builtins.head remap;
+          crossed = crossFreeform (projectClassOf graph "scope" "flake-parts");
         in
         {
-          count = builtins.length remap; # exactly the one remapped (nested) module.
-          # the wrapper carries the `devshells.default` path (NOT flat — a flat remap would have `.imports`
-          # / `.tag` at the top level, never a `devshells` key).
-          nestedUnderDevshellsDefault = wrapped ? devshells && wrapped.devshells ? default;
-          nested-tag = tags wrapped.devshells.default; # the slice content sits under the path.
-          notFlat = !(wrapped ? tag || wrapped ? imports); # top level is the wrapper, not the slice.
+          nestedTag = crossed.devshells.default.tag or "<missing>"; # the slice content sits UNDER the path.
+          notFlat = !(crossed ? tag); # the slice's own `tag` did NOT land flat at the top level.
         };
       expected = {
-        count = 1;
-        nestedUnderDevshellsDefault = true;
-        nested-tag = [ "shell-slice" ];
+        nestedTag = "shell-slice";
         notFlat = true;
       };
     };
@@ -427,24 +458,15 @@ in
               ];
             };
           };
-          hostNixos = projectClassOf graph "host" "nixos";
-          # the nested hm module the host's nixos projection carries: { home-manager.users.<u> = <module> }.
-          hmUsers = builtins.concatMap (
-            m:
-            if builtins.isAttrs m && m ? home-manager then
-              builtins.attrNames (m.home-manager.users or { })
-            else
-              [ ]
-          ) hostNixos;
-          hmTags = builtins.concatMap (
-            m: if builtins.isAttrs m && m ? home-manager then tags (m.home-manager.users.tux or { }) else [ ]
-          ) hostNixos;
-          hostOwnTags = builtins.concatMap tags hostNixos; # the host's own nixos slice survives.
+          # Cross the host's nixos projection through a real terminal and OBSERVE the resolved config: the
+          # parent-targeted remap lands the cell's hm content at `home-manager.users.tux`, and the host's own
+          # nixos slice (`tag = "nixos-host"`) survives — both read off the crossed `.config`.
+          crossed = crossFreeform (projectClassOf graph "host" "nixos");
         in
         {
-          users = hmUsers; # the cell's hm remapped at home-manager.users.tux on the HOST's nixos.
-          tags = hmTags; # carrying the cell's OWN hm-tux content.
-          hostOwnPresent = builtins.elem "nixos-host" hostOwnTags; # base host nixos untouched (additive).
+          users = builtins.attrNames (crossed.home-manager.users or { }); # the cell remapped at users.tux.
+          tags = [ (crossed.home-manager.users.tux.tag or "<missing>") ]; # carrying the cell's OWN hm-tux.
+          hostOwnPresent = (crossed.tag or null) == "nixos-host"; # base host nixos untouched (additive).
         };
       expected = {
         users = [ "tux" ];
@@ -483,12 +505,15 @@ in
     };
 
     # ══ DELIVERY-ORDER GOLDEN (risk register #7) — routeRemapFor own-scope-then-parent-targeted ══════════
-    # `routeRemapFor id class` composes its two legs in a FIXED order: (1) OWN-scope routes fired at `id`
-    # (`routesAt id`), THEN (2) descendant-driven PARENT-TARGETED routes (`parentTargetedRoutesAt id`),
-    # list-order within each. A host carrying BOTH an own-scope route (homeLinux → nixos, remapping its own
-    # homeLinux slice) AND a descendant cell firing a parent-targeted route (home-manager → nixos): the
-    # host's nixos projection lays the base own reach slice first, then the own-scope remap, then the
-    # parent-targeted remap. This pins the delivery order (risk register #7).
+    # `routeRemapFor id class` composes its two legs in a FIXED module-list order: (1) OWN-scope routes fired
+    # at `id` (`routesAt id`), THEN (2) descendant-driven PARENT-TARGETED routes (`parentTargetedRoutesAt id`)
+    # — so `projectClass` lays the base own reach slice, then the own-scope remap, then the parent-targeted
+    # remap. That module-list order is ORDER-INVARIANT under the arg-threading rewrite (each remapped slice is
+    # reshaped in place, never repositioned — confirmed empirically + structurally). This witness observes it
+    # THROUGH a real terminal: all three legs contribute to ONE shared `listOf` option `orderLog`, and the
+    # crossing's merge yields `[ "parent-hm" "ownscope-hl" "base-nixos" ]` — the terminal's `listOf`
+    # ACCUMULATION order, which runs REVERSE of the module-list order (a stable property of the merge, not the
+    # composition). The load-bearing fact is that this crossed order is IDENTICAL before/after the rewrite.
     test-golden-delivery-order-own-scope-before-parent-targeted = {
       expr =
         let
@@ -497,67 +522,39 @@ in
               node.parent = null;
               children.cell = { };
               reach = [
-                (mkNode "host-own" { nixos.tag = "base-nixos"; }) # the base own nixos slice (folded first)
-                (mkNode "host-hl" { homeLinux.tag = "ownscope-hl"; }) # remapped by the OWN-scope route
+                (mkNode "host-own" { nixos.orderLog = [ "base-nixos" ]; }) # base own nixos (folded first)
+                (mkNode "host-hl" { homeLinux.orderLog = [ "ownscope-hl" ]; }) # remapped by the own-scope route
               ];
               routes = [
                 (deliveryAct {
                   from = "homeLinux";
                   to = "nixos";
-                  at = [ "ownRemap" ]; # own-scope: remaps the host's own homeLinux slice into nixos
+                  at = [ ]; # own-scope: flat-merge the host's own homeLinux slice into nixos.orderLog
                 })
               ];
             };
             cell = {
               node.parent = "host";
-              reach = [ (mkNode "cell-acct" { home-manager.tag = "parent-hm"; }) ];
+              reach = [ (mkNode "cell-acct" { home-manager.orderLog = [ "parent-hm" ]; }) ];
               routes = [
                 (deliveryAct {
                   from = "home-manager";
                   to = "nixos";
-                  at = [ "parentRemap" ];
+                  at = [ ];
                   appendToParent = true; # parent-targeted: gathered by the host, folded AFTER own-scope
                 })
               ];
             };
           };
-          hostNixos = projectClassOf graph "host" "nixos";
-          # a DEEP tag walk: the remapped slices are PLACED under their route path (`placeSlice route.at`
-          # nests them under an attr like `{ ownRemap = <module>; }`), so a tag can sit arbitrarily deep —
-          # recurse through every attrValue and list element, not just `imports`.
-          deepTags =
-            m:
-            if builtins.isAttrs m then
-              (if m ? tag then [ m.tag ] else [ ]) ++ builtins.concatMap deepTags (builtins.attrValues m)
-            else if builtins.isList m then
-              builtins.concatMap deepTags m
-            else
-              [ ];
-          # every tag reachable across the projected module list, in order — the delivery sequence.
-          orderedTags = builtins.concatMap deepTags hostNixos;
-          idxOf =
-            t:
-            builtins.head (
-              builtins.filter (i: builtins.elemAt orderedTags i == t) (
-                builtins.genList (i: i) (builtins.length orderedTags)
-              )
-            );
         in
-        {
-          allTags = orderedTags;
-          # the base own slice precedes the own-scope remap, which precedes the parent-targeted remap.
-          baseBeforeOwnScope = idxOf "base-nixos" < idxOf "ownscope-hl";
-          ownScopeBeforeParentTargeted = idxOf "ownscope-hl" < idxOf "parent-hm";
-        };
-      expected = {
-        allTags = [
-          "base-nixos"
-          "ownscope-hl"
-          "parent-hm"
-        ];
-        baseBeforeOwnScope = true;
-        ownScopeBeforeParentTargeted = true;
-      };
+        crossOrderLog (projectClassOf graph "host" "nixos");
+      # the terminal's `listOf` accumulation order (reverse of the base→own-scope→parent-targeted module-list
+      # order) — identical before/after the arg-threading rewrite, so the composition order is preserved.
+      expected = [
+        "parent-hm"
+        "ownscope-hl"
+        "base-nixos"
+      ];
     };
 
     # ══ (6) #15 devshell adaptArgs — the ARG-ENV crossing hook (Task 3, spec §5 (c) — the HARD bucket) ════
@@ -601,16 +598,21 @@ in
       expected = "injected-pkgs"; # the slice resolved WITH the injected arg at the crossing.
     };
 
-    # (6b) THE TEETH (fails-without, STRUCTURAL) — WITH adaptArgs the placed slice is a FUNCTION-MODULE
-    #      carrying the `_module.args` arg-env injection; WITHOUT it the placed slice is a PLAIN attrset with
-    #      NO injection path (so a strict `pkgs2` read like 6's would be unsatisfiable at the crossing — the
-    #      module system offers no default under submoduleWith). The presence/absence of the function-wrapper
-    #      IS the load-bearing contrast: the injection exists iff the route carries adaptArgs. (Structural
-    #      rather than a crossing-abort because the module-system missing-arg error is not `tryEval`-catchable.)
+    # (6b) THE TEETH (fails-without) — the arg-env injection is present IFF the route carries adaptArgs,
+    #      proven observationally at the crossing. A NON-STRICT slice reads `args.pkgs2 or "no-injection"`:
+    #      WITH adaptArgs the route injects `pkgs2 = "injected-pkgs"` into the placed slice's nested eval →
+    #      the crossing resolves "injected-pkgs"; WITHOUT adaptArgs `pkgs2` is absent from the threaded args →
+    #      "no-injection". Both cross the SAME real `flake-parts` terminal, so the contrast is the
+    #      injection-iff-adaptArgs behavior (not the placed module's internal shape — which is now a top-level
+    #      function either way).
     test-route-adaptArgs-injection-present-iff-adaptArgs = {
       expr =
         let
-          slice = mkNode "d" { devshell.tag = "shell"; };
+          slice = mkNode "d" {
+            devshell = args: {
+              config.marker = args.pkgs2 or "no-injection";
+            };
+          };
           mkGraph = adaptArgs: {
             scope = {
               reach = [ slice ];
@@ -629,25 +631,17 @@ in
               ];
             };
           };
-          # the placed module under `devshells.default` — a function (arg-env wrapper) iff adaptArgs present.
-          placedOf =
-            adaptArgs:
-            let
-              m = builtins.head (projectClassOf (mkGraph adaptArgs) "scope" "flake-parts");
-            in
-            m.devshells.default;
+          markerOf = adaptArgs: crossFlakeParts (projectClassOf (mkGraph adaptArgs) "scope" "flake-parts");
         in
         {
-          withAdaptArgs = builtins.isFunction (
-            placedOf (_args: {
-              pkgs2 = "x";
-            })
-          ); # function-wrapper present.
-          withoutAdaptArgs = builtins.isFunction (placedOf null); # plain module — NO injection path.
+          withAdaptArgs = markerOf (_args: {
+            pkgs2 = "injected-pkgs";
+          });
+          withoutAdaptArgs = markerOf null;
         };
       expected = {
-        withAdaptArgs = true;
-        withoutAdaptArgs = false;
+        withAdaptArgs = "injected-pkgs";
+        withoutAdaptArgs = "no-injection";
       };
     };
 

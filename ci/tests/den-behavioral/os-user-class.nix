@@ -37,83 +37,78 @@ in
       }
     );
 
-    # BLOCKED: remap-target module-arg binding for a PARAMETRIC `.user` class facet. With the parent-targeted
-    # user→host route the `.user.*` forward now LANDS (see test-forwards-user-description +
-    # test-user-class-from-parametric-include, green), but a `.user = { pkgs, ... }: …` facet forces
-    # `attribute 'pkgs' missing` — the remapped user-class content is bound WITHOUT `pkgs` at the host's
-    # `users.users.<u>` target. A separate remap-target module-arg-binding seam, NOT the route (which lands
-    # static + parametric-include content). May share a root with the home-manager-cell channel-arg gap
-    # (pipe-broadcast.nix test-broadcast-basic `peer-dev` missing) — both are module-arg binding at a
-    # cell→host remap/delivery target; a later scout decides if they are one seam.
-    # test-forwards-os-args = denTest (
-    #   {
-    #     den,
-    #     igloo,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #
-    #     den.aspects.tux.user =
-    #       { pkgs, ... }:
-    #       {
-    #         description = lib.getName pkgs.hello;
-    #       };
-    #
-    #     expr = igloo.users.users.tux.description;
-    #     expected = "hello";
-    #   }
-    # );
-    #
-    # test-forwards-mergeable-option = denTest (   # same `pkgs`-arg gap as test-forwards-os-args
-    #   {
-    #     den,
-    #     igloo,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #
-    #     # via user class
-    #     den.aspects.tux.user =
-    #       { pkgs, ... }:
-    #       {
-    #         packages = [ pkgs.hello ];
-    #       };
-    #
-    #     # via user nixos
-    #     den.aspects.tux.nixos =
-    #       { pkgs, ... }:
-    #       {
-    #         users.users.tux.packages = [ pkgs.vim ];
-    #       };
-    #
-    #     # via host nixos
-    #     den.aspects.igloo.nixos =
-    #       { pkgs, ... }:
-    #       {
-    #         users.users.tux.packages = [ pkgs.tmux ];
-    #       };
-    #
-    #     expr = lib.sort (a: b: a < b) (
-    #       lib.filter (
-    #         name:
-    #         lib.elem name [
-    #           "hello"
-    #           "vim"
-    #           "tmux"
-    #         ]
-    #       ) (map lib.getName igloo.users.users.tux.packages)
-    #     );
-    #     expected = [
-    #       "hello"
-    #       "tmux"
-    #       "vim"
-    #     ];
-    #   }
-    # );
+    # A parametric `.user = { pkgs, ... }: …` facet resolves against the terminal's `pkgs`: the route-remapped
+    # user-class slice is nested-eval'd with the host top-level args threaded in (v1 nestWithAdaptArgs), so
+    # `pkgs` is bound at the `users.users.<u>` target.
+    test-forwards-os-args = denTest (
+      {
+        den,
+        igloo,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+
+        den.aspects.tux.user =
+          { pkgs, ... }:
+          {
+            description = lib.getName pkgs.hello;
+          };
+
+        expr = igloo.users.users.tux.description;
+        expected = "hello";
+      }
+    );
+
+    test-forwards-mergeable-option = denTest (
+      {
+        den,
+        igloo,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+
+        # via user class
+        den.aspects.tux.user =
+          { pkgs, ... }:
+          {
+            packages = [ pkgs.hello ];
+          };
+
+        # via user nixos
+        den.aspects.tux.nixos =
+          { pkgs, ... }:
+          {
+            users.users.tux.packages = [ pkgs.vim ];
+          };
+
+        # via host nixos
+        den.aspects.igloo.nixos =
+          { pkgs, ... }:
+          {
+            users.users.tux.packages = [ pkgs.tmux ];
+          };
+
+        expr = lib.sort (a: b: a < b) (
+          lib.filter (
+            name:
+            lib.elem name [
+              "hello"
+              "vim"
+              "tmux"
+            ]
+          ) (map lib.getName igloo.users.users.tux.packages)
+        );
+        expected = [
+          "hello"
+          "tmux"
+          "vim"
+        ];
+      }
+    );
 
     test-user-class-from-parametric-include = denTest (
       {

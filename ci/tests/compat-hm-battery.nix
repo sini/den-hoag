@@ -21,7 +21,12 @@
 #   (3) the NO-HM-USER identity — a resolved user withOUT the homeManager class (the corpus
 #       identity-only `classes = [ ]` shape): the forward drops — no hm module at the terminal, no
 #       hm edge at the host root.
-{ denCompat, denHoag, ... }:
+{
+  denCompat,
+  denHoag,
+  nixpkgsLib,
+  ...
+}:
 let
   R = denHoag.policy.resolve;
 
@@ -33,22 +38,20 @@ let
     else
       [ ];
   igloo = "host:igloo";
-  # the nested hm modules the host nixos terminal carries: { home-manager.users.<n> = <module>; }.
-  hostHmUsers =
+  # Cross the host's built nixos modules through a REAL evalModules (top-level freeform absorber — the same
+  # `lazyAttrsOf raw` the terminal/placer use) and read the resolved `.config.home-manager` — so the parent-
+  # targeted `home-manager.users.<u>` remap is OBSERVED at the crossed config value, not by walking the
+  # placed module's attr SHAPE (which the arg-threading rewrite makes a top-level function).
+  hostHm =
     fleet:
-    builtins.concatMap (
-      m:
-      if builtins.isAttrs m && m ? home-manager then
-        builtins.attrNames (m.home-manager.users or { })
-      else
-        [ ]
-    ) (fleet.den.output.systems.nixos.${igloo}.modules or [ ]);
-  hostHmTagsOf =
-    fleet: user:
-    builtins.concatMap (
-      m:
-      if builtins.isAttrs m && m ? home-manager then tags (m.home-manager.users.${user} or { }) else [ ]
-    ) (fleet.den.output.systems.nixos.${igloo}.modules or [ ]);
+    (nixpkgsLib.evalModules {
+      modules = [
+        { config._module.freeformType = nixpkgsLib.types.lazyAttrsOf nixpkgsLib.types.raw; }
+      ]
+      ++ (fleet.den.output.systems.nixos.${igloo}.modules or [ ]);
+    }).config.home-manager or { };
+  hostHmUsers = fleet: builtins.attrNames ((hostHm fleet).users or { });
+  hostHmTagsOf = fleet: user: tags ((hostHm fleet).users.${user} or { });
   hmEdgesAtHost =
     fleet:
     builtins.filter (
