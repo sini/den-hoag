@@ -850,15 +850,31 @@ let
           ) (builtins.attrNames derivedBaseNames)
         );
       gathered = channelGatherR id;
+      # attribute 10 — the node's OWN emissions per channel (no ancestor inheritance).
+      ownData = result.get id "local-collection-data";
       flatten =
         c:
         let
           v = extractContribution c;
         in
         if builtins.isList v then v else [ v ];
+      # v1 bindsPipeLocally (assemble-pipes.nix:918-923 / pipeData :1046-1054): a channel that RECEIVES an
+      # expose/broadcast value here (`gathered.<ch> ≠ [ ]`) binds LOCALLY — the node reads its OWN value plus
+      # the received value and does NOT fall through to the attr-11 ancestor-inheritance fold. The own base is
+      # the derived terminal when a local deriving pipe supersedes the channel (`local`, already own-scoped —
+      # the terminal is produced only where the pipe fires, so it carries no host inheritance), else the raw
+      # own emission (attribute 10). A pure CONSUMER (no gather) keeps the inherited `received` base — #74b
+      # persist-home, where a user reads its host's inherited value. The gate is `gathered ≠ [ ]` ALONE (an
+      # `ownContribs ≠ [ ]` disjunct would drop the inherited half of a plain cell's #74b binding).
+      baseOf =
+        ch:
+        if (gathered.${ch} or [ ]) != [ ] then
+          if derivedBaseNames ? ${ch} then (local.${ch} or [ ]) else (ownData.${ch} or [ ])
+        else
+          (local.${ch} or [ ]);
     in
     prelude.genAttrs (builtins.attrNames (local // gathered)) (
-      ch: prelude.concatMap flatten ((local.${ch} or [ ]) ++ (gathered.${ch} or [ ]))
+      ch: prelude.concatMap flatten ((baseOf ch) ++ (gathered.${ch} or [ ]))
     );
 
   # The binding set handed to a member's class modules: the node's entity bindings (host/user/env
