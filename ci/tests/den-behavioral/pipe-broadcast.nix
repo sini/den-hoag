@@ -380,105 +380,103 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE (broadcast source-side config-thunk resolution unbuilt — the broadcast arm IS now
-    # wired: lib/compat/flake-module.nix `channelGather = gather.mkGather entityKinds` composes the
-    # push-dual broadcast arm, but it moves the producer's RAW `localContribs`; a config-DEPENDENT
-    # (deferred) emit needs source-side resolution against the PRODUCER's class config before distribution
-    # (v1 `collectAllBroadcast` resolves at the producing class+scope, assemble-pipes.nix:794), which the
-    # arm does not do — residual #4, corpus-zero for broadcast):
-    # v1 expected "h-iceberg" (source-resolved at iceberg's nixos config); den-hoag: the deferred emit is not source-resolved before distribution.
-    # # Config-dependent emit broadcast from a HOST source resolves against the
-    # # producer's class config — the host's own nixos config.
-    # test-broadcast-config-thunk-host = denTest (
-    #   {
-    #     den,
-    #     igloo,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     den.aspects.set-hostname.nixos =
-    #       { host, ... }:
-    #       {
-    #         networking.hostName = host.name;
-    #       };
-    #
-    #     # iceberg HOST emits a config-dependent record and broadcasts to hosts.
-    #     den.aspects.iceberg.peer-dev = { config, ... }: [ { who = "h-${config.networking.hostName}"; } ];
-    #     den.policies.broadcast-to-hosts =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, ... }: true)) ]) ];
-    #     den.schema.host.includes = [
-    #       den.aspects.set-hostname
-    #       den.policies.broadcast-to-hosts
-    #     ];
-    #
-    #     den.aspects.igloo.includes = [ den.aspects.peer-consumer ];
-    #     den.aspects.peer-consumer.nixos =
-    #       { peer-dev, ... }:
-    #       {
-    #         networking.domain = lib.concatStringsSep "," (map (p: p.who) peer-dev);
-    #       };
-    #
-    #     expr = igloo.networking.domain;
-    #     expected = "h-iceberg";
-    #   }
-    # );
+    # Config-dependent emit broadcast from a HOST source resolves against the
+    # producer's class config — the host's own nixos config.
+    test-broadcast-config-thunk-host = denTest (
+      {
+        den,
+        igloo,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
 
-    # PARKED-DIVERGENCE (broadcast source-side config-thunk resolution unbuilt — the broadcast arm IS now
-    # wired: lib/compat/flake-module.nix `channelGather = gather.mkGather entityKinds` composes the
-    # push-dual broadcast arm, but it moves the producer's RAW `localContribs`; a config-DEPENDENT
-    # (deferred) emit needs source-side resolution against the PRODUCER's class config before distribution
-    # (v1 `collectAllBroadcast` resolves at the producing class+scope, assemble-pipes.nix:794), which the
-    # arm does not do — residual #4, corpus-zero for broadcast):
-    # v1 expected "u-alice" (source-resolved at alice's home-manager config); den-hoag: the deferred emit is not source-resolved before distribution.
-    # # A config-dependent emit broadcast from a USER source resolves against the
-    # # PRODUCER's class config — the user's home-manager config (not the cross-
-    # # host nixos config, which has no entry for a user scope). alice reads her
-    # # own home field; the resolved value reaches a peer host's consumer.
-    # test-broadcast-config-thunk-user = denTest (
-    #   {
-    #     den,
-    #     igloo,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     # alice (USER) emits a config-dependent record reading her HOME config,
-    #     # broadcast to hosts. Resolves against alice's home-manager config.
-    #     den.aspects.alice.peer-dev = { config, ... }: [ { who = "u-${config.home.username}"; } ];
-    #     den.policies.broadcast-to-hosts =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, ... }: true)) ]) ];
-    #     den.schema.user.includes = [ den.policies.broadcast-to-hosts ];
-    #
-    #     den.aspects.igloo.includes = [ den.aspects.peer-consumer ];
-    #     den.aspects.peer-consumer.nixos =
-    #       { peer-dev, ... }:
-    #       {
-    #         networking.domain = lib.concatStringsSep "," (map (p: p.who) peer-dev);
-    #       };
-    #
-    #     expr = igloo.networking.domain;
-    #     expected = "u-alice";
-    #   }
-    # );
+        den.quirks.peer-dev.description = "per-user device records";
+
+        den.aspects.set-hostname.nixos =
+          { host, ... }:
+          {
+            networking.hostName = host.name;
+          };
+
+        # iceberg HOST emits a config-dependent record and broadcasts to hosts.
+        den.aspects.iceberg.peer-dev = { config, ... }: [ { who = "h-${config.networking.hostName}"; } ];
+        den.policies.broadcast-to-hosts =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, ... }: true)) ]) ];
+        den.schema.host.includes = [
+          den.aspects.set-hostname
+          den.policies.broadcast-to-hosts
+        ];
+
+        den.aspects.igloo.includes = [ den.aspects.peer-consumer ];
+        den.aspects.peer-consumer.nixos =
+          { peer-dev, ... }:
+          {
+            networking.domain = lib.concatStringsSep "," (map (p: p.who) peer-dev);
+          };
+
+        expr = igloo.networking.domain;
+        expected = "h-iceberg";
+      }
+    );
+
+    # A config-dependent emit broadcast from a USER source resolves against the
+    # PRODUCER's class config — the user's home-manager config (not the cross-
+    # host nixos config, which has no entry for a user scope). alice reads her
+    # own home field; the resolved value reaches a peer host's consumer.
+    test-broadcast-config-thunk-user = denTest (
+      {
+        den,
+        igloo,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
+
+        den.quirks.peer-dev.description = "per-user device records";
+
+        # alice (USER) emits a config-dependent record reading her HOME config,
+        # broadcast to hosts. Resolves against alice's home-manager config.
+        den.aspects.alice.peer-dev = { config, ... }: [ { who = "u-${config.home.username}"; } ];
+        den.policies.broadcast-to-hosts =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, ... }: true)) ]) ];
+        den.schema.user.includes = [ den.policies.broadcast-to-hosts ];
+
+        den.aspects.igloo.includes = [ den.aspects.peer-consumer ];
+        den.aspects.peer-consumer.nixos =
+          { peer-dev, ... }:
+          {
+            networking.domain = lib.concatStringsSep "," (map (p: p.who) peer-dev);
+          };
+
+        expr = igloo.networking.domain;
+        expected = "u-alice";
+      }
+    );
+
+    # GENUINE-CYCLE WITNESS (documented, deliberately NOT a green forcing test — Tier-1 CHORAG reframe of
+    # S3, spike specs/2026-07-22-cross-terminal-materialized-values-spike.md §3/§7). The two tests above are
+    # the ACYCLIC-AT-USE case: igloo's consumer reads iceberg's/alice's PRODUCER config, whose value does
+    # not read back into igloo — Nix's own terminal fixpoint (the producer-config knot, output-modules.nix
+    # `producerConfigs`) resolves it. A GENUINE generation⋈resolution cycle — a config-thunk at A reading a
+    # value that (via the fleet) depends on A's own terminal being resolved — is NOT constructible as a
+    # resolved value: it surfaces as a LOUD `error: infinite recursion encountered`, uncatchable by tryEval,
+    # never a silent stale read (strictly better than v1/Tier-0 silent-wrong, CHORAG Fig 10-11). Because an
+    # infinite-recursion cannot be a passing assertion, this is a NAMED behavioral contract, not a test: the
+    # engine-grounded reason (CHORAG Def 1 fails over general NixOS config — no bounded-height value lattice)
+    # is why the honest failure mode is loud-on-cycle rather than a co-evaluation fixpoint. Corpus-zero.
 
     # Pure-receiver binding: a user with NO own emit/effect, on a host that runs
     # a peer-dev policy (so its policyBoundAncestor is non-null), receives a

@@ -44,12 +44,18 @@ let
       hostModules,
       bindings,
       classCfg,
+      # The producer-scoped config-thunk map (CHORAG §5.1). A `__sourceScope`-keyed config-thunk in a
+      # channel binding resolves against `producerConfigs.<key>` (the PRODUCING terminal's config), not this
+      # consumer's — the cross-terminal materialized-value read. Default `{ }` ⇒ thunks resolve against the
+      # consumer config, byte-identical. Passed opaquely to gen-bind's `wrapAll` (lazy: forced only when a
+      # thunk demands it, at this terminal — A17).
+      producerConfigs ? { },
     }:
     let
       prepared = prepareModules classCfg hostModules;
       wrapped = bind.wrapAll {
         modules = prepared;
-        inherit bindings;
+        inherit bindings producerConfigs;
         defaultMergeStrategy = classCfg.defaultMergeStrategy;
       };
     in
@@ -80,12 +86,14 @@ in
       hostModules,
       bindings,
       classCfg,
+      # See `crossVia` — the producer-scoped config-thunk map, threaded to `wrapAll` (default `{ }`).
+      producerConfigs ? { },
     }:
     let
       prepared = prepareModules classCfg hostModules;
       wrapped = bind.wrapAll {
         modules = prepared;
-        inherit bindings;
+        inherit bindings producerConfigs;
         defaultMergeStrategy = classCfg.defaultMergeStrategy;
       };
     in

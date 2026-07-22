@@ -415,6 +415,9 @@ let
       hostModules,
       bindings,
       classCfg,
+      # The producer-scoped config-thunk map — forwarded opaquely to the effective terminal's `wrapAll`
+      # (default `{ }` ⇒ byte-identical). See lib/output/terminal.nix `crossVia`.
+      producerConfigs ? { },
     }:
     let
       hostEntry = bindings.host or null;

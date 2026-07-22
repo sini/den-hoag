@@ -791,10 +791,24 @@ let
   traceFor = root: edge.trace (edgesForRoot root);
 
   # ── terminal crossing ────────────────────────────────────────────────────────────────────────────
+  # The producer-config map KEY: the producing entry's `id_hash` + producing CLASS name (§5 — a scope with
+  # multiple class terminals needs the class to pick host→nixos vs user-cell→home-manager). gen-pipe
+  # preserves the contribution's `producer.entity` (its `contribute` reconstructs `{ entity; scope; aspect }`
+  # — dropping any extra field), so `producer.entity.id_hash` is the stable, JSON-safe producer identity
+  # (unlike `producer.scope`/coordDims, which can carry function-valued decls). The thunk stamp
+  # (`deferredToThunk`, from `producer.entity.id_hash`) and the map build (`producerConfigs`, from each
+  # node's `__entry.id_hash`) derive the SAME key. NOTE: the node's OWN id is a readable coord-path
+  # (`host:iceberg`), NOT the id_hash — so the map keys by the entry hash but looks the config up by node id.
+  producerKeyOf =
+    entryHash: classEntry: "${entryHash}::${if classEntry == null then "" else classEntry.name}";
+
   # Adapt a deferred gen-pipe contribution to a gen-bind config-thunk (resolve-at-producing-scope, PR
-  # #623 parity): the thunk carries the producing scope; gen-bind's `wrapAll` resolves its `fn` against
-  # the PRODUCING class's config when the terminal forces it. `__sourceScope` records the producing scope.
-  deferredToThunk = c: bind.mkThunkFrom c.producer.scope c.fn;
+  # #623 parity): the thunk carries the producing scope+class as `__sourceScope`; gen-bind's `wrapAll`
+  # resolves its `fn` against the PRODUCING terminal's config (`producerConfigs.<key>`) when the terminal
+  # forces it — CHORAG §5.1, the host's lazy fixpoint as the cross-terminal solver. Absent a producer key
+  # (default map) it falls back to the consumer config, byte-identical.
+  deferredToThunk =
+    c: bind.mkThunkFrom (producerKeyOf (c.producer.entity.id_hash or "") c.class) c.fn;
 
   # Lower a §4.8 R6 defer contribution (`executeDefer`'s `{ mode="defer"; needs; thenFn; fn }`) onto a gen-bind
   # config-thunk: `mkThunkFrom <producingScope>` wraps the contribution's config-adapter `fn` so wrapAll
@@ -983,6 +997,65 @@ let
   freeformAbsorber = {
     freeformType = merge.anything;
   };
+  # The producer-scoped config-thunk map (CHORAG §5.1): `<scope-coords ::class> = <that scope's producing
+  # terminal config>`. A `__sourceScope`-keyed config-thunk resolves against the PRODUCER's config, not the
+  # consumer's (broadcast/expose/route a config-DEPENDENT emit across terminals). Keyed to match
+  # `deferredToThunk`'s stamp (coords + class name). The value is the producing scope's terminal config:
+  #   • host (nixos)         → its own nixos terminal config.
+  #   • user cell (home-manager) → the host's nixos config nested at `home-manager.users.<user>` (den-hoag
+  #     mounts hm INSIDE the host's nixos terminal; there is no standalone hm system here).
+  # THE FIXPOINT KNOT: this map is built FROM `systems`, and `systems`' terminal `wrapAll` consumes it — a
+  # mutually-recursive `let` (Nix's own fixpoint). It stays LAZY: the SPINE (keys) reads node decls + class
+  # (the hm branch also reads `enriched-context.user.name` for the nesting key — still TERMINAL-FREE, a
+  # pre-config `resolve.attr` that can't cycle with terminal-config resolution), so building the spine never
+  # forces a TERMINAL; each VALUE is an unforced ref to a `systems.<class>.<member>.config`, forced only when
+  # a consumer's thunk indexes it, to the depth the thunk reads (A17's strong guarantee — no eager terminal-
+  # config force — holds, and nothing `deepSeq`s this map or the systems values). An acyclic-at-use
+  # cross-terminal read resolves via the knot; a genuine cross-terminal cycle surfaces as LOUD `infinite
+  # recursion` (never a silent read).
+  producerConfigs = builtins.listToAttrs (
+    prelude.concatMap (
+      id:
+      let
+        node = result.node id;
+        classEntry = classOfNode node;
+        entryHash = node.decls.__entry.id_hash or null;
+      in
+      if classEntry == null || entryHash == null then
+        [ ]
+      else
+        let
+          key = producerKeyOf entryHash classEntry;
+        in
+        # A producer key is added ONLY when the producing terminal exposes a REAL `.config` (a nixpkgs
+        # crossing). The nixpkgs-free `collect` terminal has no `.config`; omitting the key lets the thunk
+        # FALL BACK to the consumer config (byte-identical to the pre-Tier-1 resolution). So a collect fleet
+        # (no `den.nixpkgs`) contributes an EMPTY map ⇒ every config-thunk resolves at the consumer, exactly
+        # as before — the byte-parity guarantee.
+        if classEntry.name == "nixos" then
+          let
+            sys = systems.nixos.${id} or { };
+          in
+          if sys ? config then [ (prelude.nameValuePair key sys.config) ] else [ ]
+        else if classEntry.name == "home-manager" then
+          # A user cell's home-manager config is nested in its host's nixos terminal at
+          # `home-manager.users.<user>` (no standalone hm system here). The user name is the cell's `user`
+          # coord dim; the host is the containment parent.
+          let
+            hostId = node.parent;
+            user = (result.get id "enriched-context").user.name or (node.decls.user or null);
+            hostSys = if hostId == null then { } else (systems.nixos.${hostId} or { });
+          in
+          if hostId != null && user != null && hostSys ? config then
+            [
+              (prelude.nameValuePair key (hostSys.config.home-manager.users.${user} or { }))
+            ]
+          else
+            [ ]
+        else
+          [ ]
+    ) allNodeIds
+  );
   deltaOf =
     name: classCfg: id:
     [ freeformAbsorber ]
@@ -990,6 +1063,7 @@ let
       modules = terminalModulesAt id name; # projectClass over reach (Phase 2 Task 3)
       bindings = bindingsAt id;
       defaultMergeStrategy = classCfg.defaultMergeStrategy;
+      inherit producerConfigs;
     }).modules;
 
   # systems.<class>.<member> — the per-member built artifact. Class-major + content-driven (the gen-flake
@@ -1034,6 +1108,7 @@ let
             hostModules = terminalModulesAt id name; # projectClass over reach (Phase 2 Task 3)
             inherit classCfg;
             bindings = bindingsAt id;
+            inherit producerConfigs; # CHORAG §5.1 producer-scoped config-thunk map (the fixpoint knot)
           };
         }) contentIds
       )
