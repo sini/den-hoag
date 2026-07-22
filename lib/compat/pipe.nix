@@ -61,23 +61,23 @@ let
   };
 
   # A single v1 pipe stage → its compiled den-hoag form, tagged by ROLE so `compilePipe` can fold the
-  # deriving ops, collect the delivery routes, and carry the site markers. `from` is the pipe's base
-  # channel name (a delivery route needs it as its source). Total over §2.4 — an unknown stage is a
-  # named definition-time error, never a silent no-op.
+  # deriving ops, collect the delivery intents, and carry the site markers. Total over §2.4 — an unknown
+  # stage is a named definition-time error, never a silent no-op.
   #
   # deriving → a gen-pipe channel transformer (`ch -> derived channel`): filter→filter, transform→map,
   #   fold→fold (associative-only, B5). for→map — v1 `for` is a whole-list rewrite; gen-pipe `map` is the
   #   per-element list operator, so both are the channel's `map` node, distinguished by the inert
   #   `__derive.wholeList` marker `for` carries (see the `for` branch — it preserves what the run wiring
   #   needs to apply whole-list vs per-element; a byte-identical record would lose it).
-  # delivery → a gen-pipe `route` op rooted at `from`: to→a select-route carrying the target aspects
-  #   (the value stays on its own channel for them to read); as→a channel→channel route to the named pipe.
+  # delivery → an INTENT `{kind,select,target}`; `compilePipe` roots the actual gen-pipe `route` at the
+  #   derived terminal: as→a channel→channel route to the target channel; to→kept inert on `targeted` (an
+  #   aspect is not a gen-pipe channel — the consumer-addressed binding is a separate kernel seam).
   # site → an inert marker the emission/consumption site interprets: append→a contribution at the policy's
   #   scope, expose→ascend to parent, broadcast→#623 push-dual (contributions class-tagged at the producing
   #   class+scope), collect/collectAll→predicate gather (collectAll = raw + exposed), withProvenance→a
   #   provenance-view no-op.
   stageOp =
-    declare: from: stage:
+    declare: stage:
     let
       k = stage.__pipeStage or null;
     in
@@ -266,7 +266,7 @@ in
     declare: value:
     let
       pipeName = value.pipeName;
-      compiled = map (stageOp declare pipeName) (value.stages or [ ]);
+      compiled = map (stageOp declare) (value.stages or [ ]);
       byRole = role: builtins.filter (c: c.role == role) compiled;
       # left-to-right operator composition onto the base channel (§2.4 "select channel + left-to-right op
       # composition"): each deriving stage's transformer is applied to the running channel, in order.
