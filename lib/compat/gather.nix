@@ -18,9 +18,9 @@
 # data-merge folds over result lists — no recursion, no fixpoint, no fold-over-graph, no edge-walk, no
 # transpose (the sole graph traversal is the expose `queryPaths`).
 #
-# COMPUTE-ONCE (per fleet, not per consumer). `mkGather` binds `result` BEFORE the per-consumer `id` (the
-# seam hoists `channelGather result` once — output-modules.nix), so the three per-fleet indices are built
-# ONE time and shared across every consumer:
+# COMPUTE-ONCE (per fleet, not per consumer). `mkGather` binds `derivedBaseNames` + `result` BEFORE the
+# per-consumer `id` (the seam hoists `channelGather derivedBaseNames result` once — output-modules.nix), so
+# the three per-fleet indices are built ONE time and shared across every consumer:
 #   • `exposePoolByNode` — each node's received expose pool (itself channels × `queryPaths`), a lazy
 #     per-node-memoized attrset: forced at most ONCE per node, reused by every consumer that matches it as
 #     a collect peer (was: recomputed per matched-peer × per collect-mark × per consumer — the dominant

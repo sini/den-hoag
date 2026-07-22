@@ -1275,15 +1275,18 @@ let
       # SUPERSEDES the base at the binding grain (below, threaded to output-modules as `derivedBaseNames`).
       # gen-pipe's `mkDerived` names a derived channel `<input>.<op>` (predicate-blind), so TWO policies
       # deriving the SAME base with the SAME op collide on one id and compose's first-wins byId dedup
-      # SILENTLY drops the later policy's predicate. When a base carries MULTIPLE untargeted-deriving pipes,
-      # stamp each colliding TERMINAL an explicit unique name from a per-pipeOp ordinal (`mkDerived` id=name
-      # override — the terminal's id becomes the name, so the policies' terminals stay distinct channels and
-      # both reach the fold). A LONE untargeted pipe keeps its natural gen-pipe name (the composed-name form
-      # the white-box goldens assert); its terminal id resolves through `idToName` below. SCOPED to
-      # untargeted-deriving ONLY: an as/to/route pipe (`routes ≠ [ ]`) is never renamed, so the as-trio is
-      # byte-identical by construction. The rename must FEED the compose — `pipeChannelOps` walks the
-      # RENAMED terminals, else the stamp is inert (the `idToName` miss THROW in `derivedBaseNames` catches
-      # that).
+      # SILENTLY drops the later policy's predicate — AT EVERY DEPTH, not just the terminal: two multi-stage
+      # policies (`[ filter, transform ]`) share intermediate `<base>.filter` ids too, so a terminal-only
+      # rename would leave both terminals' `__derive.inputs` pointing at ONE surviving intermediate (policy-b's
+      # non-terminal predicate dropped). When a base carries MULTIPLE untargeted-deriving pipes, rename the
+      # WHOLE chain of each colliding pipe (`renameChain` — every derived node gets a per-pipe-ordinal +
+      # per-depth unique id, `__derive.inputs` re-pointed to the renamed predecessor), so no CSE collision
+      # arises at any depth and both policies' every stage survives. A LONE untargeted pipe (`udBaseCount == 1`)
+      # is UNTOUCHED — it keeps its natural gen-pipe names (the composed-name form the white-box goldens
+      # assert); its terminal id resolves through `idToName` below. SCOPED to untargeted-deriving ONLY: an
+      # as/to/route pipe (`routes ≠ [ ]`) is never renamed, so the as-trio is byte-identical by construction.
+      # The rename must FEED the compose — `pipeChannelOps` walks the RENAMED chains, else the stamp is inert
+      # (the `idToName` miss THROW in `derivedBaseNames` catches that).
       isUntargetedDeriving =
         p:
         (p.derived.__derived or false)
@@ -1295,6 +1298,29 @@ let
         acc: p:
         if isUntargetedDeriving p then acc // { ${p.channel} = (acc.${p.channel} or 0) + 1; } else acc
       ) { } (policiesRules.pipeOps or [ ]);
+      # Rename a colliding pipe's ENTIRE derive chain: each derived node gets a `<base>.__ud.<ord>.<depth>`
+      # id (depth = the node's derived-chain length, strictly decreasing base-ward, so unique within the
+      # linear chain), and its `__derive.inputs` are re-pointed to the renamed predecessors (a base ref is
+      # `__derived == false` → returned untouched, so the chain still roots on the registered channel). This
+      # makes intermediate nodes distinct across policies too, closing the multi-stage CSE collision. The
+      # explicit `name` makes gen-pipe's `nameOf` return it verbatim (op-independent — `honorWholeList` may
+      # still rewrite a node's op downstream without disturbing the name).
+      renameChain =
+        base: ord: d:
+        if (d.__derived or false) then
+          let
+            nm = "${base}.__ud.${toString ord}.${toString (builtins.length (pipeChainOf d))}";
+          in
+          d
+          // {
+            name = nm;
+            id = nm;
+            __derive = d.__derive // {
+              inputs = map (renameChain base ord) d.__derive.inputs;
+            };
+          }
+        else
+          d;
       renamedPipes =
         prelude.foldl'
           (
@@ -1302,25 +1328,15 @@ let
             if isUntargetedDeriving p then
               if (udBaseCount.${p.channel} or 0) > 1 then
                 let
-                  nm = "${p.channel}.__ud.${toString acc.ord}";
+                  renamedTerminal = renameChain p.channel acc.ord p.derived;
                 in
                 {
                   ord = acc.ord + 1;
-                  ops = acc.ops ++ [
-                    (
-                      p
-                      // {
-                        derived = p.derived // {
-                          name = nm;
-                          id = nm;
-                        };
-                      }
-                    )
-                  ];
+                  ops = acc.ops ++ [ (p // { derived = renamedTerminal; }) ];
                   terminals = acc.terminals ++ [
                     {
                       base = p.channel;
-                      id = nm;
+                      inherit (renamedTerminal) id;
                     }
                   ];
                 }

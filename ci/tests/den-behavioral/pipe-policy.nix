@@ -478,6 +478,85 @@ in
       }
     );
 
+    # Multi-STAGE multi-policy: two policies on the same base, each `[ filter, transform ]` with DISTINCT
+    # predicates. Their INTERMEDIATE filter nodes share the predicate-blind `<base>.filter` id, so a
+    # terminal-only rename would collapse them (compose first-wins) and policy-b's filter would be silently
+    # replaced by policy-a's — dropping a non-terminal predicate. Full-chain rename gives each stage a
+    # distinct id, so both policies' filter AND transform survive.
+    test-pipe-multi-policy-multi-stage = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.items = {
+          description = "Items";
+        };
+
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          items = [
+            { name = "a"; }
+            { name = "b"; }
+            { name = "c"; }
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { items, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" (i: i.name) items;
+            };
+        };
+
+        # policy-a: drop "c", tag "a"; policy-b: drop "a", tag "b" — distinct filter AND transform (alnum
+        # tags so the concatenated result is a valid hostName).
+        den.policies.policy-a =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "items" [
+              (pipe.filter (i: i.name != "c"))
+              (pipe.transform (i: {
+                name = "a${i.name}";
+              }))
+            ])
+          ];
+
+        den.policies.policy-b =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "items" [
+              (pipe.filter (i: i.name != "a"))
+              (pipe.transform (i: {
+                name = "b${i.name}";
+              }))
+            ])
+          ];
+
+        den.default.includes = [
+          den.policies.policy-a
+          den.policies.policy-b
+        ];
+
+        # policy-a keeps {a,b}→aa,ab ; policy-b keeps {b,c}→bb,bc ; per-policy concat in include order.
+        # A terminal-only rename would collapse policy-b's filter onto policy-a's (drop "c"), yielding the
+        # WRONG "aa-ab-ba-bb".
+        expr = igloo.networking.hostName;
+        expected = "aa-ab-bb-bc";
+      }
+    );
+
     # No pipe effects — pipe data passes through unchanged.
     test-pipe-no-policy-passthrough = denTest (
       { den, igloo, ... }:

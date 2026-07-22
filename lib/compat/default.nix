@@ -107,12 +107,14 @@ let
   # 3-arm adapter (expose ascent #62b + collect/collectAll twins #69 + the push-dual broadcast arm). The
   # EXPOSE arm's transitive ascent runs on gen-graph (`denHoag.query`, paths mode); collect/collectAll/
   # broadcast are one-hop predicate filters over the node set (no query layer). Witness surface: `gatheredAt`
-  # (expose ascent) + `mkGather entityKinds` (the composed supplier, curried on `result`).
+  # (expose ascent) + `mkGather entityKinds` (the composed supplier, curried on `derivedBaseNames` then
+  # `result`).
   gatherLib = import ./gather.nix {
     inherit prelude;
     # `denHoag.query` — the EXPOSE arm's paths-mode transitive ascent (the sole gen-graph traversal). The
     # collect/collectAll/broadcast arms are one-hop predicate filters (no query layer); `mkGather` curries
-    # `result` so the per-fleet indices (per-node expose pool, sibling buckets, broadcaster set) build once.
+    # `derivedBaseNames` then `result` so the per-fleet indices (per-node expose pool, sibling buckets,
+    # broadcaster set) build once.
     query = denHoag.query;
   };
   mkWiring =
@@ -158,8 +160,8 @@ in
   inherit keyClassification;
   # The re-layered cross-scope channel gather (3-arm adapter) — witness surface: `gatheredAt` (the
   # gated-transitive expose ascent, for the depth-semantics unit tests) + the composed `den.channelGather`
-  # supplier `mkGather entityKinds` (curried on `result`; expose via gen-graph queryPaths, collect/broadcast
-  # as direct one-hop predicate filters with per-fleet indices precomputed once).
+  # supplier `mkGather entityKinds` (curried on `derivedBaseNames` then `result`; expose via gen-graph
+  # queryPaths, collect/broadcast as direct one-hop predicate filters with per-fleet indices precomputed once).
   gather = gatherLib;
   # The bridge-registry passthrough (ship-gate M2's successor architecture) — the v1 hosts-registry
   # declaration + the structural-exclusion stamp machinery the bridge mounts.
