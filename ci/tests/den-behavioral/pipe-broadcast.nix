@@ -122,62 +122,57 @@ in
       }
     );
 
-    # BLOCKED: source-side transform not applied pre-broadcast (the `pipe.transform` SOURCE stage before
-    # `pipe.broadcast`). The broadcast arm's source-emit is the RAW `localContribs` (gather.nix broadcast arm
-    # residual #4), so the transformed view ("dev:alice,dev:tux") is not produced — actual "alice,tux". Same
-    # family as the config-thunk-{host,user} PARKED-DIVERGENCE (source-side resolution before distribution); a
-    # separate rung, NOT the (now-closed) on-demand hm-users-key gap.
-    # # Source-side transform stages apply BEFORE distribution: the broadcast
-    # # value is the transformed view, identical at every receiver.
-    # test-broadcast-source-transform = denTest (
-    #   {
-    #     den,
-    #     tuxHm,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     den.aspects.tux = {
-    #       peer-dev = [ { who = "tux"; } ];
-    #       homeManager =
-    #         { peer-dev, ... }:
-    #         {
-    #           home.sessionVariables.PEERS = lib.concatStringsSep "," (
-    #             lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
-    #           );
-    #         };
-    #     };
-    #     den.aspects.alice = {
-    #       peer-dev = [ { who = "alice"; } ];
-    #     };
-    #
-    #     # Transform (uppercase-style tag) runs source-side, then broadcast.
-    #     den.policies.broadcast-peer-dev =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "peer-dev" [
-    #           (pipe.transform (p: {
-    #             who = "dev:${p.who}";
-    #           }))
-    #           (pipe.broadcast ({ user, ... }: true))
-    #         ])
-    #       ];
-    #     den.schema.user.includes = [ den.policies.broadcast-peer-dev ];
-    #
-    #     # tux's own value is transformed too (own untargeted path) + alice's
-    #     # transformed broadcast → uniform "dev:" view everywhere.
-    #     expr = tuxHm.home.sessionVariables.PEERS;
-    #     expected = "dev:alice,dev:tux";
-    #   }
-    # );
+    # Source-side transform stages apply BEFORE distribution: the broadcast
+    # value is the transformed view, identical at every receiver.
+    test-broadcast-source-transform = denTest (
+      {
+        den,
+        tuxHm,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
+
+        den.quirks.peer-dev.description = "per-user device records";
+
+        den.aspects.tux = {
+          peer-dev = [ { who = "tux"; } ];
+          homeManager =
+            { peer-dev, ... }:
+            {
+              home.sessionVariables.PEERS = lib.concatStringsSep "," (
+                lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
+              );
+            };
+        };
+        den.aspects.alice = {
+          peer-dev = [ { who = "alice"; } ];
+        };
+
+        # Transform (uppercase-style tag) runs source-side, then broadcast.
+        den.policies.broadcast-peer-dev =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "peer-dev" [
+              (pipe.transform (p: {
+                who = "dev:${p.who}";
+              }))
+              (pipe.broadcast ({ user, ... }: true))
+            ])
+          ];
+        den.schema.user.includes = [ den.policies.broadcast-peer-dev ];
+
+        # tux's own value is transformed too (own untargeted path) + alice's
+        # transformed broadcast → uniform "dev:" view everywhere.
+        expr = tuxHm.home.sessionVariables.PEERS;
+        expected = "dev:alice,dev:tux";
+      }
+    );
 
     # Predicate scoping (negative): a broadcast targeting USER scopes is NOT
     # visible to a HOST consumer — the receiver predicate gates by entity kind.

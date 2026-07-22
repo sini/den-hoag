@@ -59,8 +59,10 @@
 # receiver predicate accepts it (`predicateMatches … receiver consumerId` — the SAME F2 closure, applied
 # to the consumer's ctx/own-kind). This is what makes a `{ user, … }: true` broadcast reject a HOST
 # consumer (host ctx has no `user`, own-kind `host` ∉ predEntityArgs). The gathered value is the producer's
-# RAW emits (`localContribs`). The broadcast pool is a SEPARATE map entry — NOT read by `contributionsOf`
-# — so broadcast-injected values are never re-collected (the push/pull isolation).
+# emits: the DERIVED terminal when the pipe carries a source-side transform before the `broadcast` mark
+# (residual #4, read via `derivedBaseNames`), else the RAW `localContribs`. The broadcast pool is a SEPARATE
+# map entry — NOT read by `contributionsOf` — so broadcast-injected values are never re-collected (the
+# push/pull isolation).
 #
 # ── PERF. PEER arms (collect / collectAll / broadcast): every avoidable factor is eliminated — no
 # materialized edge list / query re-scan (direct filter), no per-peer expose-pool recompute (memoized per
@@ -79,10 +81,14 @@
 #     before ascent. The corpus's sole expose pipe (`expose-resolved-users`) is BARE, so this moves raw
 #     contributions (identity transform). A future deriving expose pipe would need the exposing-node run
 #     applied here; not corpus-exercised, carried as a named ceiling.
-#   (#4) broadcast source-side transform — source-emit = `localContribs` (raw). v1's source-side transform
-#     before distribution needs the derived terminal (a separate source-side-transform / route-wiring
-#     concern); corpus-zero for broadcast (no corpus broadcast pipe carries a source-side transform). Shared
-#     residual with #1.
+#   (#4) broadcast source-side transform — WIRED: a broadcast pipe carrying a `transform` before the
+#     `broadcast` mark has a DERIVED terminal (the kernel's untargeted-deriving supersede named it, folded by
+#     `pipe.run` into the source's received-collections); the broadcast arm reads that terminal (via
+#     `derivedBaseNames`, threaded through the gather contract) in place of the raw `localContribs`. A BARE
+#     broadcast has no terminal (`Ts == [ ]`) → the raw path, byte-unchanged. Own-vs-received ceiling: v1's
+#     source is the producer's OWN emits + transform, this reads the neron-folded terminal; they coincide at
+#     a leaf broadcaster inheriting no base (corpus-zero for broadcast). Shares the residual #1 shape for the
+#     EXPOSE arm (still unwired there — no corpus deriving expose pipe).
 #   Multi-policy DOUBLING (expose) — dedup is by CHANNEL (`exposeChannelsAt`'s `unique`), one push per
 #     channel however many policies expose it; v1 pushes once per policy. Corpus's sole expose pipe is one
 #     policy on one channel — shapes agree; a multi-policy corpus would surface it as a P2 byte divergence
@@ -306,6 +312,7 @@ let
   broadcastGatheredWith =
     {
       entityKinds,
+      derivedBaseNames,
       result,
       broadcastersByChannel,
     }:
@@ -316,7 +323,20 @@ let
         producers = builtins.filter (
           b: b.sid != consumerId && predicateMatches entityKinds result b.receiver consumerId
         ) broadcastersByChannel.${P};
-        v = prelude.concatMap (b: localContribs result b.sid P) producers;
+        # Source-side transform (residual #4, now wired): a broadcast pipe carrying a `transform` before the
+        # `broadcast` mark has a DERIVED terminal (the KERNEL's untargeted-deriving supersede named it, and
+        # `pipe.run` already folded it into the source's received-collections). Read that terminal in place of
+        # the raw `localContribs` — a THIN wire, one `result.get` swapped for another; the derive-fold stays
+        # in the kernel. A BARE broadcast (no source transform) has no terminal for `P` (`Ts == [ ]`) → the
+        # raw path, byte-unchanged.
+        Ts = derivedBaseNames.${P} or [ ];
+        sourceOf =
+          b:
+          if Ts == [ ] then
+            localContribs result b.sid P
+          else
+            prelude.concatMap (T: (result.get b.sid "received-collections").${T}.contributions or [ ]) Ts;
+        v = prelude.concatMap sourceOf producers;
       in
       if v == [ ] then acc else acc // { ${P} = v; }
     ) { } (builtins.attrNames broadcastersByChannel);
@@ -326,14 +346,15 @@ in
   # tests — same `(result, id)` signature as the retired `exposeGather.gatheredAt`).
   gatheredAt = exposePoolAt;
 
-  # The COMPOSED `den.channelGather` supplier, CURRIED on `result` so the per-fleet indices below are built
-  # ONCE (the seam hoists `channelGather result` — output-modules.nix) and shared across every consumer id.
-  # Per channel: the received expose pool FIRST, the collected peers next, the broadcast-injected values
-  # last — matching v1's consumption order (`mkCombinedBase` own++exposed :935-948, then the collect stages
-  # :455-478, then `collectAllBroadcast` :794; the #62a seam prepends the node's own local emissions).
-  # `entityKinds` = the fleet's registered kind set (F2 gating).
+  # The COMPOSED `den.channelGather` supplier, CURRIED on `derivedBaseNames` (the base→terminal map — the
+  # broadcast arm reads a source's transformed terminal) then `result` so the per-fleet indices below are
+  # built ONCE (the seam hoists `channelGather derivedBaseNames result` — output-modules.nix) and shared
+  # across every consumer id. Per channel: the received expose pool FIRST, the collected peers next, the
+  # broadcast-injected values last — matching v1's consumption order (`mkCombinedBase` own++exposed
+  # :935-948, then the collect stages :455-478, then `collectAllBroadcast` :794; the #62a seam prepends the
+  # node's own local emissions). `entityKinds` = the fleet's registered kind set (F2 gating).
   mkGather =
-    entityKinds: result:
+    entityKinds: derivedBaseNames: result:
     let
       allIds = allNodeIds result;
 
@@ -389,7 +410,14 @@ in
           siblingsOf
           ;
       };
-      broadcastAt = broadcastGatheredWith { inherit entityKinds result broadcastersByChannel; };
+      broadcastAt = broadcastGatheredWith {
+        inherit
+          entityKinds
+          derivedBaseNames
+          result
+          broadcastersByChannel
+          ;
+      };
     in
     id:
     mergeMaps [

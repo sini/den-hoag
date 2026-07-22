@@ -77,18 +77,23 @@
   enrichBindings ? ({ bindings, ... }: bindings),
   # The named PER-NODE CHANNEL-AUGMENTATION seam (#62a, threaded through `den.channelGather`). A supplier
   # augments the channel value bound to a class module's formals with contributions GATHERED from beyond the
-  # node's own emissions — `channelGather result id -> { <channel> = [ contribution ]; }`, CURRIED on
-  # `result` so the supplier binds it ONCE (`channelGatherR`, hoisted below) and can precompute per-fleet
-  # indices shared across every consumer id; applied per node in `channelBindingsAt` (F4: bound = local ++
-  # gathered). The gathered records carry local-collection-data's contribution shape (`.deferred`/`.value`/
-  # `.producer`), so they extract through the SAME `deferredToThunk` path (a gathered deferred contribution
-  # resolves at ITS OWN producing scope — resolve-at-producing, decision #27). Native den-hoag supplies the
-  # empty default (`_: _: { }`), so the augmentation is `local ++ [ ]` at every channel — the KNOWN CEILING
-  # (`bindingsAt` reads OWN emissions) unchanged, the binding surface byte-identical (the 810 identity tests
-  # are the proof). An external consumer wires its gather supplier here (e.g. the v1 gather twin, #62b). A17:
-  # `result` is the eval passed opaquely; a supplier that walks it must stay lazy over the id spine (never
-  # force all descendants' resolved-aspects), and `channelGather result` must not force it eagerly.
-  channelGather ? (_: _: { }),
+  # node's own emissions — `channelGather derivedBaseNames result id -> { <channel> = [ contribution ]; }`,
+  # CURRIED on `derivedBaseNames` (the base→terminal map, so the broadcast arm reads a source's transformed
+  # terminal) then `result` so the supplier binds it ONCE (`channelGatherR`, hoisted below) and can precompute
+  # per-fleet indices shared across every consumer id; applied per node in `channelBindingsAt` (F4: bound =
+  # local ++ gathered). The gathered records carry local-collection-data's contribution shape (`.deferred`/
+  # `.value`/`.producer`), so they extract through the SAME `deferredToThunk` path (a gathered deferred
+  # contribution resolves at ITS OWN producing scope — resolve-at-producing, decision #27). Native den-hoag
+  # supplies the empty default (`_: _: _: { }`), so the augmentation is `local ++ [ ]` at every channel — the
+  # KNOWN CEILING (`bindingsAt` reads OWN emissions) unchanged, the binding surface byte-identical (the 810
+  # identity tests are the proof). An external consumer wires its gather supplier here (e.g. the v1 gather
+  # twin, #62b). A17: `result` is the eval passed opaquely; a supplier that walks it must stay lazy over the
+  # id spine (never force all descendants' resolved-aspects), and `channelGather … result` must not force it
+  # eagerly.
+  channelGather ? (
+    _: _: _:
+    { }
+  ),
   # base channel → [ terminal name … ] for the untargeted-deriving supersede (built fleet-wide in
   # lib/default.nix from the renamed pipe terminals). At the binding grain a base channel with an
   # untargeted deriving pipe reads its terminal(s)' collections in place of the raw base (v1
@@ -801,10 +806,11 @@ let
   # emission is one element), so a corpus consumer's `concatMap (e: e.directories) persistHome` reads
   # v1's shape. The key set is TOTAL over both maps (`resolved-users` at a host — the ship-gate shape).
   #
-  # `channelGather result` is applied ONCE here (not per node): the supplier binds `result` and precomputes
-  # its per-fleet indices, so `channelGatherR id` per node reuses them (A17: WHNF is the `id` lambda — the
-  # indices are lazy thunks in its closure, forced only when a consumer demands them).
-  channelGatherR = channelGather result;
+  # `channelGather derivedBaseNames result` is applied ONCE here (not per node): the supplier binds
+  # `derivedBaseNames` + `result` and precomputes its per-fleet indices, so `channelGatherR id` per node
+  # reuses them (A17: WHNF is the `id` lambda — the indices are lazy thunks in its closure, forced only when
+  # a consumer demands them).
+  channelGatherR = channelGather derivedBaseNames result;
   channelBindingsAt =
     id:
     let

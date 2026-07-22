@@ -737,8 +737,10 @@ let
       channelGatherDecl = {
         options.den.channelGather = merge.mkOption {
           type = merge.types.raw;
-          default = _: _: { };
-          description = "Per-node channel-augmentation hook `result -> id -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; curried on `result` (bound once, per-fleet indices precomputed) then applied per node; the gathered contributions are appended after the node's own emissions (local ++ gathered); must stay lazy over the id spine (A17). WARNING: a caller must bind `channelGather result` ONCE per fleet and reuse the returned `id:` lambda across all nodes — re-applying `channelGather result` per id silently rebuilds the precomputed indices (a perf loss, no error). Native default `_: _: { }` (identity path).";
+          default =
+            _: _: _:
+            { };
+          description = "Per-node channel-augmentation hook `derivedBaseNames -> result -> id -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; curried on `derivedBaseNames` (the base→terminal map, so the broadcast arm reads a source's transformed terminal) then `result` (bound once, per-fleet indices precomputed) then applied per node; the gathered contributions are appended after the node's own emissions (local ++ gathered); must stay lazy over the id spine (A17). WARNING: a caller must bind `channelGather derivedBaseNames result` ONCE per fleet and reuse the returned `id:` lambda across all nodes — re-applying it per id silently rebuilds the precomputed indices (a perf loss, no error). Native default `_: _: _: { }` (identity path).";
         };
       };
 
@@ -1683,7 +1685,11 @@ let
         # The per-node channel-augmentation supplier (#62a; native default = the empty gather, so
         # `channelBindingsAt` is byte-identical to its own-emissions form). An external consumer wires
         # its gather supplier (the v1 expose-ascent twin, #62b).
-        channelGather = ent.config.den.channelGather or (_: _: { });
+        channelGather =
+          ent.config.den.channelGather or (
+            _: _: _:
+            { }
+          );
         # THE ONE per-aspect class-slice extraction + §2.2 totality assertion (Task 2/3), built with the
         # discovered `classifyKey` so `projectClass` (the reach-based projection) and the `class-modules`
         # buckets share exactly one extraction — the ANCHOR `projectClass == classSubtreeAt` on a no-edge

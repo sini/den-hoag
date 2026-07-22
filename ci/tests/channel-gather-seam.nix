@@ -1,12 +1,13 @@
 # #62a — the core PER-NODE CHANNEL-AUGMENTATION seam (`den.channelGather`, output-modules.nix
 # `channelBindingsAt`). A supplier augments the channel value bound to a class module's formals with
-# contributions GATHERED from beyond the node's own emissions: `channelGather result id ->
-# { <channel> = [ contribution ]; }` (curried on `result`, applied per node), appended AFTER the node's
+# contributions GATHERED from beyond the node's own emissions: `channelGather derivedBaseNames result id ->
+# { <channel> = [ contribution ]; }` (curried on `derivedBaseNames` then `result`, applied per node),
+# appended AFTER the node's
 # local emissions per channel (F4: bound =
 # local ++ gathered — the v1 `mkCombinedBase markedBase ++ markedExposed` shape, assemble-pipes.nix:935-948).
 # This slice is the CORE seam ALONE (hand-supplied hook); the compat expose twin that fills it is #62b.
 #
-# THE IDENTITY LAW: the native default supplier (`_: { }`) makes the binding surface byte-identical to the
+# THE IDENTITY LAW: the native default supplier (`_: _: _: { }`) makes the binding surface byte-identical to the
 # pre-seam own-emissions path — proved by the `identity` companion below AND by the 810 baseline tests
 # passing UNCHANGED. Two witnesses over one native fleet (synthetic `unit` kind, nixpkgs-free `collect`
 # terminal so `.bindings` is read directly, no module fixpoint forced):
@@ -58,7 +59,7 @@ let
   # The hand-supplied supplier: at `unit:u1`, append a plain gathered value to `ch` AND supply the
   # never-emitted `recv` (the totality path — a gather-only channel must survive into the binding).
   gatherHook =
-    result: id:
+    _derivedBaseNames: result: id:
     if id == "unit:u1" then
       {
         ch = [
