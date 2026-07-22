@@ -29,13 +29,16 @@ in
 {
   flake.tests.den-pipe = {
 
-    # WS-B-KERNEL: pre-stage flatten — v1 flattenAndExtract before derived stages; fix = prepend gen-pipe
-    # over(concatMap flatten1) (own task). den-hoag emits a plain list as ONE list-valued contribution and
-    # flattens to elements only at channelBindingsAt (the consumption binding), so a derived filter/map/
-    # fold/for runs the user fn over the WHOLE list rather than per-element — the shared root cause of the
-    # filter/fold/for + transform-`as` parks. (The `pipe.as` DELIVERY route IS wired now — see
-    # test-pipe-as-basic, green; this is a derived-STAGE granularity gap, distinct from route threading.)
-    # v1 expected "80-443"; den-hoag actual "80-53-443" (pipe.filter runs over the whole list, so all 3 entries pass).
+    # WS-B-KERNEL: derived→base delivery — an UNTARGETED deriving pipe (`pipe.from "firewall" [ filter ]`
+    # with no `to`/`as`) transforms the pipe's OWN value in place (v1 `applyPipeEffects` on the untargeted
+    # effects, assemble-pipes.nix:1021-1031 — REPLACES the pipe's consumed value). In den-hoag the derived
+    # terminal (`firewall.filter.N`) is a DISTINCT channel; the consumer reads the BASE `firewall` (raw), so
+    # the filtered result is orphaned. The pre-stage flatten HAS landed (the derived channel is per-element
+    # correct — verified: `firewall.filter.N` = the 2 tcp entries), but replacing the base-name consumer's
+    # read with the terminal needs the consumption-side derived→base delivery (a separate WS-B kernel: the
+    # untargeted deriving pipe's terminal must supersede the base at the binding grain — NOT an additive
+    # gen-pipe route, which would double base+derived). Distinct from the flatten task.
+    # v1 expected "80-443"; den-hoag actual "80-53-443" (consumer reads the raw base pool; the correctly-filtered derived terminal is not delivered back to it).
     # # pipe.filter removes entries that don't match the predicate.
     # test-pipe-filter = denTest (
     #   { den, igloo, ... }:
@@ -199,8 +202,11 @@ in
     #   }
     # );
 
-    # WS-B-KERNEL: pre-stage flatten — v1 flattenAndExtract before derived stages; fix = prepend gen-pipe over(concatMap flatten1) (own task). Same root cause as test-pipe-filter above.
-    # v1 expected "60"; den-hoag actual "10" (pipe.fold runs over the whole list-valued contribution, not per-element; consumer reads raw list's head).
+    # WS-B-KERNEL: derived→base delivery — UNTARGETED deriving pipe; the pre-stage flatten HAS landed (the
+    # derived terminal `nums.over.fold.N` = the per-element fold = 60), but the consumer reads the BASE
+    # `nums` (raw), so the folded terminal is orphaned. Same derived→base gap as test-pipe-filter above
+    # (separate WS-B kernel: the untargeted deriving pipe's terminal must supersede the base at the binding).
+    # v1 expected "60"; den-hoag actual "10" (consumer reads the raw base list's head; the correct fold terminal is not delivered back).
     # # pipe.fold reduces the pool to a single value.
     # test-pipe-fold = denTest (
     #   { den, igloo, ... }:
@@ -252,8 +258,11 @@ in
     #   }
     # );
 
-    # WS-B-KERNEL: pre-stage flatten — v1 flattenAndExtract before derived stages; fix = prepend gen-pipe over(concatMap flatten1) (own task). Same root cause as test-pipe-filter above.
-    # v1 expected "b-a"; den-hoag actual "a-b" (pipe.for's whole-list `over` runs on the single list-valued contribution, not the flattened element list; order unreversed).
+    # WS-B-KERNEL: derived→base delivery — UNTARGETED deriving pipe; the pre-stage flatten HAS landed (the
+    # for-`over` now runs on the flattened element list, terminal `items.over.over.N` = the reversed list),
+    # but the consumer reads the BASE `items` (raw), so the reversed terminal is orphaned. Same derived→base
+    # gap as test-pipe-filter above (separate WS-B kernel: untargeted deriving terminal must supersede base).
+    # v1 expected "b-a"; den-hoag actual "a-b" (consumer reads the raw base order; the correct reversed terminal is not delivered back).
     # # pipe.for replaces the list entirely.
     # test-pipe-for = denTest (
     #   { den, igloo, ... }:
@@ -837,69 +846,64 @@ in
       }
     );
 
-    # WS-B-KERNEL: pre-stage flatten — den-hoag flattens list emissions only at channelBindingsAt; v1
-    # flattenAndExtract BEFORE derived stages; fix = prepend gen-pipe over(concatMap flatten1) to the
-    # derive chain (own task, reviews flatten×dedup×provenance). The `pipe.as` ROUTE itself IS wired now
-    # (see test-pipe-as-basic, green); this stays red only because the preceding `pipe.transform` runs the
-    # user fn over the WHOLE list-valued contribution (`[{port=80..},{port=443..}]`) rather than per-entry.
-    # # pipe.as with transform: data reshaped before renaming.
-    # test-pipe-as-with-transform = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.raw-ports = {
-    #       description = "Raw port data";
-    #     };
-    #     den.quirks.firewall-rules = {
-    #       description = "Derived firewall rules";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       raw-ports = [
-    #         {
-    #           port = 80;
-    #           proto = "tcp";
-    #         }
-    #         {
-    #           port = 443;
-    #           proto = "tcp";
-    #         }
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { firewall-rules, ... }:
-    #         {
-    #           networking.domain = lib.concatStringsSep "-" firewall-rules;
-    #         };
-    #     };
-    #
-    #     den.policies.derive-rules =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "raw-ports" [
-    #           (pipe.transform (p: "${p.proto}:${toString p.port}"))
-    #           (pipe.as "firewall-rules")
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.derive-rules ];
-    #
-    #     expr = igloo.networking.domain;
-    #     expected = "tcp:80-tcp:443";
-    #   }
-    # );
+    # pipe.as with transform: data reshaped before renaming.
+    test-pipe-as-with-transform = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.raw-ports = {
+          description = "Raw port data";
+        };
+        den.quirks.firewall-rules = {
+          description = "Derived firewall rules";
+        };
+
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          raw-ports = [
+            {
+              port = 80;
+              proto = "tcp";
+            }
+            {
+              port = 443;
+              proto = "tcp";
+            }
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { firewall-rules, ... }:
+            {
+              networking.domain = lib.concatStringsSep "-" firewall-rules;
+            };
+        };
+
+        den.policies.derive-rules =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "raw-ports" [
+              (pipe.transform (p: "${p.proto}:${toString p.port}"))
+              (pipe.as "firewall-rules")
+            ])
+          ];
+
+        den.default.includes = [ den.policies.derive-rules ];
+
+        expr = igloo.networking.domain;
+        expected = "tcp:80-tcp:443";
+      }
+    );
 
     # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected { count = "2"; urls = "http://10.0.0.1:80,http://10.0.0.2:80"; }; den-hoag actual { count = "0"; urls = ""; } (pipe.collect DOES gather cross-host — proven by test-pipe-collect above — but the subsequent transform+as in the SAME pipeline are not applied, and since `peer-urls` has no native emitter the renamed target stays empty).
     # # pipe.as + pipe.collect: cross-host collection delivered under target name.
@@ -966,152 +970,144 @@ in
     #   }
     # );
 
-    # WS-B-KERNEL: pre-stage flatten — den-hoag flattens list emissions only at channelBindingsAt; v1
-    # flattenAndExtract BEFORE derived stages; fix = prepend gen-pipe over(concatMap flatten1) to the
-    # derive chain (own task, reviews flatten×dedup×provenance). The `pipe.as` ROUTE is wired now (see
-    # test-pipe-as-basic, green); this stays red only because the preceding `pipe.transform` runs the user
-    # fn over the WHOLE list-valued contribution (`["x","y"]`) rather than per-element. (The `pipe.to`
-    # aspect-index is DONE_WITH_CONCERNS — but here it is redundant with `as`: `derived-data` is read only
-    # by `targeted-consumer`, so once the flatten kernel lands the `as` route alone would deliver it.)
-    # # pipe.as + pipe.to: aspect-targeted delivery under renamed pipe.
-    # test-pipe-as-with-to = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.raw-data = {
-    #       description = "Raw data";
-    #     };
-    #     den.quirks.derived-data = {
-    #       description = "Derived data (no native emitters)";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.targeted-consumer
-    #         den.aspects.normal-consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       raw-data = [
-    #         "x"
-    #         "y"
-    #       ];
-    #     };
-    #
-    #     # This aspect gets derived-data via pipe.as + pipe.to.
-    #     den.aspects.targeted-consumer = {
-    #       nixos =
-    #         { derived-data, ... }:
-    #         {
-    #           networking.hostName = lib.concatStringsSep "-" derived-data;
-    #         };
-    #     };
-    #
-    #     # This aspect reads raw-data normally (unaffected by pipe.as).
-    #     den.aspects.normal-consumer = {
-    #       nixos =
-    #         { raw-data, ... }:
-    #         {
-    #           networking.domain = lib.concatStringsSep "-" raw-data;
-    #         };
-    #     };
-    #
-    #     den.policies.as-and-to =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "raw-data" [
-    #           (pipe.transform (v: "d-${v}"))
-    #           (pipe.as "derived-data")
-    #           (pipe.to [ den.aspects.targeted-consumer ])
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.as-and-to ];
-    #
-    #     expr = {
-    #       targeted = igloo.networking.hostName;
-    #       normal = igloo.networking.domain;
-    #     };
-    #     expected = {
-    #       # targeted-consumer gets derived-data via pipe.as + pipe.to
-    #       targeted = "d-x-d-y";
-    #       # normal-consumer gets raw-data unmodified
-    #       normal = "x-y";
-    #     };
-    #   }
-    # );
+    # pipe.as + pipe.to: aspect-targeted delivery under renamed pipe.
+    # NOTE: the `pipe.to` targeting is redundant with `pipe.as` in THIS fleet — `derived-data` is consumed
+    # ONLY by `targeted-consumer` (normal-consumer reads `raw-data`, a different channel), so the `as` route
+    # alone delivers the transformed value to the renamed channel and the sole consumer reads it. The `to`
+    # aspect-index (DONE_WITH_CONCERNS) is not needed to distinguish consumers here.
+    test-pipe-as-with-to = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.raw-data = {
+          description = "Raw data";
+        };
+        den.quirks.derived-data = {
+          description = "Derived data (no native emitters)";
+        };
 
-    # WS-B-KERNEL: pre-stage flatten — den-hoag flattens list emissions only at channelBindingsAt; v1
-    # flattenAndExtract BEFORE derived stages; fix = prepend gen-pipe over(concatMap flatten1) to the
-    # derive chain (own task, reviews flatten×dedup×provenance). The `pipe.as` ROUTE is wired now (see
-    # test-pipe-as-basic, green); this stays red only because the preceding `pipe.transform` runs the user
-    # fn over the WHOLE list-valued contribution (`[{addr;port},{addr;port}]`) rather than per-element.
-    # # No-emitter quirk: entirely populated by pipe.as from another pipe.
-    # test-pipe-as-no-emitter-quirk = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.backends = {
-    #       description = "Backend addresses";
-    #     };
-    #     den.quirks.monitoring-targets = {
-    #       description = "Monitoring targets (no native emitters)";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.web
-    #         den.aspects.monitor
-    #       ];
-    #     };
-    #
-    #     # web emits backends, never mentions monitoring-targets.
-    #     den.aspects.web = {
-    #       backends = [
-    #         {
-    #           addr = "10.0.0.1";
-    #           port = 80;
-    #         }
-    #         {
-    #           addr = "10.0.0.2";
-    #           port = 443;
-    #         }
-    #       ];
-    #     };
-    #
-    #     # monitor consumes monitoring-targets — which has no native emitters.
-    #     den.aspects.monitor = {
-    #       nixos =
-    #         { monitoring-targets, lib, ... }:
-    #         {
-    #           networking.domain = lib.concatStringsSep "," (lib.sort (a: b: a < b) monitoring-targets);
-    #         };
-    #     };
-    #
-    #     # Policy derives monitoring-targets from backends via pipe.as.
-    #     den.policies.backends-to-monitoring =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "backends" [
-    #           (pipe.transform (b: "${b.addr}:${toString b.port}"))
-    #           (pipe.as "monitoring-targets")
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.backends-to-monitoring ];
-    #
-    #     expr = igloo.networking.domain;
-    #     expected = "10.0.0.1:80,10.0.0.2:443";
-    #   }
-    # );
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.targeted-consumer
+            den.aspects.normal-consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          raw-data = [
+            "x"
+            "y"
+          ];
+        };
+
+        # This aspect gets derived-data via pipe.as + pipe.to.
+        den.aspects.targeted-consumer = {
+          nixos =
+            { derived-data, ... }:
+            {
+              networking.hostName = lib.concatStringsSep "-" derived-data;
+            };
+        };
+
+        # This aspect reads raw-data normally (unaffected by pipe.as).
+        den.aspects.normal-consumer = {
+          nixos =
+            { raw-data, ... }:
+            {
+              networking.domain = lib.concatStringsSep "-" raw-data;
+            };
+        };
+
+        den.policies.as-and-to =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "raw-data" [
+              (pipe.transform (v: "d-${v}"))
+              (pipe.as "derived-data")
+              (pipe.to [ den.aspects.targeted-consumer ])
+            ])
+          ];
+
+        den.default.includes = [ den.policies.as-and-to ];
+
+        expr = {
+          targeted = igloo.networking.hostName;
+          normal = igloo.networking.domain;
+        };
+        expected = {
+          # targeted-consumer gets derived-data via pipe.as + pipe.to
+          targeted = "d-x-d-y";
+          # normal-consumer gets raw-data unmodified
+          normal = "x-y";
+        };
+      }
+    );
+
+    # No-emitter quirk: entirely populated by pipe.as from another pipe.
+    test-pipe-as-no-emitter-quirk = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.backends = {
+          description = "Backend addresses";
+        };
+        den.quirks.monitoring-targets = {
+          description = "Monitoring targets (no native emitters)";
+        };
+
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.web
+            den.aspects.monitor
+          ];
+        };
+
+        # web emits backends, never mentions monitoring-targets.
+        den.aspects.web = {
+          backends = [
+            {
+              addr = "10.0.0.1";
+              port = 80;
+            }
+            {
+              addr = "10.0.0.2";
+              port = 443;
+            }
+          ];
+        };
+
+        # monitor consumes monitoring-targets — which has no native emitters.
+        den.aspects.monitor = {
+          nixos =
+            { monitoring-targets, lib, ... }:
+            {
+              networking.domain = lib.concatStringsSep "," (lib.sort (a: b: a < b) monitoring-targets);
+            };
+        };
+
+        # Policy derives monitoring-targets from backends via pipe.as.
+        den.policies.backends-to-monitoring =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "backends" [
+              (pipe.transform (b: "${b.addr}:${toString b.port}"))
+              (pipe.as "monitoring-targets")
+            ])
+          ];
+
+        den.default.includes = [ den.policies.backends-to-monitoring ];
+
+        expr = igloo.networking.domain;
+        expected = "10.0.0.1:80,10.0.0.2:443";
+      }
+    );
 
     # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected `true` (pipe.as targeting its OWN pipe should THROW — self-reference error); den-hoag actual `false` (no throw: since `.as` is not wired for consumption at all, the self-reference is never evaluated, so it silently no-ops instead of erroring).
     # # pipe.as targeting own pipe throws an error.

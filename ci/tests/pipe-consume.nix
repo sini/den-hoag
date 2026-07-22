@@ -6,11 +6,14 @@
 #
 # The compose's cycle-safe worklist dedups the pipe's base-channel stub against the real `den.quirks`
 # registration by id (channelDecls seeded first), so `pipe.from feat …` resolves onto the registered
-# `feat` with no E4b clash and adds ONE derived channel (`feat.<op>.<idx>`). A pipe-free fleet composes
-# byte-identically to before (no phantom channel). The `for` whole-list run is HONORED now (board #45):
-# `honorWholeList` (default.nix) reroutes a `for`'s `__derive.wholeList` node to gen-pipe's `over` op, so
-# it composes as `feat.over.<idx>` (whole-list), where `transform` stays `feat.map.<idx>` (per-element).
-# The `to`/`as` delivery routes remain the documented follow-on (default.nix — route channelRef records).
+# `feat` with no E4b clash. Each deriving pipe now adds a LEADING `over` (the v1 flattenAndExtract prepend
+# — a list-valued emission spread into per-element contributions ahead of the stages, compilePipe) plus
+# one channel per stage, all rooted on `feat` (`feat.over.<i>`, then `feat.over.<i>.<op>.<j>`). A pipe-free
+# fleet composes byte-identically to before (no phantom channel). The `for` whole-list run is HONORED
+# (board #45): `honorWholeList` (default.nix) reroutes a `for`'s `__derive.wholeList` node to gen-pipe's
+# `over` op, so the stage composes as `feat.over.<i>.over.<j>` (whole-list), where `transform` stays
+# `feat.over.<i>.map.<j>` (per-element). The `as` delivery routes are wired (default.nix — route channelRef
+# records rooted at the derived terminal); `to` aspect-targeting is the documented follow-on.
 { denCompat, ... }:
 let
   # A v1 `pipe.from` policy effect built exactly as the corpus does (policy-effects.nix shape).
@@ -64,7 +67,7 @@ let
     __pipeStage = "for";
     inherit fn;
   };
-  # A one-deriving-stage fleet on `feat`, so the delta is exactly one derived channel to name-check.
+  # A one-deriving-stage fleet on `feat`, so the delta is the flatten-`over` + that one stage to name-check.
   mkShaped =
     stage:
     denCompat.mkDen [
@@ -96,11 +99,13 @@ in
       expr = builtins.elem "feat" withPipeChannels;
       expected = true;
     };
-    # the pipe added its two deriving stages as TWO derived channels (the whole chain is declared so
-    # gen-pipe E4a's declared-op-input check passes) — the transform+filter is CONSUMED into the fleet DAG.
+    # the pipe added THREE derived channels: the leading `over` (the flattenAndExtract prepend — a
+    # list-valued emission spread into per-element contributions ahead of the stages, compilePipe) plus its
+    # two deriving stages (transform→map, filter→filter). The whole chain is declared so gen-pipe E4a's
+    # declared-op-input check passes — the flatten+transform+filter is CONSUMED into the fleet DAG.
     test-derived-channels-consumed = {
       expr = builtins.length derivedAdded;
-      expected = 2;
+      expected = 3;
     };
     # …and every derived channel is the gen-pipe derived form rooted on the base channel (`feat.<op>.…`).
     test-derived-channel-names = {
@@ -116,20 +121,26 @@ in
       ];
     };
 
-    # board #45: each single-stage pipe adds exactly one derived channel.
+    # board #45: each single-stage pipe adds TWO derived channels now — the leading flattenAndExtract `over`
+    # (the per-element spread, compilePipe) plus the stage itself, the stage rooted on the flatten-over.
     test-for-single-derived = {
       expr = builtins.length forDerivedNames;
-      expected = 1;
+      expected = 2;
     };
-    # a `for` (whole-list) pipe is HONORED to gen-pipe's `over` op — the composed channel is
-    # `feat.over.<idx>` (whole-list run), NOT the per-element `feat.map.<idx>`.
+    # a `for` (whole-list) pipe is HONORED to gen-pipe's `over` op — the STAGE channel is
+    # `feat.over.<i>.over.<j>` (whole-list run, rooted on the flatten-over), NOT a per-element `…map…`.
     test-for-honored-as-over = {
-      expr = builtins.match "feat\\.over\\.[0-9]+" (builtins.head forDerivedNames) != null;
+      expr = builtins.any (
+        c: builtins.match "feat\\.over\\.[0-9]+\\.over\\.[0-9]+" c != null
+      ) forDerivedNames;
       expected = true;
     };
-    # `transform` (no whole-list marker) stays the per-element `map` — the discriminator against `for`.
+    # `transform` (no whole-list marker) stays the per-element `map` — the discriminator against `for`: its
+    # STAGE channel is `feat.over.<i>.map.<j>` (the map rooted on the flatten-over).
     test-transform-stays-map = {
-      expr = builtins.match "feat\\.map\\.[0-9]+" (builtins.head transformDerivedNames) != null;
+      expr = builtins.any (
+        c: builtins.match "feat\\.over\\.[0-9]+\\.map\\.[0-9]+" c != null
+      ) transformDerivedNames;
       expected = true;
     };
   };

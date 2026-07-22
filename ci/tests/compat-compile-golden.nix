@@ -335,10 +335,14 @@ in
       expr = derivePipeOp.channel;
       expected = "metric";
     };
-    # filter→filter, transform→map, fold→fold (assoc-only B5), for→map — folded left-to-right, order pinned.
+    # A leading `over` is the v1 flattenAndExtract prepended to EVERY deriving chain (compilePipe): a
+    # list-valued emission is spread into per-element contributions BEFORE the stages, so filter/transform/
+    # fold/for run per-element (v1 assemble-pipes.nix). Then filter→filter, transform→map, fold→fold
+    # (assoc-only B5), for→map — folded left-to-right, order pinned.
     test-pipe-derive-chain = {
       expr = opChain derivePipeOp.derived;
       expected = [
+        "over"
         "filter"
         "map"
         "fold"
@@ -475,13 +479,18 @@ in
       expr = (builtins.functionArgs deferredMarks) ? config;
       expected = true;
     };
-    # item 6: the pipe over the deferred value emits only filter/map (no value-demanding fold/scan), and
-    # NOTHING forces the poison body — deepSeq of the structural projection (op chain + channel + arg keys)
-    # completes. Had `compile` (or the compiled pipe) forced the throwing thunk, this would abort; that it
-    # does not proves the deferred marker crosses the compiled v1 pipe intact to the terminal.
+    # item 6 (compile-time discipline, PRESERVED): building the compiled pipe forces NOTHING — deepSeq of
+    # the structural projection (op chain + channel + arg keys, test-deferred-no-force below) completes even
+    # though the emission body THROWS on force. The leading `over` (the flattenAndExtract prepend) is a
+    # CLOSURE built here, never applied at compile, so it does not force the deferred value — the marker
+    # still crosses the compiled pipe intact. CEILING (corpus-zero, run-time only): `over` is value-demanding
+    # (gen-pipe overC), so RUNNING a deriving pipe over a deferred config-thunk value would raise gen-pipe E6
+    # at the flatten. No fleet runs such a pipe (nix-config declares no deriving pipe); the discipline that
+    # matters at COMPILE is intact, and the run-time force is a LOUD E6, never a silent wrong value.
     test-deferred-derive-chain = {
       expr = opChain deferredPipeOp.derived;
       expected = [
+        "over"
         "filter"
         "map"
       ];

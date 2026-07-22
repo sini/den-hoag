@@ -418,15 +418,18 @@ actions
   # their defaults) SHADOW the raw dispatch.mkActions entries.
   "reach-edge" = reach-edge;
   "reach-suppress" = reach-suppress;
-  # pipe.* operators re-exported from gen-pipe (map/filter/fold/scan/route/join/tee). They are
+  # pipe.* operators re-exported from gen-pipe (map/filter/fold/scan/over/route/join/tee). They are
   # content-agnostic dataflow ops and carry no `__action` yet — Task 5's concern-quirks wraps
-  # them as `pipeOp` collection declarations.
+  # them as `pipeOp` collection declarations. `over` is the whole-list escape hatch (§2.3): used both for
+  # a v1-shim `for` (whole-list rewrite) and to prepend the v1 flattenAndExtract (list-emission →
+  # per-element contributions) ahead of a deriving chain (`compilePipe`).
   pipe = {
     inherit (pipe)
       map
       filter
       fold
       scan
+      over
       route
       join
       tee

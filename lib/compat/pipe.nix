@@ -268,13 +268,44 @@ in
       pipeName = value.pipeName;
       compiled = map (stageOp declare) (value.stages or [ ]);
       byRole = role: builtins.filter (c: c.role == role) compiled;
-      # left-to-right operator composition onto the base channel (§2.4 "select channel + left-to-right op
-      # composition"): each deriving stage's transformer is applied to the running channel, in order.
-      # `dag` is the DERIVED TERMINAL: the base ref when the pipe has no deriving stages, else the final
-      # deriving node. Every delivery route roots HERE (not at the base pipe name), so a route delivers the
-      # value AFTER all deriving stages — v1's `stripAsStage` + `applyEffectStages` (assemble-pipes.nix
-      # :994-1012) apply the transform chain, then deliver the result.
-      dag = prelude.foldl' (ch: c: c.apply ch) (channelRef pipeName) (byRole "derive");
+      derives = byRole "derive";
+      # v1 flattenAndExtract, prepended to the derive chain. den-hoag holds a list-valued emission as ONE
+      # contribution (collections.nix `resolveParametric`: a plain list is the singleton `[ v ]`) and
+      # flattens it to per-element values only at the CONSUMPTION binding (`channelBindingsAt`). v1 flattens
+      # BEFORE the stages (assemble-pipes.nix `flattenAndExtract`), so a v1 filter/transform/fold/for runs
+      # PER-ELEMENT. gen-pipe `over f` re-seeds each element of `f`'s output-value-list as a fresh
+      # contribution, so `over (concatMap flatten1)` spreads each list-valued contribution into per-element
+      # contributions — the deriving ops then compose per-element, matching v1. Prepended ONLY when the pipe
+      # HAS deriving stages: a pure `as`/`to` keeps its base ref untouched (byte-identical), so the flatten
+      # is CONFINED to deriving pipes (a corpus with no deriving pipe is unchanged).
+      #
+      # `over` is value-demanding (gen-pipe `overC`): a deferred `__configThunk` emission feeding a deriving
+      # pipe would raise gen-pipe E6 at the flatten (the value list must resolve before the element
+      # cardinality is known). CEILING (corpus-zero, LOUD not silent): nix-config declares no deriving pipe,
+      # and a config-thunk consumed by a value-demanding derive is already gen-pipe E6 by §2.6.
+      #
+      # DEDUP CEILING (corpus-zero): `over` re-seeds each flattened element as a SYNTHETIC contribution with
+      # `producer.entity = null` and `scope = position` (gen-pipe `overC`/`synthetic`), so every element at
+      # one position shares an identical `identityKey` (`{ entity = null; scope = position }`, gen-pipe
+      # `helpers.identityKey`). A downstream/target channel with `dedup = "identity"` would therefore COLLAPSE
+      # legitimately-distinct flattened elements to one. NO channel in scope dedups on identity — the target
+      # quirks here are plain ordered-list channels (`dedup = null`), and the derived over/map/fold nodes
+      # reset to `dedup = null` (gen-pipe L12) — so the run applies no dedup to these contributions. A future
+      # deriving pipe delivering to an identity-deduped channel is the boundary; making the flatten
+      # dedup-sound there needs a per-element identity in gen-pipe `over` (a gen-pipe change, out of scope).
+      flatten1 = v: if builtins.isList v then v else [ v ];
+      flattenBase =
+        if derives == [ ] then
+          channelRef pipeName
+        else
+          declare.pipe.over (vals: prelude.concatMap flatten1 vals) (channelRef pipeName);
+      # left-to-right operator composition onto the (flattened) base channel (§2.4 "select channel +
+      # left-to-right op composition"): each deriving stage's transformer is applied to the running channel,
+      # in order. `dag` is the DERIVED TERMINAL: the (flatten) base ref when the pipe has no deriving stages,
+      # else the final deriving node. Every delivery route roots HERE (not at the base pipe name), so a route
+      # delivers the value AFTER all deriving stages — v1's `stripAsStage` + `applyEffectStages`
+      # (assemble-pipes.nix:994-1012) apply the transform chain, then deliver the result.
+      dag = prelude.foldl' (ch: c: c.apply ch) flattenBase derives;
       delivers = byRole "deliver";
       # `as` → a gen-pipe channel→channel `route` rooted at the derived terminal, delivering to the target
       # channel (a registered quirk). `channelRef` stubs both ends by id — compose resolves them against the
