@@ -138,30 +138,29 @@ let
           };
       }
     else if k == "to" then
-      # deliver the pipe value to named aspects (den v1 `policy-effects.nix:327`; `hasToStage`/
-      # `getToTargets` at `assemble-pipes.nix:490,494-499`, applied at `:634`). The route is INTENTIONALLY
-      # a self-route (`to = from`): unlike `as`, `to` does not rename the channel — the value STAYS on its
-      # own channel for the selected aspects to read, and `select` carries those aspect targets. (aspects
-      # are not gen-pipe channels, so this is a route-shaped carrier, not a channel→channel move.)
+      # deliver the pipe value to named ASPECTS (den v1 `policy-effects.nix:327`; `hasToStage`/
+      # `getToTargets` at `assemble-pipes.nix:490,494-499`, applied at `:634`). An aspect is NOT a gen-pipe
+      # channel, and v1's `__pipeTargeted = { aspectName → values }` is an aspect-INDEXED override read at
+      # the consuming WRAP grain — not a producer-side `route{select}` (gen-pipe `matchView` matches a
+      # contribution's view, not a delivery TARGET set). So `to` cannot be a channel `route`: it is carried
+      # as an inert DELIVER intent (`kind = "to"`, targets in `select`) that `compilePipe` stashes on the
+      # `targeted` field for a FUTURE consumption-side aspect-carrier wiring (a separate WS-B kernel seam).
       {
         role = "deliver";
-        op = declare.pipe.route {
-          inherit from;
-          select = stage.aspects;
-          to = from;
-        };
+        kind = "to";
+        select = stage.aspects;
       }
     else if k == "as" then
-      # expose the pipe value under another pipe name (den v1 `policy-effects.nix:331`; `hasAsStage`/
+      # expose the pipe value under another pipe NAME (den v1 `policy-effects.nix:331`; `hasAsStage`/
       # `getAsTarget` at `assemble-pipes.nix:502,505-510`, applied at `:962`) — a genuine channel→channel
-      # route to that target (`select = passAll`, every contribution moves), the clean gen-pipe `route`.
+      # move: every contribution of THIS pipe's derived terminal is delivered to the target channel
+      # (`select = passAll`). Carried as a DELIVER intent; `compilePipe` builds the gen-pipe `route` record
+      # (rooted at the derived terminal, so a preceding transform/filter/fold is applied before delivery).
       {
         role = "deliver";
-        op = declare.pipe.route {
-          inherit from;
-          select = passAll;
-          to = stage.targetPipeName;
-        };
+        kind = "as";
+        select = passAll;
+        target = stage.targetPipeName;
       }
     else if k == "append" then
       # append a literal value at the policy's scope (den v1 `policy-effects.nix:316`; run at
@@ -271,12 +270,35 @@ in
       byRole = role: builtins.filter (c: c.role == role) compiled;
       # left-to-right operator composition onto the base channel (§2.4 "select channel + left-to-right op
       # composition"): each deriving stage's transformer is applied to the running channel, in order.
+      # `dag` is the DERIVED TERMINAL: the base ref when the pipe has no deriving stages, else the final
+      # deriving node. Every delivery route roots HERE (not at the base pipe name), so a route delivers the
+      # value AFTER all deriving stages — v1's `stripAsStage` + `applyEffectStages` (assemble-pipes.nix
+      # :994-1012) apply the transform chain, then deliver the result.
       dag = prelude.foldl' (ch: c: c.apply ch) (channelRef pipeName) (byRole "derive");
+      delivers = byRole "deliver";
+      # `as` → a gen-pipe channel→channel `route` rooted at the derived terminal, delivering to the target
+      # channel (a registered quirk). `channelRef` stubs both ends by id — compose resolves them against the
+      # one fleet declaration set (the terminal is declared via `pipeChainOf`, the target via its quirk).
+      asRoutes = map (
+        c:
+        declare.pipe.route {
+          from = dag;
+          inherit (c) select;
+          to = channelRef c.target;
+        }
+      ) (builtins.filter (c: c.kind == "as") delivers);
     in
     declare.pipeOp {
       channel = pipeName;
       derived = dag;
-      routes = map (c: c.op) (byRole "deliver");
+      routes = asRoutes;
+      # `to` aspect-delivery intents — inert, NOT folded into the compose (an aspect is not a channel; see
+      # the `to` branch of `stageOp`). Recorded verbatim for the future consumption-side aspect-carrier
+      # wiring; carrying `from = dag` so that wiring reads the post-derive terminal, matching `as`.
+      targeted = map (c: {
+        inherit (c) select;
+        from = dag;
+      }) (builtins.filter (c: c.kind == "to") delivers);
       marks = map (c: c.mark) (byRole "site");
     };
 }

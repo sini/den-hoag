@@ -1229,12 +1229,14 @@ let
       # resolves onto the registered `feat` channel with no E4b clash and the derived channel
       # (`feat.<op>.<idx>`) joins the DAG — CONSUMED, where before it compiled but never reached the fold.
       #
-      # NOT yet threaded (a bounded C3/C8 follow-up, not a regression — these compile, they just do not
-      # join the compose): the `to`/`as` delivery `routes` carry channel refs as NAMES (v1 aspect targets
-      # / pipe names), but gen-pipe's compose consumes route `from`/`to` as channel RECORDS, so routing
-      # them needs the C3 route to carry `channelRef` records (and `to`'s aspect-carrier semantics
-      # resolved — an aspect is not a gen-pipe channel). Site `marks` (append/expose/collect/broadcast)
-      # are per-scope EMISSION wiring, not compose ops. The `for` whole-list run IS threaded now
+      # The `as` delivery `routes` ARE threaded (below, `pipeRouteOps`): `compilePipe` builds each as a
+      # gen-pipe `route` RECORD rooted at the pipe's derived TERMINAL (`from`) and delivering to the target
+      # channel (`to`), so a channel→channel rename joins the same fleet compose and the target channel's
+      # consumers read the delivered value (v1 `pipe.as`). NOT threaded: `to`'s aspect-indexed delivery
+      # (`pipeOp.targeted`) — an aspect is not a gen-pipe channel and v1's `__pipeTargeted` is a consuming-
+      # WRAP override, not a producer-side `route{select}`; it stays a recorded intent for a future
+      # consumption-side aspect-carrier seam (a separate WS-B kernel). Site `marks` (append/expose/collect/
+      # broadcast) are per-scope EMISSION wiring, not compose ops. The `for` whole-list run IS threaded
       # (board #45): `honorWholeList` (below) reroutes each `__derive.wholeList` node to gen-pipe's
       # whole-list `over` op, so a v1 `for` applies its fn to the WHOLE channel list, not per-element.
       quirks = ent.config.den.quirks;
@@ -1267,9 +1269,16 @@ let
       pipeChannelOps = builtins.map honorWholeList (
         prelude.concatMap (p: pipeChainOf p.derived) (policiesRules.pipeOps or [ ])
       );
+      # `as` delivery routes — gen-pipe `route` op records (built by `compilePipe`, from = derived terminal,
+      # to = target channel ref). They join the ONE fleet compose alongside the channel decls: compose
+      # resolves each route's `from`/`to` by id against the declaration set (the terminal from
+      # `pipeChannelOps`, the target from its `den.quirks` channelDecl), then folds inbound deliveries at
+      # the target per L11. Ordered AFTER `pipeChannelOps` so the whole-list-rewritten terminal (id-stable)
+      # is collected first and a route's terminal ref dedups onto it.
+      pipeRouteOps = prelude.concatMap (p: p.routes or [ ]) (policiesRules.pipeOps or [ ]);
       quirkDag = concernQuirks.compose {
         inherit quirks;
-        policyOps = [ demandLib.demandChannel ] ++ pipeChannelOps;
+        policyOps = [ demandLib.demandChannel ] ++ pipeChannelOps ++ pipeRouteOps;
       };
 
       # classOfNode — the producing-scope → class-entry function (§2.5). Resolve each kind's declared

@@ -29,14 +29,13 @@ in
 {
   flake.tests.den-pipe = {
 
-    # PARKED-DIVERGENCE (pipe run-wiring gap, confirmed by source: lib/compat/pipe.nix's `stageOp`
-    # builds an inert stage-op DAG — file header: "the op DAG is BUILT from the stage closures without
-    # ever APPLYING them" — and only `pipe.expose`/`pipe.collect`/`pipe.collectAll` are wired into the
-    # consumption-time supplier (`den.channelGather = collectGather.mkGather …`,
-    # lib/compat/flake-module.nix:532). filter/transform/fold/for/append/to/as compile cleanly but are
-    # NEVER consulted when materializing a consumer's pipe-name binding — a consumer reads the raw,
-    # untransformed/undistributed pool. Clean eval, wrong value.
-    # v1 expected "80-443"; den-hoag actual "80-53-443" (pipe.filter not applied — all 3 entries pass through unfiltered).
+    # WS-B-KERNEL: pre-stage flatten — v1 flattenAndExtract before derived stages; fix = prepend gen-pipe
+    # over(concatMap flatten1) (own task). den-hoag emits a plain list as ONE list-valued contribution and
+    # flattens to elements only at channelBindingsAt (the consumption binding), so a derived filter/map/
+    # fold/for runs the user fn over the WHOLE list rather than per-element — the shared root cause of the
+    # filter/fold/for + transform-`as` parks. (The `pipe.as` DELIVERY route IS wired now — see
+    # test-pipe-as-basic, green; this is a derived-STAGE granularity gap, distinct from route threading.)
+    # v1 expected "80-443"; den-hoag actual "80-53-443" (pipe.filter runs over the whole list, so all 3 entries pass).
     # # pipe.filter removes entries that don't match the predicate.
     # test-pipe-filter = denTest (
     #   { den, igloo, ... }:
@@ -200,7 +199,8 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "60"; den-hoag actual "10" (pipe.fold not applied — consumer reads raw list's head, not the fold result).
+    # WS-B-KERNEL: pre-stage flatten — v1 flattenAndExtract before derived stages; fix = prepend gen-pipe over(concatMap flatten1) (own task). Same root cause as test-pipe-filter above.
+    # v1 expected "60"; den-hoag actual "10" (pipe.fold runs over the whole list-valued contribution, not per-element; consumer reads raw list's head).
     # # pipe.fold reduces the pool to a single value.
     # test-pipe-fold = denTest (
     #   { den, igloo, ... }:
@@ -252,7 +252,8 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "b-a"; den-hoag actual "a-b" (pipe.for not applied — list order unreversed).
+    # WS-B-KERNEL: pre-stage flatten — v1 flattenAndExtract before derived stages; fix = prepend gen-pipe over(concatMap flatten1) (own task). Same root cause as test-pipe-filter above.
+    # v1 expected "b-a"; den-hoag actual "a-b" (pipe.for's whole-list `over` runs on the single list-valued contribution, not the flattened element list; order unreversed).
     # # pipe.for replaces the list entirely.
     # test-pipe-for = denTest (
     #   { den, igloo, ... }:
@@ -784,60 +785,63 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "a-b"; den-hoag actual "" (pipe.as not wired for consumption — the renamed target pipe `target` never receives `source`'s contributions, so the consumer's `target` binding is empty).
-    # # pipe.as renames pipe output to a different quirk name.
-    # test-pipe-as-basic = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.source = {
-    #       description = "Source pipe";
-    #     };
-    #     den.quirks.target = {
-    #       description = "Target pipe (no native emitters)";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       source = [
-    #         { name = "a"; }
-    #         { name = "b"; }
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { target, ... }:
-    #         {
-    #           networking.hostName = lib.concatMapStringsSep "-" (i: i.name) target;
-    #         };
-    #     };
-    #
-    #     den.policies.rename-pipe =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "source" [
-    #           (pipe.as "target")
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.rename-pipe ];
-    #
-    #     expr = igloo.networking.hostName;
-    #     expected = "a-b";
-    #   }
-    # );
+    # pipe.as renames pipe output to a different quirk name.
+    test-pipe-as-basic = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.source = {
+          description = "Source pipe";
+        };
+        den.quirks.target = {
+          description = "Target pipe (no native emitters)";
+        };
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "tcp:80-tcp:443"; den-hoag actual "" (pipe.transform + pipe.as neither applied — `firewall-rules` has no native emitter and receives nothing via `.as`).
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          source = [
+            { name = "a"; }
+            { name = "b"; }
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { target, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" (i: i.name) target;
+            };
+        };
+
+        den.policies.rename-pipe =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "source" [
+              (pipe.as "target")
+            ])
+          ];
+
+        den.default.includes = [ den.policies.rename-pipe ];
+
+        expr = igloo.networking.hostName;
+        expected = "a-b";
+      }
+    );
+
+    # WS-B-KERNEL: pre-stage flatten — den-hoag flattens list emissions only at channelBindingsAt; v1
+    # flattenAndExtract BEFORE derived stages; fix = prepend gen-pipe over(concatMap flatten1) to the
+    # derive chain (own task, reviews flatten×dedup×provenance). The `pipe.as` ROUTE itself IS wired now
+    # (see test-pipe-as-basic, green); this stays red only because the preceding `pipe.transform` runs the
+    # user fn over the WHOLE list-valued contribution (`[{port=80..},{port=443..}]`) rather than per-entry.
     # # pipe.as with transform: data reshaped before renaming.
     # test-pipe-as-with-transform = denTest (
     #   { den, igloo, ... }:
@@ -962,7 +966,13 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected { normal = "x-y"; targeted = "d-x-d-y"; }; den-hoag actual { normal = "x-y"; targeted = ""; } (normal-consumer's plain raw-data read is unaffected and correctly passes; targeted-consumer's transform+as+to chain is not applied, so `derived-data` — a no-emitter quirk — stays empty).
+    # WS-B-KERNEL: pre-stage flatten — den-hoag flattens list emissions only at channelBindingsAt; v1
+    # flattenAndExtract BEFORE derived stages; fix = prepend gen-pipe over(concatMap flatten1) to the
+    # derive chain (own task, reviews flatten×dedup×provenance). The `pipe.as` ROUTE is wired now (see
+    # test-pipe-as-basic, green); this stays red only because the preceding `pipe.transform` runs the user
+    # fn over the WHOLE list-valued contribution (`["x","y"]`) rather than per-element. (The `pipe.to`
+    # aspect-index is DONE_WITH_CONCERNS — but here it is redundant with `as`: `derived-data` is read only
+    # by `targeted-consumer`, so once the flatten kernel lands the `as` route alone would deliver it.)
     # # pipe.as + pipe.to: aspect-targeted delivery under renamed pipe.
     # test-pipe-as-with-to = denTest (
     #   { den, igloo, ... }:
@@ -1036,7 +1046,11 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "10.0.0.1:80,10.0.0.2:443"; den-hoag actual "" (pipe.transform + pipe.as not applied — `monitoring-targets`, a no-emitter quirk entirely populated via `.as`, stays empty).
+    # WS-B-KERNEL: pre-stage flatten — den-hoag flattens list emissions only at channelBindingsAt; v1
+    # flattenAndExtract BEFORE derived stages; fix = prepend gen-pipe over(concatMap flatten1) to the
+    # derive chain (own task, reviews flatten×dedup×provenance). The `pipe.as` ROUTE is wired now (see
+    # test-pipe-as-basic, green); this stays red only because the preceding `pipe.transform` runs the user
+    # fn over the WHOLE list-valued contribution (`[{addr;port},{addr;port}]`) rather than per-element.
     # # No-emitter quirk: entirely populated by pipe.as from another pipe.
     # test-pipe-as-no-emitter-quirk = denTest (
     #   { den, igloo, ... }:

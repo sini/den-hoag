@@ -373,21 +373,37 @@ in
       expected = false;
     };
 
-    # ── §2.4 delivery stages: to → route selecting aspects; as → route to a target pipe ──────────
-    test-pipe-to-route = {
-      expr = map (r: r.op) deliverToOp.routes;
-      expected = [ "route" ];
+    # ── §2.4 delivery stages ─────────────────────────────────────────────────────────────────────
+    # `as` → a gen-pipe channel→channel `route` RECORD rooted at the pipe's derived terminal (`from`),
+    # delivering to the target channel (`to`) — both ends are channel records (compose resolves them by
+    # id against the fleet declaration set). `to` → delivery to ASPECTS: an aspect is NOT a gen-pipe
+    # channel, so `to` does NOT compile to a producer-side `route`; it is carried as an inert `targeted`
+    # intent for the future consumption-side aspect-carrier seam (DONE_WITH_CONCERNS, a separate WS-B
+    # kernel), so `routes` stays empty for a pure `to` pipe.
+    test-pipe-to-not-a-route = {
+      expr = deliverToOp.routes;
+      expected = [ ];
     };
-    test-pipe-to-route-from = {
-      expr = (builtins.head deliverToOp.routes).from;
+    test-pipe-to-targeted-intent = {
+      expr = builtins.length deliverToOp.targeted;
+      expected = 1;
+    };
+    test-pipe-to-targeted-from = {
+      expr = (builtins.head deliverToOp.targeted).from.id;
       expected = "ports";
     };
     test-pipe-as-route = {
       expr = map (r: r.op) deliverAsOp.routes;
       expected = [ "route" ];
     };
+    # the route roots at the derived terminal (here the base ref, no deriving stage) and delivers to the
+    # target channel — `from`/`to` are channel records, matched to the declaration set by id.
+    test-pipe-as-route-from = {
+      expr = (builtins.head deliverAsOp.routes).from.id;
+      expected = "raw";
+    };
     test-pipe-as-route-to = {
-      expr = (builtins.head deliverAsOp.routes).to;
+      expr = (builtins.head deliverAsOp.routes).to.id;
       expected = "shaped";
     };
 
