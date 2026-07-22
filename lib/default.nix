@@ -1268,8 +1268,82 @@ let
           }
         else
           d;
+      # An UNTARGETED deriving pipe (`pipe.from ch [ filter ]` with no `to`/`as`/`expose`) transforms the
+      # channel's OWN value in place (v1 `applyPipeEffects` on the untargeted effects) — its terminal
+      # SUPERSEDES the base at the binding grain (below, threaded to output-modules as `derivedBaseNames`).
+      # gen-pipe's `mkDerived` names a derived channel `<input>.<op>` (predicate-blind), so TWO policies
+      # deriving the SAME base with the SAME op collide on one id and compose's first-wins byId dedup
+      # SILENTLY drops the later policy's predicate. When a base carries MULTIPLE untargeted-deriving pipes,
+      # stamp each colliding TERMINAL an explicit unique name from a per-pipeOp ordinal (`mkDerived` id=name
+      # override — the terminal's id becomes the name, so the policies' terminals stay distinct channels and
+      # both reach the fold). A LONE untargeted pipe keeps its natural gen-pipe name (the composed-name form
+      # the white-box goldens assert); its terminal id resolves through `idToName` below. SCOPED to
+      # untargeted-deriving ONLY: an as/to/route pipe (`routes ≠ [ ]`) is never renamed, so the as-trio is
+      # byte-identical by construction. The rename must FEED the compose — `pipeChannelOps` walks the
+      # RENAMED terminals, else the stamp is inert (the `idToName` miss THROW in `derivedBaseNames` catches
+      # that).
+      isUntargetedDeriving =
+        p:
+        (p.derived.__derived or false)
+        && (p.routes or [ ]) == [ ]
+        && (p.targeted or [ ]) == [ ]
+        && !(builtins.any (m: (m.__pipeMark or null) == "expose") (p.marks or [ ]));
+      # how many untargeted-deriving pipes share each base — the collision the rename guards against.
+      udBaseCount = prelude.foldl' (
+        acc: p:
+        if isUntargetedDeriving p then acc // { ${p.channel} = (acc.${p.channel} or 0) + 1; } else acc
+      ) { } (policiesRules.pipeOps or [ ]);
+      renamedPipes =
+        prelude.foldl'
+          (
+            acc: p:
+            if isUntargetedDeriving p then
+              if (udBaseCount.${p.channel} or 0) > 1 then
+                let
+                  nm = "${p.channel}.__ud.${toString acc.ord}";
+                in
+                {
+                  ord = acc.ord + 1;
+                  ops = acc.ops ++ [
+                    (
+                      p
+                      // {
+                        derived = p.derived // {
+                          name = nm;
+                          id = nm;
+                        };
+                      }
+                    )
+                  ];
+                  terminals = acc.terminals ++ [
+                    {
+                      base = p.channel;
+                      id = nm;
+                    }
+                  ];
+                }
+              else
+                acc
+                // {
+                  ops = acc.ops ++ [ p ];
+                  terminals = acc.terminals ++ [
+                    {
+                      base = p.channel;
+                      inherit (p.derived) id;
+                    }
+                  ];
+                }
+            else
+              acc // { ops = acc.ops ++ [ p ]; }
+          )
+          {
+            ord = 0;
+            ops = [ ];
+            terminals = [ ];
+          }
+          (policiesRules.pipeOps or [ ]);
       pipeChannelOps = builtins.map honorWholeList (
-        prelude.concatMap (p: pipeChainOf p.derived) (policiesRules.pipeOps or [ ])
+        prelude.concatMap (p: pipeChainOf p.derived) renamedPipes.ops
       );
       # `as` delivery routes — gen-pipe `route` op records (built by `compilePipe`, from = derived terminal,
       # to = target channel ref). They join the ONE fleet compose alongside the channel decls: compose
@@ -1277,11 +1351,32 @@ let
       # `pipeChannelOps`, the target from its `den.quirks` channelDecl), then folds inbound deliveries at
       # the target per L11. Ordered AFTER `pipeChannelOps` so the whole-list-rewritten terminal (id-stable)
       # is collected first and a route's terminal ref dedups onto it.
-      pipeRouteOps = prelude.concatMap (p: p.routes or [ ]) (policiesRules.pipeOps or [ ]);
+      pipeRouteOps = prelude.concatMap (p: p.routes or [ ]) renamedPipes.ops;
       quirkDag = concernQuirks.compose {
         inherit quirks;
         policyOps = [ demandLib.demandChannel ] ++ pipeChannelOps ++ pipeRouteOps;
       };
+      # composed-channel id → final name. compose keys `quirkDag.channels` by the FINAL name and records the
+      # source id on each channel (`.id`); a derived channel's id is either gen-pipe's natural `<input>.<op>`
+      # or — for a renamed collision terminal — the stamped name. This transpose lets `derivedBaseNames`
+      # resolve BOTH forms uniformly by the terminal id carried on `renamedPipes.terminals`.
+      idToName = prelude.foldl' (acc: nm: acc // { ${quirkDag.channels.${nm}.id or nm} = nm; }) { } (
+        builtins.attrNames quirkDag.channels
+      );
+      # base channel → [ terminal name … ] for the untargeted-deriving supersede (output-modules
+      # `channelBindingsAt` aggregates each base's terminals, REPLACE-semantics — v1 runs each policy's
+      # effect from the base values, concatenating the per-policy results). Each terminal id MUST resolve to
+      # a composed channel; a miss = the derive chain did not join `quirkDag` (rename inert / unconsumed) →
+      # THROW, naming the id.
+      derivedBaseNames = prelude.foldl' (
+        acc: t:
+        let
+          nm =
+            idToName.${t.id}
+              or (throw "den-hoag: untargeted-deriving terminal id `${t.id}` (base `${t.base}`) resolves to no composed channel — the derive chain did not join quirkDag (rename inert / unconsumed)");
+        in
+        acc // { ${t.base} = (acc.${t.base} or [ ]) ++ [ nm ]; }
+      ) { } renamedPipes.terminals;
 
       # classOfNode — the producing-scope → class-entry function (§2.5). Resolve each kind's declared
       # `contentClass` (a class-name string or an entry) to a class entry; a kind with no mapping is
@@ -1574,6 +1669,7 @@ let
           classOfNode
           demandEdges
           channelNames
+          derivedBaseNames
           ;
         # The §7 projection filter: keep only `to ∈ { materialize, both }` edge kinds on the materialization
         # trace. Relation kinds (`den.relations` desugar) carry `to = "query"` and are filtered off — inert on

@@ -29,129 +29,116 @@ in
 {
   flake.tests.den-pipe = {
 
-    # WS-B-KERNEL: derived→base delivery — an UNTARGETED deriving pipe (`pipe.from "firewall" [ filter ]`
-    # with no `to`/`as`) transforms the pipe's OWN value in place (v1 `applyPipeEffects` on the untargeted
-    # effects, assemble-pipes.nix:1021-1031 — REPLACES the pipe's consumed value). In den-hoag the derived
-    # terminal (`firewall.filter.N`) is a DISTINCT channel; the consumer reads the BASE `firewall` (raw), so
-    # the filtered result is orphaned. The pre-stage flatten HAS landed (the derived channel is per-element
-    # correct — verified: `firewall.filter.N` = the 2 tcp entries), but replacing the base-name consumer's
-    # read with the terminal needs the consumption-side derived→base delivery (a separate WS-B kernel: the
-    # untargeted deriving pipe's terminal must supersede the base at the binding grain — NOT an additive
-    # gen-pipe route, which would double base+derived). Distinct from the flatten task.
-    # v1 expected "80-443"; den-hoag actual "80-53-443" (consumer reads the raw base pool; the correctly-filtered derived terminal is not delivered back to it).
-    # # pipe.filter removes entries that don't match the predicate.
-    # test-pipe-filter = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.firewall = {
-    #       description = "Firewall port declarations";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       firewall = [
-    #         {
-    #           port = 80;
-    #           proto = "tcp";
-    #         }
-    #         {
-    #           port = 53;
-    #           proto = "udp";
-    #         }
-    #         {
-    #           port = 443;
-    #           proto = "tcp";
-    #         }
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { firewall, lib, ... }:
-    #         {
-    #           networking.hostName = lib.concatMapStringsSep "-" (f: toString f.port) firewall;
-    #         };
-    #     };
-    #
-    #     den.policies.filter-tcp =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "firewall" [
-    #           (pipe.filter (e: e.proto == "tcp"))
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.filter-tcp ];
-    #
-    #     # Only TCP entries survive: 80, 443.
-    #     expr = igloo.networking.hostName;
-    #     expected = "80-443";
-    #   }
-    # );
+    # pipe.filter removes entries that don't match the predicate.
+    test-pipe-filter = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.firewall = {
+          description = "Firewall port declarations";
+        };
 
-    # BLOCKED-WSB (pipe run-wiring gap, same root cause as the PARKED-DIVERGENCE cases in this
-    # file — here the raw/untransformed pool makes the CONSUMER's own accessor throw):
-    # `attribute 'label' missing` — pipe.transform not applied; raw items keep their producer-shape (name/keep), never gaining the transformed `label` key the consumer reads.
-    # # pipe.transform maps each entry.
-    # test-pipe-transform = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.items = {
-    #       description = "Items";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       items = [
-    #         { name = "a"; }
-    #         { name = "b"; }
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { items, ... }:
-    #         {
-    #           networking.hostName = lib.concatMapStringsSep "-" (i: i.label) items;
-    #         };
-    #     };
-    #
-    #     den.policies.transform-items =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "items" [
-    #           (pipe.transform (i: {
-    #             label = "x-${i.name}";
-    #           }))
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.transform-items ];
-    #
-    #     expr = igloo.networking.hostName;
-    #     expected = "x-a-x-b";
-    #   }
-    # );
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          firewall = [
+            {
+              port = 80;
+              proto = "tcp";
+            }
+            {
+              port = 53;
+              proto = "udp";
+            }
+            {
+              port = 443;
+              proto = "tcp";
+            }
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { firewall, lib, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" (f: toString f.port) firewall;
+            };
+        };
+
+        den.policies.filter-tcp =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "firewall" [
+              (pipe.filter (e: e.proto == "tcp"))
+            ])
+          ];
+
+        den.default.includes = [ den.policies.filter-tcp ];
+
+        # Only TCP entries survive: 80, 443.
+        expr = igloo.networking.hostName;
+        expected = "80-443";
+      }
+    );
+
+    # pipe.transform maps each entry.
+    test-pipe-transform = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.items = {
+          description = "Items";
+        };
+
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          items = [
+            { name = "a"; }
+            { name = "b"; }
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { items, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" (i: i.label) items;
+            };
+        };
+
+        den.policies.transform-items =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "items" [
+              (pipe.transform (i: {
+                label = "x-${i.name}";
+              }))
+            ])
+          ];
+
+        den.default.includes = [ den.policies.transform-items ];
+
+        expr = igloo.networking.hostName;
+        expected = "x-a-x-b";
+      }
+    );
 
     # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "a-z"; den-hoag actual "a" (pipe.append not applied — nothing appended to the pool).
     # # pipe.append adds an entry to the pool.
@@ -202,180 +189,167 @@ in
     #   }
     # );
 
-    # WS-B-KERNEL: derived→base delivery — UNTARGETED deriving pipe; the pre-stage flatten HAS landed (the
-    # derived terminal `nums.over.fold.N` = the per-element fold = 60), but the consumer reads the BASE
-    # `nums` (raw), so the folded terminal is orphaned. Same derived→base gap as test-pipe-filter above
-    # (separate WS-B kernel: the untargeted deriving pipe's terminal must supersede the base at the binding).
-    # v1 expected "60"; den-hoag actual "10" (consumer reads the raw base list's head; the correct fold terminal is not delivered back).
-    # # pipe.fold reduces the pool to a single value.
-    # test-pipe-fold = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.nums = {
-    #       description = "Numbers";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       nums = [
-    #         10
-    #         20
-    #         30
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { nums, ... }:
-    #         {
-    #           # fold produces a single-element list with the fold result.
-    #           networking.hostName = toString (builtins.head nums);
-    #         };
-    #     };
-    #
-    #     den.policies.fold-nums =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "nums" [
-    #           (pipe.fold (acc: n: acc + n) 0)
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.fold-nums ];
-    #
-    #     expr = igloo.networking.hostName;
-    #     expected = "60";
-    #   }
-    # );
+    # pipe.fold reduces the pool to a single value.
+    test-pipe-fold = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.nums = {
+          description = "Numbers";
+        };
 
-    # WS-B-KERNEL: derived→base delivery — UNTARGETED deriving pipe; the pre-stage flatten HAS landed (the
-    # for-`over` now runs on the flattened element list, terminal `items.over.over.N` = the reversed list),
-    # but the consumer reads the BASE `items` (raw), so the reversed terminal is orphaned. Same derived→base
-    # gap as test-pipe-filter above (separate WS-B kernel: untargeted deriving terminal must supersede base).
-    # v1 expected "b-a"; den-hoag actual "a-b" (consumer reads the raw base order; the correct reversed terminal is not delivered back).
-    # # pipe.for replaces the list entirely.
-    # test-pipe-for = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.items = {
-    #       description = "Items";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       items = [
-    #         { name = "a"; }
-    #         { name = "b"; }
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { items, ... }:
-    #         {
-    #           networking.hostName = lib.concatMapStringsSep "-" (i: i.name) items;
-    #         };
-    #     };
-    #
-    #     den.policies.for-items =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "items" [
-    #           (pipe.for (vals: lib.reverseList vals))
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.for-items ];
-    #
-    #     expr = igloo.networking.hostName;
-    #     expected = "b-a";
-    #   }
-    # );
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
 
-    # BLOCKED-WSB (pipe run-wiring gap, same root cause as the PARKED-DIVERGENCE cases in this
-    # file — here the raw/untransformed pool makes the CONSUMER's own accessor throw):
-    # `attribute 'label' missing` — same as test-pipe-transform above (filter+transform combo; neither stage applies).
-    # # Combined stages: filter then transform in one pipe.from.
-    # test-pipe-combined-stages = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.items = {
-    #       description = "Items";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       items = [
-    #         {
-    #           name = "a";
-    #           keep = true;
-    #         }
-    #         {
-    #           name = "b";
-    #           keep = false;
-    #         }
-    #         {
-    #           name = "c";
-    #           keep = true;
-    #         }
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { items, ... }:
-    #         {
-    #           networking.hostName = lib.concatMapStringsSep "-" (i: i.label) items;
-    #         };
-    #     };
-    #
-    #     den.policies.combined =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "items" [
-    #           (pipe.filter (i: i.keep))
-    #           (pipe.transform (i: {
-    #             label = lib.toUpper i.name;
-    #           }))
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.combined ];
-    #
-    #     expr = igloo.networking.hostName;
-    #     expected = "A-C";
-    #   }
-    # );
+        den.aspects.producer = {
+          nums = [
+            10
+            20
+            30
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { nums, ... }:
+            {
+              # fold produces a single-element list with the fold result.
+              networking.hostName = toString (builtins.head nums);
+            };
+        };
+
+        den.policies.fold-nums =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "nums" [
+              (pipe.fold (acc: n: acc + n) 0)
+            ])
+          ];
+
+        den.default.includes = [ den.policies.fold-nums ];
+
+        expr = igloo.networking.hostName;
+        expected = "60";
+      }
+    );
+
+    # pipe.for replaces the list entirely.
+    test-pipe-for = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.items = {
+          description = "Items";
+        };
+
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          items = [
+            { name = "a"; }
+            { name = "b"; }
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { items, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" (i: i.name) items;
+            };
+        };
+
+        den.policies.for-items =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "items" [
+              (pipe.for (vals: lib.reverseList vals))
+            ])
+          ];
+
+        den.default.includes = [ den.policies.for-items ];
+
+        expr = igloo.networking.hostName;
+        expected = "b-a";
+      }
+    );
+
+    # Combined stages: filter then transform in one pipe.from.
+    test-pipe-combined-stages = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.items = {
+          description = "Items";
+        };
+
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          items = [
+            {
+              name = "a";
+              keep = true;
+            }
+            {
+              name = "b";
+              keep = false;
+            }
+            {
+              name = "c";
+              keep = true;
+            }
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { items, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" (i: i.label) items;
+            };
+        };
+
+        den.policies.combined =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "items" [
+              (pipe.filter (i: i.keep))
+              (pipe.transform (i: {
+                label = lib.toUpper i.name;
+              }))
+            ])
+          ];
+
+        den.default.includes = [ den.policies.combined ];
+
+        expr = igloo.networking.hostName;
+        expected = "A-C";
+      }
+    );
 
     # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "x-y-z--p"; den-hoag actual "x-y--p-q" (neither the alpha pipe.append nor the beta pipe.filter applied).
     # # Multiple pipe.from in one policy targeting different pipes.

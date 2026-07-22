@@ -89,6 +89,12 @@
   # `result` is the eval passed opaquely; a supplier that walks it must stay lazy over the id spine (never
   # force all descendants' resolved-aspects), and `channelGather result` must not force it eagerly.
   channelGather ? (_: _: { }),
+  # base channel → [ terminal name … ] for the untargeted-deriving supersede (built fleet-wide in
+  # lib/default.nix from the renamed pipe terminals). At the binding grain a base channel with an
+  # untargeted deriving pipe reads its terminal(s)' collections in place of the raw base (v1
+  # `applyPipeEffects` REPLACES the consumed value); multiple policies on one base concatenate,
+  # per-policy from the base values. Native default = `{ }` (no untargeted deriving pipe) ⇒ identity.
+  derivedBaseNames ? { },
   # THE ONE per-aspect class-slice extraction (Task 2, `attributes/class-modules.nix classSliceOf`, threaded
   # through `attributesLib.mkClassSlice` with the discovered `classifyKey`). `classSliceOf aspect class`
   # returns that aspect's `class`-C bucket contribution as `[ { module; shared; } ]` (0 or 1) — `projectClass`
@@ -803,7 +809,20 @@ let
     id:
     let
       received' = received id;
-      local = builtins.mapAttrs (_: out: out.contributions or [ ]) received';
+      local0 = builtins.mapAttrs (_: out: out.contributions or [ ]) received';
+      # Untargeted-deriving supersede: a base with a deriving pipe reads its terminal(s)' collections in
+      # place of the raw base (v1 `applyPipeEffects` REPLACES). Force-safe because the terminal aliases
+      # `received[terminal].contributions` (POST-adapter — the derive chain already ran through gen-pipe's
+      # run), and the v1 value-predicate filter adapter unwraps the provenance view. Multiple policies on
+      # one base concatenate, each from the base values (v1 per-policy concat).
+      local =
+        local0
+        // builtins.listToAttrs (
+          map (
+            base:
+            prelude.nameValuePair base (prelude.concatMap (t: local0.${t} or [ ]) derivedBaseNames.${base})
+          ) (builtins.attrNames derivedBaseNames)
+        );
       gathered = channelGatherR id;
       flatten =
         c:
