@@ -1,5 +1,6 @@
 # #69 (slice U9.2, catalog v33) — the v1 `pipe.collect` / `pipe.collectAll` gather twins
-# (lib/compat/collect-gather.nix), composed with the expose ascent into `den.channelGather`. v1
+# (lib/compat/gather.nix, the re-layered 3-arm adapter), composed with the expose ascent into
+# `den.channelGather`. v1
 # provenance: findMatchingSiblings/findMatchingAll (pin 11866c16 assemble-pipes.nix:318-382, F2 EXACT —
 # incl. the predEntityArgs/extraEntityKinds own-kind gating), collectTagged (:437-450, raw ++ exposed),
 # the run arms (:455-478), F4 augment (bound = local ++ gathered), source-node-id lexicographic order,

@@ -722,21 +722,23 @@ let
 
       # den.channelGather — the PER-NODE CHANNEL-AUGMENTATION seam (#62a). A consumer may augment the channel
       # values bound to a node's class-module formals with contributions GATHERED from beyond the node's own
-      # emissions: the hook `{ id; result } -> { <channel> = [ contribution ]; }` runs inside `channelBindingsAt`
+      # emissions: the hook `result -> id -> { <channel> = [ contribution ]; }` runs inside `channelBindingsAt`
       # (output-modules.nix), its result appended AFTER the node's local emissions per channel (bound =
-      # local ++ gathered). The gathered records share local-collection-data's contribution shape
-      # (`.deferred`/`.value`/`.producer`) so they extract through the SAME deferred-thunk path (a gathered
-      # deferred value resolves at ITS OWN producing scope). THE LAZINESS LAW (A17): `result` is the eval passed
-      # opaquely; a supplier that walks descendants must stay lazy over the id spine (read children ids +
-      # exposing nodes' collection data, never force ALL descendants' resolved-aspects). Native den-hoag supplies
-      # the empty default (`_: { }`), so the augmentation is the identity path (`local ++ [ ]`) — byte-identical.
-      # An external consumer sets it = its gather supplier (e.g. the v1 expose-ascent twin, #62b). `raw` (an
-      # opaque function), forced only at a terminal.
+      # local ++ gathered). It is CURRIED on `result` so a supplier binds it ONCE (the seam hoists
+      # `channelGather result`) and can precompute per-fleet indices shared across every consumer id. The
+      # gathered records share local-collection-data's contribution shape (`.deferred`/`.value`/`.producer`) so
+      # they extract through the SAME deferred-thunk path (a gathered deferred value resolves at ITS OWN
+      # producing scope). THE LAZINESS LAW (A17): `result` is the eval passed opaquely; a supplier that walks
+      # descendants must stay lazy over the id spine (read children ids + exposing nodes' collection data,
+      # never force ALL descendants' resolved-aspects), and `channelGather result` must not force it eagerly.
+      # Native den-hoag supplies the empty default (`_: _: { }`), so the augmentation is the identity path
+      # (`local ++ [ ]`) — byte-identical. An external consumer sets it = its gather supplier (e.g. the v1
+      # gather twin, #62b). `raw` (an opaque function), forced only at a terminal.
       channelGatherDecl = {
         options.den.channelGather = merge.mkOption {
           type = merge.types.raw;
-          default = _: { };
-          description = "Per-node channel-augmentation hook `{ id; result } -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; the gathered contributions are appended after the node's own emissions (local ++ gathered); must stay lazy over the id spine (A17). Native default `_: { }` (identity path).";
+          default = _: _: { };
+          description = "Per-node channel-augmentation hook `result -> id -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; curried on `result` (bound once, per-fleet indices precomputed) then applied per node; the gathered contributions are appended after the node's own emissions (local ++ gathered); must stay lazy over the id spine (A17). WARNING: a caller must bind `channelGather result` ONCE per fleet and reuse the returned `id:` lambda across all nodes — re-applying `channelGather result` per id silently rebuilds the precomputed indices (a perf loss, no error). Native default `_: _: { }` (identity path).";
         };
       };
 
@@ -1585,7 +1587,7 @@ let
         # The per-node channel-augmentation supplier (#62a; native default = the empty gather, so
         # `channelBindingsAt` is byte-identical to its own-emissions form). An external consumer wires
         # its gather supplier (the v1 expose-ascent twin, #62b).
-        channelGather = ent.config.den.channelGather or (_: { });
+        channelGather = ent.config.den.channelGather or (_: _: { });
         # THE ONE per-aspect class-slice extraction + §2.2 totality assertion (Task 2/3), built with the
         # discovered `classifyKey` so `projectClass` (the reach-based projection) and the `class-modules`
         # buckets share exactly one extraction — the ANCHOR `projectClass == classSubtreeAt` on a no-edge

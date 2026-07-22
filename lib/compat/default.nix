@@ -103,14 +103,18 @@ let
   # compile sentinel); `mkWiring { inherit (legacy) provides; }` = a single-legacy combination. The
   # compile core, sentinels, and errors are SHARED across every wiring — only `desugarLegacy` (hence
   # `compileFull` / `mkDen`) differs. The severability suite (compat-legacy-severed) drives all four.
-  # The v1 `pipe.expose` ASCENT twin (#62b) — the expose half of the `den.channelGather` supplier.
-  # Imported here so the witness suite reaches the gather algorithm directly (`gatheredAt`).
-  exposeGatherLib = import ./expose-gather.nix { inherit prelude; };
-  # The v1 `pipe.collect`/`pipe.collectAll` GATHER twins (#69, slice U9.2, catalog v33 F2/F4/F6) —
-  # composes the expose ascent with the sibling/fleet collect gathers into ONE `den.channelGather`
-  # supplier (`mkGather`); the wiring threads the fleet's entity-kind set in. Witness surface:
-  # `collectGatheredAt`.
-  collectGatherLib = import ./collect-gather.nix { inherit prelude; };
+  # The cross-scope channel GATHER, re-layered off the two retired hand-rolled recursions: ONE litmus-clean
+  # 3-arm adapter (expose ascent #62b + collect/collectAll twins #69 + the push-dual broadcast arm). The
+  # EXPOSE arm's transitive ascent runs on gen-graph (`denHoag.query`, paths mode); collect/collectAll/
+  # broadcast are one-hop predicate filters over the node set (no query layer). Witness surface: `gatheredAt`
+  # (expose ascent) + `mkGather entityKinds` (the composed supplier, curried on `result`).
+  gatherLib = import ./gather.nix {
+    inherit prelude;
+    # `denHoag.query` — the EXPOSE arm's paths-mode transitive ascent (the sole gen-graph traversal). The
+    # collect/collectAll/broadcast arms are one-hop predicate filters (no query layer); `mkGather` curries
+    # `result` so the per-fleet indices (per-node expose pool, sibling buckets, broadcaster set) build once.
+    query = denHoag.query;
+  };
   mkWiring =
     legacyArg:
     import ./flake-module.nix {
@@ -123,7 +127,7 @@ let
         ingest
         hasAspect
         ;
-      collectGather = collectGatherLib;
+      gather = gatherLib;
       legacy = legacyArg;
     };
   flakeModuleWiring = mkWiring legacy;
@@ -152,12 +156,11 @@ in
     ;
   # The fx key-classification surface (#49-slice) — `{ structuralKeysSet; }`, aliased into migrationLib.
   inherit keyClassification;
-  # The v1 `pipe.expose` ascent twin (#62b) — the gated-transitive gather algorithm (`gatheredAt`),
-  # exposed for the witness suite's depth-semantics unit tests.
-  exposeGather = exposeGatherLib;
-  # The v1 collect/collectAll gather twins (#69, U9.2) — the composed `den.channelGather` supplier
-  # (`mkGather entityKinds`) + the collect half (`collectGatheredAt`), for the witness suite.
-  collectGather = collectGatherLib;
+  # The re-layered cross-scope channel gather (3-arm adapter) — witness surface: `gatheredAt` (the
+  # gated-transitive expose ascent, for the depth-semantics unit tests) + the composed `den.channelGather`
+  # supplier `mkGather entityKinds` (curried on `result`; expose via gen-graph queryPaths, collect/broadcast
+  # as direct one-hop predicate filters with per-fleet indices precomputed once).
+  gather = gatherLib;
   # The bridge-registry passthrough (ship-gate M2's successor architecture) — the v1 hosts-registry
   # declaration + the structural-exclusion stamp machinery the bridge mounts.
   inherit registry;

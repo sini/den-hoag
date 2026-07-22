@@ -1,7 +1,8 @@
 # #62a — the core PER-NODE CHANNEL-AUGMENTATION seam (`den.channelGather`, output-modules.nix
 # `channelBindingsAt`). A supplier augments the channel value bound to a class module's formals with
-# contributions GATHERED from beyond the node's own emissions: `channelGather { id; result } ->
-# { <channel> = [ contribution ]; }`, appended AFTER the node's local emissions per channel (F4: bound =
+# contributions GATHERED from beyond the node's own emissions: `channelGather result id ->
+# { <channel> = [ contribution ]; }` (curried on `result`, applied per node), appended AFTER the node's
+# local emissions per channel (F4: bound =
 # local ++ gathered — the v1 `mkCombinedBase markedBase ++ markedExposed` shape, assemble-pipes.nix:935-948).
 # This slice is the CORE seam ALONE (hand-supplied hook); the compat expose twin that fills it is #62b.
 #
@@ -57,7 +58,7 @@ let
   # The hand-supplied supplier: at `unit:u1`, append a plain gathered value to `ch` AND supply the
   # never-emitted `recv` (the totality path — a gather-only channel must survive into the binding).
   gatherHook =
-    { id, result }:
+    result: id:
     if id == "unit:u1" then
       {
         ch = [

@@ -20,7 +20,7 @@
   compile,
   ingest,
   hasAspect,
-  collectGather,
+  gather,
   legacy,
 }:
 let
@@ -523,13 +523,14 @@ let
         # forked variant). Enriches the enriched-context a bare-fn kind-include receives so an aspect-fn's
         # `host.hasAspect` (agenix.nix:31, resolution depth) resolves like a content-module's (networking.nix:341).
         enrichContext = hasAspect.mkEnrich entityKinds;
-        # The COMPOSED cross-scope channel gather (#62b expose ascent + #69 collect/collectAll twins,
-        # U9.2) — fills the core #62a channel-augmentation seam with den v1's gathers: the received
-        # expose pool (`collectAllExposed` — `resolved-users` at a host, exposed up by its user cells)
-        # FIRST, then the sibling/fleet collect gathers (`findMatchingSiblings`/`findMatchingAll` —
-        # `k3s-nodes`/`host-addrs`/… peers), per channel, at the terminal binding. `entityKinds` feeds
-        # v1's predicate entity-kind gating (F2).
-        channelGather = collectGather.mkGather entityKinds;
+        # The COMPOSED cross-scope channel gather (#62b expose ascent + #69 collect/collectAll twins +
+        # the push-dual broadcast arm), re-layered onto the gen-graph query engine — fills the core #62a
+        # channel-augmentation seam with den v1's gathers: the received expose pool (`collectAllExposed` —
+        # `resolved-users` at a host, exposed up by its user cells) FIRST, then the sibling/fleet collect
+        # gathers (`findMatchingSiblings`/`findMatchingAll` — `k3s-nodes`/`host-addrs`/… peers), then the
+        # broadcast-injected values (`collectAllBroadcast`), per channel, at the terminal binding.
+        # `entityKinds` feeds v1's predicate entity-kind gating (F2).
+        channelGather = gather.mkGather entityKinds;
         # Static entity-scoped includes (den-hoag `den.include`, §370 directAspects) — the R5
         # self-named-aspect seeds (spec §10) `addSelfIncludes` appended, node-local at each self-named
         # entity. Empty when the legacy self-provide module is severed (byte-identical no-op, Law C5).

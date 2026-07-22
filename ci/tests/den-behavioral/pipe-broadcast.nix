@@ -74,11 +74,22 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (pipe.broadcast is UNWIRED for consumption — confirmed by source:
-    # lib/compat/flake-module.nix:532 `channelGather = collectGather.mkGather entityKinds` composes
-    # only expose+collect/collectAll; no `broadcast-gather.nix`-equivalent supplier exists, so the
-    # `__pipeMark = "broadcast"` site marker lib/compat/pipe.nix builds is never consulted):
-    # v1 expected "alice@iceberg"; den-hoag actual "" (igloo's host consumer gathers nothing — alice's broadcast never reaches it).
+    # PARKED-DIVERGENCE (user-cell ctx gap — the broadcast ARM is now WIRED and correct; the blocker moved).
+    # The push-dual broadcast supplier lands (lib/compat/gather.nix `broadcastGatheredWith`, composed by
+    # `gather.mkGather`) and is proven end-to-end on the mkDen-direct path (a `{ host, user, ... }` user
+    # broadcast reaches a remote host binding). BUT through the behavioral BRIDGE (denTest scaffold →
+    # flake-parts `flakeModule`) a `den.hosts.<h>.users.<u>` renders as a ROOT user entity (`user:alice`,
+    # NOT a `user:alice@host:iceberg` cell) whose enriched-context carries ONLY `user` — no `host`. So the
+    # producer policy `broadcast-to-hosts = { host, user, ... }: …` never fires at alice (its `host` formal
+    # is absent from ctx → value-less-probe non-firing → no broadcast site-mark), and the gather finds no
+    # broadcast channel. v1's user entity is host-parented (the cell ctx carries host+user), which is what
+    # this fixture's own "alice@iceberg" expectation assumes. den-hoag makes host-parenting an EXPLICIT
+    # schema declaration (`den.schema.user.parent = "host"`, stated by the corpus); the v1 denTest fixture
+    # omits it. Seeding that default in the scaffold DOES make users cells and un-blocks this arm, but it is
+    # a fleet-wide topology change that breaks another behavioral witness (a `defaults.nixos.tags` option
+    # double-declaration surfaces once users are cells) — a structural user-cell decision for owner
+    # disposition, NOT part of the gather re-layer. Same root cause as the sibling BLOCKED-WSB broadcast
+    # tests (user cells created on-demand). v1 expected "alice@iceberg"; den-hoag: the producer never fires.
     # # User → REMOTE host. alice (a user on iceberg) broadcasts her device
     # # record to every HOST scope ({ host, ... }: true). igloo — a host on the
     # # OTHER side of the fleet — consumes it at host scope. Crosses both the
@@ -395,11 +406,13 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (pipe.broadcast is UNWIRED for consumption — confirmed by source:
-    # lib/compat/flake-module.nix:532 `channelGather = collectGather.mkGather entityKinds` composes
-    # only expose+collect/collectAll; no `broadcast-gather.nix`-equivalent supplier exists, so the
-    # `__pipeMark = "broadcast"` site marker lib/compat/pipe.nix builds is never consulted):
-    # v1 expected "h-iceberg"; den-hoag actual "" (host-sourced broadcast never reaches igloo's consumer).
+    # PARKED-DIVERGENCE (broadcast source-side config-thunk resolution unbuilt — the broadcast arm IS now
+    # wired: lib/compat/flake-module.nix `channelGather = gather.mkGather entityKinds` composes the
+    # push-dual broadcast arm, but it moves the producer's RAW `localContribs`; a config-DEPENDENT
+    # (deferred) emit needs source-side resolution against the PRODUCER's class config before distribution
+    # (v1 `collectAllBroadcast` resolves at the producing class+scope, assemble-pipes.nix:794), which the
+    # arm does not do — residual #4, corpus-zero for broadcast):
+    # v1 expected "h-iceberg" (source-resolved at iceberg's nixos config); den-hoag: the deferred emit is not source-resolved before distribution.
     # # Config-dependent emit broadcast from a HOST source resolves against the
     # # producer's class config — the host's own nixos config.
     # test-broadcast-config-thunk-host = denTest (
@@ -446,11 +459,13 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (pipe.broadcast is UNWIRED for consumption — confirmed by source:
-    # lib/compat/flake-module.nix:532 `channelGather = collectGather.mkGather entityKinds` composes
-    # only expose+collect/collectAll; no `broadcast-gather.nix`-equivalent supplier exists, so the
-    # `__pipeMark = "broadcast"` site marker lib/compat/pipe.nix builds is never consulted):
-    # v1 expected "u-alice"; den-hoag actual "" (user-sourced broadcast never reaches igloo's consumer).
+    # PARKED-DIVERGENCE (broadcast source-side config-thunk resolution unbuilt — the broadcast arm IS now
+    # wired: lib/compat/flake-module.nix `channelGather = gather.mkGather entityKinds` composes the
+    # push-dual broadcast arm, but it moves the producer's RAW `localContribs`; a config-DEPENDENT
+    # (deferred) emit needs source-side resolution against the PRODUCER's class config before distribution
+    # (v1 `collectAllBroadcast` resolves at the producing class+scope, assemble-pipes.nix:794), which the
+    # arm does not do — residual #4, corpus-zero for broadcast):
+    # v1 expected "u-alice" (source-resolved at alice's home-manager config); den-hoag: the deferred emit is not source-resolved before distribution.
     # # A config-dependent emit broadcast from a USER source resolves against the
     # # PRODUCER's class config — the user's home-manager config (not the cross-
     # # host nixos config, which has no entry for a user scope). alice reads her

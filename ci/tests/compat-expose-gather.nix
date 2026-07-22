@@ -6,14 +6,14 @@
 #       user cells expose `resolved-users`; the different-class (nixos) host root receives the cells'
 #       contributions at its terminal binding (CROSS-CLASS delivery). A sibling channel emitted at the
 #       cells but NEVER exposed is NOT gathered (no-mark channels unaffected).
-#   (B) UNIT — the DEPTH semantics over the gather algorithm (`denCompat.exposeGather.gatheredAt`) on a
+#   (B) UNIT — the DEPTH semantics over the gather algorithm (`denCompat.gather.gatheredAt`) on a
 #       synthetic three-level `result` stub (root <- mid <- leaf). v1 is GATED-TRANSITIVE: a value bubbles
 #       up only through nodes that RE-EXPOSE. A non-re-exposing middle TRAPS its child's exposed data — the
 #       grandparent receives NOTHING (the non-vacuous negative that a blind subtree gather would violate).
 #       When the middle DOES re-expose, the leaf's value reaches the grandparent (own ++ child order).
 { denCompat, ... }:
 let
-  inherit (denCompat) exposeGather;
+  inherit (denCompat) gather;
 
   # ── (A) FLEET — cross-class expose delivery + no-mark isolation ────────────────────────────────────
   fleet = denCompat.mkDen [
@@ -79,6 +79,13 @@ let
           local.${nid} or { }
         else
           throw "unexpected attr ${attr}";
+      # the re-layered expose arm enumerates nodes over `allNodes` to build the flat gated-edge list (the
+      # gen-graph query source); a plain literal over the three stub ids (no `prelude` in this test header).
+      allNodes = {
+        root = true;
+        mid = true;
+        leaf = true;
+      };
     };
   # topology root <- mid <- leaf; leaf ALWAYS exposes `ch` and emits "leaf". `midExposes` toggles whether
   # the middle re-exposes `ch` (and, when it does, contributes its own "mid").
@@ -99,7 +106,7 @@ let
         mid.ch = [ (contrib "mid") ];
       };
     };
-  valuesAt = s: nid: map (c: c.value) ((exposeGather.gatheredAt s nid).ch or [ ]);
+  valuesAt = s: nid: map (c: c.value) ((gather.gatheredAt s nid).ch or [ ]);
 in
 {
   flake.tests.compat-expose-gather = {

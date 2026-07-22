@@ -144,6 +144,10 @@ let
   #     classes   — the class-tag entry registry (identity-law class entries).
   #     declare   — the declaration-constructor vocabulary (edge/drop/spawn/member/delivery).
   #     sel       — the selector vocabulary (neededBy / nameMatches predicates).
+  #     query     — the §3 query calculus over a supplied flat labeled edge list onto gen-graph. The
+  #                 re-layered cross-scope channel gather (lib/compat/gather.nix) routes its EXPOSE arm
+  #                 through it (paths mode) — the sole graph traversal; the collect/collectAll/broadcast
+  #                 arms are one-hop predicate filters over the node set (no query layer).
   #     internal  — the non-public builders; the shim reaches ONLY `internal.terminal.collect` (the
   #                 nixpkgs-free terminal for its systemFor-injecting instantiate wrapper).
   #   CONFIG surfaces the shim SETS on mkDen input (`config.den.*`, via the module system — NOT denHoag.<x>
@@ -155,6 +159,7 @@ let
     "classes"
     "declare"
     "sel"
+    "query"
     "internal"
   ];
   seamInternalSurfaces = [ "terminal" ];

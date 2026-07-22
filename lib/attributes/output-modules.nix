@@ -77,17 +77,18 @@
   enrichBindings ? ({ bindings, ... }: bindings),
   # The named PER-NODE CHANNEL-AUGMENTATION seam (#62a, threaded through `den.channelGather`). A supplier
   # augments the channel value bound to a class module's formals with contributions GATHERED from beyond the
-  # node's own emissions — `channelGather { id; result; } -> { <channel> = [ contribution ]; }`, appended
-  # AFTER the node's local emissions in `channelBindingsAt` (F4: bound = local ++ gathered). The gathered
-  # records carry local-collection-data's contribution shape (`.deferred`/`.value`/`.producer`), so they
-  # extract through the SAME `deferredToThunk` path (a gathered deferred contribution resolves at ITS OWN
-  # producing scope — resolve-at-producing, decision #27). Native den-hoag supplies the empty default
-  # (`_: { }`), so the augmentation is `local ++ [ ]` at every channel — the KNOWN CEILING (`bindingsAt`
-  # reads OWN emissions) unchanged, the binding surface byte-identical (the 810 identity tests are the proof).
-  # An external consumer wires its gather supplier here (e.g. the v1 expose-ascent twin, #62b). A17: `result`
-  # is the eval passed opaquely; a supplier that walks it must stay lazy over the id spine (never force all
-  # descendants' resolved-aspects).
-  channelGather ? (_: { }),
+  # node's own emissions — `channelGather result id -> { <channel> = [ contribution ]; }`, CURRIED on
+  # `result` so the supplier binds it ONCE (`channelGatherR`, hoisted below) and can precompute per-fleet
+  # indices shared across every consumer id; applied per node in `channelBindingsAt` (F4: bound = local ++
+  # gathered). The gathered records carry local-collection-data's contribution shape (`.deferred`/`.value`/
+  # `.producer`), so they extract through the SAME `deferredToThunk` path (a gathered deferred contribution
+  # resolves at ITS OWN producing scope — resolve-at-producing, decision #27). Native den-hoag supplies the
+  # empty default (`_: _: { }`), so the augmentation is `local ++ [ ]` at every channel — the KNOWN CEILING
+  # (`bindingsAt` reads OWN emissions) unchanged, the binding surface byte-identical (the 810 identity tests
+  # are the proof). An external consumer wires its gather supplier here (e.g. the v1 gather twin, #62b). A17:
+  # `result` is the eval passed opaquely; a supplier that walks it must stay lazy over the id spine (never
+  # force all descendants' resolved-aspects), and `channelGather result` must not force it eagerly.
+  channelGather ? (_: _: { }),
   # THE ONE per-aspect class-slice extraction (Task 2, `attributes/class-modules.nix classSliceOf`, threaded
   # through `attributesLib.mkClassSlice` with the discovered `classifyKey`). `classSliceOf aspect class`
   # returns that aspect's `class`-C bucket contribution as `[ { module; shared; } ]` (0 or 1) — `projectClass`
@@ -708,12 +709,17 @@ let
   # `flattenAndExtract`, assemble-pipes.nix — a LIST emission spreads into elements; an attrset/deferred
   # emission is one element), so a corpus consumer's `concatMap (e: e.directories) persistHome` reads
   # v1's shape. The key set is TOTAL over both maps (`resolved-users` at a host — the ship-gate shape).
+  #
+  # `channelGather result` is applied ONCE here (not per node): the supplier binds `result` and precomputes
+  # its per-fleet indices, so `channelGatherR id` per node reuses them (A17: WHNF is the `id` lambda — the
+  # indices are lazy thunks in its closure, forced only when a consumer demands them).
+  channelGatherR = channelGather result;
   channelBindingsAt =
     id:
     let
       received' = received id;
       local = builtins.mapAttrs (_: out: out.contributions or [ ]) received';
-      gathered = channelGather { inherit id result; };
+      gathered = channelGatherR id;
       flatten =
         c:
         let
