@@ -34,6 +34,66 @@ let
   seenEq = a: b: builtins.attrNames a.seen == builtins.attrNames b.seen;
   isSelector = v: builtins.isAttrs v && v ? __sel;
 
+  inherit (import ../dedup-by-key.nix { inherit prelude; }) dedupByKey;
+
+  # `sharedFoldKey` — the v1 STABLE cross-scope dedup key (v1 wrap-classes.nix `computeModuleIdentity` + the
+  # ctx suffix, @ pin 11866c16). It discriminates a genuinely SHARED aspect (dedup) from genuinely per-cell
+  # content (keep): the A-IDENT `key` plus a ctx-PROJECTION over the aspect's DECLARED formals, by entity
+  # `id_hash`. A static aspect reads no ctx ⇒ fully shared (projection `""`). A parametric aspect reading
+  # ONLY entity coords projects to those coords' `id_hash`es — invariant across scopes that share the coord
+  # (a `{ host, … }:` aspect projects `host=<H>`, identical at the host AND its user cells, so it collapses;
+  # a `{ user, … }:` aspect projects the per-cell `user=<u>`, so it stays distinct). A parametric aspect
+  # reading a PRESENT non-entity ctx key (an enrichment coord like `isNixos`, no `id_hash`) ⇒ projection
+  # `null` ⇒ NEVER deduped (the v1 anon rule, scope-walk.nix:57 — the SAFE DIRECTION: a false-keep never
+  # loses content; equal-mergeable duplicate content stays green, and only an option-decl/unique shape on
+  # such an enrichment-reading shared aspect would stay doubled — a corpus-zero PRE-EXISTING limitation, not
+  # a new regression, and a follow-up widening if a fleet ever needs it). All reads are force-free:
+  # `__functionArgs` is a marker, `ctx.<f>.id_hash` is plain data, `aspect ctx` is NOT invoked here (A17 —
+  # the node's `content` forces it, this key does not).
+  #
+  # CONTRACT (v1-faithful): a parametric aspect MUST DECLARE, as a formal, every entity coord it reads. v1's
+  # ctx carried only declared coords, so an UNDECLARED `...`/`@`-capture read of a descendant coord (e.g.
+  # `{ host, ... }@a: a.user`) is UNSUPPORTED — `__functionArgs` carries only `{ host }`, so such an aspect would
+  # project identically at the host and its cells and WRONGLY collapse per-cell content. No corpus/witness
+  # aspect relies on it (grep-verified: the only `@`-capture aspect bodies are `meta.guard` presence tests
+  # over non-entity keys). A future need is a follow-up (widen the projection), not a silent-loss risk today.
+  #
+  # NOTE (`{ user, … }:` at a HOST): the host ctx lacks `user`, so `present == entityF == [ ]` and the
+  # projection is `""` (not `null`) — a harmless edge: v1-faithfully such an aspect THROWS when resolved at a
+  # host (its `user` formal is unbound, so no node materializes to collapse), and `"<key>|"` only ever
+  # matches another copy of the SAME aspect (never distinct content).
+  ctxProjOf =
+    aspect: ctx:
+    if !(aspect.__isWrappedFn or false) then
+      ""
+    else
+      let
+        # A `__isWrappedFn` aspect is a gen-aspects functor carrying `__functionArgs` (the formal set, the
+        # nixpkgs `setFunctionArgs` convention) — read force-free (the body is not invoked here).
+        formals = builtins.attrNames aspect.__functionArgs;
+        present = builtins.filter (f: ctx ? ${f}) formals;
+        entityF = builtins.filter (
+          f:
+          let
+            v = ctx.${f} or null;
+          in
+          builtins.isAttrs v && v ? id_hash
+        ) formals;
+      in
+      if builtins.length entityF == builtins.length present then
+        builtins.concatStringsSep "," (
+          prelude.sort (a: b: a < b) (map (f: "${f}=${ctx.${f}.id_hash}") entityF)
+        )
+      else
+        null;
+
+  sharedFoldKeyOf =
+    aspect: ctx: key:
+    let
+      p = ctxProjOf aspect ctx;
+    in
+    if p == null then null else "${key}|${p}";
+
   # Layer 1 — forward expansion (recursive, evaluates parametrics inline). foldl' over an aspect
   # list: skip already-seen keys, otherwise mark seen, resolve concrete (a parametric __isWrappedFn
   # is invoked with ctx; a static submodule passes through), and recurse its `includes`. Returns
@@ -65,6 +125,10 @@ let
                 {
                   inherit key;
                   content = concrete;
+                  # The v1 stable cross-scope dedup discriminator (ADDITIVE — `.key`/`.content` consumers are
+                  # unaffected). Computed from the PRE-resolution `aspect` + `ctx` (force-free); the reach +
+                  # classSubtreeAt folds dedup a genuinely-shared host+user aspect on it.
+                  sharedFoldKey = sharedFoldKeyOf aspect ctx key;
                 }
               ]
               ++ childResult.nodes;
@@ -369,12 +433,22 @@ in
         # `scope.descendants` order), THEN the edges of `edgesAt id` in precedence order (default edges <
         # opt-in edges). Do NOT reorder these folds — the Phase-2 class-slice merge depends on this sequence.
         subtreeIds = [ id ] ++ scope.descendants self id;
-        structuralNodes = prelude.concatMap (nid: self.get nid "resolved-aspects") subtreeIds;
+        structuralNodesRaw = prelude.concatMap (nid: self.get nid "resolved-aspects") subtreeIds;
+        # CROSS-SCOPE SHARED-ASPECT DEDUP (v1 `wrapPerScope` `dedupByKey (m: m.key)`, resolve.nix:43-66 @ pin
+        # 11866c16). A genuinely-shared host+user aspect (`den.default`) resolves to a BYTE-IDENTICAL node at
+        # the host AND its cells (same A-IDENT key + same entity-coord projection ⇒ same `sharedFoldKey`);
+        # collapse it first-occurrence-wins (own/host first) — the fix for the double-fold (a doubled
+        # option-decl aborts / a unique option throws / a list silently doubles). A `null` sharedFoldKey (a
+        # static-anon node, or a parametric aspect reading a non-entity enrichment coord) is NEVER deduped
+        # (v1 anon rule) — the conservative keep. Genuinely per-cell content (`acct`'s `{ user, … }:` cells,
+        # delivered-child/guest content) carries a DISTINCT per-cell `user`/guest `id_hash` ⇒ distinct
+        # `sharedFoldKey` ⇒ kept (the #111 no-collapse invariant `class-fold-subtree` pins).
+        structuralNodes = dedupByKey (n: n.sharedFoldKey or null) structuralNodesRaw;
         seededOwn = {
-          # `seen` = the UNION of every structural node's key (edge closure dedups against it); `nodes` = the
-          # FULL structural sequence VERBATIM (per-provider multiplicity — distinct-scope same-key nodes all
-          # kept). The two diverge on purpose: dedup gates the edges, multiplicity lives in the emitted list.
-          seen = prelude.foldl' (acc: n: acc // { ${n.key} = true; }) { } structuralNodes;
+          # `seen` = the UNION of every structural node's key over the RAW list (edge closure dedups against
+          # it — do NOT narrow to the deduped list, or an edge-reached aspect could re-enter); `nodes` = the
+          # cross-scope-deduped structural sequence (per-provider multiplicity kept, shared copies collapsed).
+          seen = prelude.foldl' (acc: n: acc // { ${n.key} = true; }) { } structuralNodesRaw;
           nodes = structuralNodes;
           visitedIds = {
             ${id} = true;

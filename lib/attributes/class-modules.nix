@@ -67,7 +67,18 @@ let
       let
         m = content.${class};
       in
-      if isEmptyDeferredModule m then [ ] else [ { module = m; } ];
+      if isEmptyDeferredModule m then
+        [ ]
+      else
+        # Carry the owning resolved-aspect node's `sharedFoldKey` (resolved-aspects.nix, ADDITIVE — `.module`
+        # readers ignore it) so the `classSubtreeAt` output-fold can dedup a genuinely-shared host+user aspect
+        # cross-scope, keyed identically to the reach/terminal fold. `null` for a node with no stamped key.
+        [
+          {
+            module = m;
+            sharedFoldKey = aspect.sharedFoldKey or null;
+          }
+        ];
 
   # §2.2 TOTALITY at the projection terminal (ruling 2026-07-14). Classify EVERY non-`_` content key of an
   # aspect via `classifyKey` — a `facet`/`class`/`channel` key passes, a genuinely UNREGISTERED key (a typo
@@ -128,6 +139,56 @@ let
     prelude.foldl' (acc: cn: acc // { ${cn} = map (e: e.module) recBuckets.${cn}; }) { } (
       builtins.attrNames recBuckets
     );
+
+  # The record-carrying bucket build (`{ <class> = [ { module; sharedFoldKey ? null } ]; }`) shared by the
+  # public `class-modules` (stripped bare) and `class-modules-keyed` (records, for the `classSubtreeAt`
+  # cross-scope dedup) — ONE build, so the two are consistent by construction. inject/reroute (v1 `forwards`
+  # tier-1) are applied HERE (not by `classSliceOf`), which is why `classSubtreeAt` consumes THIS keyed form
+  # rather than re-slicing reach (a reroute/inject fleet would otherwise diverge).
+  recBucketsOf =
+    self: id:
+    let
+      resolvedAspects = self.get id "resolved-aspects";
+      resolutionActs = (self.get id "declarations").actions.resolution or [ ];
+
+      base = prelude.foldl' (acc: a: mergeBuckets acc (classContentOf a)) emptyBuckets resolvedAspects;
+
+      # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket. Node-local
+      # content (no owning shared aspect), so `sharedFoldKey = null` ⇒ never cross-scope-deduped (v1 anon).
+      injects = builtins.filter (a: a.__action == "inject") resolutionActs;
+      withInject = prelude.foldl' (
+        acc: inj:
+        let
+          cn = className inj.class;
+        in
+        acc
+        // {
+          ${cn} = (acc.${cn} or [ ]) ++ [
+            {
+              module = inj.module;
+              sharedFoldKey = null;
+            }
+          ];
+        }
+      ) base injects;
+
+      # `reroute { from; to }` (spec §2.3 resolution) — moves a class's collected content to another
+      # class (v1 `forwards` tier-1 target). A no-op when nothing was collected for `from`.
+      reroutes = builtins.filter (a: a.__action == "reroute") resolutionActs;
+      withReroute = prelude.foldl' (
+        acc: rr:
+        let
+          f = className rr.from;
+          t = className rr.to;
+        in
+        acc
+        // {
+          ${t} = (acc.${t} or [ ]) ++ (acc.${f} or [ ]);
+          ${f} = [ ];
+        }
+      ) withInject reroutes;
+    in
+    withReroute;
 in
 {
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, exported for `projectClass`
@@ -144,43 +205,22 @@ in
       "resolved-aspects"
       "declarations"
     ];
-    compute =
-      self: id:
-      let
-        resolvedAspects = self.get id "resolved-aspects";
-        resolutionActs = (self.get id "declarations").actions.resolution or [ ];
+    compute = self: id: splitBuckets (recBucketsOf self id);
+  };
 
-        base = prelude.foldl' (acc: a: mergeBuckets acc (classContentOf a)) emptyBuckets resolvedAspects;
-
-        # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket.
-        injects = builtins.filter (a: a.__action == "inject") resolutionActs;
-        withInject = prelude.foldl' (
-          acc: inj:
-          let
-            cn = className inj.class;
-          in
-          acc
-          // {
-            ${cn} = (acc.${cn} or [ ]) ++ [ { module = inj.module; } ];
-          }
-        ) base injects;
-
-        # `reroute { from; to }` (spec §2.3 resolution) — moves a class's collected content to another
-        # class (v1 `forwards` tier-1 target). A no-op when nothing was collected for `from`.
-        reroutes = builtins.filter (a: a.__action == "reroute") resolutionActs;
-        withReroute = prelude.foldl' (
-          acc: rr:
-          let
-            f = className rr.from;
-            t = className rr.to;
-          in
-          acc
-          // {
-            ${t} = (acc.${t} or [ ]) ++ (acc.${f} or [ ]);
-            ${f} = [ ];
-          }
-        ) withInject reroutes;
-      in
-      splitBuckets withReroute;
+  # The KEYED twin of `class-modules` — the same buckets carrying each entry's `sharedFoldKey`, consumed
+  # ONLY by `classSubtreeAt`'s cross-scope shared-aspect dedup (output-modules.nix). The PUBLIC attribute
+  # (`class-modules`, read positionally as `[ <deferredModule> ]`) stays bare; this parallel attribute is
+  # the record form (`[ { module; sharedFoldKey } ]`) so the output-fold + anchor collapse a shared host+user
+  # aspect identically to the reach/terminal fold.
+  class-modules-keyed = resolve.attr {
+    name = "class-modules-keyed";
+    kind = "synthesized";
+    stratum = "resolution";
+    readsAttrs = [
+      "resolved-aspects"
+      "declarations"
+    ];
+    compute = self: id: recBucketsOf self id;
   };
 }

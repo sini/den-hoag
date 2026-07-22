@@ -176,9 +176,13 @@ in
         ;
     })
     // {
-      # Only the EQUATION record `class-modules` enters the map — `classSliceOf` (the factored per-aspect
-      # extraction, exported alongside) is a bare function threaded to `mkOutputModules` (below), never here.
-      inherit (classModules { inherit classNames classifyKey; }) class-modules;
+      # Only the EQUATION records `class-modules` (+ its keyed twin `class-modules-keyed`, consumed by
+      # `classSubtreeAt`'s cross-scope shared-aspect dedup) enter the map — `classSliceOf` (the factored
+      # per-aspect extraction, exported alongside) is a bare function threaded to `mkOutputModules` (below).
+      inherit (classModules { inherit classNames classifyKey; })
+        class-modules
+        class-modules-keyed
+        ;
     }
     // {
       local-demand-data = localDemandData;

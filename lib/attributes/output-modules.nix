@@ -133,6 +133,10 @@ let
   # producing-class read (the node's contentClass) — never a module body (deferred content stays A17-lazy).
   isClassName = cn: classesByName ? ${cn};
   classModulesAt = id: result.get id "class-modules";
+  # The KEYED class buckets (`{ <class> = [ { module; sharedFoldKey } ]; }`) — `classSubtreeAt` reads THIS
+  # (not the bare public `class-modules`) so it can collapse a genuinely-shared host+user aspect cross-scope.
+  classModulesKeyedAt = id: result.get id "class-modules-keyed";
+  inherit (import ../dedup-by-key.nix { inherit prelude; }) dedupByKey;
 
   # ── #63 within-class subtree fold (design note §8, the #62c twin for class content) ─────────────────
   # A node's within-class content assembly gathers the SAME class bucket from `[ id ] ++ scope.descendants
@@ -160,10 +164,22 @@ let
   # BODIES inside each bucket stay unforced (the A17 claim above is about bodies, and stays true). IDENTITY:
   # a cell-less / descendant-less node ⇒ `[ id ]` ⇒ `(classModulesAt id).${class}` exactly (the 820 baseline
   # is the proof — unchanged).
+  # CROSS-SCOPE SHARED-ASPECT DEDUP (v1 `wrapPerScope` `dedupByKey`, resolve.nix:43-66 @ pin 11866c16 — the
+  # `classSubtreeAt` twin of the reach dedup, resolved-aspects.nix). The keyed subtree buckets are gathered
+  # own-first ++ descendants, then a genuinely-shared host+user aspect (same `sharedFoldKey` at the host AND
+  # its cell — a `den.default` module) collapses first-occurrence-wins to the host's copy; a `null` key (a
+  # node-local inject/reroute, a static-anon or non-entity-ctx aspect) is never deduped (v1 anon rule); and
+  # genuinely per-cell content (distinct `user`/guest `id_hash` ⇒ distinct key) is kept — so the output-fold
+  # (`contentsOf`/`classBucketsOf`/the default-fold edge) and the `projectClass` anchor stay byte-consistent
+  # with the deduped terminal. Map back to the bare `.module` list the readers expect.
   classSubtreeAt =
     id: class:
-    prelude.concatMap (nid: (classModulesAt nid).${class} or [ ]) (
-      [ id ] ++ scope.descendants result id
+    map (e: e.module) (
+      dedupByKey (e: e.sharedFoldKey or null) (
+        prelude.concatMap (nid: (classModulesKeyedAt nid).${class} or [ ]) (
+          [ id ] ++ scope.descendants result id
+        )
+      )
     );
 
   producingClassOf =
