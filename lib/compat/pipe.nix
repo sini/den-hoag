@@ -85,10 +85,14 @@ let
       # predicate keep (den v1 `policy-effects.nix:304` builds `{ __pipeStage="filter"; fn; }`; run at
       # `assemble-pipes.nix:281-282` — `builtins.filter (v: passthrough v || stage.fn (unwrap v))`, so a
       # deferred `__configThunk` value passes through unfiltered, item 6). gen-pipe `filter` is the twin.
+      # gen-pipe `filter` hands the predicate the provenance VIEW record, not the raw value; a v1
+      # value-predicate (`e: e.proto`) must see the unwrapped `.value`. The `.deferred` short-circuit
+      # is the twin of v1's `passthrough v` — a deferred view's `.value` is a poisoned thunk (item 6),
+      # so `||` keeps it unforced and passes it through unfiltered.
       {
         role = "derive";
         op = "filter";
-        apply = declare.pipe.filter stage.fn;
+        apply = declare.pipe.filter (v: v.deferred || stage.fn v.value);
       }
     else if k == "transform" then
       # per-ELEMENT map (den v1 `assemble-pipes.nix:283-284`: `map (v: … stage.fn (unwrap v)) values`).
