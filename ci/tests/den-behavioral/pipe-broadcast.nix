@@ -122,9 +122,11 @@ in
       }
     );
 
-    # BLOCKED-WSB (known gap, same as host-aspects-sibling-leak.nix "on-demand hm-users key"):
-    # home-manager.users.<name> entries are created ON-DEMAND (content-driven), not for every
-    # nominally-homeManager-classed user; forcing `tuxHm` throws `attribute 'tux' missing`.
+    # BLOCKED: source-side transform not applied pre-broadcast (the `pipe.transform` SOURCE stage before
+    # `pipe.broadcast`). The broadcast arm's source-emit is the RAW `localContribs` (gather.nix broadcast arm
+    # residual #4), so the transformed view ("dev:alice,dev:tux") is not produced — actual "alice,tux". Same
+    # family as the config-thunk-{host,user} PARKED-DIVERGENCE (source-side resolution before distribution); a
+    # separate rung, NOT the (now-closed) on-demand hm-users-key gap.
     # # Source-side transform stages apply BEFORE distribution: the broadcast
     # # value is the transformed view, identical at every receiver.
     # test-broadcast-source-transform = denTest (
@@ -225,171 +227,163 @@ in
       }
     );
 
-    # BLOCKED-WSB (known gap, same as host-aspects-sibling-leak.nix "on-demand hm-users key"):
-    # home-manager.users.<name> entries are created ON-DEMAND (content-driven), not for every
-    # nominally-homeManager-classed user; forcing `tuxHm` throws `attribute 'tux' missing`.
-    # # Self-exclusion (S≠R): a lone broadcaster sees only its own base, NOT a
-    # # duplicate of its own broadcast value.
-    # test-broadcast-self-excluded = denTest (
-    #   {
-    #     den,
-    #     tuxHm,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     den.aspects.tux = {
-    #       peer-dev = [ { who = "tux@igloo"; } ];
-    #       homeManager =
-    #         { peer-dev, ... }:
-    #         {
-    #           home.sessionVariables.PEERS = lib.concatStringsSep "," (map (p: p.who) peer-dev);
-    #         };
-    #     };
-    #
-    #     den.policies.broadcast-peer-dev =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: true)) ]) ];
-    #     den.schema.user.includes = [ den.policies.broadcast-peer-dev ];
-    #
-    #     # Only tux's own base — no self-broadcast duplicate.
-    #     expr = tuxHm.home.sessionVariables.PEERS;
-    #     expected = "tux@igloo";
-    #   }
-    # );
+    # Self-exclusion (S≠R): a lone broadcaster sees only its own base, NOT a
+    # duplicate of its own broadcast value.
+    test-broadcast-self-excluded = denTest (
+      {
+        den,
+        tuxHm,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
 
-    # BLOCKED-WSB (known gap, same as host-aspects-sibling-leak.nix "on-demand hm-users key"):
-    # home-manager.users.<name> entries are created ON-DEMAND (content-driven), not for every
-    # nominally-homeManager-classed user; forcing `tuxHm` throws `attribute 'tux' missing`.
-    # # No leak: a narrow predicate reaches ONLY matching scopes. Every user
-    # # broadcasts to tux alone ({ user }: user.name == "tux"). tux receives
-    # # pingu's record; pingu receives NOTHING (tux's broadcast must not leak to
-    # # a non-matching peer). Both homes inspected.
-    # test-broadcast-targeted-no-leak = denTest (
-    #   {
-    #     den,
-    #     tuxHm,
-    #     pinguHm,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.igloo.users.pingu = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     den.aspects.tux = {
-    #       peer-dev = [ { who = "tux"; } ];
-    #       homeManager =
-    #         { peer-dev, ... }:
-    #         {
-    #           home.sessionVariables.PEERS = lib.concatStringsSep "," (
-    #             lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
-    #           );
-    #         };
-    #     };
-    #     den.aspects.pingu = {
-    #       peer-dev = [ { who = "pingu"; } ];
-    #       homeManager =
-    #         { peer-dev, ... }:
-    #         {
-    #           home.sessionVariables.PEERS = lib.concatStringsSep "," (
-    #             lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
-    #           );
-    #         };
-    #     };
-    #
-    #     den.policies.broadcast-to-tux =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: user.name == "tux")) ]) ];
-    #     den.schema.user.includes = [ den.policies.broadcast-to-tux ];
-    #
-    #     expr = {
-    #       tux = tuxHm.home.sessionVariables.PEERS;
-    #       pingu = pinguHm.home.sessionVariables.PEERS;
-    #     };
-    #     expected = {
-    #       # tux receives pingu's broadcast + own base.
-    #       tux = "pingu,tux";
-    #       # pingu is not a target — sees only its own base. No leak.
-    #       pingu = "pingu";
-    #     };
-    #   }
-    # );
+        den.quirks.peer-dev.description = "per-user device records";
 
-    # BLOCKED-WSB (same on-demand hm-users key gap as test-broadcast-basic above, here on `alice`):
-    # forcing `iceberg.home-manager.users.alice` throws `attribute 'alice' missing`.
-    # # Compound { host, user } targeting: a predicate requiring BOTH host and
-    # # user selects USER scopes (host scopes lack `user`) and can filter on the
-    # # receiver's host. alice@iceberg broadcasts to user scopes on igloo only.
-    # # tux@igloo receives; alice@iceberg (wrong host) does not.
-    # test-broadcast-target-host-user = denTest (
-    #   {
-    #     den,
-    #     iceberg,
-    #     tuxHm,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev.description = "per-user device records";
-    #
-    #     den.aspects.tux = {
-    #       peer-dev = [ { who = "tux@igloo"; } ];
-    #       homeManager =
-    #         { peer-dev, ... }:
-    #         {
-    #           home.sessionVariables.PEERS = lib.concatStringsSep "," (
-    #             lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
-    #           );
-    #         };
-    #     };
-    #     den.aspects.alice = {
-    #       peer-dev = [ { who = "alice@iceberg"; } ];
-    #       homeManager =
-    #         { peer-dev, ... }:
-    #         {
-    #           home.sessionVariables.PEERS = lib.concatStringsSep "," (
-    #             lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
-    #           );
-    #         };
-    #     };
-    #
-    #     # Target user scopes whose host is igloo (requires host AND user in ctx).
-    #     den.policies.broadcast-to-igloo-users =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, user, ... }: host.name == "igloo")) ]) ];
-    #     den.schema.user.includes = [ den.policies.broadcast-to-igloo-users ];
-    #
-    #     expr = {
-    #       tux = tuxHm.home.sessionVariables.PEERS;
-    #       alice = iceberg.home-manager.users.alice.home.sessionVariables.PEERS;
-    #     };
-    #     expected = {
-    #       # tux (user on igloo) receives alice's broadcast + own base.
-    #       tux = "alice@iceberg,tux@igloo";
-    #       # alice (user on iceberg) is not targeted — own base only.
-    #       alice = "alice@iceberg";
-    #     };
-    #   }
-    # );
+        den.aspects.tux = {
+          peer-dev = [ { who = "tux@igloo"; } ];
+          homeManager =
+            { peer-dev, ... }:
+            {
+              home.sessionVariables.PEERS = lib.concatStringsSep "," (map (p: p.who) peer-dev);
+            };
+        };
+
+        den.policies.broadcast-peer-dev =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: true)) ]) ];
+        den.schema.user.includes = [ den.policies.broadcast-peer-dev ];
+
+        # Only tux's own base — no self-broadcast duplicate.
+        expr = tuxHm.home.sessionVariables.PEERS;
+        expected = "tux@igloo";
+      }
+    );
+
+    # No leak: a narrow predicate reaches ONLY matching scopes. Every user
+    # broadcasts to tux alone ({ user }: user.name == "tux"). tux receives
+    # pingu's record; pingu receives NOTHING (tux's broadcast must not leak to
+    # a non-matching peer). Both homes inspected.
+    test-broadcast-targeted-no-leak = denTest (
+      {
+        den,
+        tuxHm,
+        pinguHm,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.igloo.users.pingu = { };
+
+        den.quirks.peer-dev.description = "per-user device records";
+
+        den.aspects.tux = {
+          peer-dev = [ { who = "tux"; } ];
+          homeManager =
+            { peer-dev, ... }:
+            {
+              home.sessionVariables.PEERS = lib.concatStringsSep "," (
+                lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
+              );
+            };
+        };
+        den.aspects.pingu = {
+          peer-dev = [ { who = "pingu"; } ];
+          homeManager =
+            { peer-dev, ... }:
+            {
+              home.sessionVariables.PEERS = lib.concatStringsSep "," (
+                lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
+              );
+            };
+        };
+
+        den.policies.broadcast-to-tux =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ user, ... }: user.name == "tux")) ]) ];
+        den.schema.user.includes = [ den.policies.broadcast-to-tux ];
+
+        expr = {
+          tux = tuxHm.home.sessionVariables.PEERS;
+          pingu = pinguHm.home.sessionVariables.PEERS;
+        };
+        expected = {
+          # tux receives pingu's broadcast + own base.
+          tux = "pingu,tux";
+          # pingu is not a target — sees only its own base. No leak.
+          pingu = "pingu";
+        };
+      }
+    );
+
+    # Compound { host, user } targeting: a predicate requiring BOTH host and
+    # user selects USER scopes (host scopes lack `user`) and can filter on the
+    # receiver's host. alice@iceberg broadcasts to user scopes on igloo only.
+    # tux@igloo receives; alice@iceberg (wrong host) does not.
+    test-broadcast-target-host-user = denTest (
+      {
+        den,
+        iceberg,
+        tuxHm,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
+
+        den.quirks.peer-dev.description = "per-user device records";
+
+        den.aspects.tux = {
+          peer-dev = [ { who = "tux@igloo"; } ];
+          homeManager =
+            { peer-dev, ... }:
+            {
+              home.sessionVariables.PEERS = lib.concatStringsSep "," (
+                lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
+              );
+            };
+        };
+        den.aspects.alice = {
+          peer-dev = [ { who = "alice@iceberg"; } ];
+          homeManager =
+            { peer-dev, ... }:
+            {
+              home.sessionVariables.PEERS = lib.concatStringsSep "," (
+                lib.sort (a: b: a < b) (map (p: p.who) peer-dev)
+              );
+            };
+        };
+
+        # Target user scopes whose host is igloo (requires host AND user in ctx).
+        den.policies.broadcast-to-igloo-users =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.broadcast ({ host, user, ... }: host.name == "igloo")) ]) ];
+        den.schema.user.includes = [ den.policies.broadcast-to-igloo-users ];
+
+        expr = {
+          tux = tuxHm.home.sessionVariables.PEERS;
+          alice = iceberg.home-manager.users.alice.home.sessionVariables.PEERS;
+        };
+        expected = {
+          # tux (user on igloo) receives alice's broadcast + own base.
+          tux = "alice@iceberg,tux@igloo";
+          # alice (user on iceberg) is not targeted — own base only.
+          alice = "alice@iceberg";
+        };
+      }
+    );
 
     # PARKED-DIVERGENCE (broadcast source-side config-thunk resolution unbuilt — the broadcast arm IS now
     # wired: lib/compat/flake-module.nix `channelGather = gather.mkGather entityKinds` composes the
@@ -491,9 +485,11 @@ in
     #   }
     # );
 
-    # BLOCKED-WSB (known gap, same as host-aspects-sibling-leak.nix "on-demand hm-users key"):
-    # home-manager.users.<name> entries are created ON-DEMAND (content-driven), not for every
-    # nominally-homeManager-classed user; forcing `tuxHm` throws `attribute 'tux' missing`.
+    # BLOCKED: bindsPipeLocally broadcast local-binding incomplete. A pure-receiver user reads the broadcast
+    # value BUT ALSO double-inherits its ancestor host's collected value (actual "alice,igloo-host,igloo-host"
+    # vs expected "alice") — the `bindsPipeLocally` broadcast clause that should suppress ancestor inheritance
+    # at a broadcast-receiving scope is missing/incomplete. A distinct broadcast-semantics rung, NOT the
+    # (now-closed) on-demand hm-users-key gap.
     # # Pure-receiver binding: a user with NO own emit/effect, on a host that runs
     # # a peer-dev policy (so its policyBoundAncestor is non-null), receives a
     # # peer's broadcast. The bindsPipeLocally broadcast clause makes tux read the
