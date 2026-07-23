@@ -22,6 +22,7 @@
   prelude,
   algebra,
   pipe,
+  reservedRegistry,
 }:
 let
   # The laws ladder (spec §5) — the CLOSED set of algebraic classes a discipline may declare. A name
@@ -43,7 +44,6 @@ let
     "collections-neron"
     "reach-closure"
   ];
-  reservedSet = prelude.genAttrs reservedNames (_: true);
 
   # ── THE FRAMEWORK MERGE-ORDER INSTANCES (spec §6) — DECLARE, not rewire ──────────────────────────
   # Each shipped fold is DECLARED as a discipline instance whose `combine` REFERENCES the same algebra
@@ -231,14 +231,13 @@ let
     {
       disciplines ? { },
     }:
-    let
-      reservedOffenders = builtins.filter (n: reservedSet ? ${n}) (builtins.attrNames disciplines);
-      allRaw = frameworkInstances // disciplines;
-    in
-    if reservedOffenders != [ ] then
-      throw "den.disciplines: instance '${builtins.head reservedOffenders}' is framework-reserved"
-    else
-      prelude.mapAttrs entryOf allRaw;
+    reservedRegistry.mkReservedRegistry {
+      subject = "den.disciplines";
+      noun = "instance";
+      reserved = frameworkInstances;
+      inherit entryOf;
+      table = disciplines;
+    };
 in
 {
   inherit

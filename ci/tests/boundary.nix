@@ -48,6 +48,7 @@ let
     "stratum-scope.nix"
     "production-guard.nix"
     "concern-disciplines.nix"
+    "reserved-registry.nix"
     "linearization.nix"
     "settings.nix"
     "projects.nix"

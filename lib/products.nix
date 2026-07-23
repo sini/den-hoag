@@ -15,6 +15,7 @@
 # EDGE DATA only, never from a registry entry.
 {
   prelude,
+  reservedRegistry,
 }:
 let
   # The closed set of materialization modes (spec §4.1). A product declares one of these; a name outside
@@ -86,7 +87,6 @@ let
     };
   };
   reservedNames = builtins.attrNames frameworkProducts;
-  reservedSet = prelude.genAttrs reservedNames (_: true);
 
   # A registry entry's canonical fields (spec §4.1). `mode` names the materialization mode (REQUIRED,
   # ∈ modes); `nestable` (default true) gates whether the product may appear in a receiver's `consumes` —
@@ -117,17 +117,21 @@ let
     {
       products ? { },
     }:
-    let
-      reservedOffenders = builtins.filter (n: reservedSet ? ${n}) (builtins.attrNames products);
-      prefixOffenders = builtins.filter isArtifactRef (builtins.attrNames products);
-      allRaw = frameworkProducts // products;
-    in
-    if reservedOffenders != [ ] then
-      throw "den.products: product '${builtins.head reservedOffenders}' is framework-reserved"
-    else if prefixOffenders != [ ] then
-      throw "den.products: product names may not begin with the reserved 'ArtifactRef ' prefix (the value-mode wrapper namespace) — '${builtins.head prefixOffenders}' does"
-    else
-      prelude.mapAttrs entryOf allRaw;
+    reservedRegistry.mkReservedRegistry {
+      subject = "den.products";
+      noun = "product";
+      reserved = frameworkProducts;
+      inherit entryOf;
+      table = products;
+      extraGuards = [
+        {
+          offenders = builtins.filter isArtifactRef (builtins.attrNames products);
+          message =
+            h:
+            "den.products: product names may not begin with the reserved 'ArtifactRef ' prefix (the value-mode wrapper namespace) — '${h}' does";
+        }
+      ];
+    };
 
   # `modeOf compiled name` — the product → mode derivation, TOTAL over the nestable products (spec §4.1).
   # An `ArtifactRef P` name resolves STRUCTURALLY to value mode (the prebuilt arm); every other name must

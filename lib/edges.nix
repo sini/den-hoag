@@ -9,6 +9,7 @@
   prelude,
   identity,
   edge,
+  reservedRegistry,
   # the graft-site dispatch (receivers.nix) + the mode-execution engine (nest.nix), threaded in for the
   # cell/containment nest-edge producer: `resolveReceiver` is the receiver-gate predicate, `executeNest` the
   # content-arm graft, `checkSingular` the wiring-time singular mount check. Used ONLY by `nestProducer`; the
@@ -132,23 +133,26 @@ let
     }:
     let
       strataSet = prelude.genAttrs strataOrder (_: true);
-      # user kinds may not shadow the framework vocabulary — a reserved-name re-registration aborts.
-      reservedOffenders = builtins.filter (n: builtins.elem n reservedNames) (builtins.attrNames kinds);
-      # the full registration set: pre-registered framework rows (their strata) UNION the user rows.
-      allRaw =
-        prelude.genAttrs reservedNames (n: {
+      # the reserved seed is the pre-registered framework rows keyed by their strata — its keyset is the
+      # reserved set (a user kind re-registering one aborts NAMED inside the combinator) and its values
+      # pre-populate the table (allRaw = seed // kinds), byte-identical to the original union.
+      compiled = reservedRegistry.mkReservedRegistry {
+        subject = "den.edges";
+        noun = "kind";
+        reserved = prelude.genAttrs reservedNames (n: {
           stratum = preRegisteredStrata.${n};
-        })
-        // kinds;
-      compiled = prelude.mapAttrs (entryOf disciplines) allRaw;
-      # every entry's stratum must name a stratum in the compiled order.
+        });
+        entryOf = entryOf disciplines;
+        table = kinds;
+      };
+      # every entry's stratum must name a stratum in the compiled order. A POST-compile guard (it reads
+      # `compiled.<n>.stratum`), so it stays at the call site wrapping the combinator result — forcing
+      # `compiled` fires the combinator's reserved throw first, preserving the reserved-then-stratum order.
       stratumOffenders = builtins.filter (n: !(strataSet ? ${compiled.${n}.stratum})) (
         builtins.attrNames compiled
       );
     in
-    if reservedOffenders != [ ] then
-      throw "den.edges: kind '${builtins.head reservedOffenders}' is framework-reserved"
-    else if stratumOffenders != [ ] then
+    if stratumOffenders != [ ] then
       throw "den.edges: kind '${builtins.head stratumOffenders}' names unknown stratum '${
         compiled.${builtins.head stratumOffenders}.stratum
       }' (not in the compiled order)"

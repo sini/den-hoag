@@ -21,6 +21,10 @@
 }:
 let
   errors = import ./errors.nix;
+  # The reserved-vocabulary-table compile combinator (Law A1): the ONE shape shared by the products /
+  # disciplines / edges registries — a framework reserved seed unioned under a user table, mapAttrs-
+  # validated, with a NAMED abort on a reserved-name collision. Threaded into those three libs below.
+  reservedRegistry = import ./reserved-registry.nix { inherit prelude; };
   # Two-level edge identity (assembly/instance/edge hashes + fill-graph acyclicity) — pure over the
   # builtins, no gen dep (REFERENCE.md). Exposed through `internal` for the substrate suite; the
   # substrate consumers reach it there.
@@ -39,7 +43,12 @@ let
   # forward references to `receiversLib`/`nestLib` (defined below) are cycle-free (neither depends on
   # `edgesLib`, and only `nestProducer` forces them).
   edgesLib = import ./edges.nix {
-    inherit prelude identity edge;
+    inherit
+      prelude
+      identity
+      edge
+      reservedRegistry
+      ;
     inherit (receiversLib) resolveReceiver;
     inherit (nestLib) executeNest checkSingular;
   };
@@ -211,11 +220,18 @@ let
   # The merge-discipline registry (den.disciplines): compile + laws-ladder validation (§5). The closure
   # gate (edges.nix) validates a closure kind's discipline against the compiled table; the framework
   # instance names are reserved here; the framework seeds the three shipped merge orders. Pure Law A1.
-  concernDisciplines = import ./concern-disciplines.nix { inherit prelude algebra pipe; };
+  concernDisciplines = import ./concern-disciplines.nix {
+    inherit
+      prelude
+      algebra
+      pipe
+      reservedRegistry
+      ;
+  };
   # The typed-product registry (den.products) + the single-step conversion registry (den.conversions):
   # compile + mode-set/reserved validation (§4.1). Materialization reads modes off the compiled table;
   # receivers call `checkConsumes` at a consumes position. Pure Law A1 (mapAttrs + validation).
-  productsLib = import ./products.nix { inherit prelude; };
+  productsLib = import ./products.nix { inherit prelude reservedRegistry; };
   # The resolution-product registry (den.resolutionProducts): compile + reserved-name validation (§5). The
   # resolution-facet counterpart of den.products — a derived's `provides` validates against THIS registry,
   # a distinct namespace from the materialization faces. Pure Law A1 (mapAttrs + validation).
