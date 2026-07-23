@@ -182,6 +182,59 @@ in
       };
     };
 
+    # ── lib-forward remainder: the deprecated context guards (den v1 modules/context/perHost-perUser.nix +
+    #    nix/lib/take.nix). perHost/perUser/perHome are pure plain-lambda aliases; take is the fn→fn guard bag
+    #    (NOT the nixpkgs list-take — migrationLib overrides it). Byte-transparent (lib.warn returns the value).
+    #    perHost binds `host` through the same isFunction include arm as an inline lambda — witnessed
+    #    behaviorally in den-behavioral/top-level-parametric.nix (test-perhost-alias-equals-inline). ──
+    test-lib-forward-remainder = {
+      expr =
+        let
+          fromHost = { host, ... }: { nixos.x = host; };
+          # take.exactly on an all-optional-arg fn returns it UNCHANGED (v1-faithful — no required key, so
+          # the parked parametric-wrapper is never reached). Nix cannot compare functions with `==`, so
+          # passthrough is proven behaviorally: the returned fn applied yields the original fn's result.
+          allOptional =
+            {
+              a ? 0,
+              b ? 1,
+            }:
+            a;
+        in
+        {
+          perHostExists = L ? perHost;
+          perUserExists = L ? perUser;
+          perHomeExists = L ? perHome;
+          # a function aspect wraps into a formal lambda declaring the bound key; a non-function rides through.
+          perHostWrapsFn = builtins.isFunction (L.perHost fromHost);
+          perHostPassesAttr = (L.perHost { plain = true; }).plain;
+          takeIsBag = builtins.isAttrs L.take;
+          takeMembers = builtins.all (m: L.take ? ${m}) [
+            "unused"
+            "atLeast"
+            "upTo"
+            "exactly"
+          ];
+          takeUnused = L.take.unused "ignored" "kept";
+          # atLeast is warn+identity → the returned fn behaves as `fromHost`.
+          takeAtLeastPassthrough = (L.take.atLeast fromHost { host = "h"; }).nixos.x;
+          # exactly on an all-optional fn returns it unchanged → applies as the original.
+          takeExactlyAllOptionalUnchanged = L.take.exactly allOptional { a = 7; };
+        };
+      expected = {
+        perHostExists = true;
+        perUserExists = true;
+        perHomeExists = true;
+        perHostWrapsFn = true;
+        perHostPassesAttr = true;
+        takeIsBag = true;
+        takeMembers = true;
+        takeUnused = "kept";
+        takeAtLeastPassthrough = "h";
+        takeExactlyAllOptionalUnchanged = 7;
+      };
+    };
+
     # ── the four-concern API stays intact under the migration merge (no key clobbered) ──
     test-four-concern-intact = {
       expr = {

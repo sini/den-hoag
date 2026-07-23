@@ -62,6 +62,39 @@ in
       }
     );
 
+    # ALIAS WITNESS — `den.lib.perHost f` is a pure alias for `{ host, ... }: f { inherit host; }` (the
+    # deprecated context guard, modules/context/perHost-perUser.nix). The corpus never exercises the alias
+    # itself (v1's own deprecated test writes inline lambdas), so this is its only proof. The SAME body
+    # `fromHost` is delivered two ways: through `den.lib.perHost` (host igloo) and through the literal inline
+    # lambda the alias claims to be (host iceberg). den-hoag resolves both through the identical isFunction
+    # include arm, so each binds `host` the same way and materializes the host-derived nixos content.
+    test-perhost-alias-equals-inline = denTest (
+      {
+        den,
+        igloo,
+        iceberg,
+        ...
+      }:
+      let
+        fromHost = { host }: { nixos.networking.hostName = "H-${host.name}"; };
+      in
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.tux = { };
+        den.aspects.igloo.includes = [ (den.lib.perHost fromHost) ];
+        den.aspects.iceberg.includes = [ ({ host, ... }: fromHost { inherit host; }) ];
+
+        expr = {
+          viaAlias = igloo.networking.hostName;
+          viaInline = iceberg.networking.hostName;
+        };
+        expected = {
+          viaAlias = "H-igloo";
+          viaInline = "H-iceberg";
+        };
+      }
+    );
+
     # BLOCKED-WSB: same `users.users.tux` fold gap as above.
     # test-user-and-host-context = denTest (
     #   { den, igloo, ... }:

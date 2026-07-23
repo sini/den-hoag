@@ -1,8 +1,9 @@
 # den v1 BEHAVIORAL migration — deadbugs/projected-hasaspect.nix (denful/den templates/ci/modules/
 # deadbugs/projected-hasaspect.nix). Migrated by copy + arg-rename onto the `_lib/den-compat-test.nix`
 # scaffold; the `den.*` declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `hasAspect`
-# (in-context `.hasAspect` answers PROJECTED scope membership — what is delivered into the active scope —
-# while the registry query stays structural; one symbol, overloaded by provenance).
+# (in-context `.hasAspect` answers PROJECTED scope membership — what is delivered into the active scope).
+# den-hoag's `hasAspect` is UNIFIED: provides fold into the node, and there is no registry-side `.hasAspect`
+# accessor by design (v1's two-resolve registry/in-context split is deliberately not reproduced).
 {
   denHoagFlakeModule,
   homeManagerModule,
@@ -56,42 +57,6 @@ in
     #     ];
     #     expr = igloo.home-manager.users.tux.programs.atuin.daemon.enable;
     #     expected = true;
-    #   }
-    # );
-
-    # BLOCKED (bare-fn-aspect double-type + registry-side accessor): same `aspect2` bare-fn double-type as
-    # test-content-position above (nav-captured `{ __isWrappedFn; __functor; ... }` re-classified without
-    # class-key grounding → `§2.2: declares key homeManager`; BANKED). SECOND, independent gap in this test:
-    # forcing `den.hosts.x86_64-linux.igloo.users.tux.hasAspect` throws `attribute 'hasAspect' missing` — the
-    # REGISTRY-side structural `.hasAspect` accessor is not exposed on a raw `den.hosts.<sys>.<host>.
-    # users.<user>` node (distinct from the in-context `.hasAspect` this file's concern is about).
-    # test-provenance-split-regression-projected-hasaspect = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.aspects.aspect1.homeManager.programs.atuin.enable = true;
-    #     den.aspects.aspect2 =
-    #       {
-    #         user ? null,
-    #         ...
-    #       }:
-    #       {
-    #         homeManager.config = lib.mkIf (user != null && user.hasAspect den.aspects.aspect1) {
-    #           programs.atuin.daemon.enable = true;
-    #         };
-    #       };
-    #     den.aspects.igloo.provides.tux.includes = [
-    #       den.aspects.aspect1
-    #       den.aspects.aspect2
-    #     ];
-    #     expr = {
-    #       registry = den.hosts.x86_64-linux.igloo.users.tux.hasAspect den.aspects.aspect1;
-    #       inContext = igloo.home-manager.users.tux.programs.atuin.daemon.enable;
-    #     };
-    #     expected = {
-    #       registry = false;
-    #       inContext = true;
-    #     };
     #   }
     # );
 

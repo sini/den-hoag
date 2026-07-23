@@ -207,6 +207,81 @@
         # set? `{ __functor = atLeast; atLeast; exactly; upTo; }`, reproduced compat-side over gen-prelude
         # primitives (the substrate is nixpkgs-lib-free).
         canTake = compat.canTake;
+        # den.lib.perHost / perUser / perHome — v1's deprecated context guards
+        # (modules/context/perHost-perUser.nix). v1 documents `perHost f` as an alias for
+        # `{ host, ... }: f { inherit host; }` (the #609 binding-half rewrite dropped the old
+        # self-suppression). den-hoag's compile path resolves a plain destructured `{ host, ... }:`
+        # lambda the SAME way (functionArgs → __condition gate → bind-once-if-in-ctx / fan-out
+        # class-locally / inert-if-misplaced; compile.nix), so the plain-lambda form reproduces v1's
+        # semantics WITHOUT the `{ __args; __fn; }` parametric wrapper — pure alias. The substrate is
+        # nixpkgs-lib-free (no `lib.warn`), so the deprecation notice rides `builtins.trace` — byte-
+        # transparent (returns the value; stderr only) → parity holds. The `!isAttrs` guard mirrors v1
+        # perCtx's `__fn` inner arm exactly: a function aspect is applied with the resolved keys; a
+        # functor-attrset / bare attrset rides unchanged. perUser requires host+user (v1 perCtx
+        # [ "host" "user" ] binds both). `nsTypes` / `parametric` are NOT forwarded here: they couple to
+        # the aspect-namespace machinery (mkAspectsType) and the parametric-wrapper mechanism
+        # (constantHandler / { __fn; __args; __scopeHandlers }) respectively — deferred to their rungs.
+        perHost =
+          aspect:
+          builtins.trace
+            "den.lib.perHost is deprecated — use a plain function ({ host, ... }: ...) instead; handler-based resolution binds context args automatically"
+            (
+              if builtins.isFunction aspect && !builtins.isAttrs aspect then
+                { host, ... }: aspect { inherit host; }
+              else
+                aspect
+            );
+        perUser =
+          aspect:
+          builtins.trace
+            "den.lib.perUser is deprecated — use a plain function ({ host, user, ... }: ...) instead; handler-based resolution binds context args automatically"
+            (
+              if builtins.isFunction aspect && !builtins.isAttrs aspect then
+                { host, user, ... }: aspect { inherit host user; }
+              else
+                aspect
+            );
+        perHome =
+          aspect:
+          builtins.trace
+            "den.lib.perHome is deprecated — use a plain function ({ home, ... }: ...) instead; handler-based resolution binds context args automatically"
+            (
+              if builtins.isFunction aspect && !builtins.isAttrs aspect then
+                { home, ... }: aspect { inherit home; }
+              else
+                aspect
+            );
+        # den.lib.take — v1's deprecated context guards (nix/lib/take.nix). NOT a canTake alias:
+        # canTake is a PREDICATE (params: fn: bool), take is a fn→wrapped-fn TRANSFORMER — same member
+        # names, different shapes. Overriding nixpkgs `lib.take` (migrationLib = lib // …) is safe and
+        # fixes a latent leak (den v1 exposes the guard bag at `den.lib.take`, not the list-take); no
+        # internal consumer reads it. atLeast/upTo/unused/__functor are trace+IDENTITY (pure). take.exactly
+        # returns fn unchanged for all-optional-arg fns (v1-faithful); for a fn with required keys it needs
+        # the exact-match parametric wrapper (`{ __fn; __args; meta.exactMatch }` reading `__scopeKeys`
+        # from the compile-parametric handler) — the parked parametric-wrapper mechanism → NAMED throw on
+        # that branch only (never a fake wrapper). `builtins.trace` = the lib-free byte-transparent warn.
+        take = {
+          unused = _unused: used: used;
+          atLeast =
+            fn: builtins.trace "den.lib.take.atLeast is deprecated — bind.fn resolves args from handlers" fn;
+          upTo =
+            fn: builtins.trace "den.lib.take.upTo is deprecated — bind.fn resolves args from handlers" fn;
+          __functor =
+            _: _canTakePred: _argAdapter: fn:
+            builtins.trace "den.lib.take custom predicate is deprecated — use plain parametric functions" fn;
+          exactly =
+            fn:
+            builtins.trace "den.lib.take.exactly is deprecated — bind.fn resolves args from handlers" (
+              let
+                a = builtins.functionArgs fn;
+                req = builtins.filter (k: !a.${k}) (builtins.attrNames a);
+              in
+              if req == [ ] then
+                fn
+              else
+                throw "den.lib.take.exactly: the required-key __scopeKeys parametric mechanism is not yet ported (board escalation)"
+            );
+        };
         # den.lib.schema — v1's `den.lib.schema` (nix/lib/schema.nix) = the raw gen-schema.lib. den-hoag
         # already has the input in flake scope (no consumer-fallback needed); consumers (host.nix:22 /
         # home.nix:22) use it as `schemaLib` = raw.
