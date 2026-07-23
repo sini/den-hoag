@@ -191,7 +191,10 @@ in
         }
       );
     */
-    # PARKED — the `hm` half (the `os` half nix→nixos works): a forward INTO homeManager at a user CELL
+    # PARKED — both halves: the `os` half nix→nixos is ALSO blocked on the forward `intoPath ["nix"]`
+    # collision (landing at the builtin nix-class submodule slot delivers the nixos DEFAULT `["*"]`, not the
+    # forwarded `["tux"]`; nix→nixos @`[]` and @`["nix" "settings"]` land, only @`["nix"]` does not). The `hm`
+    # half: a forward INTO homeManager at a user CELL
     # (nix→homeManager) lands in `projectClass(cell, "homeManager")`, but the shipped hmUserDetect lift
     # (output-modules `parentTargetedRoutesAt` → `remapOver`) reads `classSliceOf(cell, "homeManager")`
     # PER-NODE, so the forward's SYNTHESIZED hm content is invisible to the lift to `home-manager.users.<u>`
