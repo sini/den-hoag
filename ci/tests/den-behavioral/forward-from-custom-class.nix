@@ -1,8 +1,10 @@
 # den v1 BEHAVIORAL migration — public-api/forward-from-custom-class.nix (denful/den@11866c16).
 # Migrated by copy + arg-rename onto the `_lib/den-compat-test.nix` scaffold; the `den.*` declarations +
 # assertions are BYTE-IDENTICAL to v1. Concern: `den.provides.forward` (den.batteries.forward) — forward a
-# custom class's content into a target class[.path]. STATIC-each battery (each is a LITERAL: `singleton
-# class` / `[ "nixos" "homeManager" ]`). The DYNAMIC pair-of-hosts case is PARKED in-file (follow-on rung).
+# custom class's content into a target class[.path]. Covers the STATIC-each battery (each is a LITERAL:
+# `singleton class` / `[ "nixos" "homeManager" ]`) AND the DYNAMIC-each pair-of-hosts case (a doubly-curried
+# forwarder whose `each` reads walk-time cell coords). The two homeManager-targeting custom-class variants
+# stay parked in-file (a homeManager-at-cell lift).
 {
   denHoagFlakeModule,
   homeManagerModule,
@@ -196,56 +198,53 @@ in
     # (`attribute 'allowed-users' missing`). A separate composition (no corpus route delivers INTO homeManager
     # then lifts).
 
-    # PARKED — a DYNAMIC `each` (`lib.optional (elem host.name …) user` closes over a resolved `host`/`user`
-    # outer fn), which reads resolved state, so it needs the resolution-stratum productions relation (the
-    # forwarder here is a `{ host, user }:` outer fn wrapping the `{ class, aspect-chain }:` forwarder). The
-    # static-each battery cleanly excludes it; kept verbatim for the successor.
-    /*
-      test-pair-of-hosts = denTest (
-        {
-          den,
-          lib,
-          igloo,
-          iceberg,
-          ...
-        }:
-        let
-          forwarded =
-            { host, user }:
-            { class, aspect-chain }:
-            den.provides.forward {
-              each = lib.optional (lib.elem host.name [
-                "igloo"
-                "iceberg"
-              ]) user;
-              fromClass = _: "iced";
-              intoClass = _: host.class;
-              intoPath = _: [ ];
-              fromAspect = _: lib.head aspect-chain;
-            };
-        in
-        {
-          den.hosts.x86_64-linux.igloo.users.tux = { };
-          den.hosts.x86_64-linux.iceberg.users.tux = { };
-
-          den.aspects.igloo.homeManager.home.stateVersion = "25.11";
-          den.default.includes = [ forwarded ];
-
-          den.aspects.tux = {
-            iced.networking.hostName = "iced";
+    # A DYNAMIC-each forward — the forwarder is DOUBLY curried `{ host, user }: { class, aspect-chain }:
+    # forward { … }`, and `each = lib.optional (elem host.name …) user` reads WALK-TIME cell coords
+    # (host.name/host.class/user, all in the enriched-context), firing per-cell exactly like static-each.
+    test-pair-of-hosts = denTest (
+      {
+        den,
+        lib,
+        igloo,
+        iceberg,
+        ...
+      }:
+      let
+        forwarded =
+          { host, user }:
+          { class, aspect-chain }:
+          den.provides.forward {
+            each = lib.optional (lib.elem host.name [
+              "igloo"
+              "iceberg"
+            ]) user;
+            fromClass = _: "iced";
+            intoClass = _: host.class;
+            intoPath = _: [ ];
+            fromAspect = _: lib.head aspect-chain;
           };
+      in
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.tux = { };
 
-          expr = [
-            igloo.networking.hostName
-            iceberg.networking.hostName
-          ];
-          expected = [
-            "iced"
-            "iced"
-          ];
-        }
-      );
-    */
+        den.aspects.igloo.homeManager.home.stateVersion = "25.11";
+        den.default.includes = [ forwarded ];
+
+        den.aspects.tux = {
+          iced.networking.hostName = "iced";
+        };
+
+        expr = [
+          igloo.networking.hostName
+          iceberg.networking.hostName
+        ];
+        expected = [
+          "iced"
+          "iced"
+        ];
+      }
+    );
 
   };
 }

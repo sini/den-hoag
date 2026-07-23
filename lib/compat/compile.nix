@@ -475,6 +475,19 @@ let
           groundRec name {
             includes = map toInclude (builtins.filter (e: e != null) (flattenList result));
           }
+        else if builtins.isFunction result && isForwardFn result then
+          # CURRIED-FORWARD recognition (DYNAMIC-each): a coordinate-parametric OUTER layer
+          # (`{ host, user }: { class, aspect-chain }: forward { … }`) FIRED to yield an INNER
+          # `{ class, aspect-chain }` forwarder — the outer's cell coords (`host`/`user`) are already CLOSED
+          # OVER lexically, so the inner needs only the forward coords. Fire it with them + re-dispatch, so a
+          # doubly-curried forwarder (`each` reading walk-time cell coords) stamps its `meta.__forward` EXACTLY
+          # like a single-curry static one — no productions relation, no compile change beyond this
+          # recognition. Recursion terminates: `forwardEach` returns an ATTRSET.
+          # CEILING (corpus-zero): ONLY the exactly-doubly-curried shape is recognized — the re-dispatched
+          # inner IS the forward fn. A hypothetical TRIPLE-curry (an outer whose result is ANOTHER non-forward
+          # coordinate layer) would abort at `groundRec`-on-a-function, matching the static-each scope (no
+          # corpus/witness forwarder curries deeper than the `{ coords }: { class, aspect-chain }:` pair).
+          grndDispatch name (result (builtins.intersectAttrs (builtins.functionArgs result) forwardCoords))
         else
           groundRec name result;
       # ── FORWARD-CONTEXT surfacing (§2-iv, u1 close for the `{ class, aspect-chain }` forward shape). ──
@@ -488,6 +501,9 @@ let
       # item, and `aspect-chain` is a v1 locality tag (compile-forward.nix `sourceIsLocal`), NOT the content
       # source (the collected `fromClass` bucket is). So a present placeholder suffices for the forwarder to
       # fire; the wrap ALWAYS fires (no gate) and intersects to the fn's own formals.
+      # `aspect-chain` in the fn's formals is the forward signature. Forward recognition ALSO covers a
+      # forwarder nested under a COORDINATE-PARAMETRIC outer layer (`{ host, user }: { class, aspect-chain }:
+      # …`, the dynamic-each shape) — `grndDispatch` re-dispatches an outer's forward-fn RESULT through here.
       isForwardFn = fn: builtins.functionArgs fn ? "aspect-chain";
       forwardCoords = {
         class = "<forward>";
