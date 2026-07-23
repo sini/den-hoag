@@ -128,12 +128,48 @@ let
     "nixos"
     "darwin"
     "home-manager"
-    "k8s-manifests"
   ];
   classEntries = prelude.genAttrs classNames (name: {
     id_hash = classIdHash name;
     inherit name;
   });
+
+  # The built-in classes' producer-config LOCATORS (config-thunk Tier-1) — the DATA half of the generic
+  # `producerConfigs` fold (output-modules.nix). A locator `{ systems, node, id, result } -> config | null`
+  # names WHERE a producing terminal's `.config` lives for a member of that class, so the fold reads the class
+  # registration rather than branching on the class name (mirrors renders.nix `builtinRows` / outputs.nix
+  # `builtinFamilies` class-output-as-DATA). Merged UNDER a user `den.classes.<name>` at `classDecls`
+  # (user-override-wins). Only nixos + home-manager cross a nixpkgs terminal; darwin (and any declared class)
+  # carries no locator ⇒ absent ⇒ no producer key. A `null` RETURN = "this member exposes no producer key"
+  # (the thunk falls back to the consumer config); config VALUES are never legitimately null.
+  builtinClassDefaults = {
+    nixos.producerConfig =
+      { systems, id, ... }:
+      let
+        sys = systems.nixos.${id} or { };
+      in
+      if sys ? config then sys.config else null;
+    home-manager.producerConfig =
+      {
+        systems,
+        node,
+        id,
+        result,
+        ...
+      }:
+      # A user cell's home-manager config is nested in its host's nixos terminal at
+      # `home-manager.users.<user>` (no standalone hm system here). The user name is the cell's `user`
+      # coord dim; the host is the containment parent.
+      let
+        hostId = node.parent;
+        user = (result.get id "enriched-context").user.name or (node.decls.user or null);
+        hostSys = if hostId == null then { } else (systems.nixos.${hostId} or { });
+      in
+      if hostId != null && user != null && hostSys ? config then
+        (hostSys.config.home-manager.users.${user} or { })
+      else
+        null;
+  };
 
   # The declaration vocabulary (verb `declare`) + the policy compiler. `declare` supplies the
   # tagged constructors, stratum classifier, and identity-law checks the structural stratum reads
@@ -1643,7 +1679,10 @@ let
       classDecls = prelude.genAttrs effectiveClassNames (
         name:
         let
-          decl = ent.config.den.classes.${name} or { };
+          # The built-in producer-config locator (`builtinClassDefaults`) seeds the decl UNDER any user
+          # `den.classes.<name>` — a user override wins (RHS of `//`). Carries `producerConfig` through every
+          # return arm below (all reference `decl`) into `concernClasses.compile`.
+          decl = (builtinClassDefaults.${name} or { }) // (ent.config.den.classes.${name} or { });
           evaluator = (instantiationOf name).evaluator or null;
         in
         if decl ? instantiate then

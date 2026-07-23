@@ -85,7 +85,8 @@ let
 
   # Built-in classNames stay exactly the core classes (declared classes extend PER-FLEET, never the core
   # constant) — a fleet declaring no classes has only the built-in registered set: the two OS-system
-  # classes (nixos, darwin) + home-manager + k8s-manifests.
+  # classes (nixos, darwin) + home-manager. k8s-manifests is NOT a kind-generic core class (it is a
+  # compat-provisioned built-in, lib/compat/builtins.nix), so a bare den does not register it.
   baseFleet = denHoag.mkDen [
     schemaMod
     { config.den.host.h1 = { }; }
@@ -110,15 +111,15 @@ in
       expr = typoAborts;
       expected = true;
     };
-    # core built-ins: a fleet declaring no classes sees exactly the four built-in classes (the two
-    # OS-system classes nixos + darwin, plus home-manager + k8s-manifests) — declared classes extend this
-    # per-fleet, they do not mutate the core constant.
+    # core built-ins: a fleet declaring no classes sees exactly the three built-in classes (the two
+    # OS-system classes nixos + darwin, plus home-manager) — declared classes extend this per-fleet, they do
+    # not mutate the core constant. k8s-manifests is a compat-provisioned built-in, not a kind-generic core
+    # class, so a bare den does not register it.
     test-builtin-classnames-unchanged = {
       expr = builtins.sort (a: b: a < b) baseClassNames;
       expected = [
         "darwin"
         "home-manager"
-        "k8s-manifests"
         "nixos"
       ];
     };

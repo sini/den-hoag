@@ -197,7 +197,7 @@ in
     # `modules/**.nix` (`nix/flakeModule.nix:3` — `listFilesRecursive`, no `/_`), so every built-in module
     # that DECLARES a `den.classes.<name>` is ALWAYS registered on a v1 fleet — regardless of whether the
     # corpus produces content for that class. den-hoag's registered set is the kind-generic core `classNames`
-    # (nixos/darwin/home-manager/k8s-manifests, lib/default.nix:59) ∪ the corpus's DECLARED `den.classes`
+    # (nixos/darwin/home-manager) ∪ the corpus's DECLARED `den.classes`
     # (entity.discoverClasses — droid/microvm/homeLinux/…) ∪ the os/user legacy-desugar classes
     # (legacy/batteries/{os-class,os-user}.nix) ∪ THESE shim-provisioned built-ins. The v1 built-ins the core
     # + desugars do NOT already carry are registered HERE — a bare declared class each (the flake-parts
@@ -266,6 +266,14 @@ in
       };
       legacyPackages = {
         description = "v1 flake `legacyPackages` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+      };
+
+      # ── v1 KUBERNETES-MANIFEST output class — a compat-provisioned built-in. NOT a kind-generic core class
+      # (a bare generic den has no k8s built-in — k8s is a consumer/compat concern), so it is registered here
+      # as a bare inert declared class, exactly like the battery/flake-output built-ins above. With no producing
+      # member the emitted content is DEAD (dropped); registration only unblocks CLASSIFICATION. ──
+      k8s-manifests = {
+        description = "v1 kubernetes-manifest output class; bare inert compat built-in (no kind-generic core class), corpus-unexercised — registration unblocks classification only.";
       };
     };
   };

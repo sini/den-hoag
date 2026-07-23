@@ -44,7 +44,8 @@ let
       schema
       ;
     inherit (denHoag) declare aspectIdHash;
-    # den-hoag's built-in class set (`denHoag.classes` = nixos/darwin/home-manager/k8s-manifests) — the
+    # den-hoag's built-in class set (`denHoag.classes` = nixos/darwin/home-manager; k8s-manifests is
+    # compat-provisioned via builtins.nix, arriving through the corpus's `den.classes`) — the
     # `cnf.classes` `wrapFn` needs to route a v1 bare-fn include's class content (§339 wrap-ground).
     builtinClasses = builtins.attrNames denHoag.classes;
     # THE R2 RESOLVE-FAMILY TAG SET (`den.resolveFamilyNames`) — the SINGLE source shared with

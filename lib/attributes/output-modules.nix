@@ -1122,28 +1122,29 @@ let
         # FALL BACK to the consumer config (byte-identical to the pre-Tier-1 resolution). So a collect fleet
         # (no `den.nixpkgs`) contributes an EMPTY map ⇒ every config-thunk resolves at the consumer, exactly
         # as before — the byte-parity guarantee.
-        if classEntry.name == "nixos" then
-          let
-            sys = systems.nixos.${id} or { };
-          in
-          if sys ? config then [ (prelude.nameValuePair key sys.config) ] else [ ]
-        else if classEntry.name == "home-manager" then
-          # A user cell's home-manager config is nested in its host's nixos terminal at
-          # `home-manager.users.<user>` (no standalone hm system here). The user name is the cell's `user`
-          # coord dim; the host is the containment parent.
-          let
-            hostId = node.parent;
-            user = (result.get id "enriched-context").user.name or (node.decls.user or null);
-            hostSys = if hostId == null then { } else (systems.nixos.${hostId} or { });
-          in
-          if hostId != null && user != null && hostSys ? config then
-            [
-              (prelude.nameValuePair key (hostSys.config.home-manager.users.${user} or { }))
-            ]
-          else
-            [ ]
-        else
+        #
+        # The WHERE is data-carried: the class registration's `producerConfig` locator (concern-classes.nix,
+        # seeded from `builtinClassDefaults`) names the member's `.config` position, so this fold is class-name
+        # AGNOSTIC. A `null` locator (darwin/k8s/declared classes, no nixpkgs crossing) contributes no key; a
+        # `null` RETURN means "this member exposes no producer key" (the fall-back above) — config VALUES are
+        # never legitimately null (nixos `.config` is never null; the hm read is `or { }`-guarded).
+        let
+          locator = classesByName.${classEntry.name}.producerConfig or null;
+        in
+        if locator == null then
           [ ]
+        else
+          let
+            cfg = locator {
+              inherit
+                systems
+                node
+                id
+                result
+                ;
+            };
+          in
+          if cfg == null then [ ] else [ (prelude.nameValuePair key cfg) ]
     ) allNodeIds
   );
   deltaOf =

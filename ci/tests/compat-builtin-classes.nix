@@ -3,9 +3,10 @@
 # every built-in module that DECLARES a `den.classes.<name>` is ALWAYS registered on a v1 fleet, regardless
 # of whether the corpus produces content for it. `lib/compat/builtins.nix` now registers, as a bare inert
 # declared class each (the flake-parts recipe), the v1 built-ins den-hoag's kind-generic core `classNames`
-# (nixos/darwin/home-manager/k8s-manifests) + the os/user legacy desugars do NOT already carry: the battery
-# convenience classes `wsl`/`maid`/`hjem` (batteries/{wsl,maid,hjem}.nix @ pin 11866c16) and the flake system
-# output classes `packages`/`apps`/`checks`/`devShells`/`legacyPackages` (policies/flake.nix:41). A bare
+# (nixos/darwin/home-manager) + the os/user legacy desugars do NOT already carry: the battery convenience
+# classes `wsl`/`maid`/`hjem` (batteries/{wsl,maid,hjem}.nix @ pin 11866c16), the flake system output classes
+# `packages`/`apps`/`checks`/`devShells`/`legacyPackages` (policies/flake.nix:41), and the `k8s-manifests`
+# output class (a compat-provisioned built-in, not a kind-generic core class). A bare
 # declared class admits its name to `classifyKey`'s CLASS branch + ingest's `classRegistry`, is never a
 # producing class (no fold edge), and carries no wrap/instantiate/share (an INERT collect-only terminal, no
 # gen-flake crossing) — so a §2.2 abort on a v1 built-in class name (the u14 `wsl` blocker: the compat
@@ -46,6 +47,7 @@ let
     "checks"
     "devShells"
     "legacyPackages"
+    "k8s-manifests"
   ];
 
   # ── a nixos host `igloo`; `withWsl` toggles a host-attached aspect emitting wsl content beside nixos ──

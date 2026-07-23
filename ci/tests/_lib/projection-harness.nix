@@ -14,7 +14,7 @@ let
     ;
 
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, built with the base
-  # `classifyKey` (nixos/darwin/home-manager/k8s-manifests) — the same functions the assembly threads to
+  # `classifyKey` (nixos/darwin/home-manager) — the same functions the assembly threads to
   # `projectClass`.
   cm =
     import "${denHoagSrc}/lib/attributes/class-modules.nix"

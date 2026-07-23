@@ -26,6 +26,12 @@
       defaultMergeStrategy = (c.wrap or { }).mergeStrategy or bind.mergeStrategy.bindWins;
       validators = (c.wrap or { }).validators or true;
       instantiate = c.instantiate or defaultInstantiate;
+      # The config-thunk Tier-1 producer-config LOCATOR (data-carried, output-modules.nix producerConfigs):
+      # `{ systems, node, id, result } -> config | null`, naming WHERE a producing terminal's `.config`
+      # lives for a member of this class (mirrors builtinFamilies' class-output-as-data). Passthrough so the
+      # generic fold reads the class registration instead of branching on the class name. `null` = this class
+      # crosses no nixpkgs terminal (⇒ no producer key).
+      producerConfig = c.producerConfig or null;
       share = {
         core = (c.share or { }).core or false;
       };

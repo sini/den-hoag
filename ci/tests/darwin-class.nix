@@ -79,7 +79,7 @@ in
 {
   flake.tests.darwin-class = {
     # darwin is a registered built-in class — it carries a class ENTRY (identity law A2) in the fleet's
-    # class-tag vocabulary, alongside nixos / home-manager / k8s-manifests.
+    # class-tag vocabulary, alongside nixos / home-manager.
     test-darwin-registered = {
       expr = (den.classes.darwin.name or null) == "darwin";
       expected = true;
