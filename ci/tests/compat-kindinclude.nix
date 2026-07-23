@@ -63,14 +63,17 @@ let
     hosts.x86_64-linux.h1.class = "nixos";
   };
 
-  # A bare-fn kind-include returning a LIST (out-of-corpus) → named abort when invoked at a real node.
+  # A bare-fn kind-include returning a LIST of include effects → v1 `mkParametricNext`'s include-only
+  # branch (aspect.nix:72-84), now BUILT in `grndDispatch` (§5.1): each `include`-effect entry contributes
+  # its `.value`, re-resolved as the parametric aspect's includes, so the inline content materializes at the
+  # firing node.
   listFn =
     { host, ... }:
     [
       {
         __policyEffect = "include";
         value = {
-          name = "a";
+          nixos.listMarker = true;
         };
       }
     ];
@@ -159,11 +162,18 @@ in
         notAspect = false;
       };
     };
-    # (4) RESULT-TYPE DISPATCH: a bare-fn kind-include that returns a LIST is a NAMED abort at the real node
-    #     (v1 `mkParametricNext`'s include-only branch is unbuilt — out-of-corpus, self-announcing).
-    test-barefn-list-result-aborts = {
-      expr = raOkAt listFleet "host:h1";
-      expected = false;
+    # (4) RESULT-TYPE DISPATCH: a bare-fn kind-include that returns a LIST of include effects RESOLVES at
+    #     the real node (v1 `mkParametricNext`'s include-only branch, now built in `grndDispatch` §5.1) — the
+    #     include effect's inline content lands in the host's nixos bucket.
+    test-barefn-list-result-resolves = {
+      expr = {
+        ok = raOkAt listFleet "host:h1";
+        hasContent = (bucketAt listFleet "host:h1" "nixos") != [ ];
+      };
+      expected = {
+        ok = true;
+        hasContent = true;
+      };
     };
     # (5) CONTENT-SET ARM (the identity-boundary rung): a bare `den.aspects.<x>` content set — at BOTH host
     #     and user kind-includes — compiles to a SYNTHETIC ASPECT (not a policy, not the resolveAspectRef

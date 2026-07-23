@@ -165,16 +165,16 @@ in
     name:
     fail "aspect-include policy record (#65)" "a `{ __isPolicy }` include record `${name}` reached include-normalization without a compiled `__aspectInclude__` rule — it was not found by the static collection walk over `den.aspects`/`den.default.includes` (a runtime-constructed or out-of-tree record; a NAMELESS record is a v1 authoring error too — v1's register-aspect-policy requires `name`, children.nix:57). Author the record in the registry aspect tree it fires from, or extend the walk to its surface";
 
-  # PARAMETRIC-ASPECT RESULT (R14, the bare-fn kind-include arm) — a bare-fn include (`den.schema.<kind>.
-  # includes = [ ({ … }: <body>) ]`, or a nested bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose
-  # `__fn` RESULT is type-dispatched exactly as v1 `mkParametricNext` (aspect.nix:53-93): an ATTRSET is aspect
-  # CONTENT (the corpus branch), a LIST is v1's include-effect-ONLY branch (aspect.nix:72-84, which itself
-  # THROWS on any non-include effect). den-compat's corpus has ZERO consumers of the list branch, so a list
-  # result names itself here rather than a speculatively-built include-effect processor (self-announcing: the
-  # rung that first needs it greets this, not a silent drop or a `groundKeys`-on-a-list crash).
-  parametricListUnsupported =
-    name:
-    fail "parametric-aspect include (R14)" "the bare-fn parametric include `${name}` returned a LIST — v1 `mkParametricNext` (aspect.nix:72-84) processes ONLY include effects there (and throws on any other), and the corpus has no such include, so the list branch is unbuilt. Return aspect CONTENT (an attrset), or express the effects as a `den.policies.<name>` policy referenced in the includes list";
+  # PARAMETRIC-ASPECT RESULT — NON-INCLUDE EFFECT IN A LIST (R14 list branch, v1 `mkParametricNext`
+  # aspect.nix:72-84). A bare-fn include (`den.schema.<kind>.includes = [ ({ … }: <body>) ]`, a nested
+  # bare fn, or an aspect-include bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose `__fn` RESULT is
+  # type-dispatched exactly as v1 `mkParametricNext`: an ATTRSET is aspect CONTENT, a LIST is the
+  # include-effect-ONLY branch (`grndDispatch` now processes it — include-effect entries contribute their
+  # `.value`, bare aspects pass through). v1 THROWS on any OTHER effect kind in that list ("only include
+  # effects (or bare aspects) are supported here"); the shim's `toInclude` names the offending kind here.
+  parametricNonIncludeEffect =
+    name: kind:
+    fail "parametric-aspect include (R14 list branch)" "the bare-fn parametric include `${name}` returned a list containing a `${kind}` effect — v1 `mkParametricNext` (aspect.nix:72-84) supports ONLY include effects (or bare aspects) in a returned list. Express a non-include effect (spawn/exclude/route/…) as a `den.policies.<name>` policy referenced in the includes list, not as a list entry returned by a parametric include";
 
   # SURFACE TOTALITY (C1) — a top-level `den.<key>` the shim does not recognise. The permissive v1 eval
   # (flake-module.nix `v1OptionsModule` freeformType) ABSORBS unknown `den.*` keys silently so an arbitrary

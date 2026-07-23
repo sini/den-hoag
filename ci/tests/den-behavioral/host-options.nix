@@ -89,6 +89,14 @@ in
     # provides per-user fan-out does not materialize the account (`attribute 'penguin' missing`), and it is
     # unaffected by the parent-targeted user→host route this rung fixed (which projects a user cell's OWN
     # `.user`-class content — os-user-class.nix — not a host-side to-users policy walk).
+    # PARAMETRIC-INCLUDE LATE-DISPATCH does NOT reach this either: the `to-users` fn is a
+    # `policies.<name>` POLICY RECORD (it rides the shipped aspect-include-policy arm's `__firesAtKinds`
+    # confinement, `compat-scope-local-firing.nix`), not the bare-fn radiation arm. The
+    # LATE-DISPATCH half — a `{ host, user }` include reaching the user CELL — is now witnessed by
+    # `compat-nested-aspects.nix test-barefn-latedispatch-fires-at-cell-not-host`. What remains RED here is
+    # ONLY the cell→host `users.users.penguin` DELIVERY fold (the define-user account materialised at the
+    # cell must land in the host's nixos config), verified empirically still `attribute 'penguin' missing`
+    # under the bare-fn radiation arm. That delivery seam is its own rung, not part of late-dispatch.
     # test-user-custom-username = denTest (
     #   {
     #     den,

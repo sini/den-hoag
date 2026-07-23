@@ -317,7 +317,7 @@ let
   # hmContext, and via den.default radiation hostname/inputs'/… ). We thread a per-position NAME PATH
   # (owning-aspect prefix + list index, recursively) so every wrap has a DISTINCT, traceable key.
   mkNormalize =
-    classNames: quirkNames: divertedPolicyNames:
+    classNames: quirkNames: divertedPolicyNames: radiatedBareFn:
     let
       # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
       # registry-side instance; see `groundRec` for why the include path needs its own split.
@@ -340,7 +340,16 @@ let
         ref: builtins.isAttrs ref && ((ref.__isPolicy or false) || (ref.__denCanTake or null) != null);
       keepInclude =
         ref:
-        if !(isPolicyRecord ref) then
+        # LATE-DISPATCH RADIATION (F2, no node-local double-fire): a RADIATED bare fn (a late-dispatch bare-fn include —
+        # `radiatedBareFn`, the SAME predicate the aspect-include walk collects by) is DIVERTED from the
+        # node-local walk. It fires ONLY via its `__aspectInclude__bareFn__<i>` synthetic-aspect + edge
+        # policy (late-dispatch, board #57 `__firesAtKinds`). Left in the walk it would ALSO fire node-local
+        # (`wrapGatedFn` wherever its coords are present), double-counting content and breaking v1 once-only.
+        # The synthetic aspect carries its wrapped fn as a `{ __fn; name }` RECORD (not a raw function), so
+        # `radiatedBareFn` is false there and this divert never starves the synthetic aspect's own include.
+        if radiatedBareFn ref then
+          false
+        else if !(isPolicyRecord ref) then
           true
         else if divertedPolicyNames ? ${ref.name or "<unnamed>"} then
           false # diverted — compiled at the aspect-include grain, never aspect content
@@ -441,15 +450,37 @@ let
       # `.includes` both go back through `normalize` (ground class keys, recurse nested bare fns). No
       # infinite loop — the fn recursion is inside the lazy `callGated` closure, forced only per resolution
       # ctx. A `{ __fn; name }` wrapper (unfree) keeps its OWN v1 name (`ref.name`).
+      # Deep-flatten a returned effect list (v1 `lib.flatten` — nested `optional`/conditional lists) so
+      # every effect is reached, never silently dropped as an unwalked entry. `prelude` carries no
+      # `flatten`; this is the same recursion (`concatMap` over `isList`).
+      flattenList = xs: prelude.concatMap (x: if builtins.isList x then flattenList x else [ x ]) xs;
       # Task B — the den-hoag FIRE-PATH result hook (R2), threaded into `wrapGatedFn`'s `onResult`. The
       # gate + `intersectAttrs` arg-shaping now live UPSTREAM in gen-aspects (`wrapGatedFn` — the N-GATE);
-      # den-hoag keeps ONLY the result dispatch: a LIST result is v1's include-effect-only branch (corpus-
-      # unbuilt) → the named abort (`errors.parametricListUnsupported` is a fn taking `name`), an ATTRSET is
-      # aspect content → `groundRec` (class-key grounding + nested-split + include recursion). This is
-      # exactly the old inline `callGated` result branch (compile.nix former :420-428), relocated.
+      # den-hoag keeps ONLY the result dispatch: an ATTRSET is aspect content → `groundRec` (class-key
+      # grounding + nested-split + include recursion). A LIST result is v1's include-effect branch
+      # (`mkParametricNext` aspect.nix:72-84): each `include`-effect entry contributes its `.value`, a bare
+      # aspect passes through, any OTHER effect kind is a NAMED throw (`toInclude`) — flattened + null-
+      # filtered, then fed back through `groundRec`'s SAME `.includes` re-resolve a static aspect's includes
+      # take. This is exactly v1's uniform parametric-aspect posture: a parametric include RESULT is
+      # re-walked whether it is content or an include list.
       grndDispatch =
         name: result:
-        if builtins.isList result then errors.parametricListUnsupported name else groundRec name result;
+        if builtins.isList result then
+          let
+            toInclude =
+              e:
+              if builtins.isAttrs e && (e.__policyEffect or null) == "include" then
+                e.value
+              else if builtins.isAttrs e && e ? __policyEffect then
+                errors.parametricNonIncludeEffect name e.__policyEffect
+              else
+                e;
+          in
+          groundRec name {
+            includes = map toInclude (builtins.filter (e: e != null) (flattenList result));
+          }
+        else
+          groundRec name result;
       normalize =
         name: ref:
         if builtins.isFunction ref then
@@ -1053,9 +1084,36 @@ let
   # key routes as CLASS content, not a nested aspect (Fork A). `v1Classes` is fleet-scoped, so this must
   # live in the function body (where the decls are), not at top level.
   allClassNames = builtinClasses ++ builtins.attrNames v1Classes;
+  # A parametric include fn's REQUIRED entity-kind formals — the board #57 `__firesAtKinds` annotation, AND
+  # the input `isLateDispatchFn` (the radiate/divert guard) filters for a descendant kind. A DEFAULTED
+  # formal (`{ host ? null, … }` → `args.host = true`) is NOT required → excluded, so a defaulted entity
+  # formal has an empty `firesAt` (never radiates, and an empty `__firesAtKinds` would drop it at every
+  # node). Only formals naming a registered entity kind (`ing.schema ? k`) count — a `{ pkgs, … }` include
+  # has an empty `firesAt` and stays node-local. Mirrors `aspectIncludePolicies`' `firesAt` (which reuses
+  # this) and `kindInclude`'s `[ kind ]` annotation.
+  firesAtOf =
+    fn:
+    let
+      args = fnArgsOf (innerFn fn);
+    in
+    builtins.filter (k: ing.schema ? ${k}) (builtins.filter (k: !args.${k}) (builtins.attrNames args));
+  # Does a bare-fn include genuinely LATE-DISPATCH — i.e. require an entity coord it cannot obtain where it
+  # attaches? The signal is a required formal naming a DESCENDANT (non-root) kind (`ing.schema.<k>.parent`
+  # non-null — `user` under `host`): such a coord is absent at the aspect's own / ancestor scope, so the fn
+  # MUST fire at descendant cells (`{ host, user }` on a host aspect → the host's user CELLS). A fn whose
+  # required kinds are all ROOTS (`{ host, … }`, host has no parent) fires IN PLACE where the coord is
+  # already present (the `den.default` batteries, wired to `den.schema.{host,user}.includes`) — it keeps its
+  # proven node-local `wrapGatedFn` path, NOT radiation. This is STRICTLY STRONGER than `firesAt ≠ [ ]`
+  # (F1): a defaulted formal (`{ host ? null }` → empty `firesAt`) still never radiates, AND an in-place
+  # root-only fn is not rerouted — so radiating never couples the individually-isolated `den.default`
+  # members, and never mis-confines an ancestor-formal include (`{ host }` on a user aspect stays node-local,
+  # firing at the cell via the inherited host coord, instead of a wrong `__firesAtKinds = [ host ]` HOST
+  # confinement). The radiate GUARD, the node-local divert predicate, and the walk collector all share THIS
+  # ONE computation, so they never diverge.
+  isLateDispatchFn = fn: builtins.any (k: (ing.schema.${k}.parent or null) != null) (firesAtOf fn);
   normalizeList = mkNormalize allClassNames (builtins.attrNames (
     v1Decls.quirks or { }
-  )) aspectIncludeDivertedNames;
+  )) aspectIncludeDivertedNames (ref: builtins.isFunction ref && isLateDispatchFn ref);
   # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
   # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
   isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
@@ -1095,7 +1153,7 @@ let
   # `host` coord. The finer aspect-ATTACHMENT locality (v1 fires ONLY at scopes whose walk REGISTERED the
   # record — e.g. the including user's cell vs all cells) is v1's SECOND confinement, corpus-unexercised,
   # left as a documented residual rung (NOT half-implemented — a distinct confinement).
-  aspectIncludeRecords =
+  aspectIncludeWalk =
     let
       classSet = prelude.genAttrs allClassNames (_: true);
       quirkSet = prelude.genAttrs (builtins.attrNames (v1Decls.quirks or { })) (_: true);
@@ -1138,6 +1196,16 @@ let
                 // {
                   recs = a.recs ++ [ x ];
                 }
+              # LATE-DISPATCH RADIATION (§5.2): a bare-fn include that genuinely LATE-DISPATCHES — requires a DESCENDANT
+              # entity coord absent where it attaches (`isLateDispatchFn`, the SAME predicate `radiatedBareFn`
+              # the node-local walk diverts by) — RADIATES as a synthetic aspect + edge policy (below). An
+              # in-place or no-entity-formal bare fn falls to `go` (a no-op on a function) and keeps the
+              # node-local `wrapGatedFn` path.
+              else if isBareFnRef x && isLateDispatchFn x then
+                a
+                // {
+                  bareRecs = a.bareRecs ++ [ x ];
+                }
               else
                 go a x
             ) (acc // { seen = seen'; }) incs;
@@ -1147,6 +1215,7 @@ let
           );
       walked = prelude.foldl' go {
         recs = [ ];
+        bareRecs = [ ];
         seen = { };
       } (builtins.attrValues v1Aspects);
       # per-NAME dedup (first occurrence wins — deterministic: attrNames order + list order), v1's
@@ -1175,7 +1244,15 @@ let
           }
           walked.recs;
     in
-    dedup.recs;
+    {
+      recs = dedup.recs;
+      # bare-fn includes (§5.2) — positional (no name to dedup on), collected in walk order. A fn
+      # referenced twice radiates twice (the kindInclude content-set positional ceiling; corpus bare-fn
+      # aspect-includes are single-referenced).
+      bareFns = walked.bareRecs;
+    };
+  aspectIncludeRecords = aspectIncludeWalk.recs;
+  aspectIncludeBareFns = aspectIncludeWalk.bareFns;
   aspectIncludeDivertedNames = prelude.genAttrs (map (r: r.name) aspectIncludeRecords) (_: true);
   aspectIncludePolicies = builtins.listToAttrs (
     map (
@@ -1193,11 +1270,7 @@ let
         # RESIDUAL (documented, not half-done): v1's SECOND confinement — fire only where the aspect walk
         # REGISTERED the record (aspect-attachment locality, e.g. the including user's cell vs all cells) —
         # is a distinct, corpus-unexercised rung, left unimplemented.
-        firesAt =
-          let
-            args = fnArgsOf (innerFn ref);
-          in
-          builtins.filter (k: ing.schema ? ${k}) (builtins.filter (k: !args.${k}) (builtins.attrNames args));
+        firesAt = firesAtOf ref;
       in
       {
         name = "__aspectInclude__${ref.name}";
@@ -1208,6 +1281,57 @@ let
       }
     ) aspectIncludeRecords
   );
+
+  # ── Aspect-include BARE-FN arm (parametric-include late-dispatch) — the bare-fn sibling of the
+  # policy-record arm above, MIRRORING the shipped kind-include bare-fn arm (`kindInclude`, below). A bare
+  # fn nested in a regular aspect's `.includes` that genuinely late-dispatches — requires a DESCENDANT
+  # entity coord absent where it attaches (`aspectIncludeBareFns`, collected by the SAME `isLateDispatchFn`
+  # guard the node-local walk diverts by) — fires at DESCENDANT
+  # cells where they ARE (`{ host, user }` on a host aspect → the host's USER CELLS). It radiates as:
+  #   • a SYNTHETIC ASPECT `__aspectInclude__bareFn__<i>__aspect` whose sole include is the wrapped fn —
+  #     invoked at forwardExpand with the real cell ctx, its RESULT discriminated by `grndDispatch`
+  #     (content → `groundRec`; a list of include effects → the §5.1 branch). The wrapped fn is carried as a
+  #     `{ __fn; name }` RECORD (normalize's `__fn` arm) so `radiatedBareFn` is FALSE there and the F2
+  #     node-local divert never strips the synthetic aspect's OWN include.
+  #   • an EDGE POLICY `__aspectInclude__bareFn__<i>` gated on the fn's formals (`__condition`) AND confined
+  #     to the formal-kinds (`__firesAtKinds`, board #57 — proven to fire at the descendant cell, NOT the
+  #     attaching host). The edge attaches the synthetic aspect (by name → full record via `aspectRec`).
+  # Positional identity (a bare fn has no name); the guard guarantees `firesAt ≠ [ ]` (never an empty
+  # `__firesAtKinds`).
+  aspectIncludeBareFnArm =
+    let
+      synths = prelude.imap0 (i: fn: {
+        inherit fn;
+        synthName = "__aspectInclude__bareFn__${toString i}";
+        aspectName = "__aspectInclude__bareFn__${toString i}__aspect";
+        firesAt = firesAtOf fn;
+      }) aspectIncludeBareFns;
+    in
+    {
+      aspects = builtins.listToAttrs (
+        map (s: {
+          name = s.aspectName;
+          value = {
+            includes = normalizeList "${s.aspectName}:include" [
+              {
+                __fn = s.fn;
+                name = "${s.aspectName}:fn";
+              }
+            ];
+          };
+        }) synths
+      );
+      policies = builtins.listToAttrs (
+        map (s: {
+          name = s.synthName;
+          value = {
+            __condition = fnArgsOf s.fn;
+            __firesAtKinds = s.firesAt;
+            fn = _ctx: [ (declare.edge (aspectRec s.aspectName)) ];
+          };
+        }) synths
+      );
+    };
 
   # Name → the FULL compiled aspect record den-hoag's resolution consumes: the compiled content
   # (`aspects.<name>`) plus its `{ id_hash; name }` identity. `resolved-aspects.nix` uses an edge's
@@ -1244,7 +1368,8 @@ let
   #     naming) which the SAME `__kindInclude__<kind>` edge policy then edges. `forwardExpand` invokes the
   #     wrapped fn with the real node ctx (`callGated` gates on coord presence + arg-shapes); its RESULT is
   #     type-dispatched (`callGated`, per v1 `mkParametricNext`): an ATTRSET is aspect CONTENT (agenix's
-  #     per-class `${host.class}`), a LIST is a NAMED abort (out-of-corpus). This routes a content-returning
+  #     per-class `${host.class}`), a LIST re-resolves via `grndDispatch`'s §5.1 include-effect branch (the
+  #     v1 `mkParametricNext` list arm — each include effect's `.value`, flattened). This routes a content-returning
   #     bare-fn kind-include (agenix's `agenixHostAspect`) as CONTENT, never through `compilePolicy` (whose
   #     `concatMap` on effects would choke on it) — the agenix rung.
   isPolicyRef =
@@ -1428,7 +1553,8 @@ let
   aspects =
     builtins.mapAttrs (translateAspect normalizeList isNestedAspectKey) v1Aspects
     // compiledPolicies.conditionalAspects
-    // kindIncludeAspects;
+    // kindIncludeAspects
+    // aspectIncludeBareFnArm.aspects;
 
   # ── SCOPE-LOCAL POLICY FIRING (board #57, ledger u3) — v1 `installPolicies` parity. ──
   # v1 fires a policy ONLY where it is REGISTERED — scope-local, via an INCLUDE (den nix/lib/aspects/fx/
@@ -1468,7 +1594,8 @@ let
   policies =
     (builtins.removeAttrs compiledPolicies.policies includeReferencedNames)
     // kindIncludePolicies
-    // aspectIncludePolicies;
+    // aspectIncludePolicies
+    // aspectIncludeBareFnArm.policies;
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
   # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys

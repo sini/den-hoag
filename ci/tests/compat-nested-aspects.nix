@@ -261,6 +261,60 @@ let
     ]).den;
   emittedKeysAt =
     id: builtins.filter (k: builtins.substring 0 10 k == "<emitted>@") (keysAt autoFleet id);
+
+  # ── PARAMETRIC-INCLUDE LATE-DISPATCH — a BARE-FN aspect-include whose required formals name a
+  #    DESCENDANT kind late-dispatches to the descendant cell (board #57 `__firesAtKinds`). ──
+  # (A) genuine late-dispatch: a `{ host, user }` bare fn on the host self-aspect `blade` (R5-attached at
+  #     host:blade). The `user` formal is a DESCENDANT kind (absent at the host), so the fn radiates as a
+  #     synthetic aspect + edge policy confined to `[ host user ]` — firing at blade's USER CELL, NOT the host.
+  lateFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          aspects.blade.includes = [ ({ host, user, ... }: { home-manager.lateMarker = true; }) ];
+          schema.user.parent = "host";
+          hosts.x86_64-linux.blade = {
+            class = "nixos";
+            users.shuo.classes = [ "homeManager" ];
+          };
+        };
+      }
+    ]).den;
+  # (B) IN-PLACE `{ host }` bare fn (host is a ROOT kind — the coord is present where it attaches): NOT a
+  #     late-dispatch, so it is NOT radiated — it keeps the node-local `wrapGatedFn` path and fires at the
+  #     host (the `den.default`-battery posture; the guard that keeps those individually-isolated members off
+  #     the radiation path).
+  inplaceFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          aspects.blade.includes = [ ({ host, ... }: { nixos.inplaceMarker = true; }) ];
+          schema.user.parent = "host";
+          hosts.x86_64-linux.blade = {
+            class = "nixos";
+            users.shuo.classes = [ "homeManager" ];
+          };
+        };
+      }
+    ]).den;
+  # The COMPILED sides of both fixtures — the direct non-radiation probe: a synthetic `__aspectInclude__bareFn__<i>`
+  # edge policy + `…__aspect` are produced ONLY for a genuine late-dispatch fn, NEVER for an in-place root-kind fn.
+  lateCompiled = denCompat.compile {
+    aspects.blade.includes = [ ({ host, user, ... }: { home-manager.lateMarker = true; }) ];
+    schema.user.parent = "host";
+    hosts.x86_64-linux.blade = {
+      class = "nixos";
+      users.shuo.classes = [ "homeManager" ];
+    };
+  };
+  inplaceCompiled = denCompat.compile {
+    aspects.blade.includes = [ ({ host, ... }: { nixos.inplaceMarker = true; }) ];
+    schema.user.parent = "host";
+    hosts.x86_64-linux.blade = {
+      class = "nixos";
+      users.shuo.classes = [ "homeManager" ];
+    };
+  };
 in
 {
   flake.tests.compat-nested-aspects = {
@@ -379,6 +433,48 @@ in
         ];
         plain = [ ];
         host = [ ];
+      };
+    };
+
+    # ── PARAMETRIC-INCLUDE LATE-DISPATCH — the confined-firing witness (the crux probe shape). ──
+    # (7) A `{ host, user }` BARE-FN include on the host self-aspect RADIATES (a synthetic edge policy +
+    #     aspect are compiled) and fires at the USER CELL (its `user` formal is satisfiable there), landing
+    #     `home-manager.lateMarker` in the cell's home-manager bucket, and does NOT fire at the host
+    #     (`__firesAtKinds = [ host user ]` ∧ the `{host,user}` `__condition` — the host lacks the `user`
+    #     coord). This is board #57 confinement applied to a bare-fn aspect-include.
+    test-barefn-latedispatch-fires-at-cell-not-host = {
+      expr = {
+        radiated = lateCompiled.policies ? "__aspectInclude__bareFn__0";
+        synthAspect = lateCompiled.aspects ? "__aspectInclude__bareFn__0__aspect";
+        cellOk = raOkAt lateFleet "user:shuo@host:blade";
+        cellHasMarker = bucketAt lateFleet "user:shuo@host:blade" "home-manager" != [ ];
+        hostHmEmpty = bucketAt lateFleet "host:blade" "home-manager" == [ ];
+      };
+      expected = {
+        radiated = true;
+        synthAspect = true;
+        cellOk = true;
+        cellHasMarker = true;
+        hostHmEmpty = true;
+      };
+    };
+    # (8) THE GUARD: an IN-PLACE `{ host }` bare-fn include (host = a ROOT kind, coord present at attachment)
+    #     is NOT radiated — NO `__aspectInclude__bareFn__` edge policy or synthetic aspect is compiled (the
+    #     direct non-radiation probe) — so it keeps the node-local path and fires AT THE HOST
+    #     (`nixos.inplaceMarker` lands in the host's own bucket, not a descendant cell). This is what keeps the
+    #     individually-isolated `den.default` battery members off the radiation path (all root-kind `{host,…}` fns).
+    test-barefn-inplace-not-radiated-fires-at-host = {
+      expr = {
+        notRadiatedPolicy = inplaceCompiled.policies ? "__aspectInclude__bareFn__0";
+        notRadiatedAspect = inplaceCompiled.aspects ? "__aspectInclude__bareFn__0__aspect";
+        hostOk = raOkAt inplaceFleet "host:blade";
+        hostHasMarker = bucketAt inplaceFleet "host:blade" "nixos" != [ ];
+      };
+      expected = {
+        notRadiatedPolicy = false;
+        notRadiatedAspect = false;
+        hostOk = true;
+        hostHasMarker = true;
       };
     };
   };
