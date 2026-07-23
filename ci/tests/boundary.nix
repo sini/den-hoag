@@ -38,7 +38,6 @@ let
     "concern-aspects.nix"
     "key-semantics.nix"
     "module-shape.nix"
-    "dedup-by-key.nix"
     "concern-quirks.nix"
     "concern-classes.nix"
     "concern-collectors.nix"

@@ -154,7 +154,7 @@ let
   # The KEYED class buckets (`{ <class> = [ { module; sharedFoldKey } ]; }`) — `classSubtreeAt` reads THIS
   # (not the bare public `class-modules`) so it can collapse a genuinely-shared host+user aspect cross-scope.
   classModulesKeyedAt = id: result.get id "class-modules-keyed";
-  inherit (import ../dedup-by-key.nix { inherit prelude; }) dedupByKey;
+  inherit (prelude) dedupByKey;
 
   # ── #63 within-class subtree fold (design note §8, the #62c twin for class content) ─────────────────
   # A node's within-class content assembly gathers the SAME class bucket from `[ id ] ++ scope.descendants
@@ -286,14 +286,6 @@ let
       if p == null then id else p
     else
       id;
-
-  # nest a module at an attr path — the fold's `place` (gen-edge core.setAttrByPath, materialize.nix:248):
-  # `[]` ⇒ the module verbatim (a merge places at the root), else wrap under the path. Pure attrset
-  # assembly (A1). den-hoag has no public re-export of gen-edge's core.setAttrByPath, so this is the local
-  # twin — the terminal gather must place delivery content EXACTLY where the fold's nest edge would.
-  nestAtPath =
-    path: value:
-    if path == [ ] then value else { ${builtins.head path} = nestAtPath (builtins.tail path) value; };
 
   # ── #74a (design §10, candidate D — ratified): a delivery's COLLECTED MEMBERS = the firing node's
   # ANCESTOR CHAIN (outermost first) ++ itself ++ its descendants. THE v1 MECHANISM (pin 11866c16
@@ -443,11 +435,11 @@ let
     || !(guardIsContentTime route.guard id)
     || route.guard (result.get id "enriched-context");
 
-  # `place at slice`: the fold's nest (`nestAtPath`, gen-edge core.setAttrByPath). `at == []` ⇒ the slice
+  # `place at slice`: the fold's nest (`edge.setAttrByPath`). `at == []` ⇒ the slice
   # FLAT (bucket b pure remap, #14 home-platform homeLinux→homeManager); `at ≠ []` ⇒ each module wrapped
   # under the path as a content module (`{ <at> = <module>; }`, nest-via-content-module — the shape later
   # tasks place per-cell home-manager.users.<u> content at, #10/#15). Pure attrset assembly (A1).
-  placeSlice = at: slice: if at == [ ] then slice else map (m: nestAtPath at m) slice;
+  placeSlice = at: slice: if at == [ ] then slice else map (m: edge.setAttrByPath at m) slice;
 
   # ── The ARG-ENVIRONMENT crossing hook (Phase 4 Task 3, spec §5 (c) — the HARD bucket) ────────────────
   # A route carrying `adaptArgs` (`{config,...}: config.allModuleArgs` for #15 devshell→flake-parts) rewrites
@@ -635,7 +627,7 @@ let
         if
           (route.appendToParent or false) && route.adaptArgs != null && route.at != [ ] && placed == [ ]
         then
-          [ { config = nestAtPath route.at { }; } ]
+          [ { config = edge.setAttrByPath route.at { }; } ]
         else
           [ ];
     in
@@ -650,8 +642,8 @@ let
   # forward.nix:73-86) wraps the PLACEMENT (`optionalAttrs`/`mkIf` over `setAttrByPath intoPath content`), so
   # an option-existence guard false SUPPRESSES the whole path — `remapOver`'s case-3 nests the guard UNDER
   # the path, which sets the (nonexistent) target option unconditionally. v1 mechanism:
-  #   • TIER-1 (no guard/adaptArgs): the plain nested slice `nestAtPath intoPath slice`.
-  #   • COMPLEX: a TOP-LEVEL function-module `args: { config = guardFn args (nestAtPath intoPath slice);
+  #   • TIER-1 (no guard/adaptArgs): the plain nested slice `edge.setAttrByPath intoPath slice`.
+  #   • COMPLEX: a TOP-LEVEL function-module `args: { config = guardFn args (edge.setAttrByPath intoPath slice);
   #     _module.args = adaptArgs args; }` — `guardFn` item-applied at the crossing (bool ⇒ optionalAttrs,
   #     fn ⇒ `res item` e.g. `mkIf`), `adaptArgs` threaded as the slice's module args (v1 nestWithAdaptArgs).
   # A node with no matching forward spec ⇒ `[ ]` ⇒ identity (byte-parity: corpus emits no meta.__forward).
@@ -697,11 +689,11 @@ let
         buildModule =
           slice:
           if !hasAdapter then
-            nestAtPath spec.intoPath slice
+            edge.setAttrByPath spec.intoPath slice
           else
             args:
             {
-              config = guardApply args (nestAtPath spec.intoPath slice);
+              config = guardApply args (edge.setAttrByPath spec.intoPath slice);
             }
             // prelude.optionalAttrs (spec.adaptArgs != null) {
               _module.args = spec.adaptArgs args;

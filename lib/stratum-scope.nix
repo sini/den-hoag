@@ -10,20 +10,9 @@
   prelude,
 }:
 let
-  # index of `x` in the ordered list `xs`, or -1 if absent (the strata-order position for the §2.3 comparison).
-  indexOf =
-    xs: x:
-    let
-      go =
-        i: rest:
-        if rest == [ ] then
-          -1
-        else if builtins.head rest == x then
-          i
-        else
-          go (i + 1) (builtins.tail rest);
-    in
-    go 0 xs;
+  # index of `x` in the ordered list `xs`, or -1 if absent (the strata-order position for the §2.3
+  # comparison) — `prelude.indexOf` (list-first, `-1` absent).
+  inherit (prelude) indexOf;
 
   # strataLt — `a` sits STRICTLY BELOW `b` in the strata order (the §2.3 strictly-below primitive). An absent
   # stratum (indexOf -1) compares below every present one, matching the raw `indexOf` comparison it lifts.

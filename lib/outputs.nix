@@ -56,7 +56,7 @@ let
   # A family row's canonical fields (spec §4.4). THE §2.1 HOOK-SCOPING COROLLARY (the row contract, mirrored
   # from receivers.nix): `at` receives STRUCTURAL handles only (the paramPoint + the built member's structural
   # face) — never resolved graph state; the same singular-path / `[]`⇒flat convention the nest engine's `at`
-  # obeys (nest.nix `nestAtPath`: a singular path list, `[ ]` places the member at the target root). `render`
+  # obeys (nest.nix `placeSlice` via `edge.setAttrByPath`: a singular path list, `[ ]` places the member at the target root). `render`
   # names a registered render (the artifact the built member surfaces); `consumes` passes the products-table
   # gate; `params` names known axes; `requires` names registered products (shape-checked HERE; consumption is
   # a later task). `mode` is NOT a field — it is DERIVED from `consumes` (F1, a CHECKED law mirroring

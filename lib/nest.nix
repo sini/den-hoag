@@ -22,22 +22,14 @@
 # inside a contribution's lazy fields. See REFERENCE.md.
 {
   prelude,
+  edge,
 }:
 let
-  # nest a module at an attr path — the fold's `place` (gen-edge `core.setAttrByPath`; output-modules.nix's
-  # own `nestAtPath` twin). `[]` ⇒ the module verbatim (the []⇒flat convention: a merge places at the root),
-  # else wrap under the path. Pure attrset assembly (A1) — the module VALUE stays a thunk under the wrap, so
-  # a content contribution's placement never forces the payload. den-hoag has no public re-export of
-  # gen-edge's `core.setAttrByPath`, so this is a local twin (the same local-twin note output-modules carries
-  # for its own copy).
-  nestAtPath =
-    path: value:
-    if path == [ ] then value else { ${builtins.head path} = nestAtPath (builtins.tail path) value; };
-
   # `placeSlice at slice` — graft each module of a content slice at the `at` path (output-modules.nix's
   # `placeSlice`). `at == [ ]` ⇒ the slice verbatim (flat, root merge); else each module is wrapped under the
-  # path. The map keeps each module a thunk (nestAtPath does not force), so the placement is lazy.
-  placeSlice = at: slice: if at == [ ] then slice else map (nestAtPath at) slice;
+  # path via `edge.setAttrByPath` (the []⇒verbatim lazy attr-wrap — a content contribution's placement never
+  # forces the module payload).
+  placeSlice = at: slice: if at == [ ] then slice else map (edge.setAttrByPath at) slice;
 
   # `mkContribution mode extra` — every arm's contribution is `{ mode; } // <arm fields>`, so the mode tag
   # is written ONCE and the arms differ only in their payload fields. The arm fields carry the LAZY faces
@@ -101,9 +93,9 @@ let
   # never options/imports) — a named throw fired when `thenFn`/`fn` is APPLIED (the record stays inert until a
   # consumer applies it; forcing the record shape never fires it).
   # read a list of attr-PATH-LISTS out of a config attrset (the R6 defer `needs` → the `vals` a `then` reads,
-  # §4.8). The engine is nixpkgs-free with no re-export of a path reader, so this is a local recursive twin
-  # (the same local-twin posture as `nestAtPath` above); the paths are structural coordinates (the reads a
-  # defer DECLARES), positional in `needs` order.
+  # §4.8). The engine is nixpkgs-free with no re-export of a path READER (`edge.setAttrByPath` is the writer
+  # twin, no reader companion), so this is a local recursive twin; the paths are structural coordinates (the
+  # reads a defer DECLARES), positional in `needs` order.
   getAttrFromPath =
     path: attrs:
     if path == [ ] then attrs else getAttrFromPath (builtins.tail path) attrs.${builtins.head path};

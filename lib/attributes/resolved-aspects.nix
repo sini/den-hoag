@@ -34,7 +34,7 @@ let
   seenEq = a: b: builtins.attrNames a.seen == builtins.attrNames b.seen;
   isSelector = v: builtins.isAttrs v && v ? __sel;
 
-  inherit (import ../dedup-by-key.nix { inherit prelude; }) dedupByKey;
+  inherit (prelude) dedupByKey;
 
   # `sharedFoldKey` — the v1 STABLE cross-scope dedup key (v1 wrap-classes.nix `computeModuleIdentity` + the
   # ctx suffix, @ pin 11866c16). It discriminates a genuinely SHARED aspect (dedup) from genuinely per-cell
@@ -90,7 +90,7 @@ let
   # A content-free marked node (`meta.__contentless`) exists ONLY to make its A-IDENT key visible above a
   # carrier's target (cond-2). It shares the carrier's key, so a `"${key}|"` foldkey would let the contentless
   # node EVICT the content-bearing carrier at the reach/classSubtreeAt first-wins cross-scope dedup. Null it
-  # (dedupByKey's SAFE direction, dedup-by-key.nix): a null-key node is kept AND never enters `seen`, so the
+  # (`prelude.dedupByKey`'s SAFE direction, NULL-KEEP): a null-key node is kept AND never enters `seen`, so the
   # node survives (visibility reads `keyOf`, independent of this) but suppresses nothing. Generic — no
   # provides knowledge here; any content-free marked node is nulled.
   sharedFoldKeyOf =
@@ -284,7 +284,7 @@ let
 
   # §Constraints, aspect-level: prune nodes whose key is named in any resolved aspect's meta.drop.
   # Also dedups by A-IDENT key (defensive — forward expansion already skips seen keys). `n.key` is ALWAYS
-  # non-null, so this reuses the file's own `dedupByKey` (§37) — behavior identical to the prior inline
+  # non-null, so this reuses `prelude.dedupByKey` (§37) — behavior identical to the prior inline
   # first-occurrence fold (first-wins, order-preserving, over the same `dropped`-filtered list).
   applyConstraints =
     nodes:

@@ -311,7 +311,7 @@ let
   # artifact evaluator/face + the extend `extendsVia`) are passed at CALL time (the receivers pattern) — a
   # static registry cannot hold the per-fleet evaluator, so the engine holds no tables or evaluators.
   nestLib = import ./nest.nix {
-    inherit prelude;
+    inherit prelude edge;
   };
   terminalLib = import ./output/terminal.nix { inherit bind flake; } { nixpkgs = null; };
   # The greenfield v2 flake-parts mount (§4.4/§4.6): a built den fleet → a flake-parts module handing the
@@ -2080,14 +2080,7 @@ let
       # member re-key (scope-node id → entity name) and the last-wins family collapse (listToAttrs semantics)
       # are the face laws — an empty face for a memberless family, one entry per member keyed by entity name.
       #
-      # the fold's `place` primitive — a local `setAttrByPath` twin (den-hoag has no public gen-edge
-      # `core.setAttrByPath` re-export; the same local-twin note the nest engine + output-modules carry).
-      familyNestAtPath =
-        path: value:
-        if path == [ ] then
-          value
-        else
-          { ${builtins.head path} = familyNestAtPath (builtins.tail path) value; };
+      # the fold's `place` primitive is `edge.setAttrByPath` (the []⇒verbatim lazy attr-wrap).
       # recursively merge two plain attrset trees (the per-member contributions fold into one family subtree,
       # families into the root product). A leaf (a built artifact — never an attrset with a colliding key path)
       # rides as-is; two subtrees at the same family key merge. Member names are `attrNames output.systems.
@@ -2336,9 +2329,11 @@ let
         # arms are structurally absent — the corpus path). The guard gates BOTH: a collectors-but-no-opt-ins
         # fleet must take the all-arms branch, else its collector aggregates would be silently dropped.
         if optIns == [ ] && collectorContributions == [ ] then
-          prelude.foldl' (acc: c: familyMerge acc (familyNestAtPath c.at c.value)) emptyFamilies contributions
+          prelude.foldl' (
+            acc: c: familyMerge acc (edge.setAttrByPath c.at c.value)
+          ) emptyFamilies contributions
         else
-          prelude.foldl' (acc: c: familyMerge acc (familyNestAtPath c.at (placedValue c))) emptyFamilies (
+          prelude.foldl' (acc: c: familyMerge acc (edge.setAttrByPath c.at (placedValue c))) emptyFamilies (
             contributions ++ optInContributions ++ collectorContributions
           );
 
@@ -2619,7 +2614,7 @@ in
     # `lowerDefer <scope> <deferContribution>` (§4.8 R6) — lower an executeDefer contribution onto a gen-bind
     # config-thunk (`mkThunkFrom` over its config-adapter `fn`). The terminal defer→configThunk consumption
     # lives in output-modules.nix `lowerDefer` (per-fleet, beside deferredToThunk); this is its top-level twin
-    # for the suite (the setAttrByPath/nestAtPath local-twin posture). `bind` (the raw gen-bind lib — its
+    # for the suite (a per-suite local-twin posture). `bind` (the raw gen-bind lib — its
     # `wrapAll`/`isThunk` drive the terminal-resolution harness) is exposed below with the other gen libs.
     lowerDefer = scope: c: bind.mkThunkFrom scope c.fn;
     # The pre-identity-freeze override tier (§2.4): `applyOverrides { overrides; edges }` — the
