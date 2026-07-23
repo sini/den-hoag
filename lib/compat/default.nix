@@ -124,9 +124,19 @@ let
     # broadcaster set) build once.
     query = denHoag.query;
   };
-  mkWiring =
-    legacyArg:
-    import ./flake-module.nix {
+  # `battery-names.nix` — the SINGLE source of the gateable battery names, shared with `batteries.nix`'s
+  # provisioned set, so a new battery gains its `den.features.battery.<name>` flag (and enters the
+  # `unknownBattery` totality boundary) automatically — no separately hand-kept names list to drift.
+  batteryNames = import ./battery-names.nix;
+  # `batteries.nix` curried by the feature record — `feat.battery.<name>` gates the provision (an off
+  # battery drops from `config.den.batteries`, so a reference native-misses LOUD; register §3.1(b)).
+  mkBatteriesModule = feat: import ./batteries.nix feat;
+  # The shared wiring builder both `mkWiring` (legacy-only signature — `compat-legacy-severed` drives it)
+  # and `mkWiringWith` (the `den.features` front door) route through. Threads the seam-gate feature record
+  # into `flake-module.nix` and exposes the (gated) battery provisioning module as `.batteriesModule`.
+  mkWiringFrom =
+    { legacy, feat }:
+    (import ./flake-module.nix {
       inherit
         denHoag
         prelude
@@ -137,7 +147,17 @@ let
         hasAspect
         ;
       gather = gatherLib;
+      inherit legacy;
+      features = feat;
+    })
+    // {
+      batteriesModule = mkBatteriesModule feat;
+    };
+  mkWiring =
+    legacyArg:
+    mkWiringFrom {
       legacy = legacyArg;
+      feat = defaultFeatures;
     };
   # `den.features` — the COMPILE-TIME feature record that generalises the `mkWiring legacyArg` legacy-subset
   # severance handle (§2.1). It is a DRIVER ARGUMENT, not a `config.den.*` runtime option: the compat
@@ -149,10 +169,19 @@ let
   # Class (a) fan-out — the LEGACY-MODULE SUBSET. Each legacy module rides the wiring iff its feature is on;
   # flag-off drops it from `legacy`, so `desugarLegacy` falls back to or-identity and a residual v1 key trips
   # that surface's Law-C5 sentinel (the `selfIncludeFn` / `interpret` seams already gate on the same
-  # `legacy ? <module>` presence, so no further plumbing is needed here). The kernel raw seams (class b) and
-  # the compat desugar-arm gates (class c) join `defaultFeatures` as their own rungs register their entries —
-  # the closed record grows one key per WIRED rung, so an override naming a key not (yet) in it is a named
-  # totality abort (`den.features` cannot silently no-op a feature it does not gate).
+  # `legacy ? <module>` presence, so no further plumbing is needed here).
+  #
+  # Class (b) kernel raw seams — `hasAspect` (`den.enrichBindings` + `den.enrichContext`, ONE flag) and
+  # `gather` (`den.channelGather`). Flag-off OMITS the compat override in `flake-module.nix` so the kernel's
+  # own identity default stands (`{bindings,...}:bindings` / `_:_:_:{}`) — a compat-wiring change, NOT a
+  # kernel edit. These are NOT legacy modules: they never enter `legacySubset`, only the seam block.
+  #
+  # Class (b) per-battery — `battery.<name>` (a nested sub-record). Flag-off drops the battery from the
+  # provisioned `config.den.batteries`, so a reference native-misses. The names come from `battery-names.nix`.
+  #
+  # The closed record grows one key per WIRED rung, so an override naming a key not in it is a named totality
+  # abort (`den.features` cannot silently no-op a feature it does not gate) — extended to a two-level abort
+  # (`unknown` top-level + `unknownBattery` nested) so a typo'd `battery.<name>` is caught, not a silent no-op.
   featureLegacyModule = {
     provides = "provides";
     forwards = "forwards";
@@ -165,18 +194,40 @@ let
       value = feature;
     }) (builtins.attrNames featureLegacyModule)
   );
-  defaultFeatures = builtins.mapAttrs (_: _: true) featureLegacyModule;
+  # Named guard for the class-(a) legacy-module lookup: a legacy module carrying no registered feature flag
+  # self-announces (a diagnostic throw, not a raw "attribute missing"). `feat.${feature}` stays safe — every
+  # registered legacy feature is in `defaultFeatures`.
+  legacyModuleFeatureOf =
+    moduleKey:
+    legacyModuleFeature.${moduleKey}
+      or (throw "den.features: legacy module '${moduleKey}' has no registered feature flag (add it to featureLegacyModule)");
+  defaultFeatures = (builtins.mapAttrs (_: _: true) featureLegacyModule) // {
+    hasAspect = true; # class (b) — den.enrichBindings + den.enrichContext (ONE flag)
+    gather = true; # class (b) — den.channelGather
+    battery = builtins.mapAttrs (_: _: true) batteryNames; # class (b) — per-battery, nested sub-record
+  };
+  # Deep-merge the nested `battery` sub-record so a partial `{ battery.hostname = false; }` override keeps the
+  # OTHER battery defaults on (a shallow `//` would replace the whole `battery` record with the singleton).
+  mergeFeatures = a: b: a // b // { battery = a.battery // (b.battery or { }); };
   mkWiringWith =
     features:
     let
       unknown = builtins.attrNames (builtins.removeAttrs features (builtins.attrNames defaultFeatures));
-      feat = defaultFeatures // features;
-      legacySubset = prelude.filterAttrs (moduleKey: _: feat.${legacyModuleFeature.${moduleKey}}) legacy;
+      unknownBattery = builtins.attrNames (
+        builtins.removeAttrs (features.battery or { }) (builtins.attrNames defaultFeatures.battery)
+      );
+      feat = mergeFeatures defaultFeatures features;
+      legacySubset = prelude.filterAttrs (moduleKey: _: feat.${legacyModuleFeatureOf moduleKey}) legacy;
     in
-    if unknown != [ ] then
-      throw "den.features: unknown feature key(s) ${prelude.concatStringsSep ", " unknown} (known: ${prelude.concatStringsSep ", " (builtins.attrNames defaultFeatures)})"
+    if unknown != [ ] || unknownBattery != [ ] then
+      throw "den.features: unknown feature key(s) ${
+        prelude.concatStringsSep ", " (unknown ++ map (b: "battery.${b}") unknownBattery)
+      } (known: ${prelude.concatStringsSep ", " (builtins.attrNames defaultFeatures)})"
     else
-      mkWiring legacySubset;
+      mkWiringFrom {
+        legacy = legacySubset;
+        inherit feat;
+      };
   flakeModuleWiring = mkWiringWith { };
   inherit (flakeModuleWiring) flakeModuleCore;
 in
@@ -250,6 +301,10 @@ in
   # `mkWiringWith { <feature> = false; }` severs that feature (the `compat-feature-severed` removability
   # gate drives one row per feature). `defaultFeatures` is the closed all-on set (the totality boundary).
   inherit mkWiring mkWiringWith defaultFeatures;
+  # The (all-on) gated battery-provisioning flake-parts module — `flake.nix` imports THIS (not the raw
+  # `./lib/compat/batteries.nix` path) so `den.features.battery.<name>` can drop a battery. All-on
+  # (`mkBatteriesModule defaultFeatures`, `filterAttrs (_: true)`) ≡ the former direct import, byte-identical.
+  inherit (flakeModuleWiring) batteriesModule;
   flakeModule = flakeModuleWiring.flakeModule;
   # parity — the two-sided harness (frozen edge schema + the v1/hoag oracle + firstDivergent triage),
   # Task 7. `schema` is fully self-contained; `oracle.traceHoag` needs only this tree; `oracle.mkV1` is a

@@ -13,6 +13,11 @@
 # ship-gate battery-surface completion): insecure, tty-autologin, vm-autologin, user-shell, import-tree.
 # Each cites its v1 source file. The bare-fn / `{ __fn }` includes here become den-hoag
 # `__isWrappedFn` functors at the compile boundary (compile.nix `normalizeInclude`, §339 wrap-ground).
+# CURRIED by the compile-time feature record `feat` (`den.features`): `feat.battery.<name>` gates the
+# provision — an off battery drops from `config.den.batteries` so a `den.batteries.<name>` reference
+# native-misses LOUD (the removability handle; register §3.1(b)). All-on (`feat.battery.* = true`) is the
+# identity `filterAttrs`, byte-identical to the ungated provision.
+feat:
 {
   config,
   lib,
@@ -664,9 +669,9 @@ let
       user = root: { user, ... }: importTree "${toString root}/${user.name}";
     };
   };
-in
-{
-  config.den.batteries = {
+
+  # The full provisioned set; `feat.battery.<name>` drops any battery flagged off (all-on = identity).
+  allBatteries = {
     define-user = defineUser;
     inherit hostname;
     primary-user = primaryUser;
@@ -679,4 +684,7 @@ in
     user-shell = userShell;
     import-tree = importTree;
   };
+in
+{
+  config.den.batteries = lib.filterAttrs (name: _: feat.battery.${name} or true) allBatteries;
 }

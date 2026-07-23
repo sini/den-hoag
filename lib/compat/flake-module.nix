@@ -22,6 +22,13 @@
   hasAspect,
   gather,
   legacy,
+  # The compile-time seam-gate record (`den.features` class (b)). Off ⇒ OMIT the compat seam override so the
+  # kernel's own identity default stands (a compat-wiring change, not a kernel edit). All-on for any direct
+  # importer.
+  features ? {
+    hasAspect = true;
+    gather = true;
+  },
 }:
 let
   # The shared class + channel keySemantics builder. The NAV VIEW declares the fleet's
@@ -536,19 +543,6 @@ let
         aspects = compiled.aspects;
         policies = compiled.policies;
         quirks = compiled.channels;
-        enrichBindings = hasAspect.mkEnrich entityKinds;
-        # The SAME hook at RESOLUTION depth — the aspect-fn ctx twin (F2: shared refKey identity, not a
-        # forked variant). Enriches the enriched-context a bare-fn kind-include receives so an aspect-fn's
-        # `host.hasAspect` (agenix.nix:31, resolution depth) resolves like a content-module's (networking.nix:341).
-        enrichContext = hasAspect.mkEnrich entityKinds;
-        # The COMPOSED cross-scope channel gather (#62b expose ascent + #69 collect/collectAll twins +
-        # the push-dual broadcast arm), re-layered onto the gen-graph query engine — fills the core #62a
-        # channel-augmentation seam with den v1's gathers: the received expose pool (`collectAllExposed` —
-        # `resolved-users` at a host, exposed up by its user cells) FIRST, then the sibling/fleet collect
-        # gathers (`findMatchingSiblings`/`findMatchingAll` — `k3s-nodes`/`host-addrs`/… peers), then the
-        # broadcast-injected values (`collectAllBroadcast`), per channel, at the terminal binding.
-        # `entityKinds` feeds v1's predicate entity-kind gating (F2).
-        channelGather = gather.mkGather entityKinds;
         # Static entity-scoped includes (den-hoag `den.include`, §370 directAspects) — the R5
         # self-named-aspect seeds (spec §10) `addSelfIncludes` appended, node-local at each self-named
         # entity. Empty when the legacy self-provide module is severed (byte-identical no-op, Law C5).
@@ -558,6 +552,25 @@ let
             instantiate = nixosInstantiate;
           };
         };
+      }
+      # The projected-hasAspect stamp seams — `den.enrichBindings` (terminal, output-modules `bindingsAt`)
+      # AND `den.enrichContext` (RESOLUTION depth, the aspect-fn ctx twin; F2: ONE shared refKey identity,
+      # not a forked variant) — so an aspect-fn's `host.hasAspect` (agenix.nix:31, resolution depth)
+      # resolves like a content-module's (networking.nix:341). ONE `features.hasAspect` flag gates BOTH;
+      # OMITTED when off so the kernel's `{bindings,...}:bindings` identity default stands (no kernel edit).
+      // prelude.optionalAttrs features.hasAspect {
+        enrichBindings = hasAspect.mkEnrich entityKinds;
+        enrichContext = hasAspect.mkEnrich entityKinds;
+      }
+      # The COMPOSED cross-scope channel gather (#62b expose ascent + #69 collect/collectAll twins + the
+      # push-dual broadcast arm), re-layered onto the gen-graph query engine — fills the core #62a
+      # channel-augmentation seam with den v1's gathers: the received expose pool (`collectAllExposed` —
+      # `resolved-users` at a host, exposed up by its user cells) FIRST, then the sibling/fleet collect
+      # gathers (`findMatchingSiblings`/`findMatchingAll` — `k3s-nodes`/`host-addrs`/… peers), then the
+      # broadcast-injected values (`collectAllBroadcast`), per channel, at the terminal binding.
+      # `entityKinds` feeds v1's predicate entity-kind gating (F2). OMITTED when off ⇒ kernel `_:_:_:{}`.
+      // prelude.optionalAttrs features.gather {
+        channelGather = gather.mkGather entityKinds;
       }
       // instanceConfig;
     };

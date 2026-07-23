@@ -345,14 +345,14 @@
         imports = [
           bridge
           builtinsModule
-          ./lib/compat/batteries.nix
+          compat.batteriesModule
         ];
       };
       flakeModules.default = {
         imports = [
           bridge
           builtinsModule
-          ./lib/compat/batteries.nix
+          compat.batteriesModule
         ];
       };
       # den v1 `flakeModules.strict` (denful/den nix/default.nix:9 → nix/strict.nix): an opt-in flake-parts

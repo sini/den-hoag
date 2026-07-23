@@ -5,18 +5,25 @@
 # PARKS — a named Law-C5 sentinel abort, or a documented no-op (the emitted surface simply absent) — never
 # a silent mis-fire. The complement (feature ON ⇒ the surface fires) keeps every park probe non-vacuous.
 #
-# This rung covers the LEGACY features (the class-(a) legacy-module subset compat-legacy-severed already
-# proves severable): `provides` · `forwards` (Law-C5 sentinel parks) · `selfProvide` (documented no-op:
-# the self-named include absent) · `ambientBatteries` (no byte-baseline — the ambient IS the baseline, so
-# its witness is the present/severed route pair, not a byte-diff). The raw-seam Tier-0 features and the
-# sig-entangled Tier-1 arms join as their own rungs wire their flags into `mkWiringWith`.
+# Coverage:
+#   - LEGACY features (class-(a) legacy-module subset): `provides` · `forwards` (Law-C5 sentinel parks) ·
+#     `selfProvide` (documented no-op: the self-named include absent) · `ambientBatteries` (no byte-baseline
+#     — the ambient IS the baseline, so its witness is the present/severed route pair, not a byte-diff).
+#   - RAW-SEAM Tier-0 features (class (b), rung 2a): `hasAspect` (den.enrichBindings + den.enrichContext,
+#     ONE flag) · `gather` (den.channelGather). OMIT-when-off → the kernel identity default stands. Their
+#     decl/trace baselines are GREEN-BY-CONSTRUCTION (materialization-only seams — declProj/unionTrace never
+#     read the flag); the load-bearing severance teeth are the S1 BEHAVIORAL off-parks (drive a fixture that
+#     READS the seam through `off*.mkDen` — ON populates, OFF parks: native missing-attr / empty gather).
+#   - PER-BATTERY features (class (b), rung 2b): `battery.<name>` for all 12 gateable batteries — off drops
+#     the provision so a `den.batteries.<name>` reference native-misses; a data-driven fold witnesses the
+#     severed-absent / on-present / sibling-decoupling triple per battery.
 #
 # All-on ≡ today: `full = denCompat` is `mkWiringWith { }` (every default), byte-identical to `mkWiring
-# legacy`; each `off*` wiring drops exactly one legacy module via the feature record. The AMBIENT
-# (defaults + self-provide) is held constant across a compared pair for the byte-baseline features — a
-# feature-surface leak still moves the projection, but the ambient delta is scoped out (the same discipline
-# as compat-legacy-severed's H/I comparisons).
+# legacy`; each `off*` wiring drops exactly one feature via the record. The AMBIENT (defaults + self-provide)
+# is held constant across a compared pair for the byte-baseline features — a feature-surface leak still moves
+# the projection, but the ambient delta is scoped out (compat-legacy-severed's H/I discipline).
 {
+  lib,
   denHoag,
   denCompat,
   ...
@@ -30,6 +37,9 @@ let
   offForwards = denCompat.mkWiringWith { forwards = false; };
   offSelfProvide = denCompat.mkWiringWith { selfProvide = false; };
   offAmbient = denCompat.mkWiringWith { ambientBatteries = false; };
+  # rung 2a raw-seam wirings (class (b)).
+  offHasAspect = denCompat.mkWiringWith { hasAspect = false; };
+  offGather = denCompat.mkWiringWith { gather = false; };
 
   # ── byte-baseline oracles (reused verbatim from compat-legacy-severed) ────────────────────────────────
   # declaration-set projection — attrNames + id_hashes only (no function is forced, so a parametric body
@@ -133,6 +143,90 @@ let
     os = ((w.compileFull { }).policies or { }) ? __aspectInclude__os-to-host;
     user = ((w.compileFull { }).policies or { }) ? __aspectInclude__user-to-host;
   };
+
+  # ── rung 2a: raw-seam probes (class (b)) ──────────────────────────────────────────────────────────────
+  # STRUCTURAL seam-presence: the compat override is present at `config.den.<key>` on, ABSENT off (the
+  # kernel identity default then stands). Regression-sensitive for the KEY (a seam set unconditionally would
+  # stay present off), but does NOT prove present→works / absent→parks — that is the S1 behavioral job.
+  seamSet = w: key: (w.mkFleetModule (w.compileFull { })).config.den ? ${key};
+
+  # S1 BEHAVIORAL off-parks — the real severance teeth. The decl/trace baselines are GREEN-BY-CONSTRUCTION:
+  # `declProj`/`unionTrace` project compileFull declarations / the T|P|S|M edge graph, NEITHER of which reads
+  # `features.hasAspect`/`gather` (the seams gate `config.den` at MATERIALIZATION, in `mkFleetModuleWith`),
+  # so those rows are tautologically true regardless of the flag — they witness materialization-only, not
+  # decoupling. The rows below drive a fixture that READS the seam through `off*.mkDen` to the TERMINAL
+  # binding: flag-ON the value populates, flag-OFF it parks — hasAspect the native missing-attr (the stamp
+  # is absent, so a node body's `host.hasAspect` read is an uncatchable substrate miss, the nix-config
+  # networking.nix:341 frontier); gather the empty gather (the kernel `_:_:_:{}` returns nothing).
+  hasAspectFixture = {
+    hosts.x86_64-linux.axon = { };
+    aspects.axon.nixos.networking.hostName = "axon"; # self-named aspect (R5) → the host resolves it
+    schema.host.includes = [ "axon" ];
+  };
+  hostBinding =
+    w: (w.mkDen [ (v1mod hasAspectFixture) ]).den.output.systems.nixos."host:axon".bindings.host;
+
+  gatherFixture = {
+    hosts.x86_64-linux.igloo.users.tux = { };
+    hosts.x86_64-linux.igloo.users.pol = { };
+    schema.user = {
+      parent = "host";
+      includes = [
+        "emit-ru"
+        "expose-ru"
+      ];
+    };
+    aspects.hostc.nixos.networking.hostName = "igloo";
+    schema.host.includes = [ "hostc" ];
+    quirks.resolved-users = { };
+    aspects.emit-ru.resolved-users = { user, ... }: [ { name = user.name or "?"; } ];
+    policies.expose-ru = { user, ... }: [
+      (denCompat.pipe.from "resolved-users" [ denCompat.pipe.expose ])
+    ];
+  };
+  gatheredNames =
+    w:
+    builtins.sort (a: b: a < b) (
+      map (u: u.name)
+        (w.mkDen [ (v1mod gatherFixture) ]).den.output.systems.nixos."host:igloo".bindings.resolved-users
+    );
+
+  # ── rung 2b: per-battery provision probes (class (b)) ─────────────────────────────────────────────────
+  # `batteriesModule` is a curried flake-parts module; apply a stub arg set (only `lib` + the curried `feat`
+  # feed the `filterAttrs` provision — the battery VALUES stay lazy, so the `withSystem`/`inputs`/`self`/`den`
+  # stubs are never forced). The 12 gateable names come from the wiring's own `defaultFeatures.battery`.
+  batteryStub = {
+    inherit lib;
+    config = { };
+    withSystem = _: { };
+    inputs = { };
+    self = { };
+    den = { };
+  };
+  provisioned = w: builtins.attrNames (w.batteriesModule batteryStub).config.den.batteries;
+  batteryNames = builtins.attrNames denCompat.defaultFeatures.battery;
+  fullProvisioned = provisioned full;
+  offBattery = name: denCompat.mkWiringWith { battery.${name} = false; };
+  # Per battery: severed drops it (park), on keeps it (non-vacuous), and the OTHER 11 survive (no sibling
+  # collateral — the filter + nested-merge totality). Data-driven fold, not 12 hand-copies.
+  batteryRows = builtins.foldl' (
+    acc: name:
+    acc
+    // {
+      "test-battery-${name}-severed-absent" = {
+        expr = builtins.elem name (provisioned (offBattery name));
+        expected = false;
+      };
+      "test-battery-${name}-on-present" = {
+        expr = builtins.elem name fullProvisioned;
+        expected = true;
+      };
+      "test-battery-${name}-decoupling" = {
+        expr = provisioned (offBattery name) == builtins.filter (n: n != name) fullProvisioned;
+        expected = true;
+      };
+    }
+  ) { } batteryNames;
 in
 {
   flake.tests.compat-feature-severed = {
@@ -212,5 +306,69 @@ in
         user = true;
       };
     };
-  };
+
+    # ══ SEAM: hasAspect ─ den.enrichBindings + den.enrichContext (ONE flag, rung 2a) ─────────────────────
+    # (a) decl/trace baselines — GREEN-BY-CONSTRUCTION (materialization-only seam; kept for shape-uniformity
+    # with the legacy rows, NOT severance teeth — see the S1 note in the `let`).
+    test-hasAspect-decl-baseline = {
+      expr = declSeverableOn offHasAspect;
+      expected = true;
+    };
+    test-hasAspect-trace-baseline = {
+      expr = traceEq offHasAspect edgeRoute;
+      expected = true;
+    };
+    # structural seam present/absent (regression-sensitive for the key: OMIT-when-off → kernel identity).
+    test-hasAspect-severed-seam-absent = {
+      expr = seamSet offHasAspect "enrichBindings";
+      expected = false;
+    };
+    test-hasAspect-on-seam-present = {
+      expr = seamSet full "enrichBindings";
+      expected = true;
+    };
+    # (b) S1 BEHAVIORAL teeth — ON the terminal binding carries a resolving `hasAspect` closure (answers the
+    # self-named aspect true); OFF the stamp is ABSENT (a node body's `host.hasAspect` read native-misses).
+    test-hasAspect-behavioral-on-resolves = {
+      expr = (hostBinding full).hasAspect { key = "axon"; };
+      expected = true;
+    };
+    test-hasAspect-behavioral-off-unstamped = {
+      expr = (hostBinding offHasAspect) ? hasAspect;
+      expected = false;
+    };
+
+    # ══ SEAM: gather ─ den.channelGather (rung 2a) ──────────────────────────────────────────────────────
+    test-gather-decl-baseline = {
+      expr = declSeverableOn offGather;
+      expected = true;
+    };
+    test-gather-trace-baseline = {
+      expr = traceEq offGather edgeRoute;
+      expected = true;
+    };
+    test-gather-severed-seam-absent = {
+      expr = seamSet offGather "channelGather";
+      expected = false;
+    };
+    test-gather-on-seam-present = {
+      expr = seamSet full "channelGather";
+      expected = true;
+    };
+    # (b) S1 BEHAVIORAL teeth — ON the host gathers its user cells' exposed resolved-users; OFF the kernel
+    # `_:_:_:{}` default returns nothing (empty gather).
+    test-gather-behavioral-on-populates = {
+      expr = gatheredNames full;
+      expected = [
+        "pol"
+        "tux"
+      ];
+    };
+    test-gather-behavioral-off-empty = {
+      expr = gatheredNames offGather;
+      expected = [ ];
+    };
+  }
+  # ══ FEATURE: battery.<name> ─ per-battery provision drop (rung 2b), data-driven over all 12 ─────────────
+  // batteryRows;
 }

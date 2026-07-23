@@ -218,7 +218,8 @@ let
         flakeStub
         bridge
         batteriesArgs
-        "${denHoagSrc}/lib/compat/batteries.nix"
+        # batteries.nix is curried by the `den.features` record; apply all-on `defaultFeatures` (ungated).
+        (import "${denHoagSrc}/lib/compat/batteries.nix" denCompat.defaultFeatures)
         fleetBase
       ];
     }).config;
@@ -251,7 +252,8 @@ let
         flakeStub
         bridge
         batteriesArgs
-        "${denHoagSrc}/lib/compat/batteries.nix"
+        # batteries.nix is curried by the `den.features` record; apply all-on `defaultFeatures` (ungated).
+        (import "${denHoagSrc}/lib/compat/batteries.nix" denCompat.defaultFeatures)
         (
           { den, ... }:
           {

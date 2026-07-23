@@ -118,7 +118,9 @@ let
     ]).den;
 
   # ── (2) battery provisioning — apply the flake-parts module directly with stub module args. ──────────
-  batMod = import "${denHoagSrc}/lib/compat/batteries.nix";
+  # batteries.nix is curried by the `den.features` record (`feat.battery.<name>` gates the provision);
+  # apply the all-on `defaultFeatures` to get the flake-parts module (the ungated provision).
+  batMod = import "${denHoagSrc}/lib/compat/batteries.nix" denCompat.defaultFeatures;
   bat =
     (batMod {
       config = { };
