@@ -129,6 +129,59 @@ in
       expected = builtins.genList (_: true) 4;
     };
 
+    # ── LHF lib-forward quick-wins (den v1 nix/lib/*): the four additive passthrough surfaces exist and
+    #    behave. `deliver` = the delivery-descriptor surface (policy-effects.nix:68); `canTake` = the arity
+    #    predicate (can-take.nix); `schema` = the raw gen-schema.lib; `strict` = the UNAPPLIED strict module
+    #    fn (strict.nix — the substrate cannot apply it; the consumer's evalModules injects nixpkgs lib). ──
+    test-lhf-surfaces = {
+      expr =
+        let
+          # route case: a class-source deliver descriptor (from a class name, default merge at root).
+          d = L.policy.deliver {
+            from = "nixos";
+            to = "home-manager";
+          };
+        in
+        {
+          deliverDelivery = d.__delivery;
+          deliverSourceClass = d.sourceClass;
+          deliverTarget = d.target;
+          deliverMode = d.mode;
+          # atLeast (the __functor default): a required arg supplied → true (no functor-arg case, since
+          # builtins.functionArgs is not functor-aware — the dead gap noted in the register).
+          canTakeAtLeast = L.canTake.atLeast { a = null; } (
+            {
+              a,
+              b ? 0,
+            }:
+            0
+          );
+          canTakeUpTo = L.canTake.upTo { a = null; } (
+            {
+              a,
+              b ? 0,
+            }:
+            0
+          );
+          # schema = raw gen-schema.lib (host.nix/home.nix consume it as `schemaLib`).
+          schemaTypes = L.schema ? types;
+          schemaMkStrictModule = L.schema ? mkStrictModule;
+          # strict is exported UNAPPLIED (the `{ lib, ... }:` fn) — NEVER `strict ? _module`.
+          strictIsFn = builtins.isFunction L.strict;
+        };
+      expected = {
+        deliverDelivery = true;
+        deliverSourceClass = "nixos";
+        deliverTarget = "home-manager";
+        deliverMode = "merge";
+        canTakeAtLeast = true;
+        canTakeUpTo = true;
+        schemaTypes = true;
+        schemaMkStrictModule = true;
+        strictIsFn = true;
+      };
+    };
+
     # ── the four-concern API stays intact under the migration merge (no key clobbered) ──
     test-four-concern-intact = {
       expr = {

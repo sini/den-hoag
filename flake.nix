@@ -152,6 +152,9 @@
       migrationLib = lib // {
         # den.lib.policy.* — the policy-authoring vocabulary nix-config writes policies with.
         policy = {
+          # deliver — v1 `den.lib.policy.deliver` (policy-effects.nix:68): the delivery-surface descriptor
+          # a corpus policy body calls. Alias of the compat deliver surface (compat/deliver.nix:49).
+          deliver = compat.deliver;
           route = compat.route; # alias — the deliver-surface route descriptor
           provide = compat.provide; # alias — the deliver-surface provide descriptor
           include = compat.include; # alias — v1 `{ __policyEffect = "include"; value = aspect; }`
@@ -200,6 +203,19 @@
         # den.lib.home-env — the OS-user home battery builder {makeHomeEnv, mkDetectHost, mkIntoClassUsers}
         # (v1 nix/lib/home-env.nix), reproduced faithfully compat-side; wired above.
         "home-env" = homeEnv;
+        # den.lib.canTake — v1's arity predicate (nix/lib/can-take.nix): does a fn accept a given param
+        # set? `{ __functor = atLeast; atLeast; exactly; upTo; }`, reproduced compat-side over gen-prelude
+        # primitives (the substrate is nixpkgs-lib-free).
+        canTake = compat.canTake;
+        # den.lib.schema — v1's `den.lib.schema` (nix/lib/schema.nix) = the raw gen-schema.lib. den-hoag
+        # already has the input in flake scope (no consumer-fallback needed); consumers (host.nix:22 /
+        # home.nix:22) use it as `schemaLib` = raw.
+        schema = inputs.gen-schema.lib;
+        # den.lib.strict — v1's strict freeform-type module (nix/lib/strict.nix), exported UNAPPLIED (the
+        # `{ lib, ... }:` fn). The consumer's raw-absorption evalModules injects nixpkgs `lib` when it
+        # merges `den.schema.<kind> = den.lib.strict`; the substrate has no `lib.mkOptionType` so it must
+        # NOT apply it here.
+        strict = import ./lib/compat/strict.nix;
       };
     in
     {

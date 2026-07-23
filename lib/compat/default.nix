@@ -65,6 +65,11 @@ let
   # (`keyClassification.structuralKeysSet`), reproducing v1's literal set. Aliased into migrationLib's
   # `lib.aspects.fx.keyClassification` (flake.nix), replacing that one throwing stub.
   keyClassification = import ./key-classification.nix { };
+  # The v1 `den.lib.canTake` arity predicate (den v1 nix/lib/can-take.nix). Wired via `prelude`
+  # (`isFunction`/`functionArgs` = the plain builtins) — the substrate is nixpkgs-lib-free, so it closes
+  # over its primitives at definition (a plain fn can't defer `lib` to evalModules). Aliased into
+  # migrationLib's `canTake` (flake.nix).
+  canTake = import ./can-take.nix { inherit prelude; };
   # The BRIDGE-REGISTRY PASSTHROUGH (replaces the per-host instance-eval harvest): v1's built-in
   # `options.den.hosts` registry (pin 11866c16 modules/options.nix:71 / entities/host.nix:26-105)
   # reproduced with the CONSUMER's nixpkgs lib (an inert call argument; the file imports no nixpkgs),
@@ -158,6 +163,9 @@ in
     ;
   # The fx key-classification surface (#49-slice) — `{ structuralKeysSet; }`, aliased into migrationLib.
   inherit keyClassification;
+  # The v1 `den.lib.canTake` arity predicate (den v1 nix/lib/can-take.nix) — `{ __functor; atLeast;
+  # exactly; upTo; }`, aliased into migrationLib.
+  inherit canTake;
   # The re-layered cross-scope channel gather (3-arm adapter) — witness surface: `gatheredAt` (the
   # gated-transitive expose ascent, for the depth-semantics unit tests) + the composed `den.channelGather`
   # supplier `mkGather entityKinds` (curried on `derivedBaseNames` then `result`; expose via gen-graph
