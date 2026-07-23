@@ -121,18 +121,15 @@ in
     "define-user"
     "flake-parts"
     "flake-scope"
-    "hjem"
     "host-aspects"
     "hostname"
     "import-tree"
     "insecure"
-    "maid"
     "primary-user"
     "tty-autologin"
     "unfree"
     "user-shell"
     "vm-autologin"
-    "wsl"
   ];
 
   desugar = composeDesugars;

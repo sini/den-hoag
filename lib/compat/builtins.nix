@@ -143,6 +143,258 @@ let
     name: v1src:
     { system, ... }:
     throw "den-compat builtin: `den.policies.${name}` is a v1 flake-OUTPUT policy (${v1src} @ pin 11866c16); its firing populates flake outputs (packages/devShells/flake-parts) — ship-gate class F/G, not the class-A nixosConfigurations arm (which crosses the nixos class terminal). Reproduce it with the class-F/G rows (needs the fleet-resolution surface, board #49/#50).";
+
+  # ── v1 AMBIENT home-env-family + wsl batteries (modules/aspects/batteries/{maid,hjem,wsl}.nix @ pin
+  #    11866c16) ────────────────────────────────────────────────────────────────────────────────────────
+  # v1's flakeModule auto-imports every `modules/**.nix` (listFilesRecursive), so maid/hjem/wsl are AMBIENT
+  # on every v1 fleet — reproduced here VALUE-IDENTICALLY (the single-legacy-import-site invariant, like
+  # userToHost/hmUserDetect above). All three are corpus-INERT: no corpus user carries a maid/hjem class and
+  # no corpus host enables wsl, so their emitters null-gate / self-gate to no-ops and their per-host `module`
+  # option defaults are THROWING-LAZY (never reference an absent flake input). Provisioning them therefore
+  # does not perturb the corpus eval (the corpus-relative INERT posture, ledger B15/q).
+  #
+  # v1 drives maid/hjem through `den.lib.home-env.makeHomeEnv`; here they are HAND-WRITTEN as tier-1 routes
+  # because `den.batteries.forward` is an inert stub (flake.nix), so makeHomeEnv's `userForward` yields no
+  # routes — the shipped home-manager port took the same hand-written path (see hmUserDetect above). Each
+  # battery SPLITS into a CONTENT ROUTE + a host-scope MODULE IMPORT (mirroring v1's userDetectFn route +
+  # classIncludes module import):
+  #   • the CONTENT ROUTE — maid/hjem use a `__denCanTake = "user-host"` cell emitter (the hmUserDetect
+  #     shape): the class bucket → the host OS class at the forward path, parent-targeted (#53c
+  #     appendToParent — a cell-fired route to a DEEP host path lands in the cell's isolated edge-root
+  #     without it). wsl instead uses a `host`-scope route (wsl-to-host, below) — it must also capture
+  #     HOST-scope wsl content, where appendToParent would drop (see there). Both are probe-safe via the
+  #     intoClass null-gate (the os-class posture — a value-conditional emission misclassifies as enrich).
+  #   • the host-MODULE IMPORT — a `den.schema.host.includes` policy (v1 makeHomeEnv.hostModule /
+  #     wsl-host-aspect), HOST-scope so it reaches the OS terminal directly, gated on the host carrying a
+  #     class member (maid/hjem) or `wsl.enable` (wsl). A schema-include policy record tolerates the
+  #     value-conditional emission (compile.nix kindIncludePolicies: per-declaration stratum, no enrich
+  #     misclassification), so the gate rides the emission (unlike the config.den.policies routes).
+  mkInclude = aspect: {
+    __policyEffect = "include";
+    value = aspect;
+  };
+
+  # v1 home-env.nix:47 `host-has-user-with-class` — probe-safe (`or`-guarded) reads.
+  hostHasUserWithClass =
+    host: class:
+    builtins.any (user: builtins.elem class (user.classes or [ ])) (
+      builtins.attrValues (host.users or { })
+    );
+
+  # v1 makeHomeEnv.hostOptions (home-env.nix:71-93) — the per-host `<optionPath>.{enable,module}` option
+  # module, wired via `den.schema.host.imports` (v1 {maid,hjem}.nix:31/29). `lib` from the MODULE ARGS (the
+  # compat consumer-lib posture, home-env.nix:77-79 — the shim captures no nixpkgs lib). The `module` default
+  # is THROWING-LAZY: v1 threads `inputs.<pkg>."${host.class}Modules".default`, which the compat layer cannot
+  # access; the throw fires ONLY if a class-enabled host omits `.module` (the witnesses set it explicitly and
+  # the corpus never carries a maid/hjem user, so the read is never reached).
+  mkHostConf =
+    {
+      optionPath,
+      className,
+      throwMsg,
+    }:
+    { host, lib, ... }:
+    {
+      options.${optionPath} = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = hostHasUserWithClass host className;
+        };
+        module = lib.mkOption {
+          type = lib.types.deferredModule;
+          default = throw throwMsg;
+        };
+      };
+    };
+
+  maidHostConf = mkHostConf {
+    optionPath = "nix-maid";
+    className = "maid";
+    throwMsg = "den-compat: the maid battery requires `den.hosts.<system>.<name>.nix-maid.module` set explicitly (inputs.nix-maid is not threaded into the compat layer).";
+  };
+  hjemHostConf = mkHostConf {
+    optionPath = "hjem";
+    className = "hjem";
+    throwMsg = "den-compat: the hjem battery requires `den.hosts.<system>.<name>.hjem.module` set explicitly (inputs.hjem is not threaded into the compat layer).";
+  };
+
+  # v1 makeHomeEnv.hostModule (home-env.nix:125-134): import `host.<optionPath>.module` into the host OS
+  # body. KEYED for module-system dedup (v1's key), so a repeated include collapses to one import.
+  mkHostModuleAspect =
+    optionPath:
+    { host }:
+    {
+      ${host.class}.imports = [
+        {
+          key = "den:${optionPath}-host-module";
+          imports = [ host.${optionPath}.module ];
+        }
+      ];
+    };
+
+  # The host-scope module-import policy (`den.schema.host.includes`), gated on the host carrying ≥1 user of
+  # the class (v1 makeHomeEnv.mkDetectHost's `hostHasClass`). Conditional emission is tolerated on the
+  # schema-include path (kindIncludePolicies per-declaration stratum).
+  mkHostModulePolicy =
+    {
+      name,
+      optionPath,
+      className,
+    }:
+    {
+      __isPolicy = true;
+      inherit name;
+      fn =
+        { host, ... }:
+        if hostHasUserWithClass host className then
+          [ (mkInclude (mkHostModuleAspect optionPath { inherit host; })) ]
+        else
+          [ ];
+    };
+
+  # The user-scope CONTENT emitter (v1 makeHomeEnv.userDetectFn ∘ userForward, tier-1-rendered) — the
+  # hmUserDetect shape: an UNCONDITIONAL, null-gated, parent-targeted route (fromClass = the battery class →
+  # the host OS at the forward path). `user.userName or user.name` = v1's userName default (host.nix:156).
+  mkUserDetect =
+    {
+      className,
+      supportedOses,
+      forwardPathFn,
+    }:
+    {
+      __denCanTake = "user-host";
+      fn =
+        { user, host, ... }:
+        let
+          isOsSupported = builtins.elem (host.class or null) supportedOses;
+          hasClass = builtins.elem className (user.classes or [ ]);
+        in
+        [
+          (deliverLib.route {
+            fromClass = className;
+            intoClass = if isOsSupported && hasClass then host.class else null;
+            intoPath = forwardPathFn { inherit user host; };
+            __extra.appendToParent = true;
+          })
+        ];
+    };
+
+  maidUserDetect = mkUserDetect {
+    className = "maid";
+    supportedOses = [ "nixos" ];
+    forwardPathFn =
+      { user, ... }:
+      [
+        "users"
+        "users"
+        (user.userName or user.name)
+        "maid"
+      ];
+  };
+  hjemUserDetect = mkUserDetect {
+    className = "hjem";
+    supportedOses = [
+      "nixos"
+      "darwin"
+    ];
+    forwardPathFn =
+      { user, ... }:
+      [
+        "hjem"
+        "users"
+        (user.userName or user.name)
+      ];
+  };
+  maidHostModulePolicy = mkHostModulePolicy {
+    name = "nix-maid-host-module";
+    optionPath = "nix-maid";
+    className = "maid";
+  };
+  hjemHostModulePolicy = mkHostModulePolicy {
+    name = "hjem-host-module";
+    optionPath = "hjem";
+    className = "hjem";
+  };
+
+  # ── wsl (v1 batteries/wsl.nix @ pin 11866c16) ────────────────────────────────────────────────────────
+  wslModuleThrow = "den-compat: the wsl battery requires `den.hosts.<system>.<name>.wsl.module` set explicitly (inputs.nixos-wsl is not threaded into the compat layer).";
+  # v1 hostConf (wsl.nix:27-35): `wsl.{enable,module}`. `enable` = mkEnableOption (default false); `module`
+  # = deferredModule with a THROWING-LAZY default (v1 defaults `inputs.nixos-wsl.nixosModules.default`).
+  wslHostConf =
+    { lib, ... }:
+    {
+      options.wsl = {
+        enable = lib.mkEnableOption "Enable WSL on this host";
+        module = lib.mkOption {
+          type = lib.types.deferredModule;
+          default = throw wslModuleThrow;
+        };
+      };
+    };
+  # v1 wsl-host-aspect (wsl.nix:37-46): import host.wsl.module into the host OS + set `wsl.enable = true`.
+  # The keyed inner import gives module-system dedup. NO top-level `name`: an included attrset carrying a
+  # bare `name` (no `key`) is a named REFERENCE in the compat include arm (compile.nix isEmittedContentSet /
+  # resolveAspectRef), not emitted CONTENT — v1's trace `name` is redundant here (den-hoag grounds emitted
+  # content by scope-coord identity, mkEmittedAspect). `${host.class}` is only forced when included
+  # (host-to-wsl-host gates it), never at the value-less probe.
+  wslHostAspect =
+    { host }:
+    {
+      ${host.class} = {
+        imports = [
+          {
+            key = "den:wsl-host-module";
+            imports = [ host.wsl.module ];
+          }
+        ];
+        wsl.enable = true;
+      };
+    };
+  # v1 host-to-wsl-host (wsl.nix:56-64) → `den.schema.host.includes`, gated on nixos + wsl.enable. The v1
+  # `resolve.to "wsl-host"` sibling is DROPPED: `wsl-host` is NOT a registered schema kind (v1 declares no
+  # `den.schema.wsl-host`), so den-hoag's resolve arm would abort resolveUnknownKind; its content is
+  # delivered by the sibling `include wsl-host-aspect`, not the empty wsl-host scope (a consumer-less,
+  # drvPath-invisible scope — the documented ledger ceiling, the #53c-class trace-only divergence).
+  hostToWslHost = {
+    __isPolicy = true;
+    name = "host-to-wsl-host";
+    fn =
+      { host, ... }:
+      if (host.class or null) == "nixos" && ((host.wsl or { }).enable or false) then
+        [
+          (mkInclude (wslHostAspect {
+            inherit host;
+          }))
+        ]
+      else
+        [ ];
+  };
+  # v1 wsl-to-host (wsl.nix:73-82): route wsl class content → the host OS class at [wsl]. Reproduced as an
+  # UNCONDITIONAL, null-gated route (the os-class posture — a value-conditional emission misclassifies as
+  # enrich; the `host.wsl.enable` gate rides the intoClass field). Fires at host + cells (host coord
+  # present), so both host-scope wsl content (a host aspect) AND cell-scope wsl content (primary-user's
+  # `wsl.defaultUser` at a (user,host) cell) are captured.
+  #
+  # NO appendToParent (unlike the user→host / homeManager cell forwards): this route's TARGET is the OS
+  # CLASS (nixos), whose content folds cell→host through the ordinary containment nesting (the primary-user
+  # precedent — a cell's nixos content folds up its subtree to the host's assembly), so a cell-fired
+  # wsl→nixos delivery reaches the host WITHOUT a parent-target. appendToParent would in fact BREAK the
+  # host-scope case: at a root (host) firing, the parent target does not resolve to the host itself here, so
+  # the host aspect's own wsl content would be dropped. v1's guard (`options ? wsl`) is likewise omitted —
+  # the intoClass null-gate already bounds firing to wsl-enabled hosts, and the guard's target-option read
+  # filtered the content out before the sibling host-to-wsl-host module import declared `options.wsl`.
+  wslToHost = {
+    __denCanTake = "host";
+    fn =
+      { host, ... }:
+      [
+        (deliverLib.route {
+          fromClass = "wsl";
+          intoClass = if ((host.wsl or { }).enable or false) then host.class else null;
+          path = [ "wsl" ];
+        })
+      ];
+  };
 in
 {
   imports = [ fleetContextEnrichModule ];
@@ -151,6 +403,11 @@ in
       host-to-users = _ctx: [ ];
       user-to-host = userToHost;
       hm-user-detect = hmUserDetect;
+      # v1 ambient home-env-family / wsl content routes (see the batteries section above): the maid/hjem
+      # user-scope forwards + the wsl class-content route. Corpus-inert (null-gated).
+      maid-user-detect = maidUserDetect;
+      hjem-user-detect = hjemUserDetect;
+      wsl-to-host = wslToHost;
       system-to-os-outputs = outputStub "system-to-os-outputs" "modules/policies/flake.nix:53";
       system-to-hm-outputs = outputStub "system-to-hm-outputs" "modules/policies/flake.nix:67";
       system-to-flake-parts = outputStub "system-to-flake-parts" "modules/policies/flake-parts.nix:9";
@@ -165,6 +422,22 @@ in
       flake-parts.isEntity = true;
       fleet = { };
       hm-host = { };
+      # v1 ambient home-env-family / wsl HOST wiring (batteries/{maid,hjem,wsl}.nix): the per-host
+      # `{nix-maid,hjem,wsl}.{enable,module}` options (imports) + the host-scope module-import policies
+      # (includes: maid/hjem gated on a class member, wsl gated on wsl.enable). Both are collections the
+      # bridge concatenates across schema defs, so they compose with the corpus's own host schema.
+      host = {
+        imports = [
+          maidHostConf
+          hjemHostConf
+          wslHostConf
+        ];
+        includes = [
+          maidHostModulePolicy
+          hjemHostModulePolicy
+          hostToWslHost
+        ];
+      };
     };
     # CLASS registration (ship-gate rung, CLASS-A-MINIMAL; R2 — the compat-side class-vocabulary registry).
     # `flake-parts` is a v1 flake-level SCOPE class the corpus ROUTES INTO: the `devshell-to-flake-parts`
@@ -220,29 +493,30 @@ in
       };
 
       # ── v1 BATTERY convenience/forwarding classes (always-imported battery modules @ pin 11866c16). Each
-      # forwards to the host OS in v1 (no terminal of its own), so a bare inert registration matches its v1
-      # nature exactly — with no producing member the emitted content is DEAD (dropped), as under v1. ──
+      # forwards to the host OS in v1 (no terminal of its own); their battery BEHAVIOR (host options, module
+      # imports, content routes) is wired in the batteries section above, and stays corpus-inert (no producing
+      # member ⇒ the emitted content is DEAD / dropped, as under v1). ──
       #
-      # `wsl` (modules/aspects/batteries/wsl.nix:50) — THE u14 BLOCKER. The compat `primary-user` battery
-      # (lib/compat/batteries.nix:140) emits `wsl.defaultUser` alongside its assertion-clearing
-      # `nixos.users.users.<n>` account content; `wsl` was neither a core class nor corpus-declared, so once
-      # the #63 fold FORCED the user cells' class-modules, `classifyKey` aborted on the `wsl` key BEFORE the
-      # nixos content could classify. v1 routes wsl content to the host via `wsl-to-host` ONLY when a host sets
-      # `wsl.enable` (wsl.nix:73-82 — `lib.optional ((host.wsl or {}).enable or false)`); NO corpus host does,
-      # so the `wsl.defaultUser` emission is DEAD in v1 too (never routes). This registration unblocks the
-      # SIBLING nixos content's classification; the wsl terminal stays output-less (no wsl-producing member),
-      # so NO wsl route policies are ported — inert classification only.
+      # `wsl` (modules/aspects/batteries/wsl.nix:50) — THE u14 BLOCKER (the compat `primary-user` battery,
+      # lib/compat/batteries.nix:140, emits `wsl.defaultUser`; `wsl` had to classify). The class forwards to
+      # the host OS in v1 (no terminal of its own): its behavior — the `wsl.{enable,module}` host option, the
+      # host-scope `host-to-wsl-host` module import, and the `wsl-to-host` content route — is wired in the
+      # batteries section above (`hostToWslHost`/`wslToHost`). Corpus-INERT: no corpus host enables wsl, so
+      # the routes null-gate and the module import self-gates (as under v1, where wsl-to-host fires only on
+      # `host.wsl.enable`). The class registration admits the `wsl` key to `classifyKey`'s CLASS branch.
       wsl = {
-        description = "v1 WSL support class forwarding to host OS (batteries/wsl.nix:50); bare inert — no corpus host enables wsl, so primary-user's wsl.defaultUser is dead content (as under v1); registration unblocks the sibling nixos classification only.";
+        description = "v1 WSL support class forwarding to host OS (batteries/wsl.nix:50); behavior wired above (wsl.{enable,module} host option + host-to-wsl-host module import + wsl-to-host route), corpus-inert (no host enables wsl).";
       };
       # `maid` (batteries/maid.nix:36) + `hjem` (batteries/hjem.nix:34): v1 user-environment classes forwarding
-      # to the host OS. Corpus-unexercised (no aspect emits them), so inert; registered for built-in
-      # completeness so the §2.2 abort class never recurs on a v1 built-in.
+      # to the host OS. Their behavior — the per-host `{nix-maid,hjem}.{enable,module}` option, the host-scope
+      # module import, and the user-scope content forward — is wired in the batteries section above
+      # (`{maid,hjem}UserDetect`/`{maid,hjem}HostModulePolicy`). Corpus-INERT: no corpus user carries a
+      # maid/hjem class, so the forwards null-gate and the module imports self-gate.
       maid = {
-        description = "v1 nix-maid user-environment class (batteries/maid.nix:36); bare inert, corpus-unexercised.";
+        description = "v1 nix-maid user-environment class (batteries/maid.nix:36); behavior wired above (nix-maid.{enable,module} host option + host-module import + maid-user-detect forward), corpus-inert (no user carries the class).";
       };
       hjem = {
-        description = "v1 Hjem user-environment class (batteries/hjem.nix:34); bare inert, corpus-unexercised.";
+        description = "v1 Hjem user-environment class (batteries/hjem.nix:34); behavior wired above (hjem.{enable,module} host option + host-module import + hjem-user-detect forward), corpus-inert (no user carries the class).";
       };
 
       # ── v1 FLAKE SYSTEM OUTPUT classes (modules/policies/flake.nix:12-16 `systemOutputs`, registered
