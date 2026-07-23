@@ -128,6 +128,40 @@ let
     };
   };
   nativeImports = (nativeDen.output.outputFor rootId).${rootId}.${rootClass} or [ ];
+
+  # ── hasAspect accessors (#49 Option B): the config-wired collectPathSet/hasAspectIn/mkEntityHasAspect over
+  #    the built den's native `reach`, + the PURE mkProjectedHasAspect. Fixture = R5 self-named-aspect
+  #    (witness-map R5): a top-level aspect NAMED after the host auto-includes at that host (legacy/
+  #    self-provide.nix), so its key MUST deliver into the host's reach closure. The POSITIVE is asserted
+  #    from the DECLARATION (`aspects.igloo` → key "igloo"), NOT pulled from `reach` (non-tautology, R5). ──
+  hasAspectFixture = {
+    den.hosts.x86_64-linux.igloo.users.tux = { };
+    den.aspects.igloo.nixos.networking.hostName = "igloo";
+  };
+  hasAspectLib = denLibOf hasAspectFixture;
+  hasHandle = hasAspectLib.resolveEntity "host" {
+    host = {
+      name = "igloo";
+    };
+  };
+  hasPathSet = hasAspectLib.aspects.collectPathSet hasHandle;
+  hasEntity = hasAspectLib.aspects.mkEntityHasAspect hasHandle;
+  # The self-named node in the augmented `.aspects` list (identityKey = the gen-aspects.key "igloo").
+  iglooNode = builtins.head (builtins.filter (n: n.identityKey == "igloo") hasEntity.aspects);
+  hasRef = {
+    key = "igloo";
+  };
+
+  # PURE mkProjectedHasAspect (migrationLib, config-less): a lookup over a caller-supplied pathSet bucket.
+  proj = denCompat.mkProjectedHasAspect {
+    pathSetByScope = {
+      h = {
+        "core/network/manager" = true;
+      };
+    };
+    key = "h";
+  };
+  projKeyless = builtins.tryEval (proj { });
 in
 {
   flake.tests.compat-config-wired-lib = {
@@ -245,6 +279,79 @@ in
         (resolveLib.aspects.resolveImports rootClass resolveHandle).imports
         == (resolveLib.aspects.resolve rootClass resolveHandle).imports;
       expected = true;
+    };
+
+    # ── hasAspect accessors (#49 Option B) ────────────────────────────────────────────────────────────
+    # PURE mkProjectedHasAspect (migrationLib): membership TRUE for the present key, FALSE for an absent one
+    # (the negative → non-tautological), + a keyless ref aborts NAMED (refKey throw, never a silent false).
+    test-projected-hasaspect-pure = {
+      expr = {
+        present = proj { key = "core/network/manager"; };
+        absent = proj { key = "not/delivered"; };
+        keylessThrows = projKeyless.success;
+      };
+      expected = {
+        present = true;
+        absent = false;
+        keylessThrows = false;
+      };
+    };
+    # collectPathSet: the flat membership set from the host's native reach. The self-named `igloo` aspect
+    # (R5 declaration) delivers ⇒ its key is present; an undeclared key is absent (the negative).
+    test-collect-pathset-membership = {
+      expr = {
+        selfNamed = hasPathSet ? "igloo";
+        absent = hasPathSet ? "not/delivered";
+      };
+      expected = {
+        selfNamed = true;
+        absent = false;
+      };
+    };
+    # hasAspectIn handle ref → the same membership via a ref (native `.key`): the declared self-named aspect
+    # is delivered; an absent-key ref is false.
+    test-has-aspect-in = {
+      expr = {
+        delivered = hasAspectLib.aspects.hasAspectIn hasHandle { key = "igloo"; };
+        absent = hasAspectLib.aspects.hasAspectIn hasHandle { key = "not/delivered"; };
+      };
+      expected = {
+        delivered = true;
+        absent = false;
+      };
+    };
+    # mkEntityHasAspect: `.aspects` is the AUGMENTED resolved-aspects node list (non-empty, every node carries
+    # `.identity`/`.identityKey`/`.isNamed`), and the self-named node's identity accessors are grounded.
+    test-entity-hasaspect-augmented = {
+      expr = {
+        nonEmpty = hasEntity.aspects != [ ];
+        allAugmented = builtins.all (
+          n: (n ? identity) && (n ? identityKey) && (n ? isNamed)
+        ) hasEntity.aspects;
+        iglooIdentity = iglooNode.identity;
+        iglooIsNamed = iglooNode.isNamed;
+      };
+      expected = {
+        nonEmpty = true;
+        allAugmented = true;
+        iglooIdentity = "igloo";
+        iglooIsNamed = true;
+      };
+    };
+    # mkEntityHasAspect membership arms COLLAPSE to class-invariant (v1 unified model): `__functor`, `forClass`
+    # <any>, and `forAnyClass` all agree over the same `check` — the delivered self-named aspect reads true on
+    # all three (faithfulness of the collapse).
+    test-entity-hasaspect-collapse = {
+      expr = {
+        functor = hasEntity hasRef;
+        forClass = hasEntity.forClass "nixos" hasRef;
+        forAnyClass = hasEntity.forAnyClass hasRef;
+      };
+      expected = {
+        functor = true;
+        forClass = true;
+        forAnyClass = true;
+      };
     };
   };
 }

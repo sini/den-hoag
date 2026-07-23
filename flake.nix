@@ -206,6 +206,19 @@
           # fx.keyClassification — the #49-SLICE: real, reproducing v1's `structuralKeysSet` (the ONE export
           # the corpus reads). The rest of the #49 semantic surface stays escalated.
           fx.keyClassification = compat.keyClassification;
+          # mkProjectedHasAspect — PURE (config-less): a lookup over an ALREADY-COMPUTED per-scope pathSet
+          # (v1 has-aspect.nix @a2f4b60 :45-54). `check` reads only its `pathSetByScope` arg + the config-less
+          # `refKey`, so it is REAL here (compat has-aspect.nix) and rides through into the bridge's
+          # `configWiredLib.aspects` unchanged (that set starts from `denLib.aspects`).
+          mkProjectedHasAspect = compat.mkProjectedHasAspect;
+          # collectPathSet/hasAspectIn/mkEntityHasAspect — CONFIG-WIRED (#49): v1 ran a fresh fx pipeline per
+          # `{ tree, class }`, but den-hoag reads the BUILT fleet's memoized `reach` — so they need
+          # `config.den` and cannot be real on the config-less migrationLib. NAMED config-wired stubs here
+          # (throw on `inputs.den.lib`); the bridge's `configWiredLib.aspects` OVERRIDES them with the applied
+          # adapter (lib/compat/has-aspect-verbs.nix) on the `den` module arg.
+          collectPathSet = stub "lib.aspects.collectPathSet" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+          hasAspectIn = stub "lib.aspects.hasAspectIn" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+          mkEntityHasAspect = stub "lib.aspects.mkEntityHasAspect" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
         };
         resolveEntity = stub "lib.resolveEntity" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
         home = stub "lib.home" "the home-entity surface (board #49) — not yet available";

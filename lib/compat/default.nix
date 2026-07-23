@@ -84,7 +84,7 @@ let
   # `refKey`/`mkEnrich` bind the identity; the schema entity-kind set is bound per-fleet at the bridge
   # (flake-module.nix `mkFleetModuleWith` → `den.enrichBindings`).
   hasAspect = import ./has-aspect.nix {
-    inherit aspects;
+    inherit aspects prelude;
   };
   legacy = {
     provides = import ./legacy/provides.nix (deps // { inherit errors; });
@@ -179,7 +179,17 @@ in
   # The projected hasAspect entity surface (v1 PR #602). `refKey` is a SINGLE native-`.key` lookup (the ref
   # carries its own gen identity, no reconstruction); `mkEnrich` builds the `den.enrichBindings` hook (the
   # bridge binds the schema entity-kind set). Exposed for the witness suite.
-  inherit (hasAspect) refKey mkEnrich;
+  #
+  # `mkProjectedHasAspect` (PURE lookup, migrationLib) + `augment` (the resolved-aspects node identity
+  # projection, consumed by has-aspect-verbs.nix's config-wired `mkEntityHasAspect` at the bridge) — v1
+  # has-aspect.nix @a2f4b60 :45-54 / :56-69. Config-less halves of the accessor family whose config-wired
+  # siblings (collectPathSet/hasAspectIn/mkEntityHasAspect) are bound at the bridge over `built.den`.
+  inherit (hasAspect)
+    refKey
+    mkEnrich
+    mkProjectedHasAspect
+    augment
+    ;
   # The compat nixos instantiate wrapper builder (§2.5 carry-in), exposed as a seam: the parity harness
   # supplies `terminal = crossNixos` for a real build; the fleet wiring defaults it to `collect`.
   inherit (flakeModuleWiring) mkNixosInstantiate;

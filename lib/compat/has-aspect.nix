@@ -32,6 +32,7 @@
 # `seen` (hence resolved-aspects). So the entity-stamp never re-enters the resolve that produced it (W4).
 {
   aspects,
+  prelude,
 }:
 let
   # A NATIVE-IDENTITY refKey. Under A-IDENT a `den.aspects.<path>` value carries its OWN container-relative
@@ -46,9 +47,65 @@ let
       ref.key
     else
       throw "hasAspect: ref must be a `den.aspects.<path>` value carrying `key` (got ${builtins.typeOf ref}).";
+
+  # PURE projected hasAspect — a lookup over an ALREADY-COMPUTED per-scope path set, keyed by entity identity
+  # (v1 nix/lib/aspects/has-aspect.nix @a2f4b60 :45-54, `mkProjectedHasAspect`). Config-LESS: `check` reads
+  # only the `pathSetByScope` argument + the config-less `refKey`, so it rides the migrationLib (the pathSet
+  # is a byproduct of the owning entity's resolution, threaded in by the caller — resolveWithPaths supplies
+  # the native `reach` closure keyed by id). `pathSetByScope`/`key` are read lazily — forced only when the
+  # boolean is scrutinised. Surface is class-invariant (the resolved-aspects set is a node's class-invariant
+  # union by design), so `forClass`/`forAnyClass` collapse to the same `check` (matches mkEntityHasAspect and
+  # the shipped mkEnrich, has-aspect.nix `forClass = _class: mkHas`).
+  mkProjectedHasAspect =
+    {
+      pathSetByScope,
+      key,
+    }:
+    let
+      check = ref: key != null && (pathSetByScope.${key} or { }) ? ${refKey ref};
+    in
+    {
+      __functor = _: check;
+      forClass = _class: check; # structural set is class-invariant (matches mkEntityHasAspect)
+      forAnyClass = check;
+    };
+
+  # Augment a resolved-aspects node with the identity accessors v1's `.aspects` callers read (v1
+  # has-aspect.nix @a2f4b60 :56-69). den-hoag's node shape is `{ key; content; sharedFoldKey; }`
+  # (resolved-aspects.nix:112,135-143) — NOT v1's `{ name; meta; includes; }` — so the field-map crosses:
+  #   • `.identityKey` ← the node's `.key`, the shipped gen-aspects.key identity computed at resolve
+  #     (forwardExpand `key = keyOf aspect`, resolved-aspects.nix); NOT recomputed (v1 `identity.key node`).
+  #     den-hoag's key carries NO `{ctxId}` suffix (the dissolution — no re-key machinery), so v1's
+  #     base-vs-full distinction collapses; `.identity` is the pretty FQN over the resolved content.
+  #   • `.identity` ← `pathKey (aspectPath content)` — v1's `identity.baseKey` twin (provider chain + name),
+  #     over `node.content` (which carries the `.meta`/`.name` the identity lib reads; the bare node does not).
+  #   • `.isNamed` ← the v1 key-shape test (:65-68): a meaningful content name AND the `<anon>`/`<function
+  #     body>` infix guards applied to the base-identity string.
+  #   • `.name` — A-IDENT DIVERGENCE: den-hoag nodes carry NO top-level `.name` (it lives under `.content`,
+  #     resolved-aspects.nix node shape). v1 surfaced `node.name` (:65); the faithful-to-den-hoag choice is
+  #     `content.name or null` (never an ungrounded fabricated name). `.meta`/`.includes`/`.content` ride
+  #     from `node.content` faithfully.
+  augment =
+    node:
+    let
+      content = node.content;
+      baseId = aspects.pathKey (aspects.aspectPath content);
+    in
+    node
+    // {
+      identity = baseId;
+      identityKey = node.key;
+      isNamed =
+        aspects.isMeaningfulName (content.name or "<anon>")
+        && !(prelude.hasInfix "<anon>" baseId)
+        && !(prelude.hasInfix "<function body>" baseId);
+      name = content.name or null;
+      meta = content.meta or { };
+      includes = content.includes or [ ];
+    };
 in
 {
-  inherit refKey;
+  inherit refKey mkProjectedHasAspect augment;
 
   # The POST-RESOLUTION binding-enrichment hook (the compat `den.enrichBindings` value). `entityKinds` is
   # the schema entity-kind set (the fleet's `den.schema` kind names) baked at bridge-assembly time; the

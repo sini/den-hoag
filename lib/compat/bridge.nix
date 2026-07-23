@@ -156,12 +156,23 @@ let
     # `mkDen`). LAZY: `resolveVerbs` is a bag of thunks and `built.den` is forced only when a verb is CALLED
     # (the self-reference / off-fleet-tree ceilings are ledgered in resolve-verbs.nix). `aspects.fx`
     # .keyClassification and the `aspects.resolveWithState` LATENT stub ride through from `denLib.aspects`.
+    # den.lib.aspects.{collectPathSet,hasAspectIn,mkEntityHasAspect} (#49 hasAspect accessors) — the
+    # config-wired ADAPTER over the built den's native resolved-aspects (lib/compat/has-aspect-verbs.nix; the
+    # migrationLib carries the throwing config-wired stubs). Same `built.den` hoist + laziness posture as the
+    # resolve verbs (forced only when an accessor is CALLED; ceilings ledgered in has-aspect-verbs.nix). The
+    # PURE sibling `mkProjectedHasAspect` rides through from `denLib.aspects` (migrationLib) — a config-less
+    # lookup that needs no bridge wiring.
     aspects = denLib.aspects // {
       inherit (resolveVerbs) resolve resolveWithPaths resolveImports;
+      inherit (hasAspectVerbs) collectPathSet hasAspectIn mkEntityHasAspect;
     };
     inherit (resolveVerbs) resolveEntity;
   };
   resolveVerbs = import ./resolve-verbs.nix { den = built.den; };
+  hasAspectVerbs = import ./has-aspect-verbs.nix {
+    den = built.den;
+    inherit (compat) refKey augment;
+  };
   denArg = compat.annotatedViewNav fleetDen // {
     lib = configWiredLib;
     # v1 root-namespace provider registry (lib/compat/provides-nav.nix): both aliases resolve the same
