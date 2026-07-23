@@ -37,6 +37,17 @@
   # twin; single source compat/exclude-family-names.nix). Same posture: the include-arm stamp is the
   # only path for a corpus excluder wired through an include (its compiled key is synthetic).
   excludeFamilyNames ? [ ],
+  # den.features compat-desugar-arm gates (Tier-1, register compat-feature-register.md). Both default ON,
+  # so a native/non-flag caller keeps the unconditional surface (all-on ≡ pre-feature, byte-identical).
+  # `aspectIncludeArm` — the `{ __isPolicy }`-in-a-regular-aspect's-`.includes` diversion arm: off collapses
+  # `aspectIncludeRecords → [ ]` so a policy record in an aspect include hits `unregisteredPolicyInclude`
+  # (a named abort). AMBIENT-COUPLED: the always-on `defaults` battery coerces os-to-host/user-to-host into
+  # this arm, so off REQUIRES `ambientBatteries` off too (the coupling the removability gate names).
+  # `lateDispatch` — the descendant-formal bare-fn radiation arm: off makes `radiatedBareFn = _: false`
+  # (a `{ host, user }` include stays node-local, firing in place via the shared `normalize` wrap-ground
+  # path) and collapses `aspectIncludeBareFns → [ ]`. Clean byte-baseline (no ambient raw late-dispatch fn).
+  aspectIncludeArm ? true,
+  lateDispatch ? true,
 }:
 let
   # Stamp `__resolveFamily = true` iff a policy REF's v1 name is in `resolveFamilyNames` — the R2 tag
@@ -1173,9 +1184,9 @@ let
   # confinement). The radiate GUARD, the node-local divert predicate, and the walk collector all share THIS
   # ONE computation, so they never diverge.
   isLateDispatchFn = fn: builtins.any (k: (ing.schema.${k}.parent or null) != null) (firesAtOf fn);
-  normalizeList = mkNormalize allClassNames (builtins.attrNames (
-    v1Decls.quirks or { }
-  )) aspectIncludeDivertedNames (ref: builtins.isFunction ref && isLateDispatchFn ref);
+  normalizeList = mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { })) (
+    if aspectIncludeArm then aspectIncludeDivertedNames else { }
+  ) (if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFn ref) else (_: false));
   # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
   # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
   isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
@@ -1313,8 +1324,12 @@ let
       # aspect-includes are single-referenced).
       bareFns = walked.bareRecs;
     };
-  aspectIncludeRecords = aspectIncludeWalk.recs;
-  aspectIncludeBareFns = aspectIncludeWalk.bareFns;
+  # den.features gates (register compat-feature-register.md): off empties the top-level binding so every
+  # downstream consumer cascades inert — `aspectIncludeArm` off drops `aspectIncludeDivertedNames`,
+  # `aspectIncludePolicies`, and this arm's `includeReferencedNames` contribution; `lateDispatch` off drops
+  # `aspectIncludeBareFnArm.{aspects,policies}`. The walk's internal collection may still run (unused).
+  aspectIncludeRecords = if aspectIncludeArm then aspectIncludeWalk.recs else [ ];
+  aspectIncludeBareFns = if lateDispatch then aspectIncludeWalk.bareFns else [ ];
   aspectIncludeDivertedNames = prelude.genAttrs (map (r: r.name) aspectIncludeRecords) (_: true);
   aspectIncludePolicies = builtins.listToAttrs (
     map (

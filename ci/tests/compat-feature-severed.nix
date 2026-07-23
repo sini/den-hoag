@@ -17,6 +17,11 @@
 #   - PER-BATTERY features (class (b), rung 2b): `battery.<name>` for all 12 gateable batteries — off drops
 #     the provision so a `den.batteries.<name>` reference native-misses; a data-driven fold witnesses the
 #     severed-absent / on-present / sibling-decoupling triple per battery.
+#   - COMPAT-DESUGAR-ARM features (class (c), rung 3, both gate inside compile.nix): `lateDispatch` (a
+#     GENUINE clean byte-baseline — decl/trace baselines + S1 BEHAVIORAL radiate-on/absent-off teeth) ·
+#     `aspectIncludeArm` (AMBIENT-COUPLED, NO byte-baseline — the ambient `defaults` battery rides the same
+#     arm, so the witness is on-fires + a coupling park on the ambient os-to-host record + ambient-coupled-
+#     clean; register: aspectIncludeArm ⊇ ambientBatteries).
 #
 # All-on ≡ today: `full = denCompat` is `mkWiringWith { }` (every default), byte-identical to `mkWiring
 # legacy`; each `off*` wiring drops exactly one feature via the record. The AMBIENT (defaults + self-provide)
@@ -227,6 +232,86 @@ let
       };
     }
   ) { } batteryNames;
+
+  # ── rung 3: compat-desugar-arm gates (class (c), Tier-1 — both gate inside compile.nix, no kernel edit) ─
+  offLateDispatch = denCompat.mkWiringWith { lateDispatch = false; };
+  # `aspectIncludeArm` is AMBIENT-COUPLED (NOT a clean byte-baseline): the always-on `defaults` battery
+  # coerces its os-to-host / user-to-host routes into the SAME `{ __isPolicy }`-in-aspect-includes arm this
+  # flag gates. Arm-off ALONE (ambient still on) makes those ambient records undivertable → the arm's own
+  # `unregisteredPolicyInclude` sentinel fires ON the ambient defaults record — the coupling, named. Only
+  # dropping `ambientBatteries` too resolves it. So its witness is a present/severed pair PLUS an
+  # ambient-coupled-clean row, NOT a decl byte-baseline (aspectIncludeArm ⊇ ambientBatteries consumers).
+  offAspectIncludeArm = denCompat.mkWiringWith { aspectIncludeArm = false; };
+  offAspectIncludeArmAmbient = denCompat.mkWiringWith {
+    aspectIncludeArm = false;
+    ambientBatteries = false;
+  };
+
+  # every `tag` string reachable in a wrapped deferredModule (the gen-aspects `{ imports = [ … ]; }` form).
+  tags =
+    m:
+    if builtins.isAttrs m then
+      (if m ? tag then [ m.tag ] else [ ])
+      ++ (if m ? imports then builtins.concatMap tags m.imports else [ ])
+    else
+      [ ];
+
+  # lateDispatch — a CONCRETE descendant-formal radiation fixture: a `{ host, user }` bare-fn include on a
+  # HOST aspect carries homeManager content KEYED BY the descendant `user` coord. ON it radiates to the
+  # host's user CELL (content lands at `user:tux@host:igloo`); OFF `radiatedBareFn = _: false` keeps it
+  # node-local at the host, where the `user` coord is absent → the shared `wrapGatedFn` coord-gate takes its
+  # false branch → content ABSENT at the user cell (the documented no-op). Non-vacuous: on ≠ off.
+  lateDispatchFixture = {
+    hosts.x86_64-linux.igloo = {
+      class = "nixos";
+      users.tux = { };
+    };
+    schema.user.parent = "host";
+    aspects.carrier.includes = [
+      ({ host, user, ... }: { homeManager.tag = "radiated-${user.name}"; })
+    ];
+    schema.host.includes = [ "carrier" ];
+  };
+  ldRadiatedTags =
+    w:
+    builtins.concatMap tags (
+      (w.mkDen [ (v1mod lateDispatchFixture) ])
+      .den.output.systems.home-manager."user:tux@host:igloo".modules or [ ]
+    );
+
+  # aspectIncludeArm — a `{ __isPolicy }` record DIRECTLY in a regular aspect's `.includes` (the corpus
+  # host-aspects shape, `den.aspects.sini.includes = [ den.batteries.host-aspects ]`). ON it compiles to a
+  # `__aspectInclude__<name>` rule; the coupling park is witnessed off the ambient defaults record instead.
+  aspectIncludeFixture = {
+    hosts.x86_64-linux.igloo.class = "nixos";
+    aspects.injected.nixos.tag = "injected-by-policy";
+    aspects.carrier = {
+      nixos.tag = "carrier-own";
+      includes = [
+        {
+          __isPolicy = true;
+          name = "host-aspects-project";
+          fn = { host, ... }: [
+            {
+              __policyEffect = "include";
+              value = {
+                name = "injected";
+              };
+            }
+          ];
+        }
+      ];
+    };
+    schema.host.includes = [ "carrier" ];
+  };
+  armFires = w: (w.compileFull aspectIncludeFixture).policies ? __aspectInclude__host-aspects-project;
+  # the arm's OWN sentinel (`unregisteredPolicyInclude`) fires on the AMBIENT defaults battery's os-to-host
+  # record when the arm is off but ambient stays on — deepSeq the compiled `defaults` aspect to force it.
+  armSeveredParks =
+    w: !(builtins.tryEval (builtins.deepSeq (w.compileFull { }).aspects.defaults true)).success;
+  # clean iff BOTH arm and ambient are off — a bare fleet compiles without the coupling abort, proving the
+  # coupling is EXACTLY ambientBatteries (no other ambient consumer of the arm).
+  compilesClean = w: (builtins.tryEval (builtins.deepSeq (w.compileFull { }) true)).success;
 in
 {
   flake.tests.compat-feature-severed = {
@@ -367,6 +452,52 @@ in
     test-gather-behavioral-off-empty = {
       expr = gatheredNames offGather;
       expected = [ ];
+    };
+
+    # ══ ARM: lateDispatch ─ descendant-formal bare-fn radiation (rung 3, compile.nix) ────────────────────
+    # (a) decl/trace baselines — a GENUINE clean byte-baseline (unlike aspectIncludeArm): no ambient path
+    # carries a raw late-dispatch bare fn (every ambient emitter is a `{ __isPolicy }`/`{ __denCanTake }`
+    # record), so a non-late-dispatch fixture is byte-identical with the arm off.
+    test-lateDispatch-decl-baseline = {
+      expr = declSeverableOn offLateDispatch;
+      expected = true;
+    };
+    test-lateDispatch-trace-baseline = {
+      expr = traceEq offLateDispatch edgeRoute;
+      expected = true;
+    };
+    # (b) S1 BEHAVIORAL teeth — ON the `{ host, user }` include RADIATES its homeManager content to the
+    # host's user cell; OFF it stays node-local (the `user` coord absent at the host → coord-gate false →
+    # nothing at the user cell). Mutation-provable: re-couple the radiation → the off row goes red.
+    test-lateDispatch-behavioral-on-radiates = {
+      expr = ldRadiatedTags full;
+      expected = [ "radiated-tux" ];
+    };
+    test-lateDispatch-behavioral-off-absent = {
+      expr = ldRadiatedTags offLateDispatch;
+      expected = [ ];
+    };
+
+    # ══ ARM: aspectIncludeArm ─ `{ __isPolicy }`-in-aspect-includes diversion (rung 3, compile.nix) ──────
+    # AMBIENT-COUPLED: NO decl byte-baseline row (arm-off-alone aborts the ambient defaults record). The
+    # witness is on-fires + the coupling park + the ambient-coupled-clean row that names the coupling.
+    # on-fires — the host-aspects record compiles to its `__aspectInclude__` rule under the all-on wiring.
+    test-aspectIncludeArm-on-fires = {
+      expr = armFires full;
+      expected = true;
+    };
+    # severed-parks — arm-off (ambient STILL ON): the ambient defaults battery's os-to-host `{ __isPolicy }`
+    # record is undivertable → the arm's own `unregisteredPolicyInclude` NAMED sentinel fires. This IS the
+    # coupling: turning off the arm without ambient aborts on ambient's own records.
+    test-aspectIncludeArm-severed-parks = {
+      expr = armSeveredParks offAspectIncludeArm;
+      expected = true;
+    };
+    # ambient-coupled-clean — arm-off AND ambient-off: a bare fleet compiles clean, proving the coupling is
+    # EXACTLY ambientBatteries (design §6.1 — the removability gate NAMES its coupling).
+    test-aspectIncludeArm-ambient-coupled-clean = {
+      expr = compilesClean offAspectIncludeArmAmbient;
+      expected = true;
     };
   }
   # ══ FEATURE: battery.<name> ─ per-battery provision drop (rung 2b), data-driven over all 12 ─────────────

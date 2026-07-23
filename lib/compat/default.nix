@@ -34,7 +34,9 @@ let
   # The pure compile core (Law C2): v1 declarations → den-hoag concern declarations. `declare` is
   # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets, including the
   # `delivery` intent kind); the gen-edge record is rendered from that intent later, at the firing node.
-  compile = import ./compile.nix {
+  # The constant args (shared by every wiring); the two den.features desugar-arm gates
+  # (`aspectIncludeArm`/`lateDispatch`) VARY per wiring, so `mkCompile` bakes them per feature record.
+  compileBaseArgs = {
     inherit
       prelude
       ingest
@@ -57,6 +59,13 @@ let
     # (exclude-family-names.nix), shared with flake-module's excludeFamilyModule.
     excludeFamilyNames = import ./exclude-family-names.nix;
   };
+  # `mkCompile feat` — the per-feature compile: bakes the two desugar-arm gates from the wiring's feature
+  # record (register compat-feature-register.md). All-on (`defaultFeatures`) reduces to the unconditional
+  # surface, byte-identical. The external `compile`/`compileFull` API stays 1-arg (the fleet fn is NOT
+  # curried) — a per-wiring compile is a distinct closed core, so `compile fx` callers are unaffected.
+  mkCompile =
+    feat: import ./compile.nix (compileBaseArgs // { inherit (feat) aspectIncludeArm lateDispatch; });
+  compile = mkCompile defaultFeatures;
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
   deliverLib = import ./deliver.nix { inherit prelude errors; };
@@ -142,10 +151,12 @@ let
         prelude
         schema
         aspects
-        compile
         ingest
         hasAspect
         ;
+      # the per-feature compile (bakes the aspectIncludeArm/lateDispatch desugar-arm gates); all-on ≡ the
+      # shared `compile`, byte-identical. flake-module receives an already-feat-baked 1-arg compile.
+      compile = mkCompile feat;
       gather = gatherLib;
       inherit legacy;
       features = feat;
@@ -204,6 +215,8 @@ let
   defaultFeatures = (builtins.mapAttrs (_: _: true) featureLegacyModule) // {
     hasAspect = true; # class (b) — den.enrichBindings + den.enrichContext (ONE flag)
     gather = true; # class (b) — den.channelGather
+    aspectIncludeArm = true; # class (c) — compile.nix `{ __isPolicy }`-in-aspect-includes diversion arm
+    lateDispatch = true; # class (c) — compile.nix descendant-formal bare-fn radiation arm
     battery = builtins.mapAttrs (_: _: true) batteryNames; # class (b) — per-battery, nested sub-record
   };
   # Deep-merge the nested `battery` sub-record so a partial `{ battery.hostname = false; }` override keeps the
