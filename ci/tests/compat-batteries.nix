@@ -10,7 +10,8 @@
 #        emitting that class key (e.g. `wsl`) routes as CLASS content, not a nested aspect.
 #   (1t) TRANSITIVE (Fork B) — a wrapped fn's RESULT and a static include's `.includes` are re-normalized
 #        (nested bare fns wrapped, nested `homeManager` grounded to `home-manager`).
-#   (2) the seven corpus batteries provisioned at `config.den.batteries.<name>` (lib/compat/batteries.nix).
+#   (2) the twelve batteries (seven corpus + five coverage) provisioned at `config.den.batteries.<name>`
+#       (lib/compat/batteries.nix).
 #   (3) host-aspects — its `{ __isPolicy; fn }` include fires a REAL `den.lib.policy.spawn` (Task 3).
 #   (4) surface-totality ACCEPTS a `den.batteries` key (inert-by-reference, like `reservedKeys`).
 {
@@ -138,6 +139,11 @@ let
     "inputs'"
     "self'"
     "unfree"
+    "insecure"
+    "tty-autologin"
+    "vm-autologin"
+    "user-shell"
+    "import-tree"
   ];
 
   # ── (3) host-aspects: its `{ __isPolicy; fn }` include fires a real spawn (Task 3 resolves the ctor). ─
@@ -339,6 +345,46 @@ let
       (denCompat.compile { aspects.b.includes = [ r5FnInc ]; }).aspects.b.includes;
   # a ctx WITH the coord (+ an EXTRA `__entry` that intersectAttrs must drop) vs WITHOUT it.
   r5FiredKeys = wrapped: ctx: builtins.attrNames ((wrapped ctx).nixos or { });
+
+  # ── (5A) insecure `__functor` — byte-clone of unfree modulo the emitted option key. Parametric `__fn`
+  #    include + the SAME class-coord gate (den-hoag injects no `class` → gated `{ }`; fires WITH one). ─────
+  insecureAspect = bat.insecure [ "openssl-1.0.0" ];
+  insInc = bat.insecure [ "openssl-1.0.0" ];
+  insWrapped =
+    builtins.head
+      (denCompat.compile { aspects.a.includes = [ insInc ]; }).aspects.a.includes;
+  insFires =
+    ctx:
+    genPrelude.hasInfix "permittedInsecurePackages" (builtins.toJSON ((insWrapped ctx).nixos or { }));
+
+  # ── (5B) tty-autologin `__functor` → `{ name; meta.provider; nixos }` module aspect (inert-by-reference:
+  #    do NOT force the `nixos` module — it reads pkgs/config at NixOS eval depth). ─────────────────────────
+  ttyAspect = bat.tty-autologin "root";
+
+  # ── (5C) vm-autologin `__functor` → `nixos.virtualisation.vmVariant` module aspect. ────────────────────
+  vmAspect = bat.vm-autologin "root";
+
+  # ── (5D) user-shell — curried bare fn `shell: { description; includes }` (NOT a functor record); the
+  #    `{ host, user }` include fires with the entity's userName/host name. ────────────────────────────────
+  usAspect = bat.user-shell "fish";
+  usFirst = builtins.head usAspect.includes;
+
+  # ── (5E) import-tree — a SECOND battery instantiation with a STUBBED `inputs.import-tree`, to exercise the
+  #    readDir/emit path over the committed `_nixos` fixture (inert-by-reference: the base `bat` needs no
+  #    input for the presence/provides shape). ─────────────────────────────────────────────────────────────
+  batWithIT =
+    (batMod {
+      config = { };
+      lib = nixpkgsLib;
+      withSystem = _sys: g: g { };
+      inputs.import-tree = p: { __importTreeStub = toString p; };
+      self = { };
+      den = {
+        lib = denHoag;
+      };
+    }).config.den.batteries;
+  itFixture = "${denHoagSrc}/ci/tests/_fixtures/import-tree";
+  itAspect = batWithIT.import-tree itFixture;
 in
 {
   flake.tests.compat-batteries = {
@@ -535,8 +581,8 @@ in
       };
     };
 
-    # (2) all seven corpus batteries provisioned at config.den.batteries.<name>.
-    test-seven-batteries-present = {
+    # (2) all twelve batteries (seven corpus + five coverage) provisioned at config.den.batteries.<name>.
+    test-twelve-batteries-present = {
       expr = batteryNames;
       expected = expectedNames;
     };
@@ -609,6 +655,155 @@ in
         hasFn = true;
         name = "unfree(steam)";
       };
+    };
+
+    # (5A) insecure `__functor` — parametric `{ __fn }` aspect, byte-clone of unfree (u26).
+    test-insecure-functor-parametric = {
+      expr = {
+        hasFn = insecureAspect ? __fn;
+        name = insecureAspect.name;
+      };
+      expected = {
+        hasFn = true;
+        name = "insecure(openssl-1.0.0)";
+      };
+    };
+    # (5A') class-coord gate: inert without `class` (den-hoag injects none — the u1/board-#55 posture),
+    #       fires WITH it (the emitted key is permittedInsecurePackages, unfree's exact mechanism).
+    test-insecure-class-coord-inert = {
+      expr = {
+        fnRequiresClass = (builtins.functionArgs insInc.__fn).class == false;
+        firesWithoutClass = insFires {
+          __entry = { };
+          host = {
+            class = "nixos";
+          };
+        };
+        firesWithClass = insFires {
+          __entry = { };
+          host = {
+            class = "nixos";
+          };
+          class = "nixos";
+        };
+      };
+      expected = {
+        fnRequiresClass = true;
+        firesWithoutClass = false;
+        firesWithClass = true;
+      };
+    };
+
+    # (5B) tty-autologin `__functor` → `{ name; meta.provider; nixos }` module aspect (u27). Assert `? nixos`
+    #      + `name` (inert-by-reference — do NOT force the module, it reads pkgs/config at NixOS eval depth).
+    test-tty-autologin-functor = {
+      expr = {
+        name = ttyAspect.name;
+        hasNixos = ttyAspect ? nixos;
+        provider = ttyAspect.meta.provider;
+      };
+      expected = {
+        name = "tty-autologin(root)";
+        hasNixos = true;
+        provider = [
+          "den"
+          "provides"
+        ];
+      };
+    };
+
+    # (5C) vm-autologin `__functor` → `nixos.virtualisation.vmVariant` module aspect (u28).
+    test-vm-autologin-functor = {
+      expr = {
+        name = vmAspect.name;
+        hasVmVariant = (vmAspect.nixos or { }) ? virtualisation;
+        provider = vmAspect.meta.provider;
+      };
+      expected = {
+        name = "vm-autologin(root)";
+        hasVmVariant = true;
+        provider = [
+          "den"
+          "provides"
+        ];
+      };
+    };
+
+    # (5D) user-shell — curried bare fn `shell: { description; includes }` (u29); the `{ host, user }`
+    #      include fires with the entity's userName/host name and grounds `programs.fish.enable` under nixos.
+    test-user-shell-curried = {
+      expr = {
+        hasDescription = usAspect ? description;
+        includeCount = builtins.length usAspect.includes;
+        firedName =
+          (usFirst {
+            host = {
+              name = "h1";
+            };
+            user = {
+              userName = "vic";
+            };
+          }).name;
+        hasNixos =
+          (usFirst {
+            host = {
+              name = "h1";
+            };
+            user = {
+              userName = "vic";
+            };
+          }) ? nixos;
+      };
+      expected = {
+        hasDescription = true;
+        includeCount = 2;
+        firedName = "user-shell/vic@h1";
+        hasNixos = true;
+      };
+    };
+
+    # (5E) import-tree — presence + `provides` shape (no input needed — inert-by-reference) (u30).
+    test-import-tree-present = {
+      expr = {
+        hasDescription = bat.import-tree ? description;
+        providesKeys = builtins.sort (a: b: a < b) (builtins.attrNames bat.import-tree.provides);
+      };
+      expected = {
+        hasDescription = true;
+        providesKeys = [
+          "home"
+          "host"
+          "user"
+        ];
+      };
+    };
+    # (5E') functor readDir emits a per-class `imports` under the stripped class key, via the stubbed input.
+    test-import-tree-functor-emits = {
+      expr = {
+        name = itAspect.name;
+        provider = itAspect.meta.provider;
+        hasNixos = itAspect ? nixos;
+        importStub = (builtins.head itAspect.nixos.imports).__importTreeStub;
+      };
+      expected = {
+        name = "import-tree(import-tree)";
+        provider = [
+          "den"
+          "batteries"
+        ];
+        hasNixos = true;
+        importStub = "${denHoagSrc}/ci/tests/_fixtures/import-tree/_nixos";
+      };
+    };
+    # (5E'') `provides.host` re-applies the functor at <root>/<host.name> (empty subtree ⇒ no _class keys).
+    test-import-tree-provides-host = {
+      expr =
+        (batWithIT.import-tree.provides.host itFixture {
+          host = {
+            name = "sub";
+          };
+        }).name;
+      expected = "import-tree(sub)";
     };
   };
 }
