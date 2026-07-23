@@ -393,7 +393,7 @@ in
       expr =
         let
           namelessTypo = mkNode "nameless-typo" { nixxos.tag = "boom"; }; # NO `name` key in content.
-          r = builtins.tryEval (builtins.seq (assertKeysRegistered namelessTypo) true);
+          r = builtins.tryEval (builtins.seq (assertKeysRegistered { } namelessTypo) true);
         in
         {
           # Aborts (not silently passing) — the fallback name reaches the named-abort branch.
@@ -403,7 +403,7 @@ in
           # registered-key `.name`-less aspect pass, so the abort above is the NAMED unregistered-key path.
           namelessRegisteredOk =
             (builtins.tryEval (
-              builtins.seq (assertKeysRegistered (mkNode "nameless-ok" { nixos.tag = "ok"; })) true
+              builtins.seq (assertKeysRegistered { } (mkNode "nameless-ok" { nixos.tag = "ok"; })) true
             )).success;
         };
       expected = {

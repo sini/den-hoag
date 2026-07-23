@@ -78,6 +78,47 @@ let
   # its native gen-aspects `.key`, the identity compile grounds by). No `__provider` annotation: identity is
   # the native `.key`, born in the type.
   fleetDen = config.den;
+
+  # ── `den.provides.forward` / `den._.forward` — the v1 `den.batteries.forward` surface (COMPAT nav). ──
+  # v1 `nix/lib/forward.nix` `forwardEach = fwd: { includes = map (item: forwardItem …) fwd.each; }`
+  # (pin 11866c16), navigated by the corpus as `den.provides.forward`/`den._.forward` (root-namespace
+  # provider aliases). STRATEGY-B port: each `forwardItem` stamps a `meta.__forward` SPEC whose per-item
+  # fields are RESOLVED at build (concrete `fromClass`/`intoClass`/`staticIntoPath` strings/lists), so the
+  # spec reaches the KERNEL projection (output-modules `forwardRoutesAt` / class-modules exemption) as data.
+  # The forward is a CLASS-REROUTE: the collected `fromClass` bucket → `intoClass` at `intoPath`, with the
+  # (optional) per-item `guard`/`adaptArgs` applied at the terminal crossing (v1 compile-forward.nix:
+  # `sourceAlreadyCollected` route — `aspect-chain`/`fromAspect` is a locality tag, not the content source).
+  # SCOPE: only `forward` is surfaced here; the fuller provides registry (define-user/primary-user/
+  # mutual-provider) is a later addition.
+  forwardEach =
+    fwd:
+    let
+      forwardItem =
+        item:
+        let
+          intoPathRaw = (fwd.intoPath or (_: [ ])) item;
+        in
+        {
+          includes = [ ];
+          meta.__forward = {
+            fromClass = fwd.fromClass item;
+            intoClass = (fwd.intoClass or (_: throw "den.provides.forward: no intoClass")) item;
+            # v1 `staticIntoPath` (forward.nix): a function-valued intoPath is dynamic ⇒ its STATIC part [ ].
+            intoPath = if builtins.isFunction intoPathRaw then [ ] else intoPathRaw;
+            # The per-item guard/adaptArgs RAW closures + the item, so the KERNEL crossing can apply v1's
+            # `guardFn` (`res item` for a fn guard, `optionalAttrs res` for a bool) at the terminal.
+            guard = fwd.guard or null;
+            adaptArgs = fwd.adaptArgs or null;
+            inherit item;
+          };
+        };
+    in
+    {
+      includes = map forwardItem fwd.each;
+    };
+  forwardProvider = {
+    forward = forwardEach;
+  };
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
@@ -487,6 +528,10 @@ in
   # the compile view (`mkDenWith`), so its emitted include grounds by the native gen-aspects `.key`.
   config._module.args.den = fleetDen // {
     lib = denLib;
+    # v1 root-namespace provider aliases — surfaces ONLY `forward`; the fuller provides/`_` registry
+    # (define-user/primary-user/mutual-provider) is a later addition.
+    provides = forwardProvider;
+    _ = forwardProvider;
   };
 
   config.flake =

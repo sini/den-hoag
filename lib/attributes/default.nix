@@ -234,7 +234,7 @@ in
       cm = classModules { inherit classNames classifyKey artifactExclusive; };
     in
     {
-      inherit (cm) classSliceOf assertKeysRegistered;
+      inherit (cm) classSliceOf assertKeysRegistered forwardSourceClassesOf;
     };
 
   # Expose the structural builder for the suite's minimal-scenario scaffolding (b2 builds

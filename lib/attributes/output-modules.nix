@@ -106,12 +106,19 @@
   # maps `.module` (bare, the classSubtreeAt anchor). Native default reproduces the bucket read locally but is
   # ALWAYS supplied by den-hoag's assembly (the class-modules extraction is the single source); the default is
   # a defensive identity for a caller that constructs `mkOutputModules` standalone without the extraction.
-  classSliceOf ? (_: _: [ ]),
+  classSliceOf ? (
+    _: _: _:
+    [ ]
+  ),
   # §2.2 TOTALITY assertion (Task 3, `class-modules.nix assertKeysRegistered`). Forces classification of every
   # non-`_` content key of a REACHED aspect (abort NAMED on a genuinely unregistered typo key); `projectClass`
   # runs it per reached aspect so a typo cannot silently vanish on the drv path (spec §2.2 ruling 2026-07-14).
   # Native default is the no-op identity (standalone callers without the extraction skip the totality check).
-  assertKeysRegistered ? (_: null),
+  assertKeysRegistered ? (_: _: null),
+  # iv-b — the reach's forward-source-class set (`class-modules.nix forwardSourceClassesOf`): the unregistered
+  # `fromClass` keys a `meta.__forward` spec on a reached node names, EXEMPTED from the §2.2 typo-abort so
+  # their bucket materializes for `routeRemapFor`. Native default = `{ }` (no forward ⇒ byte-identical).
+  forwardSourceClassesOf ? (_: { }),
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;
@@ -590,14 +597,17 @@ let
       );
     };
 
+  # `exempt` = the srcScope's forward-source-class set, threaded in by the caller (`routeRemapFor`) so the
+  # per-node `classSliceOf` collects an unregistered forward SOURCE class (a plain corpus route's `from` is a
+  # registered class ⇒ `{ }` exemption ⇒ unaffected).
   remapOver =
-    srcScope: route:
+    exempt: srcScope: route:
     let
       evalTimeGuard = route.guard != null && !(guardIsContentTime route.guard srcScope);
       placed = prelude.concatMap (
         n:
         let
-          slices = map (e: e.module) (classSliceOf n route.from);
+          slices = map (e: e.module) (classSliceOf exempt n route.from);
         in
         if route.at == [ ] then
           # at=[] — flat merge into the target class (home-platform bucket b). No placement path, so no
@@ -631,11 +641,82 @@ let
     in
     placed ++ ensureSeed;
 
+  # iv-b / §2-ii/iii — the FORWARD module contributions to `projectClass id class`, derived REACH-SOURCED
+  # from the `meta.__forward` specs (den.provides.forward). A forward is a CLASS-REROUTE: the collected
+  # `fromClass` bucket → `intoClass` at `intoPath` (v1 compile-forward.nix: the collected source bucket IS
+  # the content; `aspect-chain` a locality tag). Reach-sourced (not an emitted delivery declaration) because
+  # a forward is authored as an ASPECT INCLUDE — its spec rides resolved-aspects, not the policy-dispatch
+  # declarations `deliveriesAt` reads. Built HERE (not via `remapOver`) because the v1 GUARD (`guardFn`,
+  # forward.nix:73-86) wraps the PLACEMENT (`optionalAttrs`/`mkIf` over `setAttrByPath intoPath content`), so
+  # an option-existence guard false SUPPRESSES the whole path — `remapOver`'s case-3 nests the guard UNDER
+  # the path, which sets the (nonexistent) target option unconditionally. v1 mechanism:
+  #   • TIER-1 (no guard/adaptArgs): the plain nested slice `nestAtPath intoPath slice`.
+  #   • COMPLEX: a TOP-LEVEL function-module `args: { config = guardFn args (nestAtPath intoPath slice);
+  #     _module.args = adaptArgs args; }` — `guardFn` item-applied at the crossing (bool ⇒ optionalAttrs,
+  #     fn ⇒ `res item` e.g. `mkIf`), `adaptArgs` threaded as the slice's module args (v1 nestWithAdaptArgs).
+  # A node with no matching forward spec ⇒ `[ ]` ⇒ identity (byte-parity: corpus emits no meta.__forward).
+  # `reach`/`exempt` are threaded in from `projectClass` (computed ONCE there — no recompute).
+  #
+  # CEILING (adaptArgs, unverified): the `adaptArgs` arm here threads `_module.args = adaptArgs args` at the
+  # target module, whereas v1 (route.nix `nestWithAdaptArgs`) rewrites the args the SOURCE slice sees. Every
+  # target-class case witnessed so far carries `adaptArgs = null`, so the arm is inert on the green set; the
+  # adaptArgs-bearing forwards all target homeManager-at-cell (a separate lift composition), so this arm's
+  # v1-fidelity is RE-VERIFIED when that path is built — a documented ceiling, not a live divergence.
+  forwardModulesFor =
+    reach: exempt: class:
+    let
+      specs = prelude.concatMap (
+        n:
+        let
+          f = (n.content.meta or { }).__forward or null;
+        in
+        if f == null || f.intoClass != class then [ ] else [ f ]
+      ) reach;
+    in
+    prelude.concatMap (
+      spec:
+      let
+        srcSlices = prelude.concatMap (n: map (e: e.module) (classSliceOf exempt n spec.fromClass)) reach;
+        hasAdapter = spec.guard != null || spec.adaptArgs != null;
+        # v1 `guardFn` (forward.nix:73-86), item-applied: a FN guard result → `res item` (e.g. `mkIf cond`)
+        # applied to the placed content; a BOOL result → gate the whole placement (`optionalAttrs`, v1's
+        # `assert builtins.isBool res` — a non-bool, non-fn guard result is a NAMED authoring error).
+        guardApply =
+          args: content:
+          if spec.guard == null then
+            content
+          else
+            let
+              res = spec.guard args;
+            in
+            if builtins.isFunction res then
+              (res spec.item) content
+            else
+              assert builtins.isBool res;
+              if res then content else { };
+        buildModule =
+          slice:
+          if !hasAdapter then
+            nestAtPath spec.intoPath slice
+          else
+            args:
+            {
+              config = guardApply args (nestAtPath spec.intoPath slice);
+            }
+            // prelude.optionalAttrs (spec.adaptArgs != null) {
+              _module.args = spec.adaptArgs args;
+            };
+      in
+      map buildModule srcSlices
+    ) specs;
+
+  # `exempt` = `id`'s forward-source set (threaded from `projectClass`, own-scope leg). The parent-targeted
+  # leg's source is a DESCENDANT cell, so it carries its OWN per-cell exemption.
   routeRemapFor =
-    id: class:
+    exempt: id: class:
     # (1) OWN-scope routes fired at `id` (Task 1) — the source node set is `reach id`.
     prelude.concatMap (
-      route: if route.to == class && guardHolds route id then remapOver id route else [ ]
+      route: if route.to == class && guardHolds route id then remapOver exempt id route else [ ]
     ) (routesAt id)
     # (2) DESCENDANT-DRIVEN parent-targeted routes (Task 2, #10 hm-user-detect) — a cell-fired
     #     `appendToParent` route targeting THIS host: the SOURCE is the descendant cell (`sourceScope`), so
@@ -646,7 +727,7 @@ let
     ++ prelude.concatMap (
       pt:
       if pt.route.to == class && guardHolds pt.route pt.sourceScope then
-        remapOver pt.sourceScope pt.route
+        remapOver (forwardSourceClassesOf (result.get pt.sourceScope "reach")) pt.sourceScope pt.route
       else
         [ ]
     ) (parentTargetedRoutesAt id);
@@ -677,10 +758,19 @@ let
   # `projectClass` is byte-identical to the base (identity — the anchor + all Phase 1/2/3 witnesses green).
   projectClass =
     id: class:
+    let
+      reach = result.get id "reach";
+      # iv-b: the reach-sourced forward-source exemption, computed ONCE per (id,class) projection and threaded
+      # to the §2.2 totality assertion, the class-slice extraction, `routeRemapFor` (own-scope leg), AND
+      # `forwardModulesFor` — so a live forward SOURCE materializes (collectable) instead of aborting. `{ }`
+      # on every non-forward node ⇒ byte-identical.
+      exempt = forwardSourceClassesOf reach;
+    in
     prelude.concatMap (
-      n: builtins.seq (assertKeysRegistered n) (map (e: e.module) (classSliceOf n class))
-    ) (result.get id "reach")
-    ++ routeRemapFor id class;
+      n: builtins.seq (assertKeysRegistered exempt n) (map (e: e.module) (classSliceOf exempt n class))
+    ) reach
+    ++ routeRemapFor exempt id class
+    ++ forwardModulesFor reach exempt class;
 
   # The per-class TERMINAL assembly (spec §3/§4, Phase 2 Task 3 — THE PIVOT). Projection over `reach`
   # REPLACES the v1 emission model: `terminalModulesAt id class = projectClass id class` (the class-`C`

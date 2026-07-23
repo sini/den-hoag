@@ -477,9 +477,43 @@ let
           }
         else
           groundRec name result;
+      # ── FORWARD-CONTEXT surfacing (§2-iv, u1 close for the `{ class, aspect-chain }` forward shape). ──
+      # v1 binds `class = entityCls` + `aspect-chain = [ self ]` onto EVERY aspect-fn ctx (pipeline.nix:39/
+      # 211 `defaultHandlers`/`resolve`). den-hoag's enriched-context binds NEITHER (the class-coord gap,
+      # ledger u1), so a `{ class, aspect-chain }:` forwarder gates to `{ }` inert and never fires. Surface
+      # them HERE — but ONLY for the FORWARD shape (a fn whose formals include `aspect-chain`), so the
+      # class-coord PIN (unfree's `{ class, ... }` WITHOUT `aspect-chain`, `test-unfree-class-coord-inert`)
+      # stays inert (byte-parity). `class`/`aspect-chain` VALUES are inert for a static-each forward: `each`
+      # is a LITERAL (`singleton class`/`[ "nixos" … ]`), the per-item `fromClass`/`intoClass` ignore the
+      # item, and `aspect-chain` is a v1 locality tag (compile-forward.nix `sourceIsLocal`), NOT the content
+      # source (the collected `fromClass` bucket is). So a present placeholder suffices for the forwarder to
+      # fire; the wrap ALWAYS fires (no gate) and intersects to the fn's own formals.
+      isForwardFn = fn: builtins.functionArgs fn ? "aspect-chain";
+      forwardCoords = {
+        class = "<forward>";
+        "aspect-chain" = [ ];
+      };
+      wrapForwardFn =
+        wrapName: fn:
+        let
+          fa = builtins.functionArgs fn;
+        in
+        {
+          __functor =
+            _: fnArgs: grndDispatch wrapName (fn (builtins.intersectAttrs fa (forwardCoords // fnArgs)));
+          __functionArgs = fa;
+          __isWrappedFn = true;
+          name = wrapName;
+          meta = {
+            loc = [ wrapName ];
+          };
+        };
       normalize =
         name: ref:
-        if builtins.isFunction ref then
+        if builtins.isFunction ref && isForwardFn ref then
+          # A `{ class, aspect-chain }` forwarder — surface the forward coords + fire unconditionally (§2-iv).
+          wrapForwardFn name ref
+        else if builtins.isFunction ref then
           # PLAIN bare-fn include (:440): wrap via the gen-aspects GATED fn — its applicator gates on the
           # inner fn's required coords (missing ⇒ `{ }`, no throw) + `intersectAttrs`, then `onResult`
           # grounds. `functionArgs` = the INNER fn's real formals (the load-bearing override); `name` keys

@@ -29,7 +29,11 @@ let
   # projectClass replicated over a STUB reach list (byte-identical to output-modules.nix's body — a pure
   # class-slice fold over `reach id`). `reachList` stands in for `result.get id "reach"`.
   projectOver =
-    reachList: class: prelude.concatMap (n: map (e: e.module) (cm.classSliceOf n class)) reachList;
+    reachList: class:
+    let
+      exempt = cm.forwardSourceClassesOf reachList;
+    in
+    prelude.concatMap (n: map (e: e.module) (cm.classSliceOf exempt n class)) reachList;
 
   # A synthetic resolved-aspect node `{ key; content }` (the reach node shape).
   mkNode = key: content: {
@@ -86,9 +90,14 @@ let
       id,
       class,
     }:
+    let
+      reachList = mkRa.reach.compute (mkStub graph) id;
+      exempt = cm.forwardSourceClassesOf reachList;
+    in
     prelude.concatMap (
-      n: builtins.seq (cm.assertKeysRegistered n) (map (e: e.module) (cm.classSliceOf n class))
-    ) (mkRa.reach.compute (mkStub graph) id);
+      n:
+      builtins.seq (cm.assertKeysRegistered exempt n) (map (e: e.module) (cm.classSliceOf exempt n class))
+    ) reachList;
 
   # every `tag` string reachable in a wrapped deferredModule (gen-aspects `{ imports = [ … ]; }` form).
   tags =

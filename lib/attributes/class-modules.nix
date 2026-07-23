@@ -54,14 +54,34 @@ let
   # list (0 or 1 entry — one class = one content key). A `_`-prefixed / channel / facet key is skipped; an
   # EMPTY body (`{ }` raw, or the typed `{ imports = [ { } ]; }` wrap) is a declared no-op, dropped so bucket
   # counts reflect real content. `projectClass` maps `.module` (bare, for the classSubtreeAt anchor).
+  # ── FORWARD-SOURCE-CLASS ACCEPTANCE (iv-b, reach-sourced exemption). A live forward SOURCE class (an
+  # unregistered `fromClass` a `meta.__forward` spec on a REACHED node names — output-modules
+  # `forwardSourceClassesAt`) MATERIALIZES its bucket instead of aborting, so `routeRemapFor` can move it
+  # (the collect-coupling: silencing the abort alone delivers nothing). A NON-exempt unregistered key STILL
+  # aborts in `classifyKey` (Law A1/A2 typo-protection preserved). The `exempt` set (a keyset attrset) is
+  # threaded per-node from the reach's forward specs; `{ }` for every non-forward node ⇒ byte-identical.
+  forwardSourceClassesOf =
+    nodes:
+    prelude.foldl' (
+      acc: n:
+      let
+        f = (n.content.meta or { }).__forward or null;
+      in
+      if f == null then acc else acc // { ${f.fromClass} = true; }
+    ) { } nodes;
+
   classSliceOf =
-    aspect: class:
+    exempt: aspect: class:
     let
       content = aspect.content;
+      # exempt short-circuits BEFORE classifyKey (a forward source never trips the typo-abort); a registered
+      # non-class key (channel/facet) still yields `[ ]`; a non-exempt unregistered key aborts in classifyKey.
+      isCollectable =
+        !(prelude.hasPrefix "_" class)
+        && content ? ${class}
+        && ((exempt ? ${class}) || classifyKey content.name class == "class");
     in
-    if
-      prelude.hasPrefix "_" class || !(content ? ${class}) || classifyKey content.name class != "class"
-    then
+    if !isCollectable then
       [ ]
     else
       let
@@ -93,11 +113,15 @@ let
   # `attribute 'name' missing` throw that masks the real (unregistered-key) fault. `content.name or "<unnamed>"`
   # supplies a key-only fallback name so the abort message stays the intended one.
   assertKeysRegistered =
-    aspect:
+    exempt: aspect:
     let
       content = aspect.content;
       aspectName = content.name or "<unnamed>";
-      keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
+      # EXEMPT forward-source keys are skipped (they materialize via `classSliceOf`, not abort); every other
+      # non-`_` key is classified (a typo aborts NAMED — typo-protection preserved).
+      keys = builtins.filter (k: !(prelude.hasPrefix "_" k) && !(exempt ? ${k})) (
+        builtins.attrNames content
+      );
     in
     # §4.1: alongside the §2.2 key totality, force the prebuilt-arm EXCLUSIVITY over this aspect's content —
     # an aspect declaring `artifact` with non-empty class content aborts NAMED here (the same per-aspect,
@@ -112,7 +136,7 @@ let
   # (§2.2). Each collected entry is a `{ module; }` record; the public bucket strips back to the bare
   # `module` (`splitBuckets`).
   classContentOf =
-    aspect:
+    exempt: aspect:
     let
       content = aspect.content;
       keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
@@ -120,7 +144,7 @@ let
     prelude.foldl' (
       acc: k:
       let
-        slice = classSliceOf aspect k;
+        slice = classSliceOf exempt aspect k;
       in
       if slice == [ ] then acc else acc // { ${k} = (acc.${k} or [ ]) ++ slice; }
     ) { } keys;
@@ -151,7 +175,14 @@ let
       resolvedAspects = self.get id "resolved-aspects";
       resolutionActs = (self.get id "declarations").actions.resolution or [ ];
 
-      base = prelude.foldl' (acc: a: mergeBuckets acc (classContentOf a)) emptyBuckets resolvedAspects;
+      # iv-b: the node-local forward-source exemption (from this node's own resolved forward specs) — a
+      # forward SOURCE class materializes its bucket here too (the base-build classify runs BEFORE the
+      # reroute at :177). `{ }` on every non-forward node ⇒ byte-identical.
+      exempt = forwardSourceClassesOf resolvedAspects;
+
+      base = prelude.foldl' (
+        acc: a: mergeBuckets acc (classContentOf exempt a)
+      ) emptyBuckets resolvedAspects;
 
       # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket. Node-local
       # content (no owning shared aspect), so `sharedFoldKey = null` ⇒ never cross-scope-deduped (v1 anon).
@@ -195,7 +226,7 @@ in
   # (output-modules Task 2/3). NEITHER is an equation record — the assembly (attributes/default.nix) selects
   # `class-modules` into the equations map and threads these to `mkOutputModules` separately (a bare function
   # would break gen-resolve's two-stratum equation classification if spread into the map).
-  inherit classSliceOf assertKeysRegistered;
+  inherit classSliceOf assertKeysRegistered forwardSourceClassesOf;
 
   class-modules = resolve.attr {
     name = "class-modules";

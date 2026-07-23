@@ -86,9 +86,44 @@ let
       ) claimKindNames
     );
 
+  # (b) PAYLOAD-PROJECTING reverse-read (§5, additive). `transpose` is adjacency-ONLY (Mokhov 2017 §4.3 —
+  # gen-graph reverses id→[id], dropping `e.data`); the payload PROJECTION lives HERE, in the kernel accessor.
+  # `projectedByKind pool` builds, per claim kind, a per-TARGET index of `{ from; data }` records (the claimer
+  # id PLUS its carried edge payload), so `(projectedByKind pool).<k> id` = `[ { from; data } ]` for id's
+  # claimers via `k`. DISTINCT from the id-only `reverseByKind` (which the shipped claim-negation/claim-dedup
+  # consume as sort-by-lessThan ID-LISTS): those stay UNCHANGED; this is a NEW handle beside them (§0 additive).
+  projectedByKind =
+    pool:
+    builtins.listToAttrs (
+      map (
+        kind:
+        let
+          kindEdges = builtins.filter (e: e.kind == kind) pool;
+          payloadByTo = builtins.foldl' (
+            acc: e:
+            acc
+            // {
+              ${e.to} = (acc.${e.to} or [ ]) ++ [
+                {
+                  from = e.from;
+                  data = e.data or null;
+                }
+              ];
+            }
+          ) { } kindEdges;
+        in
+        {
+          name = kind;
+          value = id: payloadByTo.${id} or [ ];
+        }
+      ) claimKindNames
+    );
+
   # the reverse adjacency over the SCOPED pool — in-scope claim kinds carry their real reverse; out-of-scope
   # kinds resolve to an empty reverse (their edges never entered `scopedPool`). Both handle variants read it.
   scopedReverse = reverseByKind scopedPool;
+  # the payload-projecting reverse over the SAME scoped pool (the (b) handle's source).
+  scopedReverseProjected = projectedByKind scopedPool;
 in
 {
   # claim-accessor (§5) as a scheduled attribute — the per-node who-claims-me handle. `readsAttrs = [ ]`: the
@@ -103,6 +138,11 @@ in
     compute = _self: id: {
       # SILENT (node.query posture): a missing OR out-of-scope claim kind yields `[ ]`.
       query = kind: (scopedReverse.${kind} or (_: [ ])) id;
+      # (b) SILENT payload-PROJECTING variant (node.query posture): the reverse claimers of `<kind>` as
+      # `[ { from; data } ]` records (the id PLUS its carried edge payload) — BESIDE the id-only `.query`/`.rel`
+      # (unchanged), for a consumer that needs the claim payload, not just the claimer id. Out-of-scope/missing
+      # kind ⇒ `[ ]` (its edges never entered `scopedPool`).
+      queryEdges = kind: (scopedReverseProjected.${kind} or (_: [ ])) id;
       # THROWING (node.rel posture): an out-of-scope claim kind is REPLACED with a NAMED throw (the L4
       # throwing-gate a stratified negation consumes — it cannot mistake an out-of-scope read for absent).
       rel = builtins.listToAttrs (

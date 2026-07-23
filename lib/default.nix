@@ -1717,6 +1717,7 @@ let
           })
           classSliceOf
           assertKeysRegistered
+          forwardSourceClassesOf
           ;
       };
 
