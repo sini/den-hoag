@@ -122,6 +122,41 @@ let
   # define-user/primary-user/hostname are NOT root-nav members — migration rule 3 moved them to
   # `den.batteries.*`.
   providesNav = import ./provides-nav.nix forwardEach;
+
+  # ── config-wired `den.lib.*` surfaces (#49 sub-rung B) ────────────────────────────────────────────
+  # v1 loaded these `{ lib, den }:` / `{ lib, config }:` reading the FLEET config (den.hosts/homes/policies/
+  # aspects/batteries/schema); they cannot live on the config-LESS migrationLib, so they are bound HERE — the
+  # ONE seam where BOTH `config.den` (fleetDen) AND nixpkgs `lib` (the module arg) are in scope. This is v1's
+  # own mechanism (v1 built `config.den.lib` inside nixModule/lib.nix where `config` was available), transposed
+  # to the bridge. `policyInspect` gets a RECURSIVE `den` (`.lib = configWiredLib`) so it can read
+  # `den.lib.{synthesizePolicies,schemaUtil}` — cycle-free by Nix laziness (the siblings are thunks, forced only
+  # when `inspect` is CALLED, by which time `configWiredLib` is fully bound; mirrors v1's den-lib mapAttrs
+  # fixpoint). `policyInspect` rides RAW `fleetDen` (not annotatedViewNav) so it reads `den.policies` — the
+  # coerced `{ __isPolicy; name; fn }` records — directly (the nav wrapper only rewrites `.aspects`).
+  configWiredLib = denLib // {
+    nh = import ./nh.nix {
+      inherit lib;
+      den = fleetDen;
+    };
+    __findFile = import ./den-brackets.nix { inherit lib config; };
+    schemaUtil = import ./schema-util.nix {
+      inherit lib;
+      den = fleetDen;
+    };
+    policyInspect = import ./policy-inspect.nix {
+      inherit lib;
+      den = fleetDen // {
+        lib = configWiredLib;
+      };
+    };
+  };
+  denArg = compat.annotatedViewNav fleetDen // {
+    lib = configWiredLib;
+    # v1 root-namespace provider registry (lib/compat/provides-nav.nix): both aliases resolve the same
+    # closed name→handle lookup — `forward` (real) + `mutual-provider` (inert shim).
+    provides = providesNav;
+    _ = providesNav;
+  };
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
@@ -531,13 +566,7 @@ in
   # `compat.annotatedViewNav`, the same wrap the mkDen path's `bindLegacyEnv` uses), so a `den.aspects.<path>`
   # value carries native gen-aspects `.key` at the READ site — `has-aspect.nix` `refKey` is a single `ref.key`
   # lookup. Consistent with the `fleetDen` comment above.
-  config._module.args.den = compat.annotatedViewNav fleetDen // {
-    lib = denLib;
-    # v1 root-namespace provider registry (lib/compat/provides-nav.nix): both aliases resolve the same
-    # closed name→handle lookup — `forward` (real) + `mutual-provider` (inert shim).
-    provides = providesNav;
-    _ = providesNav;
-  };
+  config._module.args.den = denArg;
 
   config.flake =
     let

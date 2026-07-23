@@ -200,6 +200,16 @@
         resolveEntity = stub "lib.resolveEntity" "the entity-resolution surface (R8; board #49/#50) — not yet available";
         home = stub "lib.home" "the home-entity surface (board #49) — not yet available";
         capture.captureFleet = stub "lib.capture.captureFleet" "the fleet-capture surface (board #49) — not yet available";
+        # den.lib.{nh,policyInspect,__findFile,schemaUtil} — CONFIG-WIRED surfaces (#49 sub-rung B). v1 loads
+        # these `{ lib, den }:` / `{ lib, config }:` reading the fleet config; on the config-LESS migrationLib
+        # (= `inputs.den.lib`, v1's unapplied function where `.nh` is missing too) they cannot be real. Named
+        # THROWING stubs here (flake.nix stub discipline) — the bridge's `configWiredLib` OVERRIDES them with the
+        # applied versions on the `den` module arg, so a corpus read resolves the real fn; a stray
+        # `inputs.den.lib.nh` reads a NAMED blocker, not `attribute 'nh' missing`.
+        nh = stub "lib.nh" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+        policyInspect = stub "lib.policyInspect" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+        __findFile = stub "lib.__findFile" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+        schemaUtil = stub "lib.schemaUtil" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
         # den.lib.home-env — the OS-user home battery builder {makeHomeEnv, mkDetectHost, mkIntoClassUsers}
         # (v1 nix/lib/home-env.nix), reproduced faithfully compat-side; wired above.
         "home-env" = homeEnv;

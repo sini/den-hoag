@@ -1,0 +1,100 @@
+# den.lib.__findFile — v1's Nix angle-bracket (`<den/aspects/foo>`) resolver (den nix/lib/den-brackets.nix,
+# pin a2f4b60; attrpath `den.lib.__findFile`, v1 lib/default.nix:23), ported byte-verbatim. Config-wired:
+# `findAspect` reads `config.den.{batteries,aspects,ful}`, so it is bound at the bridge (config in scope).
+# CEILING — den-hoag has no `config.den.ful` namespace (a den-diagram-era concern): the 3rd branch's guard
+# `lib.hasAttrByPath ["ful" head] config.den` returns false (hasAttrByPath never throws), so the branch is
+# dead and a `<ful/…>` lookup falls to the else-throw — IDENTICAL to v1 with an empty `ful`. The
+# `config.den.ful.<head>` read sits INSIDE the guard, so the verbatim port is eval-safe. Returns the RAW
+# aspect value a module-import path consumes (not a compile node), so v1's `__provider` stamp rides harmless.
+{
+  lib,
+  config,
+  ...
+}:
+_nixPath: name:
+let
+  # Resolve a provides sub-path on an aspect, falling back to the provides
+  # namespace with a deprecation warning when the key isn't a direct child.
+  resolveWithProvidesFallback =
+    aspect: subPath:
+    let
+      head = lib.head subPath;
+      tail = lib.tail subPath;
+      # Direct key on the aspect takes priority (new-style direct nesting)
+      direct = aspect.${head} or null;
+      # Fall back to provides namespace (deprecated path)
+      provided = (aspect.provides or { }).${head} or null;
+      resolved =
+        if direct != null then
+          direct
+        else if provided != null then
+          lib.warn "den: bracket path uses 'provides.${head}' — migrate to direct nesting at key '${head}'" provided
+        else
+          throw "Aspect '${aspect.name or "<unknown>"}' has no key '${head}' (checked direct and provides)";
+    in
+    if tail == [ ] then resolved else resolveWithProvidesFallback resolved tail;
+
+  # Ensure bare attrset results from bracket resolution carry __provider
+  # so the pipeline can compute stable identity.  Forwarded attrs from
+  # content wrappers are bare attrsets that lack __provider — without
+  # this, they get anonymous identities and dedup fails.
+  tagProvider =
+    path: result:
+    if builtins.isAttrs result && !(result ? __provider) && !(result ? __fn) then
+      result // { __provider = path; }
+    else
+      result;
+
+  findAspect =
+    path:
+    let
+      head = lib.head path;
+      tail = lib.tail path;
+    in
+    if head == "den" then
+      let
+        # <den/X/Y> — when X is a den.batteries provider, resolve through
+        # that provider with provides fallback for deeper keys.
+        firstTail = if tail != [ ] then lib.head tail else null;
+        isProvider = firstTail != null && builtins.hasAttr firstTail config.den.batteries;
+      in
+      if isProvider then
+        let
+          provider = config.den.batteries.${firstTail};
+          rest = lib.tail tail;
+        in
+        if rest == [ ] then provider else tagProvider path (resolveWithProvidesFallback provider rest)
+      else
+        lib.getAttrFromPath ([ "den" ] ++ tail) config
+    else if builtins.hasAttr head config.den.aspects then
+      let
+        aspect = config.den.aspects.${head};
+      in
+      if tail == [ ] then aspect else tagProvider path (resolveWithProvidesFallback aspect tail)
+    else if lib.hasAttrByPath [ "ful" head ] config.den then
+      let
+        ns = config.den.ful.${head};
+        denfulTail = tail;
+      in
+      if denfulTail == [ ] then
+        ns
+      else
+        let
+          firstKey = lib.head denfulTail;
+          nsAspect = ns.${firstKey} or null;
+          rest = lib.tail denfulTail;
+        in
+        if nsAspect == null then
+          throw "Namespace '${head}' has no aspect '${firstKey}'"
+        else if rest == [ ] then
+          nsAspect
+        else
+          tagProvider path (resolveWithProvidesFallback nsAspect rest)
+    else
+      throw "Aspect not found: ${lib.concatStringsSep "." path}";
+in
+lib.pipe name [
+  (lib.strings.replaceStrings [ "/" ] [ "." ])
+  (lib.strings.splitString ".")
+  findAspect
+]
