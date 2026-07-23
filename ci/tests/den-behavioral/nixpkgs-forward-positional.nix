@@ -32,7 +32,7 @@ in
     # declaring aspect `tux` resolves at the `tux` cell; `provides.igloo` desugars to a carrier keyed
     # `tux/igloo` that radiates (via `nameMatches "igloo"`) back to that SAME cell, plus a contentless stub
     # `tux/igloo` seeded on aspect `tux` at that cell. The stub, seeded first, puts `tux/igloo` in the cell's
-    # `prev.seen`, so `nbExtras` (`resolved-aspects.nix:510-512`, predicate `!(prev.seen ? keyOf carrier)` at :511) filters the
+    # `prev.seen`, so `nbExtras` (`resolved-aspects.nix:502-504`, predicate `!(prev.seen ? keyOf carrier)` at :503) filters the
     # carrier and it NEVER resolves — the contentless stub blocks its own carrier. Confirmed empirically: even a
     # STATIC `provides.igloo.nixos.…="x"` yields `""`, and a parametric variant also yields `""` (so it is not the
     # sharedFoldKey dedup G1 fixes). Unparks when the co-scoped named-target self-block ships (a separate rung
