@@ -1,7 +1,7 @@
 # The resolution-product registry (`den.resolutionProducts.<name>`, spec §5) — compile + validation.
 # A resolution product NAMES a typed payload a resolution-facet synthesizer (a `den.derived`'s `provides`)
 # emits — the §5 resolution-graph counterpart of den.products' §4.1 MATERIALIZATION faces. The two
-# registries are DISTINCT namespaces: a materialization product (SystemInfo, HiveInfo …) is not a
+# registries are DISTINCT namespaces: a materialization product (SystemInfo, AggregateInfo …) is not a
 # resolution product, and a derived's `provides` validates against THIS registry, never den.products —
 # so a cross-facet consumption (a derive claiming to provide a materialization face) fails naturally.
 # The registry only DECLARES names (+ an optional payload `schema`); the value-composition that consumes

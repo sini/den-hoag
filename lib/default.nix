@@ -2166,8 +2166,8 @@ let
           ) optInsEnriched;
           # ── the collector AGGREGATE mount (§4.7): each collector with a render GATHERS its member edges
           # into a NAME-KEYED member map (a FOLD over `collectorMemberEdges` — never a mount re-select), calls
-          # the aggregate render's `evaluator` ONCE (memberMap → HiveInfo — the aggregate crossing behind the
-          # swappable evaluator seam), and VALUE-mode nests the PREBUILT HiveInfo into root via the render's
+          # the aggregate render's `evaluator` ONCE (memberMap → AggregateInfo — the aggregate crossing behind the
+          # swappable evaluator seam), and VALUE-mode nests the PREBUILT AggregateInfo into root via the render's
           # `output` family. The member payload is the collector's `consumes` product read already-resolved
           # (`extractMemberProduct`, mode-dispatched). Three product roles stay distinct: `collector.consumes`
           # (aggregated-IN) ≠ `render.produces` = `family.consumes` (mounted-OUT) — the render/family match is
@@ -2185,12 +2185,12 @@ let
                 renderRow =
                   rendersRows.${c.render}
                     or (throw "den.collectors: collector '${cName}' names unregistered render '${c.render}'");
-                # The render must be an AGGREGATE render (memberMap → HiveInfo), not a per-config one.
+                # The render must be an AGGREGATE render (memberMap → AggregateInfo), not a per-config one.
                 aggChecked =
                   if renderRow.aggregate then
                     true
                   else
-                    throw "den.collectors: collector '${cName}' render '${c.render}' is not an aggregate render (its evaluator is per-config { modules; specialArgs } → system) — set `aggregate = true` on the render to cross a member map → HiveInfo (§4.7)";
+                    throw "den.collectors: collector '${cName}' render '${c.render}' is not an aggregate render (its evaluator is per-config { modules; specialArgs } → system) — set `aggregate = true` on the render to cross a member map → AggregateInfo (§4.7)";
                 # The compiled render row always carries `output` (default null), so a `.output or (throw)`
                 # would be DEAD (fires only on a missing attr) and a null `output` would flow to a bare
                 # `outputsTable.${null}` / `resolveReceiver slot=null` — the tryEval-uncatchable `.${null}` class.
@@ -2239,9 +2239,9 @@ let
                 # leaf must read ANOTHER family's value, never its own); a spine derived from `self`, OR a leaf
                 # reading its own family's value (a self-loop), diverges with a tryEval-UNCATCHABLE infinite
                 # recursion (a documented boundary — Case B in flakeparts.nix, never an executed oracle).
-                # `needsSelf = false` (every shipped HiveInfo/SystemInfo render) keeps
+                # `needsSelf = false` (every shipped AggregateInfo/SystemInfo render) keeps
                 # the byte-untouched `evaluator memberMap` call — the lazy `if` never forces the then-branch there.
-                hiveInfo = builtins.seq aggChecked (
+                aggregateInfo = builtins.seq aggChecked (
                   builtins.seq producesChecked (
                     if renderRow.needsSelf then
                       renderRow.evaluator { self = familyOutputs; } memberMap
@@ -2259,13 +2259,13 @@ let
               [
                 (nestLib.executeNest {
                   inherit row;
-                  # VALUE-mode: the PREBUILT HiveInfo injected verbatim (the render already ran ONCE above), the
+                  # VALUE-mode: the PREBUILT AggregateInfo injected verbatim (the render already ran ONCE above), the
                   # built-in system mount's ArtifactRef arm — never re-evaluated at the mount.
                   inner = {
                     product = "ArtifactRef ${renderRow.produces}";
                     artifactRef = {
                       product = renderRow.produces;
-                      value = hiveInfo;
+                      value = aggregateInfo;
                     };
                     name = cName;
                     kind = c.class;

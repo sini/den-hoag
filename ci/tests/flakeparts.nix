@@ -1,9 +1,9 @@
-# The FLAKE-PARTS suite (vocabulary spec §4.1/§4.4, spec §12 step 4c-iii). `FlakeInfo` is a framework
+# The FLAKE-PARTS suite (vocabulary spec §4.1/§4.4, spec §12 step 4c-iii). `AggregateInfo` is a framework
 # product — the OPAQUE transposed flake-outputs attrset a hosted flake-parts render produces, value-nested
-# verbatim like `HiveInfo` (den never type-walks it). It is framework-reserved (its name rides
-# `frameworkProducts`, so `reservedNames` auto-includes it): a `consumes = "FlakeInfo"` output family compiles
+# verbatim like `AggregateInfo` (den never type-walks it). It is framework-reserved (its name rides
+# `frameworkProducts`, so `reservedNames` auto-includes it): a `consumes = "AggregateInfo"` output family compiles
 # with the derived artifact mode, and a user re-registration aborts NAMED. Corpus-inert — added-but-unconsumed,
-# so parity is byte-untouched (the same posture `HiveInfo` sits in). See REFERENCE.md.
+# so parity is byte-untouched (the same posture `AggregateInfo` sits in). See REFERENCE.md.
 {
   denHoag,
   nixpkgs,
@@ -14,22 +14,22 @@ let
   inherit (denHoag.internal) products compileProducts;
   frameworkTable = compileProducts { };
 
-  # an output family CONSUMING FlakeInfo — its mode derives from the product (artifact). At HEAD FlakeInfo is
-  # unregistered, so `checkConsumes` aborts; the `FlakeInfo` framework row makes the family compile.
+  # an output family CONSUMING AggregateInfo — its mode derives from the product (artifact). At HEAD AggregateInfo is
+  # unregistered, so `checkConsumes` aborts; the `AggregateInfo` framework row makes the family compile.
   flakeConsumerFleet = denHoag.mkDen [
     {
       config.den.schema.host.parent = null;
       config.den.outputs.flake = {
         at = _point: _e: [ ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
     }
   ];
-  # a user re-registering the framework-reserved FlakeInfo name → the reserved-name NAMED abort.
+  # a user re-registering the framework-reserved AggregateInfo name → the reserved-name NAMED abort.
   reRegisterFleet = denHoag.mkDen [
     {
       config.den.schema.host.parent = null;
-      config.den.products.FlakeInfo = {
+      config.den.products.AggregateInfo = {
         mode = "artifact";
       };
     }
@@ -60,7 +60,7 @@ let
         evaluator = _memberMap: {
           v = "KNOWN";
         };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "fpA";
       };
@@ -70,7 +70,7 @@ let
           _memberMap: {
             readback = self.fpA.srcColl.v;
           };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         needsSelf = true;
         output = "fpB";
@@ -80,21 +80,21 @@ let
           "fpA"
           e.name
         ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
       config.den.outputs.fpB = {
         at = _point: e: [
           "fpB"
           e.name
         ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
     }
   ];
 
   # ── the FLAKE-PARTS FAMILY MOUNT + root transposition (composes on the collector aggregate arm (§4.7) + the
   # self-knot curry — NO new mount code). A flake-parts family is a ZERO-MEMBER collector `fp` with an aggregate
-  # render (needsSelf=true, produces FlakeInfo) whose `output` family declares `at = _: _: [ ]` — so the render's
+  # render (needsSelf=true, produces AggregateInfo) whose `output` family declares `at = _: _: [ ]` — so the render's
   # transposed attrset merges FLAT AT ROOT (nest.nix `[ ]`⇒flat) alongside the built-in `nixosConfigurations`.
   # The flake-parts modules are CLOSED OVER in the stub evaluator (not a collector content bucket). Beside a
   # real nixos host `h`, the stub emits a DISJOINT key (`flakeOut`) AND a COLLIDING one (`nixosConfigurations.
@@ -117,14 +117,14 @@ let
               fpExtra = "COEXIST";
             };
           };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         needsSelf = true;
         output = "fpFamily";
       };
       config.den.outputs.fpFamily = {
         at = _: _: [ ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
       config.den.nixosHost.h = { };
     }
@@ -173,7 +173,7 @@ let
           _memberMap: {
             fpOut = "FP";
           };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         needsSelf = true;
         output = "fp";
@@ -182,21 +182,21 @@ let
         evaluator = _memberMap: {
           pfOut = "PF";
         };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         needsSelf = false;
         output = "pf";
       };
       config.den.outputs.fp = {
         at = _: _: [ ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
       config.den.outputs.pf = {
         at = _point: e: [
           "pf"
           e.name
         ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
       config.den.nixosHost.h = { };
     }
@@ -271,14 +271,14 @@ let
             modules = [ ecoModule ];
             systems = [ "x86_64-linux" ];
           };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         needsSelf = true;
         output = "ecoFamily";
       };
       config.den.outputs.ecoFamily = {
         at = _: _: [ ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
     }
   ];
@@ -306,7 +306,7 @@ let
         evaluator = _memberMap: {
           v = "KNOWN";
         };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "src";
       };
@@ -320,7 +320,7 @@ let
             modules = [ { flake.readback = self.src.srcColl.v; } ];
             systems = [ "x86_64-linux" ];
           };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         needsSelf = true;
         output = "knot";
@@ -330,11 +330,11 @@ let
           "src"
           e.name
         ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
       config.den.outputs.knot = {
         at = _: _: [ ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
     }
   ];
@@ -389,7 +389,7 @@ let
         evaluator = _memberMap: {
           v = "KNOWN";
         };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "srcFam";
       };
@@ -398,7 +398,7 @@ let
           "srcFam"
           e.name
         ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
       # the SystemInfo collector → the hosted flake-parts render (the typed edge + the Case A self read).
       config.den.collectors.sysColl = {
@@ -425,14 +425,14 @@ let
             ];
             systems = [ "x86_64-linux" ];
           };
-        produces = "FlakeInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         needsSelf = true;
         output = "l2fam";
       };
       config.den.outputs.l2fam = {
         at = _: _: [ ];
-        consumes = "FlakeInfo";
+        consumes = "AggregateInfo";
       };
     }
     (
@@ -455,18 +455,18 @@ let
 in
 {
   flake.tests.flakeparts = {
-    # FlakeInfo is a framework product with the artifact mode (OPAQUE, value-nested like HiveInfo).
-    test-flakeinfo-is-artifact-product = {
-      expr = products.modeOf frameworkTable "FlakeInfo";
+    # AggregateInfo is a framework product with the artifact mode (OPAQUE, value-nested like AggregateInfo).
+    test-aggregateinfo-is-artifact-product = {
+      expr = products.modeOf frameworkTable "AggregateInfo";
       expected = "artifact";
     };
-    # a `consumes = "FlakeInfo"` output family compiles, its mode derived as artifact.
-    test-flakeinfo-family-compiles = {
+    # a `consumes = "AggregateInfo"` output family compiles, its mode derived as artifact.
+    test-aggregateinfo-family-compiles = {
       expr = flakeConsumerFleet.den.outputs.flake.mode;
       expected = "artifact";
     };
-    # a user re-registering the reserved FlakeInfo name aborts CATCHABLE-NAMED.
-    test-flakeinfo-reserved-reregister-aborts = {
+    # a user re-registering the reserved AggregateInfo name aborts CATCHABLE-NAMED.
+    test-aggregateinfo-reserved-reregister-aborts = {
       expr = throws reRegisterFleet.den.products;
       expected = true;
     };
@@ -479,7 +479,7 @@ in
       expected = "KNOWN";
     };
     # the needsSelf=false path is BYTE-UNTOUCHED: `srcColl`'s render is called `evaluator memberMap` (no curry),
-    # so a self-free collector produces its output exactly as the shipped HiveInfo/SystemInfo collectors do.
+    # so a self-free collector produces its output exactly as the shipped AggregateInfo/SystemInfo collectors do.
     test-needsself-false-untouched = {
       expr = selfKnotFleet.outputs.fpA.srcColl.v;
       expected = "KNOWN";
@@ -509,9 +509,9 @@ in
       expected = true;
     };
 
-    # THE THREE-ADAPTER FLOOR (a): for a FIXED product (FlakeInfo), flake-parts and plain-flake express through
+    # THE THREE-ADAPTER FLOOR (a): for a FIXED product (AggregateInfo), flake-parts and plain-flake express through
     # the SAME family row — strip the mechanism fields `{ render, at }` and the remainder is EQUAL and
-    # NON-VACUOUS (`{ consumes = "FlakeInfo"; contentClass = null; mode = "artifact"; params = [ ]; requires =
+    # NON-VACUOUS (`{ consumes = "AggregateInfo"; contentClass = null; mode = "artifact"; params = [ ]; requires =
     # [ ] }`). So `render` + `at` are the SOLE adapter-mechanism differentiators; the row is adapter-agnostic.
     test-adapter-strip-equal-same-product = {
       expr = (stripRow adapterFleet.den.outputs.fp) == (stripRow adapterFleet.den.outputs.pf);
@@ -519,7 +519,7 @@ in
     };
     # (b) the BARE-ROOT (the shipped built-in nixos fold, over SystemInfo) IS the third adapter over the
     # IDENTICAL family-row INTERFACE — all three rows carry exactly the 7-field surface. (Strip-equal can't be
-    # 3/3: a bare no-render family can't PRODUCE a FlakeInfo, so the bare-root is over a different PRODUCT —
+    # 3/3: a bare no-render family can't PRODUCE a AggregateInfo, so the bare-root is over a different PRODUCT —
     # `consumes` differs; the SURFACE does not.)
     test-adapter-interface-identity-bare-root = {
       expr =

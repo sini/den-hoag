@@ -197,9 +197,9 @@ let
             in
             # §4.7 arity guard (the symmetric twin of the collector arm's `aggregate == true` assert): a
             # PER-CONFIG artifact mount calls `evaluator { modules; specialArgs }`, so an AGGREGATE render
-            # (evaluator memberMap → HiveInfo) here is a shape misuse — abort NAMED, never a bare crash.
+            # (evaluator memberMap → AggregateInfo) here is a shape misuse — abort NAMED, never a bare crash.
             if renderRow.aggregate then
-              throw "den.nest: '${row.consumes}' is a per-config artifact mount but render '${row.render}' is an aggregate render (its evaluator crosses a member map → HiveInfo, not a single config's { modules; specialArgs }) — an aggregate render belongs to a collector (§4.7)"
+              throw "den.nest: '${row.consumes}' is a per-config artifact mount but render '${row.render}' is an aggregate render (its evaluator crosses a member map → AggregateInfo, not a single config's { modules; specialArgs }) — an aggregate render belongs to a collector (§4.7)"
             else
               mkContribution "artifact" {
                 at = atPath;

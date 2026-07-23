@@ -47,7 +47,7 @@ let
         compatibleWith = raw.compatibleWith or null;
         output = raw.output or null;
         # `aggregate` (spec §4.7) TAGS the evaluator's ARITY: false (default) = the per-config crossing
-        # `{ modules; specialArgs } -> system`; true = the AGGREGATE crossing `<memberName-map> -> HiveInfo`
+        # `{ modules; specialArgs } -> system`; true = the AGGREGATE crossing `<memberName-map> -> AggregateInfo`
         # (a collector render). The crossing stays the `evaluator` FIELD (swappable data — the gen-flake seam);
         # this flag only lets each mount site NAME a per-config/aggregate misuse instead of a bare shape crash.
         aggregate = raw.aggregate or false;

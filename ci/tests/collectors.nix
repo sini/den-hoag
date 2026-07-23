@@ -119,11 +119,11 @@ let
   memberEdges = memberFleet.den.memberEdges;
   memberTargets = map (edge: edge.to.entityId) memberEdges;
 
-  # ── §4.7: the AGGREGATE render → HiveInfo + the gather-then-render mount ──
+  # ── §4.7: the AGGREGATE render → AggregateInfo + the gather-then-render mount ──
   # A collector `cluster` (class colmena, consumes RawModulesInfo) over TWO nixos members (a, b) each carrying
-  # DISTINCT resolved content. Its aggregate render `colmenaAgg` (evaluator memberMap → HiveInfo, tagged
+  # DISTINCT resolved content. Its aggregate render `colmenaAgg` (evaluator memberMap → AggregateInfo, tagged
   # `aggregate = true`) is called ONCE over the gathered member map and VALUE-mode nests into root via the
-  # render's `output` family `colmenaHive` (consumes HiveInfo). The stub evaluator proves the aggregate crossing
+  # render's `output` family `colmenaHive` (consumes AggregateInfo). The stub evaluator proves the aggregate crossing
   # is a swappable `evaluator` FIELD (the seam), never hardcoded in the mount flow.
   mkAggFleet =
     evaluator:
@@ -140,7 +140,7 @@ let
         };
         config.den.renders.colmenaAgg = {
           inherit evaluator;
-          produces = "HiveInfo";
+          produces = "AggregateInfo";
           aggregate = true;
           output = "colmenaHive";
         };
@@ -149,7 +149,7 @@ let
             "colmenaHive"
             e.name
           ];
-          consumes = "HiveInfo";
+          consumes = "AggregateInfo";
         };
         config.den.nixosHost.a = { };
         config.den.nixosHost.b = { };
@@ -195,7 +195,7 @@ let
       };
       config.den.renders.perConfig = {
         evaluator = _: { };
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         output = "colmenaHive";
       };
       config.den.outputs.colmenaHive = {
@@ -203,12 +203,12 @@ let
           "colmenaHive"
           e.name
         ];
-        consumes = "HiveInfo";
+        consumes = "AggregateInfo";
       };
       config.den.nixosHost.a = { };
     }
   ];
-  # render.produces (HiveInfo) ≠ family.consumes (SystemInfo) — the mounted-out shape mismatch.
+  # render.produces (AggregateInfo) ≠ family.consumes (SystemInfo) — the mounted-out shape mismatch.
   mismatchFleet = denHoag.mkDen [
     {
       config.den.schema.nixosHost.parent = null;
@@ -222,7 +222,7 @@ let
       };
       config.den.renders.colmenaAgg = {
         evaluator = m: m;
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "mismFam";
       };
@@ -274,7 +274,7 @@ let
       };
       config.den.renders.noOut = {
         evaluator = m: m;
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
       };
       config.den.nixosHost.a = { };
@@ -286,7 +286,7 @@ let
   # RawModulesInfo (content → the raw class slice), `deploy` consumes SystemInfo (artifact → the already-built
   # system, the deploy-rs/agenix shape). NO colmena/deploy-rs field anywhere in the kernel — the extraction
   # dispatches on the consumed product's MODE alone, so ONE machine turns the same member set into two payload
-  # shapes. Both renders are opaque stubs producing HiveInfo into their own families.
+  # shapes. Both renders are opaque stubs producing AggregateInfo into their own families.
   # ONE shared `members` selector — so the two collector records are provably identical in `members` (distinct
   # `hasClass "nixos"` calls would be equal-but-incomparable closures), which the structural genericity assert
   # below relies on to prove they differ ONLY in consumes+render.
@@ -312,7 +312,7 @@ let
         evaluator = m: {
           built = m;
         };
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "modHive";
       };
@@ -320,7 +320,7 @@ let
         evaluator = m: {
           built = m;
         };
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "sysHive";
       };
@@ -329,14 +329,14 @@ let
           "modHive"
           e.name
         ];
-        consumes = "HiveInfo";
+        consumes = "AggregateInfo";
       };
       config.den.outputs.sysHive = {
         at = _point: e: [
           "sysHive"
           e.name
         ];
-        consumes = "HiveInfo";
+        consumes = "AggregateInfo";
       };
       config.den.nixosHost.a = { };
       config.den.nixosHost.b = { };
@@ -379,7 +379,7 @@ let
         evaluator = m: {
           built = m;
         };
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "sysHive";
       };
@@ -388,7 +388,7 @@ let
           "sysHive"
           e.name
         ];
-        consumes = "HiveInfo";
+        consumes = "AggregateInfo";
       };
       config.den.nixosHost.void = { };
     }
@@ -398,7 +398,7 @@ let
   # A NAMED collector `hive` vs the family-level SUGAR `den.outputs.hive2.members = { of; consumes }`, both over
   # the SAME member set with the SAME aggregate render evaluator + member product. The sugar synthesizes a REAL
   # anonymous collector `members:hive2` (a registry entity with an id_hash) that flows through the SAME kernel —
-  # so the HiveInfo AGGREGATE VALUE (the member-name-keyed map INSIDE) is byte-identical across named/sugar,
+  # so the AggregateInfo AGGREGATE VALUE (the member-name-keyed map INSIDE) is byte-identical across named/sugar,
   # though the face keys (family key + leaf name) differ by construction.
   aggEvaluator = memberMap: {
     built = memberMap;
@@ -439,7 +439,7 @@ let
       };
       config.den.renders.namedAgg = {
         evaluator = aggEvaluator;
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "hiveFam";
       };
@@ -448,7 +448,7 @@ let
           "hiveFam"
           e.name
         ];
-        consumes = "HiveInfo";
+        consumes = "AggregateInfo";
       };
     }
   ];
@@ -458,7 +458,7 @@ let
     {
       config.den.renders.sugarAgg = {
         evaluator = aggEvaluator;
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "hive2";
       };
@@ -467,7 +467,7 @@ let
           "hive2"
           e.name
         ];
-        consumes = "HiveInfo";
+        consumes = "AggregateInfo";
         contentClass = "colmena";
         render = "sugarAgg";
         members = {
@@ -492,7 +492,7 @@ let
       };
       config.den.renders.sugarAgg = {
         evaluator = aggEvaluator;
-        produces = "HiveInfo";
+        produces = "AggregateInfo";
         aggregate = true;
         output = "hive2";
       };
@@ -501,7 +501,7 @@ let
           "hive2"
           e.name
         ];
-        consumes = "HiveInfo";
+        consumes = "AggregateInfo";
         contentClass = "colmena";
         render = "sugarAgg";
         members = {
@@ -533,7 +533,7 @@ let
           evaluator = m: {
             built = m;
           };
-          produces = "HiveInfo";
+          produces = "AggregateInfo";
           aggregate = true;
           output = "f";
         };
@@ -543,7 +543,7 @@ let
             "f"
             e.name
           ];
-          consumes = "HiveInfo";
+          consumes = "AggregateInfo";
           members =
             { }
             // (if of != null then { inherit of; } else { })
@@ -643,8 +643,8 @@ in
     };
 
     # the aggregate render receives the AGGREGATED member map (BOTH a and b under their names) — ONE render
-    # call over the gathered members, not a per-config build. HiveInfo goes producerless → produced.
-    test-aggregate-hiveinfo-has-both-members = {
+    # call over the gathered members, not a per-config build. AggregateInfo goes producerless → produced.
+    test-aggregate-value-has-both-members = {
       expr = builtins.attrNames aggHive.built;
       expected = [
         "a"
@@ -659,7 +659,7 @@ in
         && aggHive.built.a != aggHive.built.b;
       expected = true;
     };
-    # SEAM: swapping the render's stub evaluator CHANGES the built HiveInfo — the aggregate crossing is a
+    # SEAM: swapping the render's stub evaluator CHANGES the built AggregateInfo — the aggregate crossing is a
     # pluggable `evaluator` field, never hardcoded in the mount (the top key follows the evaluator).
     test-aggregate-evaluator-is-pluggable = {
       expr = builtins.attrNames aggSwapped.outputs.colmenaHive.cluster;
@@ -770,7 +770,7 @@ in
         ];
       expected = true;
     };
-    # KERNEL-IDENTITY WITNESS: the HiveInfo AGGREGATE VALUE (member-name-keyed) is BYTE-IDENTICAL across the
+    # KERNEL-IDENTITY WITNESS: the AggregateInfo AGGREGATE VALUE (member-name-keyed) is BYTE-IDENTICAL across the
     # named collector and the sugar-synthesized one — one kernel, no shadow arm. (The face keys differ by
     # construction: family hiveFam vs hive2, leaf hive vs members:hive2 — so we compare the aggregate value.)
     test-members-sugar-aggregate-byte-identical = {

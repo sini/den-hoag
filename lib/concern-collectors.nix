@@ -217,7 +217,7 @@ let
   # render → mount). NO second N→1 arm. `render`/`contentClass` come from the family's OWN fields (the
   # family's render.output = <f>, so the anon mounts into <f> itself — the family stays the RECEIVER, the anon is
   # the PRODUCER); the member selector + product come from the `members` record (co-located, so the
-  # family's own `consumes` stays unambiguously the mounted-OUT HiveInfo).
+  # family's own `consumes` stays unambiguously the mounted-OUT AggregateInfo).
   #
   # CORPUS-INERT BY CONSTRUCTION: a fleet with no `members`-bearing family synthesizes `{ }`, so the caller
   # appends NOTHING to userModules (the module list stays byte-untouched). The `raw`/structural probe (the

@@ -545,9 +545,9 @@ let
   # a WRAPPED-FACE MISMATCH (ArtifactRef Q at consumes = P): the value is STILL injected verbatim (never an
   # eval failure), but the contribution carries the `unrealizedCast` marker — a trace-visible node (§4.1).
   mismatchValueInner = cleanValueInner // {
-    product = "ArtifactRef HmInfo";
+    product = "ArtifactRef AggregateInfo";
     artifactRef = {
-      product = "HmInfo"; # ≠ the row's consumes (SystemInfo) → unrealizedCast marker, NOT a throw.
+      product = "AggregateInfo"; # ≠ the row's consumes (SystemInfo) → unrealizedCast marker, NOT a throw.
       value = {
         __prebuilt = "a-real-hm";
       };
@@ -1084,13 +1084,7 @@ in
         ModulesInfo = "content";
         RawModulesInfo = "content";
         SystemInfo = "artifact";
-        HmInfo = "artifact";
-        DroidInfo = "artifact";
-        NixidyEnvInfo = "artifact";
-        ShellInfo = "artifact";
-        TerranixInfo = "artifact";
-        HiveInfo = "artifact";
-        FlakeInfo = "artifact";
+        AggregateInfo = "artifact";
         EvalHandleInfo = "extend";
         ArgsInfo = "content";
       };
@@ -1104,12 +1098,7 @@ in
     test-products-artifact-faces-nestable = {
       expr = builtins.all (n: frameworkProducts.${n}.nestable) [
         "SystemInfo"
-        "HmInfo"
-        "DroidInfo"
-        "NixidyEnvInfo"
-        "ShellInfo"
-        "TerranixInfo"
-        "HiveInfo"
+        "AggregateInfo"
       ];
       expected = true;
     };
@@ -1217,7 +1206,7 @@ in
     test-conversions-malformed-key-throw = {
       expr = throws (compileConversions {
         conversions = {
-          "SystemInfo->RawModulesInfo->ShellInfo" = {
+          "SystemInfo->RawModulesInfo->AggregateInfo" = {
             via = x: x;
           };
         };
@@ -1837,7 +1826,7 @@ in
         hasCast = false;
       };
     };
-    # a WRAPPED-FACE MISMATCH (ArtifactRef HmInfo at consumes = SystemInfo): the value is STILL injected
+    # a WRAPPED-FACE MISMATCH (ArtifactRef AggregateInfo at consumes = SystemInfo): the value is STILL injected
     # verbatim (NOT an eval failure — conversions never apply to the prebuilt arm), and the contribution
     # carries the `unrealizedCast` marker (a trace-visible node, §4.1).
     test-nest-value-mismatch-marker = {
@@ -2459,7 +2448,7 @@ in
           };
         }).unrealizedCast;
       expected = {
-        from = "HmInfo";
+        from = "AggregateInfo";
         to = "SystemInfo";
         slot = "sys";
       };
@@ -3025,7 +3014,7 @@ in
         requires = [ "SystemInfo" ];
         available = [
           "SystemInfo"
-          "HmInfo"
+          "AggregateInfo"
         ];
       };
       expected = [ "SystemInfo" ];
@@ -3035,7 +3024,7 @@ in
     test-outputs-requires-unsatisfied-throw = {
       expr = throws (checkRequires {
         family = "customConfigurations";
-        requires = [ "TerranixInfo" ];
+        requires = [ "AggregateInfo" ];
         available = [ "SystemInfo" ];
       });
       expected = true;
@@ -3337,7 +3326,7 @@ in
                 systems = [ "x86_64-linux" ];
                 outputs.homeConfigurations = {
                   at = _point: e: [ e.name ];
-                  consumes = "HmInfo";
+                  consumes = "SystemInfo";
                   render = "nixos";
                   params = [ "system" ];
                 };
@@ -3371,7 +3360,7 @@ in
               config.den = {
                 outputs.homeConfigurations = {
                   at = _point: e: [ e.name ];
-                  consumes = "HmInfo";
+                  consumes = "SystemInfo";
                   render = "nixos";
                   params = [ "system" ];
                 };
