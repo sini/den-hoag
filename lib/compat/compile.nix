@@ -16,6 +16,13 @@
   sentinels,
   aspects,
   builtinClasses,
+  # gen-schema's content-address FORMULA (schema.hashIdentity) — the SINGLE definition the registry factor
+  # nodes hash through (gen-schema identity.nix:16). `idHashOf` routes through it so the resolve-arm's
+  # name-preimage aligns to the factor nodes BY CONSTRUCTION, not by a coincident literal copy.
+  schema,
+  # The `den-aspect:` namespace-identity preimage (§A2), from den-hoag's kernel single-authority
+  # (denHoag.aspectIdHash) — the compat aspect-edge sites recompute the SAME id_hash the kernel stamps.
+  aspectIdHash,
   # THE RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2, `den.resolveFamilyNames`) — threaded HERE
   # so the KIND-INCLUDE / DEFAULT-INCLUDE policy arms can stamp `__resolveFamily = true` on a compiled
   # include policy whose SOURCE REF's v1 name is in the set. A resolve policy wired via
@@ -413,7 +420,7 @@ let
           # `id_hash` (derive from `.key` when the node did not carry one — a manually-emitted value).
           ref
           // prelude.optionalAttrs (!(ref ? id_hash) && ref ? key) {
-            id_hash = builtins.hashString "sha256" "den-aspect:${ref.key}";
+            id_hash = aspectIdHash ref.key;
           }
         else
           let
@@ -423,7 +430,7 @@ let
           // {
             name = nm;
             key = nm;
-            id_hash = builtins.hashString "sha256" "den-aspect:${nm}";
+            id_hash = aspectIdHash nm;
             meta = (ref.meta or { }) // {
               aspect-chain = [ ];
             };
@@ -771,12 +778,9 @@ let
         # include lists use (the kind-include bare-fn posture, row r); the edged record carries a
         # name-derived id_hash (A2 — resolved-aspects uses the edge record DIRECTLY as content, the C1
         # no-lookup posture, so no registry entry is needed; the positional wrap name keys dedup).
-        map (
-          w:
-          declare.edge (
-            w // { id_hash = builtins.hashString "sha256" "den-aspect:${w.name or "policy-include"}"; }
-          )
-        ) (normalizeList "policy-include" [ effect.value ])
+        map (w: declare.edge (w // { id_hash = aspectIdHash (w.name or "policy-include"); })) (
+          normalizeList "policy-include" [ effect.value ]
+        )
       else
         [ (declare.edge (resolveAspectRef aspectRec effect.value)) ]
     else if kind == "exclude" then
@@ -870,7 +874,7 @@ let
         # The canonical ingest identity for a v1 target entity (name-derived id_hash, ingest.nix:177) — so
         # the coord/target id_hash matches the registry factor node (fleet.nix factorOf) and the pre-pass
         # index.
-        idHashOf = k: e: builtins.hashString "sha256" "${k}|name=${e.name}";
+        idHashOf = k: e: schema.hashIdentity k [ "name" ] (key: e.${key});
         # A CONTAINMENT target is IDENTITY-ONLY (id_hash + name): the tuple merely NAMES an existing target
         # root (the pre-pass index looks it up by id_hash); its payload rides `bindings`, never the record.
         wrapEntry = k: e: {

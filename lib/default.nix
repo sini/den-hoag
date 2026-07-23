@@ -25,6 +25,12 @@ let
   # builtins, no gen dep (REFERENCE.md). Exposed through `internal` for the substrate suite; the
   # substrate consumers reach it there.
   identity = import ./identity.nix { inherit prelude; };
+  # The den-hoag NAMESPACE-identity preimages (§A2) — the SINGLE authority for the `den-aspect:`/
+  # `den-class:` id_hashes. Both kernel authorities (classEntries/effectiveClassEntries below,
+  # concern-aspects' idModule) and any downstream recompute of an entry's id_hash read THESE fns,
+  # so the namespace preimage lives in exactly one place per namespace (no drift, Law C6).
+  identityPreimage = import ./identity-preimage.nix { };
+  inherit (identityPreimage) aspectIdHash classIdHash;
   # The edge-kind registry (den.edges): pre-registered vocabulary + validation (§2.2), the override tier
   # (§2.4), the synthetic edge-assembly pipeline (§2.1), and the cell/containment nest-edge producer
   # (§4.2/§4.6). Its `output` stratum is dogfooded into the fleet strata order below; the compiled table
@@ -116,7 +122,7 @@ let
     "k8s-manifests"
   ];
   classEntries = prelude.genAttrs classNames (name: {
-    id_hash = builtins.hashString "sha256" "den-class:${name}";
+    id_hash = classIdHash name;
     inherit name;
   });
 
@@ -165,6 +171,7 @@ let
       merge
       classNames
       errors
+      aspectIdHash
       ;
     kindNames = [ ];
   };
@@ -298,7 +305,7 @@ let
       effectiveClassNames =
         classNames ++ builtins.filter (n: !(builtins.elem n classNames)) discoveredClasses;
       effectiveClassEntries = prelude.genAttrs effectiveClassNames (name: {
-        id_hash = builtins.hashString "sha256" "den-class:${name}";
+        id_hash = classIdHash name;
         inherit name;
       });
 
@@ -308,6 +315,7 @@ let
           aspects
           merge
           errors
+          aspectIdHash
           ;
         classNames = effectiveClassNames;
         quirkChannels = channelSet;
@@ -2449,6 +2457,10 @@ in
   # mkDen tags contributions with, exposed for writing quirk `adapters` (cross-class coercions) that
   # reference a class by its entry rather than a bare name.
   classes = classEntries;
+  # den's namespace-identity preimages (§A2) — the SINGLE authority for the `den-aspect:`/`den-class:`
+  # id_hashes, so a downstream recompute of an entry's id_hash reads the SAME fn the kernel authorities
+  # use (Law C6 — the "shared BY CONSTRUCTION" promise made literal, no formula twin).
+  inherit aspectIdHash classIdHash;
   # den's declaration vocabulary (verb): the tagged constructors + stratum classifier +
   # identity-law checks, independent of any one mkDen instance. Policies read `declare.member`,
   # `declare.edge`, etc.

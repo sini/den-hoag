@@ -51,6 +51,7 @@ let
         merge
         errors
         ;
+      inherit (import "${denHoagSrc}/lib/identity-preimage.nix" { }) aspectIdHash;
       classNames = [
         "nixos"
         "darwin"

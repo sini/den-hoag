@@ -22,20 +22,22 @@
   errors,
 }:
 let
-  # den-hoag's identity conventions, reproduced so a shim reference matches the entry mkDen builds:
-  #   aspect  id_hash = sha256("den-aspect:<key>"), key = the aspect name for a top-level aspect
-  #           (gen-aspects `identity.key`); class id_hash = sha256("den-class:<name>").
+  # den-hoag's identity conventions: the shim routes a reference through den-hoag's OWN preimage helpers
+  # (denHoag.aspectIdHash/classIdHash, lib/identity-preimage.nix) so a shim entry's id_hash is the SAME
+  # value mkDen builds — not a reproduced formula but the kernel authority itself (Law C6 by construction):
+  #   aspect  id_hash = denHoag.aspectIdHash <key>, key = the aspect name for a top-level aspect
+  #           (gen-aspects `identity.key`); class id_hash = denHoag.classIdHash <name>.
   aspectEntry = name: {
-    id_hash = builtins.hashString "sha256" "den-aspect:${name}";
+    id_hash = denHoag.aspectIdHash name;
     inherit name;
   };
   # Built-in class entries come straight from den-hoag (single source of truth, no drift); a v1-declared
-  # class name gets an entry stamped by the SAME convention so both live in one registry.
+  # class name gets an entry stamped by the SAME authority fn so both live in one registry.
   builtinClasses = denHoag.classes;
   classEntry =
     name:
     builtinClasses.${name} or {
-      id_hash = builtins.hashString "sha256" "den-class:${name}";
+      id_hash = denHoag.classIdHash name;
       inherit name;
     };
 

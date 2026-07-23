@@ -6,7 +6,7 @@
 # full path, `meta.aspect-chain` = its ancestors — born in the type. The `__provider` shadow (the retired
 # annotate walk + `stampProvider` reconstruction) is GONE; this suite witnesses the native identity that
 # replaced it on the evalV1 read-back.
-{ denCompat, ... }:
+{ denCompat, denHoag, ... }:
 let
   # The evalV1 read-back of a nested-path aspect (the F1 baseline shape) — a sibling aspect includes it
   # via `with aspects; …` (the legacy binding rewire must keep resolving), and a freeform `den.<custom>`
@@ -63,6 +63,24 @@ in
     test-freeform-absorbs = {
       expr = ev.customFreeform or "<absent>";
       expected = "rides-freeform";
+    };
+    # ── the exported preimage helpers reproduce the exact namespace literal (helper == the formula the
+    #    kernel single-authority owns; lib/identity-preimage.nix). ──
+    test-aspect-preimage-literal = {
+      expr = denHoag.aspectIdHash "core/network/manager";
+      expected = builtins.hashString "sha256" "den-aspect:core/network/manager";
+    };
+    test-class-preimage-literal = {
+      expr = denHoag.classIdHash "nixos";
+      expected = builtins.hashString "sha256" "den-class:nixos";
+    };
+    # ── single-source, not a coincidence: on a REAL navigated node's key, the exported helper reproduces
+    #    the exact `den-aspect:` preimage the aspect authority (concern-aspects idModule = `aspectIdHash
+    #    config.key`) stamps. (An assembled aspect's id_hash itself equalling the literal is separately
+    #    witnessed green by compat-nested-aspects test-emitted-identity-native.) ──
+    test-authority-key-routes-through-helper = {
+      expr = denHoag.aspectIdHash nav.key;
+      expected = builtins.hashString "sha256" "den-aspect:${nav.key}";
     };
   };
 }

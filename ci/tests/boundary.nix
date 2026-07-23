@@ -53,6 +53,7 @@ let
     "projects.nix"
     "demand.nix"
     "identity.nix"
+    "identity-preimage.nix"
     "edges.nix"
     "products.nix"
     "resolution-products.nix"
@@ -143,6 +144,9 @@ let
   #   API surfaces (denHoag.<x>):
   #     mkDen     — the four-concern driver (the shim's whole output target).
   #     classes   — the class-tag entry registry (identity-law class entries).
+  #     aspectIdHash / classIdHash — the §A2 namespace-identity preimage helpers (lib/identity-preimage.nix):
+  #                 the SINGLE authority for the `den-aspect:`/`den-class:` id_hash, so a shim entry's
+  #                 recomputed id_hash reads the kernel fn rather than a formula twin (Law C6, no drift).
   #     declare   — the declaration-constructor vocabulary (edge/drop/spawn/member/delivery).
   #     sel       — the selector vocabulary (neededBy / nameMatches predicates).
   #     query     — the §3 query calculus over a supplied flat labeled edge list onto gen-graph. The
@@ -158,6 +162,8 @@ let
   seamApiSurfaces = [
     "mkDen"
     "classes"
+    "aspectIdHash"
+    "classIdHash"
     "declare"
     "sel"
     "query"

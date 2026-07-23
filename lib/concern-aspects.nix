@@ -22,6 +22,10 @@
   # kind-name literals — the standard `host`/`user` set arrives from the probe, never a core constant.
   kindNames,
   errors,
+  # The `den-aspect:` namespace-identity preimage (§A2), owned by the kernel single-authority
+  # (lib/identity-preimage.nix). This is the aspect id_hash AUTHORITY — it calls the shared fn rather
+  # than a local formula copy, so a downstream recompute can never drift from it.
+  aspectIdHash,
 }:
 let
   # The shared class + channel keySemantics builder. The SAME class + channel vocabulary feeds
@@ -109,7 +113,7 @@ let
         readOnly = true;
         description = "Content-stable aspect identity (sha256 over the structural key).";
       };
-      config.id_hash = builtins.hashString "sha256" "den-aspect:${config.key}";
+      config.id_hash = aspectIdHash config.key;
     };
 
   # cnf drives gen-aspects' `aspectType`: ONE `keySemantics` map declares every aspect key's
