@@ -149,7 +149,19 @@ let
         lib = configWiredLib;
       };
     };
+    # den.lib.aspects.{resolve,resolveWithPaths,resolveImports} + resolveEntity (#49 sub-rung C) — a
+    # config-wired ADAPTER over the BUILT den's already-native output (lib/compat/resolve-verbs.nix; the
+    # migrationLib carries the throwing config-wired stubs). Closes over the SAME `built.den` `config.flake`
+    # mounts (the shared hoist below), so a resolve read and the flake output face never diverge (NO second
+    # `mkDen`). LAZY: `resolveVerbs` is a bag of thunks and `built.den` is forced only when a verb is CALLED
+    # (the self-reference / off-fleet-tree ceilings are ledgered in resolve-verbs.nix). `aspects.fx`
+    # .keyClassification and the `aspects.resolveWithState` LATENT stub ride through from `denLib.aspects`.
+    aspects = denLib.aspects // {
+      inherit (resolveVerbs) resolve resolveWithPaths resolveImports;
+    };
+    inherit (resolveVerbs) resolveEntity;
   };
+  resolveVerbs = import ./resolve-verbs.nix { den = built.den; };
   denArg = compat.annotatedViewNav fleetDen // {
     lib = configWiredLib;
     # v1 root-namespace provider registry (lib/compat/provides-nav.nix): both aliases resolve the same
@@ -157,6 +169,152 @@ let
     provides = providesNav;
     _ = providesNav;
   };
+  # `den.nixpkgs`/`den.darwin` are BRIDGE controls (the global-fallback instantiation grain), not v1
+  # surface keys — strip them before the shim, whose compile surface-totality gate (C1) rejects any
+  # `den.*` key outside the v1 grammar. What remains is the single pre-merged fleet def handed to the
+  # shim's internal gen-schema eval (no multi-module conflict — the flake-parts side already merged).
+  npkgs = config.den.nixpkgs or null;
+  # DECLARED-surface extraction (M1.5): the corpus declares `options.den.<x>` sub-options for its custom
+  # kinds' instance registries AND its non-kind config namespaces (secretsConfig). The shim (which reads
+  # config VALUES, not the option tree) can't tell a declared namespace from a typo; so the bridge — the
+  # ONE place with the flake-parts option surface — reads the DECLARED sub-option names off `options.den`
+  # (the freeform submodule's `getSubOptions`, minus the `_freeformOptions` marker) and passes them to
+  # compile as the reserved `_declaredKeys`. compile's strict surface-totality classifies these as
+  # legitimate (a typo is undeclared, so still aborts). `_`-prefixed ⇒ exempt from totality + ignored by
+  # ingest; harmless on the shim's other passes.
+  declaredDenKeys = builtins.filter (k: builtins.substring 0 1 k != "_") (
+    builtins.attrNames ((options.den.type.getSubOptions or (_: { })) [ ])
+  );
+  # ── ctx-entity REGISTRY STAMPS (the bridge-registry passthrough; replaces the fork-(i) side
+  # eval, instance-eval.nix — DELETED) ─────────────────────────────────────────────────────────
+  # The BRIDGE EVAL already materializes every registry's full merged view: `den.hosts` via the
+  # shim-declared v1 hostsOption parity option (options.hosts above — v1's own per-host instance
+  # eval, native priorities), the custom kinds via the CORPUS's own `mkInstanceRegistry`
+  # declarations (options + defaults + methods post-ad2195b + derive). The stamps are that view
+  # MINUS the STRUCTURAL EXCLUSION RULE (registry.nix stampTreeOf/stampOf — `raw`/
+  # `deferredModule`/`anything`-class option types never enter deepSeq'd resolution state; the
+  # inclusion tree is read FORCE-FREE off the option declarations, excluded values never
+  # touched). Two declaration sources, ONE classifier:
+  #   - hosts: the probe eval's `.options` (`hostInstanceOptions` — the shim owns the
+  #     declaration, so the probe runs the same base-entity + kind-value modules);
+  #   - consumer-declared registries: the DECLARED option's own `type.getSubOptions` (the
+  #     flake-parts option surface — force-free; a registry whose type exposes none stamps
+  #     nothing, degrading to field-less entities, never a throw).
+  # Namespaces are discovered STRUCTURALLY (`ingest.isInstanceRegistry` — id_hash-bearing
+  # entries, the M1.5 marker test's shape half; `den.hosts` entries carry no id_hash, so the
+  # generic scan never double-stamps them). The stamps ride to ingest as the reserved
+  # `_entityStamps` (like `_declaredKeys`: `_`-exempt from surface-totality, skipped by
+  # custom-kind discovery), where `entityFields` re-keys them by KIND. A fleet with no host kind
+  # stamps base-only (every base option is raw → excluded → an EMPTY host stamp) — byte-identical
+  # to the field-less pre-registry entities.
+  hostKindModule = (config.den.schema or { }).host or { };
+  # #71 — the USER kind's emitted value (the belt __functor module, post-#68 carrying the corpus's
+  # shorthand `classes = mkDefault [ "homeManager" ]` def) threads into the host registry so each
+  # host-embedded user evaluates through v1's userType twin (registry.nix baseEntityModule).
+  userKindModule = (config.den.schema or { }).user or { };
+  hostInstanceOpts = compat.registry.hostInstanceOptions {
+    inherit lib userKindModule;
+    kindModule = hostKindModule;
+  };
+  hostStampTree = compat.registry.stampTreeOf hostInstanceOpts;
+  # #70 (ledger u19 next-link): the RAW-FIELD dual tree — exactly the leaves the structural
+  # exclusion drops from the deepSeq-safe stamp (registry.nix rawStampTreeOf; the exclusion's
+  # reason stands, the safe stamp is UNCHANGED). v1 binds the FULL merged host config as the ctx
+  # entity (pin assemble-pipes.nix:154), so these fields must be VISIBLE to policy/channel bodies
+  # (`host.microvm.guests`, the u19 frontier) — they ride the separate `_entityRawStamps` side
+  # channel (the instantiateFor/hmModuleFor side-map grain, generalized) and are overlaid LAZILY
+  # onto the ctx entity at ingest (one un-forced thunk per field — forced only when a body reads).
+  hostRawStampTree = compat.registry.rawStampTreeOf hostInstanceOpts;
+  hostEntries = compat.registry.flattenRegistry (config.den.hosts or { });
+  denSubOptions = (options.den.type.getSubOptions or (_: { })) [ ];
+  consumerRegistryKeys = builtins.filter (
+    k: builtins.substring 0 1 k != "_" && compat.ingest.isInstanceRegistry (config.den.${k} or null)
+  ) declaredDenKeys;
+  subOptionsOf =
+    k:
+    let
+      t = (denSubOptions.${k} or { }).type or null;
+    in
+    if t == null || !(t ? getSubOptions) then
+      { }
+    else
+      t.getSubOptions [
+        "den"
+        k
+      ];
+  stampRegistry = tree: entries: builtins.mapAttrs (_: e: compat.registry.stampOf tree e) entries;
+  entityStamps = {
+    hosts = stampRegistry hostStampTree hostEntries;
+  }
+  // lib.genAttrs consumerRegistryKeys (
+    k: stampRegistry (compat.registry.stampTreeOf (subOptionsOf k)) config.den.${k}
+  );
+  # #70: the raw-field twin — the SAME registries read through the raw dual tree (stampOf's read
+  # is per-field lazy, so the excluded values stay un-forced here exactly as in the safe stamp).
+  rawEntityStamps = {
+    hosts = stampRegistry hostRawStampTree hostEntries;
+  }
+  // lib.genAttrs consumerRegistryKeys (
+    k: stampRegistry (compat.registry.rawStampTreeOf (subOptionsOf k)) config.den.${k}
+  );
+  # ROBUST namespace→kind for the consumer-declared registries — the OPTION-reflecting marker
+  # (registry.nix registryKindOf) the ingest re-keys `_entityStamps` by. ingest's value-reflecting
+  # id_hash discovery MISSES a namespace whose instances carry a derived/internal primitive (the
+  # corpus `cluster.sopsAgeRecipient`), so those registries never reached the fleet (env/cluster
+  # root nodes absent → the staged env phase never ran → env-users matched nothing → no user cells
+  # on nixos hosts). Reflected off the DECLARED option surface (`subOptionsOf` — the same surface
+  # the stamps read), recomputed through gen-schema's `hashIdentity`, gated on the carried id_hash.
+  # The candidate set is the v1-DECLARED kinds (minus the built-in host/user), zero kind literals.
+  # Rides to ingest as the reserved `_registryKinds` (like `_entityStamps`/`_declaredKeys`:
+  # `_`-exempt from surface-totality, skipped by ingest's discovery scan). A fleet with no consumer
+  # registry emits `{ }` — the value-reflecting discovery then rules, byte-identical to before.
+  customKindNames = builtins.filter (k: k != "host" && k != "user") (
+    builtins.attrNames (config.den.schema.__rawSchema or { })
+  );
+  registryKinds = lib.filterAttrs (_: v: v != null) (
+    lib.genAttrs consumerRegistryKeys (
+      k:
+      compat.registry.registryKindOf {
+        opts = subOptionsOf k;
+        instances = config.den.${k};
+        candidateKinds = customKindNames;
+        inherit (schema) hashIdentity;
+      }
+    )
+  );
+  fleet = [
+    {
+      # The fleet's `den.*` surface handed to the shim; `mkDenWith` types `den.aspects` through the
+      # compile view, so compile's include grounding reads the native gen-aspects `.key`.
+      den =
+        builtins.removeAttrs fleetDen [
+          "nixpkgs"
+          "darwin"
+        ]
+        // {
+          # the shim gets the RAW schema (it re-processes; the processed value is the corpus's, not ours).
+          schema = config.den.schema.__rawSchema or { };
+          _declaredKeys = declaredDenKeys;
+          _entityStamps = entityStamps;
+          # #70: the raw-field side channel (`_`-exempt from surface-totality like _entityStamps).
+          _entityRawStamps = rawEntityStamps;
+          # The robust namespace→kind marker (registryKindOf) — ingest re-keys `_entityStamps` and
+          # builds the custom-kind registries by it, so a namespace whose instances carry a
+          # derived/internal primitive (cluster.sopsAgeRecipient) still reaches the fleet.
+          _registryKinds = registryKinds;
+        };
+    }
+  ];
+  # Instantiation grains: the per-host `host.instantiate` (per-entity grain, ship-gate M2) is honored
+  # inside the compat nixos wrapper (flake-module.nix) — a host that declares its own evaluator builds
+  # through THAT channel regardless of the two lines below. These control the FALLBACK grain for hosts
+  # with no per-host instantiate (M1): one `crossNixos` for every such nixos member when `den.nixpkgs`
+  # is set, else the nixpkgs-free `collect` terminal (member keys present, no build).
+  built =
+    if npkgs == null then
+      compat.mkDen fleet
+    else
+      compat.mkDenWith fleet { nixosTerminal = mkCrossNixos npkgs; };
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
@@ -568,166 +726,17 @@ in
   # lookup. Consistent with the `fleetDen` comment above.
   config._module.args.den = denArg;
 
-  config.flake =
-    let
-      # `den.nixpkgs`/`den.darwin` are BRIDGE controls (the global-fallback instantiation grain), not v1
-      # surface keys — strip them before the shim, whose compile surface-totality gate (C1) rejects any
-      # `den.*` key outside the v1 grammar. What remains is the single pre-merged fleet def handed to the
-      # shim's internal gen-schema eval (no multi-module conflict — the flake-parts side already merged).
-      npkgs = config.den.nixpkgs or null;
-      # DECLARED-surface extraction (M1.5): the corpus declares `options.den.<x>` sub-options for its custom
-      # kinds' instance registries AND its non-kind config namespaces (secretsConfig). The shim (which reads
-      # config VALUES, not the option tree) can't tell a declared namespace from a typo; so the bridge — the
-      # ONE place with the flake-parts option surface — reads the DECLARED sub-option names off `options.den`
-      # (the freeform submodule's `getSubOptions`, minus the `_freeformOptions` marker) and passes them to
-      # compile as the reserved `_declaredKeys`. compile's strict surface-totality classifies these as
-      # legitimate (a typo is undeclared, so still aborts). `_`-prefixed ⇒ exempt from totality + ignored by
-      # ingest; harmless on the shim's other passes.
-      declaredDenKeys = builtins.filter (k: builtins.substring 0 1 k != "_") (
-        builtins.attrNames ((options.den.type.getSubOptions or (_: { })) [ ])
-      );
-      # ── ctx-entity REGISTRY STAMPS (the bridge-registry passthrough; replaces the fork-(i) side
-      # eval, instance-eval.nix — DELETED) ─────────────────────────────────────────────────────────
-      # The BRIDGE EVAL already materializes every registry's full merged view: `den.hosts` via the
-      # shim-declared v1 hostsOption parity option (options.hosts above — v1's own per-host instance
-      # eval, native priorities), the custom kinds via the CORPUS's own `mkInstanceRegistry`
-      # declarations (options + defaults + methods post-ad2195b + derive). The stamps are that view
-      # MINUS the STRUCTURAL EXCLUSION RULE (registry.nix stampTreeOf/stampOf — `raw`/
-      # `deferredModule`/`anything`-class option types never enter deepSeq'd resolution state; the
-      # inclusion tree is read FORCE-FREE off the option declarations, excluded values never
-      # touched). Two declaration sources, ONE classifier:
-      #   - hosts: the probe eval's `.options` (`hostInstanceOptions` — the shim owns the
-      #     declaration, so the probe runs the same base-entity + kind-value modules);
-      #   - consumer-declared registries: the DECLARED option's own `type.getSubOptions` (the
-      #     flake-parts option surface — force-free; a registry whose type exposes none stamps
-      #     nothing, degrading to field-less entities, never a throw).
-      # Namespaces are discovered STRUCTURALLY (`ingest.isInstanceRegistry` — id_hash-bearing
-      # entries, the M1.5 marker test's shape half; `den.hosts` entries carry no id_hash, so the
-      # generic scan never double-stamps them). The stamps ride to ingest as the reserved
-      # `_entityStamps` (like `_declaredKeys`: `_`-exempt from surface-totality, skipped by
-      # custom-kind discovery), where `entityFields` re-keys them by KIND. A fleet with no host kind
-      # stamps base-only (every base option is raw → excluded → an EMPTY host stamp) — byte-identical
-      # to the field-less pre-registry entities.
-      hostKindModule = (config.den.schema or { }).host or { };
-      # #71 — the USER kind's emitted value (the belt __functor module, post-#68 carrying the corpus's
-      # shorthand `classes = mkDefault [ "homeManager" ]` def) threads into the host registry so each
-      # host-embedded user evaluates through v1's userType twin (registry.nix baseEntityModule).
-      userKindModule = (config.den.schema or { }).user or { };
-      hostInstanceOpts = compat.registry.hostInstanceOptions {
-        inherit lib userKindModule;
-        kindModule = hostKindModule;
-      };
-      hostStampTree = compat.registry.stampTreeOf hostInstanceOpts;
-      # #70 (ledger u19 next-link): the RAW-FIELD dual tree — exactly the leaves the structural
-      # exclusion drops from the deepSeq-safe stamp (registry.nix rawStampTreeOf; the exclusion's
-      # reason stands, the safe stamp is UNCHANGED). v1 binds the FULL merged host config as the ctx
-      # entity (pin assemble-pipes.nix:154), so these fields must be VISIBLE to policy/channel bodies
-      # (`host.microvm.guests`, the u19 frontier) — they ride the separate `_entityRawStamps` side
-      # channel (the instantiateFor/hmModuleFor side-map grain, generalized) and are overlaid LAZILY
-      # onto the ctx entity at ingest (one un-forced thunk per field — forced only when a body reads).
-      hostRawStampTree = compat.registry.rawStampTreeOf hostInstanceOpts;
-      hostEntries = compat.registry.flattenRegistry (config.den.hosts or { });
-      denSubOptions = (options.den.type.getSubOptions or (_: { })) [ ];
-      consumerRegistryKeys = builtins.filter (
-        k: builtins.substring 0 1 k != "_" && compat.ingest.isInstanceRegistry (config.den.${k} or null)
-      ) declaredDenKeys;
-      subOptionsOf =
-        k:
-        let
-          t = (denSubOptions.${k} or { }).type or null;
-        in
-        if t == null || !(t ? getSubOptions) then
-          { }
-        else
-          t.getSubOptions [
-            "den"
-            k
-          ];
-      stampRegistry = tree: entries: builtins.mapAttrs (_: e: compat.registry.stampOf tree e) entries;
-      entityStamps = {
-        hosts = stampRegistry hostStampTree hostEntries;
-      }
-      // lib.genAttrs consumerRegistryKeys (
-        k: stampRegistry (compat.registry.stampTreeOf (subOptionsOf k)) config.den.${k}
-      );
-      # #70: the raw-field twin — the SAME registries read through the raw dual tree (stampOf's read
-      # is per-field lazy, so the excluded values stay un-forced here exactly as in the safe stamp).
-      rawEntityStamps = {
-        hosts = stampRegistry hostRawStampTree hostEntries;
-      }
-      // lib.genAttrs consumerRegistryKeys (
-        k: stampRegistry (compat.registry.rawStampTreeOf (subOptionsOf k)) config.den.${k}
-      );
-      # ROBUST namespace→kind for the consumer-declared registries — the OPTION-reflecting marker
-      # (registry.nix registryKindOf) the ingest re-keys `_entityStamps` by. ingest's value-reflecting
-      # id_hash discovery MISSES a namespace whose instances carry a derived/internal primitive (the
-      # corpus `cluster.sopsAgeRecipient`), so those registries never reached the fleet (env/cluster
-      # root nodes absent → the staged env phase never ran → env-users matched nothing → no user cells
-      # on nixos hosts). Reflected off the DECLARED option surface (`subOptionsOf` — the same surface
-      # the stamps read), recomputed through gen-schema's `hashIdentity`, gated on the carried id_hash.
-      # The candidate set is the v1-DECLARED kinds (minus the built-in host/user), zero kind literals.
-      # Rides to ingest as the reserved `_registryKinds` (like `_entityStamps`/`_declaredKeys`:
-      # `_`-exempt from surface-totality, skipped by ingest's discovery scan). A fleet with no consumer
-      # registry emits `{ }` — the value-reflecting discovery then rules, byte-identical to before.
-      customKindNames = builtins.filter (k: k != "host" && k != "user") (
-        builtins.attrNames (config.den.schema.__rawSchema or { })
-      );
-      registryKinds = lib.filterAttrs (_: v: v != null) (
-        lib.genAttrs consumerRegistryKeys (
-          k:
-          compat.registry.registryKindOf {
-            opts = subOptionsOf k;
-            instances = config.den.${k};
-            candidateKinds = customKindNames;
-            inherit (schema) hashIdentity;
-          }
-        )
-      );
-      fleet = [
-        {
-          # The fleet's `den.*` surface handed to the shim; `mkDenWith` types `den.aspects` through the
-          # compile view, so compile's include grounding reads the native gen-aspects `.key`.
-          den =
-            builtins.removeAttrs fleetDen [
-              "nixpkgs"
-              "darwin"
-            ]
-            // {
-              # the shim gets the RAW schema (it re-processes; the processed value is the corpus's, not ours).
-              schema = config.den.schema.__rawSchema or { };
-              _declaredKeys = declaredDenKeys;
-              _entityStamps = entityStamps;
-              # #70: the raw-field side channel (`_`-exempt from surface-totality like _entityStamps).
-              _entityRawStamps = rawEntityStamps;
-              # The robust namespace→kind marker (registryKindOf) — ingest re-keys `_entityStamps` and
-              # builds the custom-kind registries by it, so a namespace whose instances carry a
-              # derived/internal primitive (cluster.sopsAgeRecipient) still reaches the fleet.
-              _registryKinds = registryKinds;
-            };
-        }
-      ];
-      # Instantiation grains: the per-host `host.instantiate` (per-entity grain, ship-gate M2) is honored
-      # inside the compat nixos wrapper (flake-module.nix) — a host that declares its own evaluator builds
-      # through THAT channel regardless of the two lines below. These control the FALLBACK grain for hosts
-      # with no per-host instantiate (M1): one `crossNixos` for every such nixos member when `den.nixpkgs`
-      # is set, else the nixpkgs-free `collect` terminal (member keys present, no build).
-      built =
-        if npkgs == null then
-          compat.mkDen fleet
-        else
-          compat.mkDenWith fleet { nixosTerminal = mkCrossNixos npkgs; };
-    in
-    {
-      # The drop-in `den` output faces (D8 flake-parts option targets).
-      nixosConfigurations = built.nixosConfigurations;
-      # darwin members cross through `collect`: the compat per-host instantiate wrapper is stamped only on
-      # the nixos class (M2), so a darwin host's `host.instantiate` is not yet honored — that is the darwin
-      # live corpus run (ship-gate item 2 / class B, `patch`), a trivial stamp of the now class-neutral
-      # wrapper onto the darwin class. The member keys are present so `darwinConfigurations` is non-empty
-      # and inspectable.
-      darwinConfigurations = built.darwinConfigurations;
-      # ABSENT (honest, M1): `homeConfigurations` — den-hoag has no standalone-home output yet (den.homes /
-      # parity OQ5, board #49); the `perSystem` faces (devShells/packages/apps/checks) — the compat layer
-      # produces no per-system class content yet. Both are set only once the shim can honestly produce them.
-    };
+  config.flake = {
+    # The drop-in `den` output faces (D8 flake-parts option targets).
+    nixosConfigurations = built.nixosConfigurations;
+    # darwin members cross through `collect`: the compat per-host instantiate wrapper is stamped only on
+    # the nixos class (M2), so a darwin host's `host.instantiate` is not yet honored — that is the darwin
+    # live corpus run (ship-gate item 2 / class B, `patch`), a trivial stamp of the now class-neutral
+    # wrapper onto the darwin class. The member keys are present so `darwinConfigurations` is non-empty
+    # and inspectable.
+    darwinConfigurations = built.darwinConfigurations;
+    # ABSENT (honest, M1): `homeConfigurations` — den-hoag has no standalone-home output yet (den.homes /
+    # parity OQ5, board #49); the `perSystem` faces (devShells/packages/apps/checks) — the compat layer
+    # produces no per-system class content yet. Both are set only once the shim can honestly produce them.
+  };
 }

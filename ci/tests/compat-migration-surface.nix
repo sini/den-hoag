@@ -25,6 +25,9 @@ in
         resolve = L.policy ? resolve;
         instantiate = L.policy ? instantiate;
         aspectsResolve = L.aspects ? resolve;
+        aspectsResolveWithPaths = L.aspects ? resolveWithPaths;
+        aspectsResolveImports = L.aspects ? resolveImports;
+        aspectsResolveWithState = L.aspects ? resolveWithState;
         keyClassification = L.aspects.fx ? keyClassification;
         resolveEntity = L ? resolveEntity;
         home = L ? home;
@@ -47,6 +50,9 @@ in
             "resolve"
             "instantiate"
             "aspectsResolve"
+            "aspectsResolveWithPaths"
+            "aspectsResolveImports"
+            "aspectsResolveWithState"
             "keyClassification"
             "resolveEntity"
             "home"
@@ -116,17 +122,17 @@ in
       };
     };
 
-    # ── stubs throw a NAMED blocker (not silent, not a fake) — the STILL-escalated set (#49); the
-    #    keyClassification slice + `policy.instantiate` (#50) + `policy.resolve` (R2, now the functor bag
-    #    above) moved to real, so the escalated set is now 4. ──
+    # ── stubs throw a NAMED blocker (not silent, not a fake) — the STILL-escalated set (#49). #49 sub-rung C
+    #    RECLASSIFIED `aspects.resolve` + `resolveEntity` (and added `resolveWithPaths`/`resolveImports`) to
+    #    CONFIG-WIRED: they throw on `L` (= `inputs.den.lib`, config-less) but are REAL on the bridge's `den`
+    #    module arg (witnessed in compat-config-wired-lib.nix), exactly like `nh`/`schemaUtil`. They therefore
+    #    LEAVE this escalated list; `home` + `capture.captureFleet` are the remaining 2 escalated rungs. ──
     test-semantic-verbs-are-named-stubs = {
       expr = map throws [
-        L.aspects.resolve
-        L.resolveEntity
         L.home
         L.capture.captureFleet
       ];
-      expected = builtins.genList (_: true) 4;
+      expected = builtins.genList (_: true) 2;
     };
 
     # ── LHF lib-forward quick-wins (den v1 nix/lib/*): the four additive passthrough surfaces exist and

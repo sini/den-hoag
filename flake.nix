@@ -190,14 +190,24 @@
             value = spec;
           };
         };
-        # den.lib.aspects.* / resolveEntity / home / capture — v1 lib surfaces (semantic; escalated).
+        # den.lib.aspects.* / resolveEntity / home / capture — v1 lib surfaces. resolve/resolveWithPaths/
+        # resolveImports + resolveEntity are CONFIG-WIRED (#49 sub-rung C): v1 ran a fresh fx pipeline per
+        # seed, but den-hoag reads the BUILT fleet's memoized fold — so they need `config.den` and cannot be
+        # real on the config-less migrationLib. NAMED config-wired stubs here (throw on `inputs.den.lib`);
+        # the bridge's `configWiredLib` OVERRIDES them with the applied adapter (lib/compat/resolve-verbs.nix)
+        # on the `den` module arg. home/capture stay ESCALATED (separate rungs).
         aspects = {
-          resolve = stub "lib.aspects.resolve" "the aspect-resolution surface (board #49) — not yet available";
+          resolve = stub "lib.aspects.resolve" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+          resolveWithPaths = stub "lib.aspects.resolveWithPaths" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+          resolveImports = stub "lib.aspects.resolveImports" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
+          # resolveWithState (v1 default.nix:114 → the raw `{ value; state; }` fx-trampoline result): NO
+          # den-hoag native twin (fx retired). A NAMED LATENT stub, never config-wired.
+          resolveWithState = stub "lib.aspects.resolveWithState" "the fx-trampoline resolve state — no den-hoag native twin (fx retired); LATENT (board #49)";
           # fx.keyClassification — the #49-SLICE: real, reproducing v1's `structuralKeysSet` (the ONE export
           # the corpus reads). The rest of the #49 semantic surface stays escalated.
           fx.keyClassification = compat.keyClassification;
         };
-        resolveEntity = stub "lib.resolveEntity" "the entity-resolution surface (R8; board #49/#50) — not yet available";
+        resolveEntity = stub "lib.resolveEntity" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
         home = stub "lib.home" "the home-entity surface (board #49) — not yet available";
         capture.captureFleet = stub "lib.capture.captureFleet" "the fleet-capture surface (board #49) — not yet available";
         # den.lib.{nh,policyInspect,__findFile,schemaUtil} — CONFIG-WIRED surfaces (#49 sub-rung B). v1 loads

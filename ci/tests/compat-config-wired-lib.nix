@@ -107,6 +107,27 @@ let
     };
   };
   fulLookup = builtins.tryEval (findLib.__findFile null "ful.x");
+
+  # ── resolve-verbs fixture (#49 sub-rung C): a PLAIN hosts-only fleet (NO custom kinds ⇒ the field-less host
+  #    stamp is empty ⇒ the bridge's shared `built.den` == an INDEPENDENT `denCompat.mkDen [fixture].den`
+  #    byte-identical). The adapter (lib/compat/resolve-verbs.nix, off the `den` module arg) reads the SAME
+  #    native `outputFor`/`traceFor` the DIRECT `mkDen` read does — so the comparison is a NON-TAUTOLOGY
+  #    (adapter-through-bridge vs direct native), mirroring the oracle's hoag arm (oracle.nix:439-458). ──
+  resolveFixture = {
+    den.hosts.x86_64-linux.iceberg = { };
+  };
+  resolveLib = denLibOf resolveFixture;
+  # INDEPENDENT direct native read (the oracle's `hoagBuilt`, oracle.nix:439-442) — NOT the bridge path.
+  nativeDen = (denCompat.mkDen [ resolveFixture ]).den;
+  rootId = "host:iceberg";
+  rootClass = "nixos";
+  # v1's seed shape `{ ${kind} = <entity record>; }`; the adapter reads only `record.name` → the node id.
+  resolveHandle = resolveLib.resolveEntity "host" {
+    host = {
+      name = "iceberg";
+    };
+  };
+  nativeImports = (nativeDen.output.outputFor rootId).${rootId}.${rootClass} or [ ];
 in
 {
   flake.tests.compat-config-wired-lib = {
@@ -185,6 +206,45 @@ in
     test-findfile-ful-ceiling-throws = {
       expr = fulLookup.success;
       expected = false;
+    };
+
+    # ── resolve verbs (#49 sub-rung C): the config-wired adapter over the built den's native output. ──
+    # resolveEntity → the node HANDLE (readable coord path "${kind}:${name}", the outputFor/traceFor key).
+    test-resolve-entity-handle = {
+      expr = resolveHandle.__denNode;
+      expected = "host:iceberg";
+    };
+    # resolve class handle → `{ imports }` == the INDEPENDENT direct-native `outputFor.<id>.<class>` read
+    # (oracle.nix:442 twin). Bare host ⇒ [] both sides; the equality confirms the adapter reads the same fold.
+    test-resolve-imports-match-native = {
+      expr = (resolveLib.aspects.resolve rootClass resolveHandle).imports == nativeImports;
+      expected = true;
+    };
+    # resolveWithPaths.edgeTrace == the INDEPENDENT direct-native `traceFor` — the STRONG non-tautology: the
+    # trace is hashable/comparable by design (output-modules.nix:871) and oracle-proven `hoag traceFor == v1
+    # edgeTrace`. Equality here pins the bridge's shared `built.den` == direct `mkDen [fixture].den`.
+    test-resolve-with-paths-trace-match-native = {
+      expr =
+        (resolveLib.aspects.resolveWithPaths rootClass resolveHandle).edgeTrace
+        == nativeDen.output.traceFor rootId;
+      expected = true;
+    };
+    # resolveWithPaths.pathSetByScope — the native `reach` closure keyed by id (v1 projected-hasAspect
+    # `{ scopeId → { pathKey → true } }`); a bare host reaches the `defaults` aspect alone.
+    test-resolve-with-paths-pathset = {
+      expr = (resolveLib.aspects.resolveWithPaths rootClass resolveHandle).pathSetByScope;
+      expected = {
+        "host:iceberg" = {
+          defaults = true;
+        };
+      };
+    };
+    # resolveImports (phases 1-3; den-hoag collapses phase4 natively) == resolve's imports.
+    test-resolve-imports-verb-equals-resolve = {
+      expr =
+        (resolveLib.aspects.resolveImports rootClass resolveHandle).imports
+        == (resolveLib.aspects.resolve rootClass resolveHandle).imports;
+      expected = true;
     };
   };
 }
