@@ -235,6 +235,32 @@ in
       };
     };
 
+    # ── synthesizePolicies.resolveArgsSatisfied (v1 nix/lib/synthesize-policies.nix:7-16): the policy-dispatch
+    #    predicate — does ctx supply every REQUIRED formal of fn? Arg-flipped canTake.atLeast. `{a,b?0}` requires
+    #    `a`: ctx `{a=1;}` → true; ctx `{b=1;}` (missing required `a`) → false. ──
+    test-resolve-args-satisfied = {
+      expr = {
+        satisfied = L.synthesizePolicies.resolveArgsSatisfied (
+          {
+            a,
+            b ? 0,
+          }:
+          0
+        ) { a = 1; };
+        unsatisfied = L.synthesizePolicies.resolveArgsSatisfied (
+          {
+            a,
+            b ? 0,
+          }:
+          0
+        ) { b = 1; };
+      };
+      expected = {
+        satisfied = true;
+        unsatisfied = false;
+      };
+    };
+
     # ── the four-concern API stays intact under the migration merge (no key clobbered) ──
     test-four-concern-intact = {
       expr = {

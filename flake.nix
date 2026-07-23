@@ -207,6 +207,11 @@
         # set? `{ __functor = atLeast; atLeast; exactly; upTo; }`, reproduced compat-side over gen-prelude
         # primitives (the substrate is nixpkgs-lib-free).
         canTake = compat.canTake;
+        # den.lib.synthesizePolicies.resolveArgsSatisfied (v1 nix/lib/synthesize-policies.nix:7-16) — the policy-
+        # dispatch predicate: does `ctx` supply every REQUIRED formal of `fn`? Maps onto the existing `canTake`
+        # (arg-flipped: canTake.atLeast params func = func's requireds ⊆ params). Same predicate den-hoag's compile
+        # uses inline for `__condition` (functionArgs gate).
+        synthesizePolicies.resolveArgsSatisfied = fn: ctx: compat.canTake.atLeast ctx fn;
         # den.lib.perHost / perUser / perHome — v1's deprecated context guards
         # (modules/context/perHost-perUser.nix). v1 documents `perHost f` as an alias for
         # `{ host, ... }: f { inherit host; }` (the #609 binding-half rewrite dropped the old
