@@ -28,14 +28,49 @@ let
 in
 {
   flake.tests.den-hasAspect = {
-    # BLOCKED (bare-fn-aspect double-type): the named-user `provides.<user>.includes` variant materializes
-    # `home-manager.users.tux` correctly (the ref-key throw is gone now that the bridge binds the annotated
-    # view). The residual is `den.aspects.aspect2 = { user ? null, ... }: {...}` — a BARE-FUNCTION top-level
-    # aspect captured via `provides.tux.includes`. `annotatedViewNav` types it into a
-    # `{ __isWrappedFn; __functor; ... }` record; flowed back into `config.den`, the compile-path provides
-    # desugar re-applies its functor and re-classifies the result WITHOUT class-key grounding →
-    # `§2.2: aspect declares key homeManager`. A raw bare-fn compiled ONCE grounds `homeManager → home-manager`
-    # via `wrapGatedFn`; the nav-capture double-pass loses that grounding. Separate rung (BANKED).
+    # GREEN WITNESS for the bare-fn grounding fix (compile.nix:549 __isWrappedFn arm now grndDispatch-grounds
+    # symmetric with the raw bare-fn arm). Asserts ONLY throw-removal — evaluates `true` post-fix, throws
+    # (→ tryEval false) pre-fix, so a silent revert of the grounding reddens here. The delivered VALUE stays
+    # PARKED (bare-fn named-user-provides delivery seam, separate rung — see the parked cases below).
+    test-barefn-provides-grounds-no-throw = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.aspects.aspect1.homeManager.programs.atuin.enable = true;
+        den.aspects.aspect2 =
+          {
+            user ? null,
+            ...
+          }:
+          {
+            homeManager.config = lib.mkIf (user != null && user.hasAspect den.aspects.aspect1) {
+              programs.atuin.daemon.enable = true;
+            };
+          };
+        den.aspects.igloo.provides.tux.includes = [
+          den.aspects.aspect1
+          den.aspects.aspect2
+        ];
+        expr =
+          (builtins.tryEval (
+            builtins.deepSeq (igloo.home-manager.users.tux.programs.atuin.daemon.enable or false) true
+          )).success;
+        expected = true;
+      }
+    );
+
+    # PARKED on a SEPARATE residual (NOT the bare-fn grounding, which is now fixed): a BARE-FUNCTION TOP-LEVEL
+    # aspect (`den.aspects.aspect2 = { user ? null, ... }: {...}`) delivered via the NAMED-user
+    # `provides.<user>.includes` variant does not materialize its invoked content into the user's node. The
+    # bare-fn double-type THROW (`§2.2: aspect declares key homeManager`) IS resolved — compile grounds the
+    # `__isWrappedFn` functor's result symmetric with the raw bare-fn arm — so these cases now EVALUATE (no
+    # throw). But two delivery-seam gaps remain, verified empirically: (1) user-binding is moot — the bare-fn
+    # content does not land at all (the IDENTICAL static aspect shape DOES deliver via the same
+    # `provides.tux.includes`), so whether the functor ctx binds `user` is unobservable here; (2) EVEN
+    # unconditional (guard dropped) the bare-fn's invoked content does not reach `home-manager.users.tux`,
+    # whereas the IDENTICAL static aspect shape delivers via the same `provides.tux.includes` — so top-level
+    # bare-fn aspect delivery via the named-user provides variant is unwired. Separate rung (named-user-provides
+    # bare-fn delivery); the grounding fix that these tests exercised is committed separately.
     # test-content-position-regression-projected-hasaspect = denTest (
     #   { den, igloo, ... }:
     #   {
@@ -60,9 +95,8 @@ in
     #   }
     # );
 
-    # BLOCKED (bare-fn-aspect double-type): same `aspect2` bare-fn double-type as test-content-position above
-    # (nav-captured `{ __isWrappedFn; __functor; ... }` re-classified without class-key grounding →
-    # `§2.2: declares key homeManager`; BANKED). v1 expected { tux = true; pingu = false; }.
+    # PARKED on the SAME residual as test-content-position above (named-user-provides bare-fn delivery, NOT
+    # grounding — the bare-fn content does not land at all; user-binding is moot). v1 expected { tux = true; pingu = false; }.
     # test-multi-user-regression-projected-hasaspect = denTest (
     #   { den, igloo, ... }:
     #   {
@@ -99,9 +133,8 @@ in
     #   }
     # );
 
-    # BLOCKED (bare-fn-aspect double-type): same `aspect2` bare-fn double-type as test-content-position above
-    # (nav-captured `{ __isWrappedFn; __functor; ... }` re-classified without class-key grounding →
-    # `§2.2: declares key homeManager`; BANKED). v1 expected { igloo = true; iceberg = false; }.
+    # PARKED on the SAME residual as test-content-position above (named-user-provides bare-fn delivery, NOT
+    # grounding — the bare-fn content does not land at all; user-binding is moot). v1 expected { igloo = true; iceberg = false; }.
     # test-multi-host-regression-projected-hasaspect = denTest (
     #   {
     #     den,

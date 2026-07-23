@@ -547,7 +547,19 @@ let
             onResult = grndDispatch name;
           } ref
         else if builtins.isAttrs ref && (ref.__isWrappedFn or false) then
-          ref
+          # A PRE-TYPED function-valued aspect (a gen-aspects functor, e.g. a `provides.<u>.includes`
+          # capture the desugar annotated via `annotatedViewNav` → `typedCompileTree`). Its INVOCATION
+          # RESULT still carries un-grounded v1 class keys (a `homeManager` body), exactly like a raw
+          # bare-fn's — so it must ground SYMMETRIC with the raw bare-fn arm above, which threads
+          # `onResult = grndDispatch name` through `wrapGatedFn` (:539-548). This arm formerly passed the
+          # functor through untouched, so `resolved-aspects` (`aspect ctx`) invoked it to un-grounded
+          # `homeManager` content. Re-wrap: ground the functor's applicator RESULT through the SAME
+          # `grndDispatch`, preserving the wrapped-fn shape EXACTLY — `ref //` retains `ref.__functionArgs`
+          # (the ORIGINAL formals the cross-scope dedup discriminator `ctxProjOf` reads force-free),
+          # `__isWrappedFn`, `name`, `meta`; only the `__functor` is overridden to ground. Idempotent +
+          # single-pass: `groundKeys` maps `v1ClassKeyMap.${k} or k` (an already-grounded `home-manager`
+          # is a VALUE never a KEY → identity), and the fn-arm branches are disjoint.
+          ref // { __functor = _: fnArgs: grndDispatch name (ref fnArgs); }
         else if builtins.isAttrs ref && (ref.__fn or null) != null then
           # `{ __fn; name }` record (:444, the unfree shape): gate on `ref.__fn`'s formals, keep the record's
           # OWN v1 name, ground via `onResult`.
