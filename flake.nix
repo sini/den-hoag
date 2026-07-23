@@ -122,30 +122,30 @@
       # capabilities under `.compat`/`.lib`; this layer re-exports them at den's expected paths so the
       # shim is a drop-in `den` input. THIN by design: a capability that exists in compat is ALIASED; a
       # semantic verb den-hoag does not yet implement is a NAMED THROWING STUB (never a fake — precedent
-      # gen-select's `entityKind`) routing to its board task, so a re-probe reads named blockers, not
+      # gen-select's `entityKind`) carrying the missing-capability reason, so a re-probe reads named blockers, not
       # `attribute 'x' missing`. The trivial policy constructors (include/exclude/mkPolicy/pipe) are the
       # v1 `__policyEffect`/`__pipeStage` record constructors, reproduced in compat (`policy-verbs.nix`,
-      # ship-gate T3b) and aliased here; the fleet-resolution / instantiation verbs remain stubs (#49/#50).
+      # ship-gate T3b) and aliased here; the fleet-resolution / instantiation verbs remain stubs.
       stub = ref: task: throw "den-hoag compat: `${ref}` — ${task}";
       # den.lib.home-env (ship-gate lib-surface) — v1's OS-user home battery builder (nix/lib/home-env.nix),
       # reproduced compat-side (lib/compat/home-env.nix). Its droid-path references
       # (`den.batteries.forward`, `den.lib.resolveEntity`, `den.lib.policy.*`) resolve against the migration
       # surface + named stubs; ALL are lazy, reached only when a droid-class host opens the battery gate — a
       # class-A (nixos) host leaves them inert. The `den`-shaped context it closes over: `.lib` = the
-      # migration surface (recursive, cycle-free via laziness), `.batteries.forward` = the #49 forward-battery
+      # migration surface (recursive, cycle-free via laziness), `.batteries.forward` = the forward-battery
       # stub, `.aspects` = `{ }` (the optional `os-user-class-fwd` include is absent, so `? …` is false).
       homeEnv = import ./lib/compat/home-env.nix {
         prelude = inputs.gen-prelude.lib;
         den = {
           lib = migrationLib;
           aspects = { };
-          # #73: the forward battery rides INERT (an empty aspect — v1's `forwardEach` returns
+          # The forward battery rides INERT (an empty aspect — v1's `forwardEach` returns
           # `{ includes = map forwardItem each; }`, batteries/forward.nix/nix/lib/forward.nix at the pin;
           # the inert twin carries no items). Its ONLY corpus consumer is the droid home arc (home-env
           # userForward → the nix-on-droid HOME output family, den-hoag-ABSENT — the u4 intoAttr
           # posture), so a translated forward would have NO reachable artifact either way; the absent
           # `nixOnDroidConfigurations` output is the self-announcement (ledger u22, the u2/u4 shape).
-          # The REAL surface is the #49/#50 forward-battery NTA (arc-2 territory).
+          # The REAL surface is the forward-battery NTA (arc-2 territory).
           batteries.forward = _spec: { includes = [ ]; };
         };
       };
@@ -184,14 +184,14 @@
           # `instantiate hostCfg` — the class-A registration; SUBSUMED by den-hoag's native nixos class terminal,
           # so it lands INERT — no double registration). CLASS-A-MINIMAL: nixosConfigurations materialize
           # natively; the class-C/D intoAttr families (colmenaHive / nixidyEnvs) are den-hoag-absent → LATENT
-          # (ledger rows). The intoAttr OUTPUT FAMILY is its own rung (board #50) when the class-C/D arms come up.
+          # (ledger rows). The intoAttr OUTPUT FAMILY is its own rung when the class-C/D arms come up.
           instantiate = spec: {
             __policyEffect = "instantiate";
             value = spec;
           };
         };
         # den.lib.aspects.* / resolveEntity / home / capture — v1 lib surfaces. resolve/resolveWithPaths/
-        # resolveImports + resolveEntity are CONFIG-WIRED (#49 sub-rung C): v1 ran a fresh fx pipeline per
+        # resolveImports + resolveEntity are CONFIG-WIRED: v1 ran a fresh fx pipeline per
         # seed, but den-hoag reads the BUILT fleet's memoized fold — so they need `config.den` and cannot be
         # real on the config-less migrationLib. NAMED config-wired stubs here (throw on `inputs.den.lib`);
         # the bridge's `configWiredLib` OVERRIDES them with the applied adapter (lib/compat/resolve-verbs.nix)
@@ -202,16 +202,16 @@
           resolveImports = stub "lib.aspects.resolveImports" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
           # resolveWithState (v1 default.nix:114 → the raw `{ value; state; }` fx-trampoline result): NO
           # den-hoag native twin (fx retired). A NAMED LATENT stub, never config-wired.
-          resolveWithState = stub "lib.aspects.resolveWithState" "the fx-trampoline resolve state — no den-hoag native twin (fx retired); LATENT (board #49)";
-          # fx.keyClassification — the #49-SLICE: real, reproducing v1's `structuralKeysSet` (the ONE export
-          # the corpus reads). The rest of the #49 semantic surface stays escalated.
+          resolveWithState = stub "lib.aspects.resolveWithState" "the fx-trampoline resolve state — no den-hoag native twin (fx retired); LATENT";
+          # fx.keyClassification — the STRUCTURAL-KEY SLICE: real, reproducing v1's `structuralKeysSet` (the ONE export
+          # the corpus reads). The rest of the fx semantic surface stays escalated.
           fx.keyClassification = compat.keyClassification;
           # mkProjectedHasAspect — PURE (config-less): a lookup over an ALREADY-COMPUTED per-scope pathSet
           # (v1 has-aspect.nix @a2f4b60 :45-54). `check` reads only its `pathSetByScope` arg + the config-less
           # `refKey`, so it is REAL here (compat has-aspect.nix) and rides through into the bridge's
           # `configWiredLib.aspects` unchanged (that set starts from `denLib.aspects`).
           mkProjectedHasAspect = compat.mkProjectedHasAspect;
-          # collectPathSet/hasAspectIn/mkEntityHasAspect — CONFIG-WIRED (#49): v1 ran a fresh fx pipeline per
+          # collectPathSet/hasAspectIn/mkEntityHasAspect — CONFIG-WIRED: v1 ran a fresh fx pipeline per
           # `{ tree, class }`, but den-hoag reads the BUILT fleet's memoized `reach` — so they need
           # `config.den` and cannot be real on the config-less migrationLib. NAMED config-wired stubs here
           # (throw on `inputs.den.lib`); the bridge's `configWiredLib.aspects` OVERRIDES them with the applied
@@ -221,9 +221,9 @@
           mkEntityHasAspect = stub "lib.aspects.mkEntityHasAspect" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
         };
         resolveEntity = stub "lib.resolveEntity" "config-wired — read via the `den` module arg (the bridge), not `inputs.den.lib`";
-        home = stub "lib.home" "the home-entity surface (board #49) — not yet available";
-        capture.captureFleet = stub "lib.capture.captureFleet" "the fleet-capture surface (board #49) — not yet available";
-        # den.lib.{nh,policyInspect,__findFile,schemaUtil} — CONFIG-WIRED surfaces (#49 sub-rung B). v1 loads
+        home = stub "lib.home" "the home-entity surface — not yet available";
+        capture.captureFleet = stub "lib.capture.captureFleet" "the retired-fx fleet-topology diagnostic feed (den-diagram) — capability reachable via `built.den.structural`; intentionally absent, not a stub-in-waiting";
+        # den.lib.{nh,policyInspect,__findFile,schemaUtil} — CONFIG-WIRED surfaces. v1 loads
         # these `{ lib, den }:` / `{ lib, config }:` reading the fleet config; on the config-LESS migrationLib
         # (= `inputs.den.lib`, v1's unapplied function where `.nh` is missing too) they cannot be real. Named
         # THROWING stubs here (flake.nix stub discipline) — the bridge's `configWiredLib` OVERRIDES them with the
@@ -317,7 +317,7 @@
               if req == [ ] then
                 fn
               else
-                throw "den.lib.take.exactly: the required-key __scopeKeys parametric mechanism is not yet ported (board escalation)"
+                throw "den.lib.take.exactly: the required-key __scopeKeys parametric mechanism is not yet ported"
             );
         };
         # den.lib.schema — v1's `den.lib.schema` (nix/lib/schema.nix) = the raw gen-schema.lib. den-hoag

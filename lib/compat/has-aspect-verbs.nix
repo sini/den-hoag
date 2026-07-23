@@ -1,5 +1,5 @@
 # den.lib.aspects.{collectPathSet,hasAspectIn,mkEntityHasAspect} — a CONFIG-WIRED ADAPTER over den-hoag's
-# ALREADY-NATIVE resolved-aspects output (#49 hasAspect accessors). v1 (den nix/lib/aspects/has-aspect.nix
+# ALREADY-NATIVE resolved-aspects output (hasAspect accessors). v1 (den nix/lib/aspects/has-aspect.nix
 # @a2f4b60 :37-43,71-102) ran a FRESH isolated fx pipeline over a RAW `{ tree, class }` per call; den-hoag
 # instead reads the memoized `reach` closure over the ALREADY-INGESTED fleet graph (`built.den`), so this
 # adapter closes over that built den and maps a node HANDLE → the node id its `reach` keys by. The pathSet is
@@ -12,7 +12,7 @@
 # membership lookup) and `augment` (the resolved-aspects node identity projection) are the config-LESS pure
 # helpers, threaded in from compat (has-aspect.nix), so this module carries NO identity logic of its own.
 #
-# ── LATENT ceilings (P5c-out-of-scope; ledgered so P5c is not ambushed) ────────────────────────────────
+# ── LATENT ceilings (off-fleet arbitrary-tree resolve — deferred; needs per-call mini-ingest) ──────────
 #  (a) OFF-FLEET RAW-TREE resolve. v1's `collectPathSet`/`hasAspectIn`/`mkEntityHasAspect` take a RAW `{ tree,
 #      class }` and run a fresh fx pipeline over an ARBITRARY aspect tree. This adapter resolves only a node
 #      HANDLE that maps to an INGESTED node (a built-fleet member); an off-fleet arbitrary aspect tree would
@@ -21,7 +21,7 @@
 #  (b) SELF-REFERENCE. This adapter closes over `built.den` (the fold over the whole fleet); a corpus policy
 #      that calls a hasAspect accessor on its OWN fleet member from WITHIN its own resolution self-references
 #      — the SAME stateful-by-construction latent cycle resolve-verbs.nix ceiling (b) documents. No live
-#      consumer today (the witness reads an external fixture, never a self-call). LATENT/P5c.
+#      consumer today (the witness reads an external fixture, never a self-call). LATENT.
 #
 # The `{ tree, class }` signature itself is v1-internal (the fx off-fleet form); den-hoag's node-form takes a
 # handle (the resolve-verbs `resolveEntity` output), so this is a signature-ADAPTED map, not a verbatim port.

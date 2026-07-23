@@ -1,5 +1,5 @@
 # den.lib.aspects.{resolve,resolveWithPaths,resolveImports} + den.lib.resolveEntity — a CONFIG-WIRED ADAPTER
-# over den-hoag's ALREADY-NATIVE resolution output (#49 sub-rung C). v1 (den nix/lib/aspects/default.nix:
+# over den-hoag's ALREADY-NATIVE resolution output. v1 (den nix/lib/aspects/default.nix:
 # 104-114, pin a2f4b60) ran a FRESH isolated fx pipeline per seed; den-hoag instead reads the memoized
 # gen-edge fold over the ALREADY-INGESTED fleet graph (`built.den`), so this adapter closes over that built
 # den and maps a seed → the node id its `output.outputFor`/`traceFor` key by. The field-map is
@@ -7,20 +7,20 @@
 # `hoag traceFor == v1 edgeTrace` and `outputFor.<id>.<class> == v1 resolveWithPaths…imports`).
 #
 # CONFIG-WIRED (not the config-less migrationLib): it needs the built fleet, so it is bound at the bridge
-# seam (bridge.nix `configWiredLib`) exactly as #49 sub-rung B bound `nh`/`schemaUtil`/`policyInspect`. The
+# seam (bridge.nix `configWiredLib`) exactly as the bridge seam binds `nh`/`schemaUtil`/`policyInspect`. The
 # migrationLib carries NAMED config-wired stubs (throw on `inputs.den.lib`, real on the `den` module arg).
 #
-# ── LATENT ceilings (P5c-out-of-scope; ledgered so P5c is not ambushed) ────────────────────────────────
+# ── LATENT ceilings (off-fleet arbitrary-tree resolve — deferred; needs per-call mini-ingest) ──────────
 #  (a) ARBITRARY-NON-FLEET-ENTITY aspect tree. v1 `resolve`/`resolveImports` run over ANY seed (the
 #      "extract homeManager modules from a host tree" nested-extraction, default.nix:113 doc). This adapter
 #      resolves only a seed that maps to an INGESTED node (a built-fleet member); an off-fleet arbitrary
-#      aspect tree would need Option B's per-call mini-ingest (deferred). LATENT until a nix-config corpus
+#      aspect tree would need a per-call mini-ingest (deferred). LATENT until a nix-config corpus
 #      policy is shown to call resolve on a non-fleet tree.
 #  (b) SELF-REFERENCE. This adapter closes over `built.den`, which is the fold over the whole fleet; a
 #      future corpus policy that calls `resolve <ownHost>` from WITHIN its own fleet self-references
-#      (forcing `built.den` re-enters resolution). Option A (config-wired) is STATEFUL by construction, so
+#      (forcing `built.den` re-enters resolution). The config-wired adapter is STATEFUL by construction, so
 #      such a call is a latent cycle — no live consumer today (surface-totality; the witness resolves an
-#      external fixture, never a self-call). LATENT/P5c.
+#      external fixture, never a self-call). LATENT.
 #
 # `resolveWithState` (v1 default.nix:114 → the raw `{ value; state; }` fx-trampoline result) has NO den-hoag
 # native twin (fx retired) — it stays a NAMED stub on the migrationLib, never wired here.
