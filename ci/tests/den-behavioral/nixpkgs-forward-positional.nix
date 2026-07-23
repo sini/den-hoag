@@ -28,16 +28,16 @@ in
 {
   flake.tests.den-nixpkgs-forward-positional = {
 
-    # PARKED — the named-target provides variant is unwired (the block is UPSTREAM of the plan-anticipated
-    # overlay→pkgs hop, which is never reached). `den.aspects.tux.provides.igloo` is a HOST-named provide:
-    # the legacy/provides.nix desugar fires `nameMatches "igloo"` at the deliverable tux@igloo user cell
-    # (`d.host.name == "igloo"`, legacy/provides.nix:86-94), so the selector matches — but the delivered
-    # `nixos` face does NOT lift to the host. Isolated empirically: even a STATIC
-    # `provides.igloo.nixos.users.users.tux.description = "…"` yields `igloo.users.users.tux.description == ""`
-    # (undelivered), so the overlay reroute (`nixpkgs.overlays` → intoPath [nixpkgs]) is never exercised
-    # (`igloo.nixpkgs.overlays == [ ]`). Same "named-target provides variant unwired" family as the
-    # projected-hasaspect.nix parks (`provides.<name>.includes` → `home-manager.users.<name>`). Unparks when
-    # the named-provide → host/cell nixos lift ships.
+    # PARKED — Mechanism 2 (co-scoped named-target self-block), NOT the reach dedup and NOT the overlay hop. The
+    # declaring aspect `tux` resolves at the `tux` cell; `provides.igloo` desugars to a carrier keyed
+    # `tux/igloo` that radiates (via `nameMatches "igloo"`) back to that SAME cell, plus a contentless stub
+    # `tux/igloo` seeded on aspect `tux` at that cell. The stub, seeded first, puts `tux/igloo` in the cell's
+    # `prev.seen`, so `nbExtras` (`resolved-aspects.nix:510-512`, predicate `!(prev.seen ? keyOf carrier)` at :511) filters the
+    # carrier and it NEVER resolves — the contentless stub blocks its own carrier. Confirmed empirically: even a
+    # STATIC `provides.igloo.nixos.…="x"` yields `""`, and a parametric variant also yields `""` (so it is not the
+    # sharedFoldKey dedup G1 fixes). Unparks when the co-scoped named-target self-block ships (a separate rung
+    # touching the neededBy fixpoint's seen/nbExtras semantics), after which the overlay→pkgs reroute hop can be
+    # re-checked.
     # test-overlay-forward = denTest (
     #   {
     #     den,

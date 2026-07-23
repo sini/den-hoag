@@ -87,12 +87,21 @@ let
       else
         null;
 
+  # A content-free marked node (`meta.__contentless`) exists ONLY to make its A-IDENT key visible above a
+  # carrier's target (cond-2). It shares the carrier's key, so a `"${key}|"` foldkey would let the contentless
+  # node EVICT the content-bearing carrier at the reach/classSubtreeAt first-wins cross-scope dedup. Null it
+  # (dedupByKey's SAFE direction, dedup-by-key.nix): a null-key node is kept AND never enters `seen`, so the
+  # node survives (visibility reads `keyOf`, independent of this) but suppresses nothing. Generic — no
+  # provides knowledge here; any content-free marked node is nulled.
   sharedFoldKeyOf =
     aspect: ctx: key:
-    let
-      p = ctxProjOf aspect ctx;
-    in
-    if p == null then null else "${key}|${p}";
+    if (aspect.meta.__contentless or false) then
+      null
+    else
+      let
+        p = ctxProjOf aspect ctx;
+      in
+      if p == null then null else "${key}|${p}";
 
   # Layer 1 — forward expansion (recursive, evaluates parametrics inline). foldl' over an aspect
   # list: skip already-seen keys, otherwise mark seen, resolve concrete (a parametric __isWrappedFn
@@ -274,34 +283,17 @@ let
   );
 
   # §Constraints, aspect-level: prune nodes whose key is named in any resolved aspect's meta.drop.
-  # Also dedups by key (defensive — forward expansion already skips seen keys).
+  # Also dedups by A-IDENT key (defensive — forward expansion already skips seen keys). `n.key` is ALWAYS
+  # non-null, so this reuses the file's own `dedupByKey` (§37) — behavior identical to the prior inline
+  # first-occurrence fold (first-wins, order-preserving, over the same `dropped`-filtered list).
   applyConstraints =
     nodes:
     let
       dropped = prelude.foldl' (
         acc: n: acc // prelude.foldl' (a: d: a // { ${keyOf d} = true; }) { } (n.content.meta.drop or [ ])
       ) { } nodes;
-      dedup =
-        prelude.foldl'
-          (
-            acc: n:
-            if acc.have ? ${n.key} then
-              acc
-            else
-              {
-                have = acc.have // {
-                  ${n.key} = true;
-                };
-                out = acc.out ++ [ n ];
-              }
-          )
-          {
-            have = { };
-            out = [ ];
-          }
-          (builtins.filter (n: !(dropped ? ${n.key})) nodes);
     in
-    dedup.out;
+    dedupByKey (n: n.key) (builtins.filter (n: !(dropped ? ${n.key})) nodes);
   # A resolved-aspect node `n` passes an edge's class filter iff the filter is null (all classes) OR the
   # aspect's content carries the class key `C` (Phase 1's dep-free class predicate — the Phase-2 projection
   # engine folds in the full `classifyKey` class/setting discrimination). A nixos-only host aspect has no

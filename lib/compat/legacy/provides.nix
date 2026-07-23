@@ -57,6 +57,10 @@
 #   radiates to the cells. So the DELIVERED CONTENT appears only at the deliverable cells, as in v1; the
 #   sole structural residual is an empty key in R's resolved-aspect SET (never in v1's). This is a
 #   set-level, content-null difference; the C7/C8 oracle confirms it globally.
+#     The stub shares the carrier's A-IDENT key, so at the cross-scope reach/classSubtreeAt fold a shared
+#     foldkey would let the contentless stub EVICT the content carrier (delivered content lost). We tag the
+#     stub `meta.__contentless = true`; the kernel maps that marker to a null sharedFoldKey, so the stub keeps
+#     its visibility role (cond-2 reads `keyOf`, independent of sharedFoldKey) but suppresses no content.
 {
   denHoag,
   prelude,
@@ -204,9 +208,13 @@ let
       # diverging from the carrier's top-level `${aName}/${key}` (chain `[ ]`) and BREAKING the `neededBy`
       # cond-2 visibility (`visible ? keyOf carrier`) — the carrier never radiates. Pin the chain to `[ ]`
       # (mkDefault yields to this explicit set) so the stub keys as `${aName}/${key}`, matching the carrier.
+      # This stub is a content-free visibility compensation (it shares the carrier's A-IDENT key); mark it
+      # contentless so the kernel's `sharedFoldKeyOf` maps it to a null sharedFoldKey — otherwise a `"${key}|"`
+      # foldkey lets the stub EVICT the content-bearing carrier at the reach/classSubtreeAt cross-scope fold.
       seedStubs = map (key: {
         name = "${aName}/${key}";
         meta.aspect-chain = [ ];
+        meta.__contentless = true;
       }) crossKeys;
       selfContent = if hasSelf then mkSelfContent aName aspect provides.${aName} else null;
     };
