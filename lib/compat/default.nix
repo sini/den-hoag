@@ -139,7 +139,45 @@ let
       gather = gatherLib;
       legacy = legacyArg;
     };
-  flakeModuleWiring = mkWiring legacy;
+  # `den.features` — the COMPILE-TIME feature record that generalises the `mkWiring legacyArg` legacy-subset
+  # severance handle (§2.1). It is a DRIVER ARGUMENT, not a `config.den.*` runtime option: the compat
+  # two-eval reads `config.den` only AFTER the wiring is already built (flake-module.nix `evalV1Raw`), so a
+  # runtime flag would arrive too late to gate the wiring. Each feature defaults ON; `mkWiringWith { }`
+  # (every default) reduces to `mkWiring legacy` BYTE-IDENTICALLY — all-on = the current unconditional
+  # surface (the parity invariant). Flag-off drops the feature's collapse target to its identity default.
+  #
+  # Class (a) fan-out — the LEGACY-MODULE SUBSET. Each legacy module rides the wiring iff its feature is on;
+  # flag-off drops it from `legacy`, so `desugarLegacy` falls back to or-identity and a residual v1 key trips
+  # that surface's Law-C5 sentinel (the `selfIncludeFn` / `interpret` seams already gate on the same
+  # `legacy ? <module>` presence, so no further plumbing is needed here). The kernel raw seams (class b) and
+  # the compat desugar-arm gates (class c) join `defaultFeatures` as their own rungs register their entries —
+  # the closed record grows one key per WIRED rung, so an override naming a key not (yet) in it is a named
+  # totality abort (`den.features` cannot silently no-op a feature it does not gate).
+  featureLegacyModule = {
+    provides = "provides";
+    forwards = "forwards";
+    selfProvide = "self-provide";
+    ambientBatteries = "defaults";
+  };
+  legacyModuleFeature = builtins.listToAttrs (
+    map (feature: {
+      name = featureLegacyModule.${feature};
+      value = feature;
+    }) (builtins.attrNames featureLegacyModule)
+  );
+  defaultFeatures = builtins.mapAttrs (_: _: true) featureLegacyModule;
+  mkWiringWith =
+    features:
+    let
+      unknown = builtins.attrNames (builtins.removeAttrs features (builtins.attrNames defaultFeatures));
+      feat = defaultFeatures // features;
+      legacySubset = prelude.filterAttrs (moduleKey: _: feat.${legacyModuleFeature.${moduleKey}}) legacy;
+    in
+    if unknown != [ ] then
+      throw "den.features: unknown feature key(s) ${prelude.concatStringsSep ", " unknown} (known: ${prelude.concatStringsSep ", " (builtins.attrNames defaultFeatures)})"
+    else
+      mkWiring legacySubset;
+  flakeModuleWiring = mkWiringWith { };
   inherit (flakeModuleWiring) flakeModuleCore;
 in
 {
@@ -206,7 +244,12 @@ in
   # desugars); the C1 witness suite drives every witness through it uniformly. `mkWiring` is the severed-
   # variant builder the C5 suite uses to prove each legacy module removable.
   inherit (flakeModuleWiring) compileFull;
-  inherit mkWiring;
+  # `mkWiring` — the severed-variant builder (a legacy-module subset) the C5 suite drives. `mkWiringWith` —
+  # the `den.features` front door: a compile-time feature record (default all-on) whose class-(a) fan-out
+  # derives the legacy subset. `mkWiringWith { } ≡ mkWiring legacy` (byte-identical, the parity invariant);
+  # `mkWiringWith { <feature> = false; }` severs that feature (the `compat-feature-severed` removability
+  # gate drives one row per feature). `defaultFeatures` is the closed all-on set (the totality boundary).
+  inherit mkWiring mkWiringWith defaultFeatures;
   flakeModule = flakeModuleWiring.flakeModule;
   # parity — the two-sided harness (frozen edge schema + the v1/hoag oracle + firstDivergent triage),
   # Task 7. `schema` is fully self-contained; `oracle.traceHoag` needs only this tree; `oracle.mkV1` is a
