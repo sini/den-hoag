@@ -88,8 +88,8 @@ let
   # The forward is a CLASS-REROUTE: the collected `fromClass` bucket → `intoClass` at `intoPath`, with the
   # (optional) per-item `guard`/`adaptArgs` applied at the terminal crossing (v1 compile-forward.nix:
   # `sourceAlreadyCollected` route — `aspect-chain`/`fromAspect` is a locality tag, not the content source).
-  # SCOPE: only `forward` is surfaced here; the fuller provides registry (define-user/primary-user/
-  # mutual-provider) is a later addition.
+  # SCOPE: `forwardEach` builds ONLY the `forward` class-reroute handle; the root-nav registry that
+  # surfaces it alongside `mutual-provider` is the closed name→handle lookup in provides-nav.nix (below).
   forwardEach =
     fwd:
     let
@@ -116,9 +116,12 @@ let
     {
       includes = map forwardItem fwd.each;
     };
-  forwardProvider = {
-    forward = forwardEach;
-  };
+  # v1 root-namespace provider REGISTRY (`den._` / `den.provides`) — the closed name→handle lookup
+  # (lib/compat/provides-nav.nix). Surfaces `forward` (real forwardEach reroute) + `mutual-provider`
+  # (inert shim aspect). Unregistered `den._.<typo>` = native missing-attr abort (loud, names the key).
+  # define-user/primary-user/hostname are NOT root-nav members — migration rule 3 moved them to
+  # `den.batteries.*`.
+  providesNav = import ./provides-nav.nix forwardEach;
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
@@ -528,10 +531,10 @@ in
   # the compile view (`mkDenWith`), so its emitted include grounds by the native gen-aspects `.key`.
   config._module.args.den = fleetDen // {
     lib = denLib;
-    # v1 root-namespace provider aliases — surfaces ONLY `forward`; the fuller provides/`_` registry
-    # (define-user/primary-user/mutual-provider) is a later addition.
-    provides = forwardProvider;
-    _ = forwardProvider;
+    # v1 root-namespace provider registry (lib/compat/provides-nav.nix): both aliases resolve the same
+    # closed name→handle lookup — `forward` (real) + `mutual-provider` (inert shim).
+    provides = providesNav;
+    _ = providesNav;
   };
 
   config.flake =
