@@ -317,6 +317,17 @@
           ./lib/compat/batteries.nix
         ];
       };
+      # den v1 `flakeModules.strict` (denful/den nix/default.nix:9 → nix/strict.nix): an opt-in flake-parts
+      # module a consumer imports to put every den schema kind into STRICT mode — an entity option set with
+      # no explicit declaration aborts (`den.lib.strict`, lib/compat/strict.nix). Consumer-eval, additive;
+      # den-hoag's own CI never imports it (parity-neutral). See lib/compat/flake-strict.nix for the
+      # `.imports = [ den.lib.strict ]` form (vs v1's bare assignment, which den-hoag's schema collector drops).
+      flakeModules.strict = import ./lib/compat/flake-strict.nix;
+      # den v1 `flakeOutputs` (denful/den nix/flakeOutputs.nix, verbatim): per-family flake-output MERGE
+      # modules a consumer imports (`imports = [ inputs.den.flakeOutputs.nixosConfigurations ]`) to give a
+      # multi-valued flake output merge semantics — distinct keys combine, a duplicate key aborts NAMED
+      # (`types.unique`). 100% nixpkgs-lib, path-free, consumer-eval; sole ext ref `den.schema.flake or {}`.
+      flakeOutputs = import ./lib/compat/flake-outputs.nix;
 
       # The committed formatter config — `nix fmt` at the repo root runs `nixfmt-tree` (treefmt
       # preconfigured with nixfmt-rfc-style, the ecosystem's Nix formatting convention agents
