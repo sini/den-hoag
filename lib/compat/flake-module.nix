@@ -712,6 +712,7 @@ in
     flakeModule
     v1OptionsModule
     evalV1
+    annotatedViewNav
     mkFleetModule
     mkFleetModuleWith
     mkDen

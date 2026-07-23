@@ -27,10 +27,14 @@ let
 in
 {
   flake.tests.den-hasAspect = {
-    # BLOCKED-WSB (missing surface): `den.aspects.igloo.provides.tux.includes` — the NAMED-user variant of
-    # provides cross-delivery (distinct from the `provides.to-users` broadcast form parked in
-    # hasaspect-host-provides-to-users.nix, same family) — never materializes `home-manager.users.tux`.
-    # Forcing `igloo.home-manager.users.tux` throws `attribute 'tux' missing`.
+    # BLOCKED (bare-fn-aspect double-type): the named-user `provides.<user>.includes` variant materializes
+    # `home-manager.users.tux` correctly (the ref-key throw is gone now that the bridge binds the annotated
+    # view). The residual is `den.aspects.aspect2 = { user ? null, ... }: {...}` — a BARE-FUNCTION top-level
+    # aspect captured via `provides.tux.includes`. `annotatedViewNav` types it into a
+    # `{ __isWrappedFn; __functor; ... }` record; flowed back into `config.den`, the compile-path provides
+    # desugar re-applies its functor and re-classifies the result WITHOUT class-key grounding →
+    # `§2.2: aspect declares key homeManager`. A raw bare-fn compiled ONCE grounds `homeManager → home-manager`
+    # via `wrapGatedFn`; the nav-capture double-pass loses that grounding. Separate rung (BANKED).
     # test-content-position-regression-projected-hasaspect = denTest (
     #   { den, igloo, ... }:
     #   {
@@ -55,8 +59,10 @@ in
     #   }
     # );
 
-    # BLOCKED-WSB (missing surface, second gap in the same test): forcing
-    # `den.hosts.x86_64-linux.igloo.users.tux.hasAspect` throws `attribute 'hasAspect' missing` — the
+    # BLOCKED (bare-fn-aspect double-type + registry-side accessor): same `aspect2` bare-fn double-type as
+    # test-content-position above (nav-captured `{ __isWrappedFn; __functor; ... }` re-classified without
+    # class-key grounding → `§2.2: declares key homeManager`; BANKED). SECOND, independent gap in this test:
+    # forcing `den.hosts.x86_64-linux.igloo.users.tux.hasAspect` throws `attribute 'hasAspect' missing` — the
     # REGISTRY-side structural `.hasAspect` accessor is not exposed on a raw `den.hosts.<sys>.<host>.
     # users.<user>` node (distinct from the in-context `.hasAspect` this file's concern is about).
     # test-provenance-split-regression-projected-hasaspect = denTest (
@@ -89,9 +95,9 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same provides.tux root cause as test-content-position above, but the `or false`
-    # idiom here catches the missing attribute instead of throwing — clean eval, wrong value): v1 expected
-    # { tux = true; pingu = false; }; den-hoag actual { tux = false; pingu = false; }.
+    # BLOCKED (bare-fn-aspect double-type): same `aspect2` bare-fn double-type as test-content-position above
+    # (nav-captured `{ __isWrappedFn; __functor; ... }` re-classified without class-key grounding →
+    # `§2.2: declares key homeManager`; BANKED). v1 expected { tux = true; pingu = false; }.
     # test-multi-user-regression-projected-hasaspect = denTest (
     #   { den, igloo, ... }:
     #   {
@@ -128,9 +134,9 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same provides.tux root cause as test-content-position above, `or false` catches
-    # it here too): v1 expected { igloo = true; iceberg = false; }; den-hoag actual
-    # { igloo = false; iceberg = false; }.
+    # BLOCKED (bare-fn-aspect double-type): same `aspect2` bare-fn double-type as test-content-position above
+    # (nav-captured `{ __isWrappedFn; __functor; ... }` re-classified without class-key grounding →
+    # `§2.2: declares key homeManager`; BANKED). v1 expected { igloo = true; iceberg = false; }.
     # test-multi-host-regression-projected-hasaspect = denTest (
     #   {
     #     den,

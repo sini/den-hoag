@@ -527,9 +527,11 @@ in
   # arg carries BOTH the config surface (config.den) AND the lib surface at `den.lib` (v1's
   # `options.den.lib`), so the bridge splices the migration lib onto `.lib` — the same drop-in surface
   # `inputs.den.lib` exposes. The shim reproduces the config half separately inside its OWN v1 eval.
-  # A corpus policy navigating `den.aspects.<path>` off this arg reads a value the shim later types through
-  # the compile view (`mkDenWith`), so its emitted include grounds by the native gen-aspects `.key`.
-  config._module.args.den = fleetDen // {
+  # A corpus policy navigating `den.aspects.<path>` off this arg reads the NAVIGATION view HERE (via
+  # `compat.annotatedViewNav`, the same wrap the mkDen path's `bindLegacyEnv` uses), so a `den.aspects.<path>`
+  # value carries native gen-aspects `.key` at the READ site — `has-aspect.nix` `refKey` is a single `ref.key`
+  # lookup. Consistent with the `fleetDen` comment above.
+  config._module.args.den = compat.annotatedViewNav fleetDen // {
     lib = denLib;
     # v1 root-namespace provider registry (lib/compat/provides-nav.nix): both aliases resolve the same
     # closed name→handle lookup — `forward` (real) + `mutual-provider` (inert shim).

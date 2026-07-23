@@ -187,6 +187,7 @@ in
     mkDen
     mkDenWith
     evalV1
+    annotatedViewNav
     ;
   # `compileFull` — the "through flakeModule" compile (apply the full legacy desugars, then compile), the
   # entry a v1 surface takes under `flakeModule`. For a non-legacy surface it equals `compile` (or-identity
