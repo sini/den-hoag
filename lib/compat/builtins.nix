@@ -390,7 +390,8 @@ let
       [
         (deliverLib.route {
           fromClass = "wsl";
-          intoClass = if ((host.wsl or { }).enable or false) then host.class else null;
+          intoClass =
+            if (host.class or null) == "nixos" && ((host.wsl or { }).enable or false) then host.class else null;
           path = [ "wsl" ];
         })
       ];
