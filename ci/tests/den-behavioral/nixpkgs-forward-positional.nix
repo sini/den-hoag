@@ -28,16 +28,14 @@ in
 {
   flake.tests.den-nixpkgs-forward-positional = {
 
-    # PARKED — Mechanism 2 (co-scoped named-target self-block), NOT the reach dedup and NOT the overlay hop. The
-    # declaring aspect `tux` resolves at the `tux` cell; `provides.igloo` desugars to a carrier keyed
-    # `tux/igloo` that radiates (via `nameMatches "igloo"`) back to that SAME cell, plus a contentless stub
-    # `tux/igloo` seeded on aspect `tux` at that cell. The stub, seeded first, puts `tux/igloo` in the cell's
-    # `prev.seen`, so `nbExtras` (`resolved-aspects.nix:502-504`, predicate `!(prev.seen ? keyOf carrier)` at :503) filters the
-    # carrier and it NEVER resolves — the contentless stub blocks its own carrier. Confirmed empirically: even a
-    # STATIC `provides.igloo.nixos.…="x"` yields `""`, and a parametric variant also yields `""` (so it is not the
-    # sharedFoldKey dedup G1 fixes). Unparks when the co-scoped named-target self-block ships (a separate rung
-    # touching the neededBy fixpoint's seen/nbExtras semantics), after which the overlay→pkgs reroute hop can be
-    # re-checked.
+    # PARTIAL-PARKED. The co-scoped named-target SELF-BLOCK is RESOLVED (Mechanism 2, the `_onlyCless`
+    # seen-guard relaxation in `resolved-aspects.nix`; witnessed green by `coscoped-provides-selfblock.nix`):
+    # the declaring aspect `tux` resolves at the `tux` cell, `provides.igloo` desugars to a carrier keyed
+    # `tux/igloo` radiating back to that cell plus a contentless stub of the same key, and the stub no longer
+    # blocks its own carrier. The RESIDUAL blocker is a SEPARATE downstream rung — the overlay→nixpkgs-class
+    # reroute hop (`den.aspects.tux/igloo declares key 'nixpkgs', which is neither a facet, a registered
+    # class, nor a quirk channel`): the `nixpkgs.overlays` value must re-route into the nixpkgs class. Unparks
+    # when that reroute hop ships.
     # test-overlay-forward = denTest (
     #   {
     #     den,

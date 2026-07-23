@@ -292,8 +292,19 @@ let
       dropped = prelude.foldl' (
         acc: n: acc // prelude.foldl' (a: d: a // { ${keyOf d} = true; }) { } (n.content.meta.drop or [ ])
       ) { } nodes;
+      # A `__contentless` visibility stub yields to any contentful node sharing its key: once the co-scoped
+      # content carrier has resolved, the stub's job (cond-2 visibility) is spent, and v1's late-dispatch
+      # policy materializes nothing at the owner scope. Drop the stub BEFORE dedupByKey — else first-wins
+      # would keep the stub and re-drop the carrier. A LONE stub (no contentful same-key node) is KEPT, so a
+      # descendant still reads its cond-2 visibility (the to-users host-stub case).
+      fulKeys = prelude.foldl' (
+        acc: n: if (n.content.meta.__contentless or false) then acc else acc // { ${n.key} = true; }
+      ) { } nodes;
+      contentlessShadowed = n: (n.content.meta.__contentless or false) && (fulKeys ? ${n.key});
     in
-    dedupByKey (n: n.key) (builtins.filter (n: !(dropped ? ${n.key})) nodes);
+    dedupByKey (n: n.key) (
+      builtins.filter (n: !(dropped ? ${n.key}) && !(contentlessShadowed n)) nodes
+    );
   # A resolved-aspect node `n` passes an edge's class filter iff the filter is null (all classes) OR the
   # aspect's content carries the class key `C` (Phase 1's dep-free class predicate — the Phase-2 projection
   # engine folds in the full `classifyKey` class/setting discrimination). A nixos-only host aspect has no
@@ -499,8 +510,23 @@ in
               _self: _id: prev:
               let
                 visible = ancestorSeen // prev.seen;
+                # A `__contentless` visibility stub (provides.nix §B4a) seeds its A-IDENT key into `prev.seen`
+                # to grant a co-scoped content carrier cond-2 visibility — but that same key then makes the
+                # normal `!(prev.seen ? key)` guard filter the carrier itself (the carrier shares the stub's
+                # key). The distinguishing signal is in the NODES: a stub resolves as a node whose
+                # `content.meta.__contentless` is true. `_onlyCless k` ⇒ k is held ONLY by such stubs (no
+                # contentful same-key node yet), so the carrier is allowed past the seen-guard exactly once.
+                _clessKeys = prelude.foldl' (
+                  acc: n: if (n.content.meta.__contentless or false) then acc // { ${n.key} = true; } else acc
+                ) { } prev.nodes;
+                _fulKeys = prelude.foldl' (
+                  acc: n: if (n.content.meta.__contentless or false) then acc else acc // { ${n.key} = true; }
+                ) { } prev.nodes;
+                _onlyCless = k: (_clessKeys ? ${k}) && !(_fulKeys ? ${k});
                 nbExtras = builtins.filter (
-                  a: !(prev.seen ? ${keyOf a}) && neededByActivates a { inherit id visible selCtx; }
+                  a:
+                  (!(prev.seen ? ${keyOf a}) || _onlyCless (keyOf a))
+                  && neededByActivates a { inherit id visible selCtx; }
                 ) (nbCandidates nbIndex visible);
                 guardExtras = builtins.filter (
                   a:
@@ -510,10 +536,18 @@ in
                     hasAspect = k: prev.seen ? ${keyOf k};
                   }
                 ) allConditionalAspects;
-                expanded = forwardExpand ctx prev.seen (nbExtras ++ guardExtras);
+                # Drop the `_onlyCless` keys from the forwardExpand INPUT so its own seen-skip (:119) does not
+                # re-skip the carrier we just un-filtered. Only the input is narrowed.
+                _expandSeen = removeAttrs prev.seen (builtins.filter _onlyCless (builtins.attrNames prev.seen));
+                expanded = forwardExpand ctx _expandSeen (nbExtras ++ guardExtras);
               in
               {
-                seen = expanded.seen;
+                # UNION-BACK (monotone ascent, file-head stratification law): `_expandSeen ⊊ prev.seen`, so a
+                # lone `_onlyCless` key with no resolving carrier this pass would be dropped by
+                # `seen = expanded.seen`, breaking least-fixpoint monotonicity. Union `prev.seen` back in —
+                # zero behavioral cost (the carrier already resolved via the narrowed INPUT), keeps seen
+                # monotone.
+                seen = prev.seen // expanded.seen;
                 nodes = prev.nodes ++ expanded.nodes;
               }
             )
