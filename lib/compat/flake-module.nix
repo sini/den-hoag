@@ -94,6 +94,12 @@ let
   # golden `roundTrip`). A legit nested aspect (raw value carries a recognized sub-key — structural/class/
   # channel — recursively) is untouched.
   structuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
+  # The v1 class-key SPELLING map (camelCase → grounded class name), the SINGLE source shared with
+  # compile.nix's `groundKeys`/`groundClassName`. Used by the §2.2 raw-totality discriminator to GROUND a
+  # candidate class-facet key (a v1 `homeManager`) to its registered den-hoag class before the malformed-fn
+  # membership test — so a fn-valued class facet spelled the v1 way is recognised as a legit parametric
+  # facet, not a malformed `{ name; fn }` policy record.
+  v1ClassKeyMap = import ./v1-class-key-map.nix;
   # den-hoag facets absent from v1's structural set (KEEP IN SYNC with concern-aspects.nix `facets`).
   hoagFacetsSet = prelude.genAttrs [
     "neededBy"
@@ -116,6 +122,10 @@ let
     let
       classSet = prelude.genAttrs (compileClassNamesBase ++ declaredClassNames) (_: true);
       quirkSet = prelude.genAttrs quirkChannelNames (_: true);
+      # Ground a v1 class-key SPELLING to its registered den-hoag name (`homeManager` → `home-manager`)
+      # before a class-membership test — the SAME v1ClassKeyMap compile applies. Identity for an
+      # already-grounded / non-class key.
+      groundK = k: v1ClassKeyMap.${k} or k;
       recognizedSubKey =
         sk:
         builtins.substring 0 2 sk != "__"
@@ -137,13 +147,18 @@ let
       # structural facet / registered class / `__`-prefixed), bearing NO policy/route/wrapped marker: a
       # typo'd policy record or a mis-keyed content set. The typed tree would WRAP its `fn` into a valid
       # nested include (silent inert-fire); we abort LOUD here (over the RAW element, §2.2 self-announce).
+      # CARVE-OUT: the class membership test grounds the key first (`groundK`, the v1ClassKeyMap spelling),
+      # so a fn-valued key whose GROUNDED name IS a registered class (a v1 `homeManager = { host, … }: …`
+      # parametric FACET) is NOT malformed — it rides raw + is grounded/wrapped by compile's `wrapGatedFn`
+      # exactly like an attrset-valued `homeManager` facet already does (an attrset facet reaches compile via
+      # the raw-splice; a fn facet must clear this fn-key gate to reach it too).
       malformedFnKeys =
         inc:
         builtins.filter (
           k:
           builtins.isFunction inc.${k}
           && !(isStructuralRawKey k)
-          && !(classSet ? ${k})
+          && !(classSet ? ${groundK k})
           && builtins.substring 0 2 k != "__"
         ) (builtins.attrNames inc);
       isMalformedFnInclude =

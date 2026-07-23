@@ -144,13 +144,9 @@ let
 
   # v1 class-key names that differ from den-hoag's (§ grounded terminology): a v1 aspect's class key is
   # renamed to the den-hoag class it targets before passing through, so `classifyKey` recognises it.
-  # Identity for every already-grounded name; extended as the corpus surfaces more (harness-driven).
-  # v1 keys home-manager content under `homeManager` (pin 11866c16 nix/lib/entities/home.nix:124
-  # `class = strOpt "…" "homeManager"`; nix/denTest.nix:108 `den.schema.user.classes = ["homeManager"]`),
-  # so den-hoag's registered `home-manager` class is the grounded terminology this normalizes to (R2).
-  v1ClassKeyMap = {
-    homeManager = "home-manager";
-  };
+  # The SINGLE source is `v1-class-key-map.nix` (shared with flake-module's §2.2 raw-totality `groundK`);
+  # a v1 `homeManager` body grounds to den-hoag's registered `home-manager` class here (R2).
+  v1ClassKeyMap = import ./v1-class-key-map.nix;
 
   # Ground ONE v1 class-NAME string (not an attrset key) through the SAME v1ClassKeyMap — for the
   # class-name FIELDS a translated route/deliver effect resolves against `resolveBucket` (§9 C6):

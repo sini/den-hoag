@@ -25,13 +25,14 @@ in
 {
   flake.tests.den-hasAspect = {
 
-    # BLOCKED: function-valued class facet in a `provides.to-users`-delivered aspect. With the user-cell seed
-    # `home-manager.users.tux` now materializes, so this gets PAST the old `attribute 'tux' missing`, but the
-    # delivered `den.aspects.effect.homeManager = { host, ... }: {...}` is a bare FUNCTION-valued `homeManager`
-    # facet, which compile rejects (§2.2: "aspect-include declares key `homeManager` with a function value —
-    # neither a facet, a registered class, nor a quirk channel"). Distinct from the `{ host, user }` ctx
-    # family this seed delivers — a separate compile restriction on function-valued class facets (the same one
-    # that blocks pipe-broadcast.nix test-broadcast-home-pool-to-host). Re-parked; reported to owner.
+    # BLOCKED (bridge raw-den bind): a function-valued `homeManager` facet delivered via `provides.to-users`
+    # compiles cleanly — the delivered `den.aspects.effect.homeManager = { host, ... }: {...}` fn-facet rides
+    # raw, grounded/wrapped by compile (the plain-facet variant greens in provides-to-users-fn-facet.nix). This
+    # case blocks deeper, on the READ side: the facet body calls `host.hasAspect den.aspects.test`, which hits
+    # `hasAspect: ref must be a den.aspects.<path> value carrying key (got set)` (has-aspect.nix:48). The bridge
+    # binds the RAW den (`_module.args.den = fleetDen // { lib = denLib }`, bridge.nix:488) rather than the
+    # annotated navigation view, so `den.aspects.test` reaches the ref WITHOUT its native `.key` and refKey
+    # cannot resolve it — a separate gap from the fn-facet acceptance. Reported to owner.
     # test-host-sees-aspect-it-provides-to-users = denTest (
     #   {
     #     den,

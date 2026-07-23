@@ -535,12 +535,14 @@ in
       }
     );
 
-    # BLOCKED-WSB (compile-time key-classification restriction, distinct from the broadcast-unwired
-    # gap above): `den-hoag compat (§2.2): aspect-include \`<unnamed>\` declares key \`homeManager\`
-    # with a function value — neither a facet, a registered class, nor a quirk channel` —
-    # `den.aspects.claude.homeManager` is a bare FUNCTION (`{ replicateHome, ... }: {...}`)
-    # included directly at a HOST aspect (`den.aspects.iceberg.includes = [ den.aspects.claude ]`);
-    # den-hoag's compile rejects a function-valued `homeManager` facet at that position.
+    # BLOCKED-WSB (home-pool broadcast value gap): the host aspect's bare-fn
+    # `den.aspects.claude.homeManager = { replicateHome, ... }: {...}` compiles cleanly — it rides raw,
+    # grounded/wrapped by compile — so it does not abort at compile. It blocks instead on a value gap in the
+    # broadcast delivery: the fixture evaluates but `igloo.networking.domain` comes back "" instead of
+    # ".claude/memory" — the replicateHome home-pool quirk, broadcast from alice's USER scope to the remote
+    # host igloo, does not reach igloo's `rh-consumer` nixos content. Identical in shape to
+    # test-broadcast-to-remote-host (which passes) except the quirk is home-pool (emitted by a host aspect
+    # projected onto the user's home via the host-aspects spawn) — a separate gap from the fn-facet acceptance.
     # # REPRO (nix-config replicateHome → hub shortfall): a HOME-POOL quirk —
     # # emitted by a named aspect that also carries homeManager content and is
     # # consumed in homeManager — broadcast from the USER scope to a remote host.
