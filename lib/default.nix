@@ -2308,6 +2308,36 @@ let
                 })
               ]
           ) (builtins.attrNames (ent.registries.collector or { }));
+          # ── the parked spawn-instantiate mount (the intoAttr output family): `den.policy.instantiate` parks a
+          # `declare.spawn { instantiate = spec }` in the host node's STRUCTURAL action group (spawn ∉ the resolve
+          # family, so `guardResolveFamily` returns it untouched — it rides in `.actions.structural`, NOT the
+          # resolution group). RECOVER the (nodeId, spec) PAIRS — the spec fires AT that host node, so its class
+          # content is sliced at nodeId — then run the spec's OWN evaluator (`spec.instantiate`, data on the spec)
+          # over the sliced class modules and place the built value at the spec's `intoAttr = [ <family> <key> ]`.
+          # family/key/evaluator/class are ALL data carried on the parked spec: no family-name branch, no per-tool
+          # code — a host-content family and a cluster-content family fold through this ONE arm alike. NAMING:
+          # `action.instantiate` IS the spec (`declare.spawn` stamps `{ __action = "spawn"; instantiate = spec; }`),
+          # so `action.instantiate.instantiate` is the evaluator fn and `action.instantiate.{intoAttr,class}` the
+          # placement/slice data. VALUE-mode (the prebuilt-artifact arm — the evaluator is the sole forcing
+          # boundary, lazy until a consumer reads the family). Corpus/oracle-inert: a fleet with no instantiate
+          # policy recovers `[ ]` (the concatMap short-circuits before any slice) → the contribution list is empty
+          # → the fold is byte-identical.
+          instantiateContributions = prelude.concatMap (
+            nodeId:
+            map
+              (action: {
+                at = action.instantiate.intoAttr;
+                mode = "value";
+                value = action.instantiate.instantiate {
+                  modules = output.classSubtreeAt nodeId action.instantiate.class;
+                };
+              })
+              (
+                builtins.filter (a: a.__action == "spawn" && a ? instantiate) (
+                  (structural.eval.get nodeId "declarations").actions.structural or [ ]
+                )
+              )
+          ) (builtins.attrNames structural.eval.allNodes);
           # the placed value per contribution mode: the value arm carries `value` (the prebuilt system), the
           # artifact arm `artifact` (the render-built face), the extend arm `extended` (the render's `extendsVia`
           # applied to the inner handle), the content arm the RAW (un-placed) module slice wrapped as a SINGLE
@@ -2325,16 +2355,19 @@ let
             else
               c.value;
         in
-        # GUARD: with no opt-ins AND no collector contributions the built-in fold is byte-identical (both extra
-        # arms are structurally absent — the corpus path). The guard gates BOTH: a collectors-but-no-opt-ins
-        # fleet must take the all-arms branch, else its collector aggregates would be silently dropped.
+        # GUARD: with no opt-ins AND no collector contributions the built-in fold is the corpus path. The guard
+        # gates BOTH: a collectors-but-no-opt-ins fleet must take the all-arms branch, else its collector
+        # aggregates would be silently dropped. `instantiateContributions` rides BOTH branches — an instantiate-
+        # only fleet (no opt-ins, no collectors) takes the built-in branch, so the built-in branch must carry the
+        # instantiate arm or its family would drop. On a fleet with no instantiate policy the arm is `[ ]` → both
+        # branches stay byte-identical to their pre-arm form.
         if optIns == [ ] && collectorContributions == [ ] then
-          prelude.foldl' (
-            acc: c: familyMerge acc (edge.setAttrByPath c.at c.value)
-          ) emptyFamilies contributions
+          prelude.foldl' (acc: c: familyMerge acc (edge.setAttrByPath c.at c.value)) emptyFamilies (
+            contributions ++ instantiateContributions
+          )
         else
           prelude.foldl' (acc: c: familyMerge acc (edge.setAttrByPath c.at (placedValue c))) emptyFamilies (
-            contributions ++ optInContributions ++ collectorContributions
+            contributions ++ optInContributions ++ collectorContributions ++ instantiateContributions
           );
 
       # The built-in aliases (§4.4): each is the corresponding family projected off the root product

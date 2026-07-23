@@ -72,6 +72,34 @@ let
       };
     }
   );
+
+  # SYNTHETIC intoAttr witness (tool-name-free): a policy parking an instantiate spec whose evaluator WRAPS the
+  # collected class content, targeting a den-native family "artifactsA" (NOT colmenaModules/nixidyEnvs). The 4th
+  # familyOutputs arm recovers the parked spawn from the host node's structural action group, runs the spec's OWN
+  # evaluator over the node's class slice, and places the built value at `intoAttr = [ family key ]`. Mirrors the
+  # corpus host-modules-capture shape but with a distinct evaluator (`{ built = modules; }`) so the placement +
+  # the run-over-collected-content are both observable — family/key/evaluator/class are ALL data on the spec.
+  artRec = {
+    __isPolicy = true;
+    name = "artifacts-capture";
+    fn =
+      { host, ... }:
+      [
+        (denHoag.policy.instantiate {
+          name = "${host.name}-art";
+          inherit (host) class;
+          instantiate = { modules, ... }: { built = modules; };
+          intoAttr = [
+            "artifactsA"
+            host.name
+          ];
+        })
+      ];
+  };
+  withArt = mkFleet {
+    policies.artifacts-capture = artRec;
+    schema.host.includes = [ artRec ];
+  };
 in
 {
   flake.tests.compat-instantiate = {
@@ -128,6 +156,38 @@ in
         builtins.attrNames (withInst.nixosConfigurations or { })
         == builtins.attrNames (baseline.nixosConfigurations or { });
       expected = true;
+    };
+    # (6) THE intoAttr OUTPUT FAMILY (board #50 materialization rung): the parked instantiate spec is recovered
+    #     from the host node's STRUCTURAL action group and its evaluator run over the collected class content,
+    #     placed at `outputs.<family>.<key>`. GENERIC — family/key/evaluator/class are DATA on the spec, so a
+    #     den-native "artifactsA" family materializes through the SAME kernel arm the class-C/D families ride.
+    test-instantiate-materializes-family = {
+      expr = {
+        hasFamily = withArt.outputs ? artifactsA;
+        hasKey = (withArt.outputs.artifactsA or { }) ? h1;
+        # the evaluator ran over the node's collected class slice — the built `.built` IS that slice.
+        builtIsClassSlice =
+          withArt.outputs.artifactsA.h1.built == withArt.den.output.classSubtreeAt "host:h1" "nixos";
+      };
+      expected = {
+        hasFamily = true;
+        hasKey = true;
+        builtIsClassSlice = true;
+      };
+    };
+    # (7) BYTE-NEUTRAL on a no-instantiate fleet: the baseline recovers NO spec → the 4th arm contributes nothing
+    #     → the family is absent and the built-in nixos face is untouched (the additive-arm invariant).
+    test-no-instantiate-no-family = {
+      expr = {
+        noFamily = !(baseline.outputs ? artifactsA);
+        nixosUnchanged =
+          builtins.attrNames (withArt.nixosConfigurations or { })
+          == builtins.attrNames (baseline.nixosConfigurations or { });
+      };
+      expected = {
+        noFamily = true;
+        nixosUnchanged = true;
+      };
     };
   };
 }
