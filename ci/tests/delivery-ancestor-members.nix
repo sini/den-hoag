@@ -61,10 +61,12 @@ let
             "hmbase"
             "hmpersist"
           ];
+          # hm class content authored the v1-SURFACE way (`homeManager`) — a parametric aspect's result has no
+          # raw-splice, so the kebab (grounded) name would freeform-mangle; the v1 spelling grounds at compile.
           aspects.acct =
             { user, ... }:
             {
-              home-manager.tag = "hm-${user.name}";
+              homeManager.tag = "hm-${user.name}";
             };
           schema.user.includes = [ "acct" ];
         }
@@ -117,7 +119,8 @@ let
         den.aspects.acct =
           { user, ... }:
           {
-            home-manager.tag = "hm-${user.name}";
+            # v1-surface hm spelling (parametric result grounds at compile — see sibling fleet).
+            homeManager.tag = "hm-${user.name}";
           };
         den.schema.user.includes = with den.aspects; [ acct ];
         den.policies.hm-forward =
@@ -158,7 +161,8 @@ let
         aspects.acct =
           { user, ... }:
           {
-            home-manager.tag = "hm-${user.name}";
+            # v1-surface hm spelling (parametric result grounds at compile — see sibling fleet).
+            homeManager.tag = "hm-${user.name}";
           };
         schema.user.includes = [
           "dup"

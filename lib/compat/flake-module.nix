@@ -76,14 +76,30 @@ let
   # its class deferredModule buckets THROUGH by value. `mkCompileAspectsType` is fleet-parameterised (the
   # declared class + channel names come from `den.classes`/`den.quirks`, threaded in `evalV1Raw`), built from
   # the SAME `key-semantics.nix` helper den-hoag core uses — one class + channel vocabulary source.
-  # NOTE the v1 `homeManager` spelling is DELIBERATELY EXCLUDED (den-hoag's built-in is grounded `home-manager`;
-  # a v1 `homeManager` body rides freeform and is grounded by translateAspect's `groundKeys` downstream).
   # `registeredClasses or [ ]` mirrors the `legacy.defaults.desugar or (v1: v1)` sibling-guard (below):
   # severing `legacy.defaults` (the ambient-batteries subset wiring) drops the whole `defaults` module, so
   # this base read must tolerate its absence — off ⇒ no ambient class names to seed (identity `[ ]`); on ⇒
-  # `.registeredClasses` present, the `or` is IDENTITY (byte-neutral).
+  # `.registeredClasses` present, the `or` is IDENTITY (byte-neutral). These names are the GROUNDED den-hoag
+  # class names (`builtins.attrNames denHoag.classes` carries the built-in kebab `home-manager`).
   compileClassNamesBase =
     builtins.attrNames denHoag.classes ++ (legacy.defaults.registeredClasses or [ ]);
+
+  # The v1 class-key SPELLING map REVERSED (grounded den-hoag name → v1 SURFACE spelling) — derived from the
+  # SAME `v1-class-key-map.nix` single source compile's `groundKeys`/`groundClassName` read forward. The
+  # typed/nav aspect view (`mkCompileAspectsType` below AND the §2.2 raw-totality discriminator `mkRawTotality`)
+  # keys its class channels by this V1 SURFACE spelling — the spelling the corpus AUTHORS its class content as
+  # (`homeManager`, not the grounded kebab `home-manager`). Grounding to the den-hoag kebab class name is a
+  # KERNEL-boundary concern, confined to compile (`translateAspect`'s `groundKeys`); keeping it OUT of surface
+  # typing is the invariant that makes a class-name ⟂ aspect-name collision impossible on the view: an aspect
+  # NAMED after a grounded class (the corpus's `core.users.home-manager`) is no longer shadowed by a channel of
+  # that name — only the v1 spelling `homeManager` is a channel, matching the class content, so the aspect keeps
+  # its `.settings` facet + nested children. Identity for every already-v1-spelled / non-class name; the map is
+  # a singleton today, so the reversal only re-spells `home-manager` → `homeManager`.
+  reverseV1ClassKeyMap = prelude.listToAttrs (
+    prelude.mapAttrsToList (v1: grounded: prelude.nameValuePair grounded v1) v1ClassKeyMap
+  );
+  ungroundClassName = name: reverseV1ClassKeyMap.${name} or name;
+  v1SpelledClassNames = names: map ungroundClassName names;
   mkCompileAspectsType =
     {
       declaredClassNames,
@@ -94,7 +110,11 @@ let
       // {
         keySemantics =
           (keySemanticsLib.mkClassChannelSemantics {
-            classNames = compileClassNamesBase ++ declaredClassNames;
+            # V1 SURFACE spelling (reverse-grounded): a channel matches the spelling the corpus authors its
+            # class content as (`homeManager`), so the grounded kebab `home-manager` is NOT a channel and an
+            # aspect NAMED after it is not shadowed (the collision invariant above). compile grounds the key
+            # downstream.
+            classNames = v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames);
             quirkChannels = quirkChannelNames;
           })
           # Register the config-free facet vocabulary (neededBy/settings/artifact) the aspects concern declares,
@@ -121,10 +141,10 @@ let
   # channel — recursively) is untouched.
   structuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
   # The v1 class-key SPELLING map (camelCase → grounded class name), the SINGLE source shared with
-  # compile.nix's `groundKeys`/`groundClassName`. Used by the §2.2 raw-totality discriminator to GROUND a
-  # candidate class-facet key (a v1 `homeManager`) to its registered den-hoag class before the malformed-fn
-  # membership test — so a fn-valued class facet spelled the v1 way is recognised as a legit parametric
-  # facet, not a malformed `{ name; fn }` policy record.
+  # compile.nix's `groundKeys`/`groundClassName`. Here it is REVERSED (`reverseV1ClassKeyMap`, above) to key
+  # the nav/compile class channels + the §2.2 discriminator by the v1 SURFACE spelling, so a class-facet key
+  # spelled the v1 way (`homeManager`) is recognised as a registered class directly (no per-key grounding —
+  # grounding to the kebab kernel name stays confined to compile).
   v1ClassKeyMap = import ./v1-class-key-map.nix;
   # den-hoag facets absent from v1's structural set (KEEP IN SYNC with concern-aspects.nix `facets`).
   hoagFacetsSet = prelude.genAttrs [
@@ -146,12 +166,17 @@ let
       quirkChannelNames,
     }:
     let
-      classSet = prelude.genAttrs (compileClassNamesBase ++ declaredClassNames) (_: true);
+      # The discriminator's class set is keyed by the V1 SURFACE spelling — SPELLING-CONSISTENT with the
+      # nav/compile channel keySemantics above (both `v1SpelledClassNames (compileClassNamesBase ++ …)`), so a
+      # value carrying the corpus-authored class content key (`homeManager`) is recognized as a class sub-key
+      # here, and a key the view typed as a class channel is never re-classified as a candidate/unregistered
+      # (which would splice raw over the typed class bucket). The grounded kebab `home-manager` is DELIBERATELY
+      # absent — an aspect NAMED `home-manager` is therefore a candidate (a legit nested child, its raw value
+      # carrying `settings`/`nixos`/… recognized sub-keys), matching the nav view that types it freeform.
+      classSet = prelude.genAttrs (v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames)) (
+        _: true
+      );
       quirkSet = prelude.genAttrs quirkChannelNames (_: true);
-      # Ground a v1 class-key SPELLING to its registered den-hoag name (`homeManager` → `home-manager`)
-      # before a class-membership test — the SAME v1ClassKeyMap compile applies. Identity for an
-      # already-grounded / non-class key.
-      groundK = k: v1ClassKeyMap.${k} or k;
       recognizedSubKey =
         sk:
         builtins.substring 0 2 sk != "__"
@@ -173,11 +198,12 @@ let
       # structural facet / registered class / `__`-prefixed), bearing NO policy/route/wrapped marker: a
       # typo'd policy record or a mis-keyed content set. The typed tree would WRAP its `fn` into a valid
       # nested include (silent inert-fire); we abort LOUD here (over the RAW element, §2.2 self-announce).
-      # CARVE-OUT: the class membership test grounds the key first (`groundK`, the v1ClassKeyMap spelling),
-      # so a fn-valued key whose GROUNDED name IS a registered class (a v1 `homeManager = { host, … }: …`
-      # parametric FACET) is NOT malformed — it rides raw + is grounded/wrapped by compile's `wrapGatedFn`
-      # exactly like an attrset-valued `homeManager` facet already does (an attrset facet reaches compile via
-      # the raw-splice; a fn facet must clear this fn-key gate to reach it too).
+      # CARVE-OUT: the class membership test is over the V1-SURFACE-spelled `classSet`, so a fn-valued key
+      # spelled the v1 way (a v1 `homeManager = { host, … }: …` parametric FACET) IS a registered class and is
+      # NOT malformed — it rides raw + is grounded/wrapped by compile's `wrapGatedFn` exactly like an
+      # attrset-valued `homeManager` facet already does (an attrset facet reaches compile via the raw-splice;
+      # a fn facet must clear this fn-key gate to reach it too). The membership is bare `k` (the classSet is
+      # already v1-spelled — no per-key grounding needed, and the grounding stays confined to compile).
       # CARVE-OUT (2): a fn-valued key naming a REGISTERED quirk channel (`quirkSet ? ${k}`) is NOT
       # malformed — a v1 channel body may be a `{ ctx… }: <content>` producer, materialized unconditionally
       # by v1 and gathered fn-and-all by the downstream channel-gather seam. The lookup mirrors the sibling
@@ -189,7 +215,7 @@ let
           k:
           builtins.isFunction inc.${k}
           && !(isStructuralRawKey k)
-          && !(classSet ? ${groundK k})
+          && !(classSet ? ${k})
           && !(quirkSet ? ${k})
           && builtins.substring 0 2 k != "__"
         ) (builtins.attrNames inc);

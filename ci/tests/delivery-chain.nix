@@ -50,7 +50,9 @@ let
           aspects.acct =
             { user, ... }:
             {
-              home-manager.tag = "hm-${user.name}";
+              # hm class content authored the v1-SURFACE way (`homeManager`) — a parametric aspect's result has
+              # no raw-splice, so the kebab (grounded) name would freeform-mangle; v1 spelling grounds at compile.
+              homeManager.tag = "hm-${user.name}";
               hl.tag = "hl-${user.name}";
             };
           schema.user.includes = [ "acct" ];

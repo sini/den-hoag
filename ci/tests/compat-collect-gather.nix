@@ -49,11 +49,15 @@ let
           plain = [ "plain-${host.name}" ];
         };
       den.schema.host.includes = [ "hemit" ];
-      # cell emissions: `mesh` (the entity-gate negative — a cell's ctx carries `host`) + `umesh`.
+      # cell emissions: `mesh` (the entity-gate negative — a cell's ctx carries `host`) + `umesh`. hm class
+      # content authored the v1-SURFACE way (`homeManager`): v1 keys the hm class camelCase; kebab `home-manager`
+      # is den-hoag's GROUNDED name, not v1-surface. A parametric aspect's RESULT has no raw-splice, so a kebab
+      # class key freeform-mangles; the v1 spelling grounds to `home-manager` at compile (the gathers below read
+      # the grounded class).
       den.aspects.cemit =
         { user, ... }:
         {
-          home-manager.tag = "hm-${user.name}";
+          homeManager.tag = "hm-${user.name}";
           mesh = [ "mesh-cell-${user.name}" ];
           umesh = [ "umesh-${user.name}" ];
         };
@@ -100,7 +104,8 @@ let
       den.aspects.cemit =
         { user, ... }:
         {
-          home-manager.tag = "hm-${user.name}";
+          # v1-surface hm spelling (see the sibling fleet above) — parametric result, grounds at compile.
+          homeManager.tag = "hm-${user.name}";
           mesh = [ "mesh-cell-${user.name}" ];
           umesh = [ "umesh-${user.name}" ];
         };

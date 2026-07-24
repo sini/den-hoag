@@ -78,10 +78,15 @@ let
             "hmbase"
             "roleish"
           ];
+          # the per-user hm cell content, authored the v1-SURFACE way (`homeManager`): v1 keys the hm class
+          # camelCase; kebab `home-manager` is den-hoag's GROUNDED name, not v1-surface. A parametric aspect's
+          # RESULT has no raw-splice, so a kebab class key freeform-mangles; the v1 spelling grounds to
+          # `home-manager` at compile. (The STATIC kebab `home-manager` aspects above — `ns.home-manager`,
+          # `hmbase.home-manager`, `plainhm.home-manager` — stay kebab, still accepted via the raw-splice.)
           aspects.acct =
             { user, ... }:
             {
-              home-manager.tag = "hm-${user.name}";
+              homeManager.tag = "hm-${user.name}";
             };
           schema.user.includes = [ "acct" ];
           policies.hm-forward =

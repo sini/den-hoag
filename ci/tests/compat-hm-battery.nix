@@ -68,10 +68,13 @@ let
         den.schema.user.parent = "host";
         den.aspects.hostc.nixos.tag = "nixos-host";
         den.schema.host.includes = [ "hostc" ];
+        # hm class content authored the v1-SURFACE way (`homeManager`): v1 keys the hm class camelCase; kebab
+        # `home-manager` is den-hoag's GROUNDED name, not v1-surface. A parametric aspect's RESULT has no
+        # raw-splice, so a kebab class key freeform-mangles; the v1 spelling grounds to `home-manager` at compile.
         den.aspects.acct =
           { user, ... }:
           {
-            home-manager.tag = "hm-${user.name}";
+            homeManager.tag = "hm-${user.name}";
           };
         den.schema.user.includes = [ "acct" ];
         den.policies.env-users =
@@ -100,10 +103,11 @@ let
       den.schema.user.parent = "host";
       den.aspects.hostc.nixos.tag = "nixos-host";
       den.schema.host.includes = [ "hostc" ];
+      # v1-surface hm spelling (see the sibling mkResolved fleet above) — parametric result, grounds at compile.
       den.aspects.acct =
         { user, ... }:
         {
-          home-manager.tag = "hm-${user.name}";
+          homeManager.tag = "hm-${user.name}";
         };
       den.schema.user.includes = [ "acct" ];
     }

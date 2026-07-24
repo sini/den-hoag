@@ -53,11 +53,14 @@ let
         den.schema.user.parent = "host";
         den.aspects.hostc.nixos.tag = "nixos-host";
         den.schema.host.includes = [ "hostc" ];
-        # the cell's home-manager content — what the forward delivers.
+        # the cell's home-manager content — what the forward delivers. Authored the v1-SURFACE way
+        # (`homeManager`): v1 keys the hm class camelCase; kebab `home-manager` is den-hoag's GROUNDED name, not
+        # v1-surface. A parametric aspect's RESULT has no raw-splice, so a kebab class key freeform-mangles; the
+        # v1 spelling grounds to `home-manager` at compile (the forward below still reads the grounded class).
         den.aspects.acct =
           { user, ... }:
           {
-            home-manager.tag = "hm-${user.name}";
+            homeManager.tag = "hm-${user.name}";
           };
         den.schema.user.includes = [ "acct" ];
         # the CELL-FIRED forward ({ user, host } formals ⇒ fires at (user,host) cells only) — the

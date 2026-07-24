@@ -684,6 +684,20 @@ let
       builtins.seq (noBatteriesForward name aspect) (
         if builtins.isFunction aspect then
           { includes = normalizeList "${name}:include" [ aspect ]; }
+        else if builtins.isAttrs aspect && (aspect.__isWrappedFn or false) then
+          # A PRE-TYPED parametric aspect functor: `typeAspects` (typedCompileTree) wraps a
+          # `den.aspects.<name> = { … }: …` into a gen-aspects functor BEFORE compile, so it reaches here as a
+          # functor (NOT a bare fn — the `isFunction` arm never fires on the compileFull path). Its INVOCATION
+          # RESULT carries gen-aspects-materialized class buckets keyed by the v1 SURFACE spelling — the typed
+          # view keys class channels that way, and grounding to the kebab kernel class name is compile's job.
+          # The static ELSE branch below grounds only the functor's OWN (structural) keys and leaves the RESULT
+          # ungrounded, so a materialized `homeManager` bucket (an unset class default gen-aspects mounts on
+          # EVERY node) would reach the kernel's §2.2 classifier un-grounded and abort `declares key homeManager`.
+          # Ground the RESULT the SAME way `normalize` grounds a `__isWrappedFn` INCLUDE (its `__functor`
+          # re-wrapped through `grndDispatch` → `groundKeys`, `homeManager` → `home-manager`), by routing through
+          # the one `normalizeList` grounding path and taking the single wrapped functor back — the aspect stays
+          # a bare functor (shape preserved; `ref.name`/identity kept).
+          builtins.head (normalizeList "${name}:include" [ aspect ])
         else
           let
             excludes = aspect.excludes or [ ];
