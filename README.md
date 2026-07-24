@@ -107,6 +107,49 @@ policy is authored plainly, no probe-shaping required. A per-declaration policy 
 `structural`/`resolution` declarations; an `enrich` or `pipeOp` declaration from one aborts loud (those
 are probe-time feed/compose commitments a value-conditional policy cannot make).
 
+### Editor tooling (LSP + MCP), for free
+
+A consumer that imports den's flakeModule gets a complete nixd + MCP surface with **zero hand-wiring** —
+no manual projection call, no per-repo option table. The flakeModule computes it from the built fleet
+(via [gen-lsp](https://github.com/sini/gen-lsp)) and emits:
+
+- **`den-lsp.options`** — the in-process option trees a nixd worker walks, keyed by provider name:
+  `den` (the `den.*` option-declaration tree), `den-aspects` (the declared aspect registry with each
+  aspect's settings fields), and `gen` (the gen substrate library signatures).
+- **`den-lsp.enumerate`** — the JSON-safe wire view (`{ options; aspects; libs; }`) the MCP server reads.
+- **`packages.<system>.den-lsp-mcp`** — the MCP enumeration server (a thin re-export of gen-lsp's).
+
+```nix
+# your fleet flake
+{
+  inputs.den-hoag.url = "github:sini/den-hoag";
+  outputs = inputs: inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+    imports = [ inputs.den-hoag.flakeModule ];   # ← that's it; den-lsp.* is emitted for you
+    # ... your den.* fleet ...
+  };
+}
+```
+
+Point nixd at the option providers (`nixd.settings.options.<provider>.expr` → `<flake>.den-lsp.options.<provider>`):
+
+```json
+{
+  "nixd": {
+    "options": {
+      "den":         { "expr": "(builtins.getFlake \"/path/to/fleet\").den-lsp.options.den" },
+      "den-aspects": { "expr": "(builtins.getFlake \"/path/to/fleet\").den-lsp.options.\"den-aspects\"" },
+      "gen":         { "expr": "(builtins.getFlake \"/path/to/fleet\").den-lsp.options.gen" }
+    }
+  }
+}
+```
+
+Run the MCP server against the fleet (its defaults are already `--namespace den` / `--output-attr den-lsp`, so it reads `<flake>.den-lsp.enumerate` with no extra flags):
+
+```sh
+nix run <your-fleet-flake>#den-lsp-mcp -- --fleet <your-fleet-flake>
+```
+
 ## Development
 
 ```sh

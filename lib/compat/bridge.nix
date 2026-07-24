@@ -40,6 +40,10 @@
   mkCrossNixos,
   schema,
   denLib,
+  # gen-lsp's prebuilt per-system MCP server set (`{ <system> = { mcp = <drv>; }; }`, den's own
+  # `inputs.gen-lsp.packages`) — re-keyed to `packages.<system>.den-lsp-mcp` in the B2 auto-export below.
+  # Defaults to `{ }` (the gen-lsp input absent ⇒ no mcp package emitted; the option trees still export).
+  lspMcpPackages ? { },
   # `passThrough` (default true) — the belt/suspenders toggle for the opaque option pass-through SEAM
   # (see `passThroughSeam` in the schema apply). true = the BELT is active (raw option decls ride through
   # to the corpus's own gen-schema); false = SEVERED (the processed kind-values flow, same-contract once
@@ -352,6 +356,27 @@ let
       compat.mkDen fleet
     else
       compat.mkDenWith fleet { nixosTerminal = mkCrossNixos npkgs; };
+
+  # ── LSP/MCP AUTO-EXPORT (ship-gate B2) ────────────────────────────────────────────────────────────
+  # The flakeModule computes the WHOLE nixd/MCP surface from the BUILT fleet, so a consumer importing
+  # `inputs.den.flakeModule` gets it with ZERO hand-wiring — no manual `forNixd` call, no manual nixd
+  # config. den's B1 binding (`denLib.lsp`, lib/lsp-binding.nix) feeds the built fleet's option-declaration
+  # tree / aspect registry / key vocabulary + the 19 filtered gen libs into gen-lsp's general projection;
+  # the composed views come back NEUTRAL-keyed (`options`/`aspects`/`libs`) and den maps them onto its own
+  # nixd option-provider names in `config.flake.den-lsp` below (that remap is den's concern, not gen-lsp's).
+  # `internal` = den's gen-lib bundle (the same `denLib.internal` the B1 test drives; the binding filters
+  # it to the 19 substrate libs). LAZINESS (parity-safe / ADDITIVE): `built.den`'s passthroughs are
+  # declaration-only — the B1 seam pins that walking them never forces `.config`/the resolved output — and
+  # the surface rides `config.flake.den-lsp` as un-forced thunks, so a fleet that never reads the LSP output
+  # pays nothing and the existing v1 output faces (nixosConfigurations/…) are byte-untouched.
+  lspForNixd = denLib.lsp.forNixd {
+    den = built.den;
+    inherit (denLib) internal;
+  };
+  lspEnumerate = denLib.lsp.forNixdJSON {
+    den = built.den;
+    inherit (denLib) internal;
+  };
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
@@ -764,6 +789,30 @@ in
   config._module.args.den = denArg;
 
   config.flake = {
+    # ── B2 auto-export (nixd option providers + the MCP wire view + the mcp server) ─────────────────
+    # `den-lsp.options` — the IN-PROCESS `forNixd` sections REMAPPED onto den's nixd PROVIDER names (den's
+    # job; gen-lsp emits neutral `options`/`aspects`/`libs`). A consumer points
+    # `nixd.settings.options.den.expr` at `<flake>.den-lsp.options.den`, `.den-aspects.expr` at
+    # `<flake>.den-lsp.options."den-aspects"`, `.gen.expr` at `<flake>.den-lsp.options.gen`.
+    # `den-lsp.enumerate` — the JSON-safe WIRE view (`forNixdJSON`, neutral-keyed `{ options; aspects;
+    # libs; }`) the MCP server reads at `<flake>.den-lsp.enumerate.<section>` (its defaults are already
+    # `--namespace den`/`--output-attr den-lsp`).
+    den-lsp = {
+      options = {
+        den = lspForNixd.options;
+        den-aspects = lspForNixd.aspects;
+        gen = lspForNixd.libs;
+      };
+      enumerate = lspEnumerate;
+    };
+    # `packages.<system>.den-lsp-mcp` — a thin re-export of gen-lsp's prebuilt MCP server (its defaults are
+    # already `--namespace den`/`--output-attr den-lsp`, so `den-lsp-mcp --fleet <flake>` reads
+    # `<flake>.den-lsp.enumerate` with no wrapper). Per-system re-key of `lspMcpPackages`; `{ }` when the
+    # gen-lsp input is absent. Merges with a consumer's own perSystem-produced `flake.packages`.
+    packages = builtins.mapAttrs (_system: perSys: {
+      den-lsp-mcp = perSys.mcp;
+    }) lspMcpPackages;
+
     # The drop-in `den` output faces (D8 flake-parts option targets).
     nixosConfigurations = built.nixosConfigurations;
     # darwin members cross through `collect`: the compat per-host instantiate wrapper is stamped only on

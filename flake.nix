@@ -108,6 +108,10 @@
         # the migration lib surface, spliced onto the consumer's `den` arg at `den.lib` (R1). Lazy let: it
         # is defined below and carries no reference back to the bridge, so the forward use is cycle-free.
         denLib = migrationLib;
+        # gen-lsp's prebuilt per-system MCP server (`packages.<system>.mcp`) — re-exported by the flakeModule
+        # as `packages.<system>.den-lsp-mcp` (B2 auto-export). den closes over its OWN `inputs.gen-lsp` here
+        # because a consumer's flake carries no gen-lsp input; `{ }` when the input is absent (parity-safe).
+        lspMcpPackages = inputs.gen-lsp.packages or { };
       };
 
       # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
