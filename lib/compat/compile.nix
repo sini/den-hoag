@@ -186,10 +186,10 @@ let
     ) attrs (builtins.attrNames attrs);
 
   # ── v1 NESTED-ASPECT discriminator (the blade.shuo rung) — v1 `nix/lib/aspects/fx/
-  # key-classification.nix:69-80` `isNestedKey` + `:49-56` `looksLikeClassContent`, pin 11866c16. ──
+  # key-classification.nix:69-80` `isNestedKey`, pin 11866c16. ──
   #
   # v1 partitions an aspect's non-structural/non-class/non-quirk keys (classifyKeys, :82-111): a key whose
-  # ATTRSET value carries ≥1 RECOGNIZED sub-key — structural, quirk, or class-with-class-like-content — is
+  # ATTRSET value carries ≥1 RECOGNIZED sub-key — structural, quirk, or a registered class NAME — is
   # a NESTED ASPECT (`nestedKeys`); the rest are `unregisteredClassKeys` (typos). A nested aspect is NEVER
   # emitted at the parent's scope (key-classification.nix:67-68: "sub-aspects are never auto-walked … they
   # activate via explicit `includes`") — v1 routes it to the navigable synthetic `_`/provides child
@@ -211,9 +211,9 @@ let
   # including a parametric RESULT (the old out-of-corpus "no nested arm" ceiling, since closed).
   #
   # v1's `unwrapContentValuesForClassification` pre-step is SKIPPED: `__contentValues` wrappers are v1
-  # aspectContentType typing the raw bridge never constructs (the same reason `__provider` is absent).
-  # `looksLikeClassContent` forces a sub-value to WHNF only under a CLASS-named sub-key — v1's own forcing
-  # posture (key-classification.nix:62-64, the #580 flake-fixpoint guard).
+  # aspectContentType typing the raw bridge never constructs (the same reason `__provider` is absent). The
+  # discriminator is now NAME-only (registry membership of the sub-key) — it never forces a sub-VALUE, so
+  # the former class-content value-heuristic and its #580 flake-fixpoint WHNF-forcing guard are moot.
   v1StructuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
   # den-hoag-only facets (concern-aspects.nix `facets`) that v1's structural set lacks — a parent key
   # named like these is shim vocabulary, never a nested-aspect candidate. KEEP IN SYNC with that list.
@@ -224,42 +224,25 @@ let
     "key"
     "id_hash"
   ];
-  # v1 key-classification.nix:49-56: class-like content is a fn, a __contentValues wrapper, or an
-  # attrset with ≥1 attrset/fn/LIST-valued key (or the EMPTY attrset) — rejects non-empty flat-scalar
-  # sets that merely shadow a class name. RAW-BOUNDARY WIDENING (board #58, the `lix`/`etcd` frontier):
-  # v1 classifies over its TYPED tree, where every class-keyed value is an aspectContentType wrapper and
-  # passes via the `__contentValues` arm unconditionally — so v1's attrset arm never judges raw module
-  # bodies. The shim's raw boundary DOES: an imports-only class body (`nixos = { imports = [ … ]; }` —
-  # corpus core.nix.lix, core.system.disko) carries only a LIST-valued key, and a declared-no-op body
-  # (`nixos = { }` — corpus services.k3s.etcd) carries none at all; both would fail v1's literal attrset
-  # arm, leaving the nested sub-aspect on its parent to abort §2.2 at every including scope. List-valued
-  # keys and the empty body are accepted as class-like; a non-empty flat-SCALAR shadow set is still
-  # rejected (the arm's purpose).
-  # Under the single typed tree a class-keyed value is a deferredModule WRAP (`{ imports = [ … ]; }`), and
-  # gen-aspects materializes EVERY registered class key on EVERY aspect — an UNSET class defaults to the EMPTY
-  # wrap `{ imports = [ { } ]; }`. That empty wrap must NOT count as class-like content: else a typo attrset
-  # (`nixxos = { networking… }`, typed with all-empty class defaults) would flip `recognizedSubKey` true on
-  # its default `nixos` sub-key and mis-classify NESTED (silently stripped) instead of aborting §2.2. The
-  # shared `module-shape.nix` helper peels the wrap + judges emptiness (one source with class-modules).
+  # `isEmptyDeferredModule` (the empty class-wrap peel) — retained here as the single source shared with
+  # class-modules (the class-bucket unwrap below at the classSet arm). The former `looksLikeClassContent`
+  # VALUE-shape heuristic that also lived here is GONE: it inspected a class-named sub-value's structure to
+  # disambiguate class content from a nested aspect at the class/nested COLLISION (a corpus aspect NAMED
+  # after a registered class). The namespace name-reservation retires that collision — the corpus is
+  # de-collided (no aspect is named after a class), so class-vs-nested is decided by REGISTRY MEMBERSHIP
+  # alone; the value-guess is inert and removed.
   inherit (import ../module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
-  looksLikeClassContent =
-    v:
-    builtins.isFunction v
-    || (builtins.isAttrs v && v ? __contentValues)
-    || (
-      builtins.isAttrs v
-      && !(v ? imports && isEmptyDeferredModule v)
-      && (
-        v == { }
-        || builtins.any (
-          k: builtins.isAttrs v.${k} || builtins.isFunction v.${k} || builtins.isList v.${k}
-        ) (builtins.attrNames v)
-      )
-    );
   # `mkIsNestedAspectKey classNames quirkNames` → `attrs: k: bool` — fleet-parameterised (the class set is
-  # builtins + declared classes, the quirk set the fleet's channels; same cnf grain as mkNormalize). The
-  # parent key `k` is tested POST-grounding (class keys already den-hoag-spelled); a SUB-key is grounded
-  # through the same v1ClassKeyMap before the class test (nested content is untouched by the parent fold).
+  # builtins + declared classes, the quirk set the fleet's channels; same cnf grain as mkNormalize).
+  # REDUCED to pure NAME-membership — the sole remaining job is the §2.2 TYPO-TOTALITY / nested-aspect
+  # STRIP split (v1 key-classification.nix:69-80 `isNestedKey`, pin 11866c16): a non-structural/non-facet/
+  # non-class/non-quirk key whose ATTRSET value carries ≥1 sub-key that is itself a REGISTERED name
+  # (structural | quirk | grounded class) is a NESTED ASPECT → stripped from the parent (strip-only,
+  # Fork-B); a scalar, or an attrset with NO registered-named sub-key, is an `unregisteredClassKey` TYPO →
+  # LEFT IN PLACE and aborts LOUD at the §2.2 three-branch dispatch. No value inspection: `recognizedSubKey`
+  # tests sub-key NAMES only (the class arm grounds the sub-key through v1ClassKeyMap before the membership
+  # test — nested content is untouched by the parent fold; the parent key `k` is tested POST-grounding, so
+  # a class-named parent is registry-excluded, never a candidate).
   mkIsNestedAspectKey =
     classNames: quirkNames:
     let
@@ -272,45 +255,21 @@ let
       # (`unwrapContentValuesForClassification`), so its own annotation never feeds its discriminator
       # either; skipping `__*` reproduces that invisibility at the raw boundary.
       recognizedSubKey =
-        val: sk:
+        sk:
         !(prelude.hasPrefix "__" sk)
-        && (
-          v1StructuralKeysSet ? ${sk}
-          || quirkSet ? ${sk}
-          || (classSet ? ${v1ClassKeyMap.${sk} or sk} && looksLikeClassContent val.${sk})
-        );
-      # #74 (the u22-family fix): the PARENT candidate exclusion follows V1'S AUTHORED registry, not the
-      # grounded set. v1's `isClassKey k = classRegistry ? k` reads den.classes AS DECLARED (pin
-      # key-classification.nix:101 — the hm battery registers camelCase `homeManager`,
-      # modules/aspects/batteries/home-manager.nix:33), so the kebab key `home-manager` is NOT a v1
-      # class key — it is a nested-aspect CANDIDATE, and the corpus's `core.users.home-manager` aspect
-      # (roles/default.nix:16 — an aspect NAMED like the grounded class, carrying os/nixos/darwin
-      # sub-keys) classifies NESTED (stripped from `core.users`, activated via its explicit include).
-      # The shim's grounded classSet carries BOTH spellings, so the kebab key was wrongly class-excluded
-      # and the WHOLE record landed in the host's home-manager bucket — inert until #74a delivered that
-      # bucket per-user (`home-manager.users.<u>.darwin` does not exist — the re-probe abort). A
-      # grounded-ONLY spelling (a v1ClassKeyMap VALUE that is not also a v1 authored name) is therefore
-      # candidate-ELIGIBLE; its content still decides (a plain-content `home-manager` key has no
-      # recognized sub-keys ⇒ NOT nested ⇒ class content — the native den-hoag shape unchanged).
-      # CEILING (corpus-zero, documented): an authored camelCase `homeManager` key is grounded to kebab
-      # BEFORE this test, so a camel-authored key with nested-shaped content would ALSO classify nested
-      # where v1 calls it class content — v1's behavior for that shape delivers os/nixos records into
-      # the hm bucket (the exact explosion this fix removes), so the shim's treatment is strictly saner.
-      v1GroundedOnlySpellings = builtins.filter (v: !(v1ClassKeyMap ? ${v})) (
-        builtins.attrValues v1ClassKeyMap
-      );
+        && (v1StructuralKeysSet ? ${sk} || quirkSet ? ${sk} || classSet ? ${v1ClassKeyMap.${sk} or sk});
       isCandidate =
         k:
         !(v1StructuralKeysSet ? ${k})
         && !(builtins.elem k hoagOnlyFacets)
-        && (!(classSet ? ${k}) || builtins.elem k v1GroundedOnlySpellings)
+        && !(classSet ? ${k})
         && !(quirkSet ? ${k})
         && builtins.substring 0 2 k != "__";
     in
     attrs: k:
     isCandidate k
     && builtins.isAttrs attrs.${k}
-    && builtins.any (recognizedSubKey attrs.${k}) (builtins.attrNames attrs.${k});
+    && builtins.any recognizedSubKey (builtins.attrNames attrs.${k});
 
   # ── v1 aspect-include WRAP-GROUND builder (§339; cf. v1 `nix/lib/aspects/fx/aspect/normalize.nix`
   #    `wrapChild`/`wrapBareFn`). den-hoag requires a parametric aspect include to be a gen-aspects

@@ -1,38 +1,36 @@
-# #74 (the u22-family fix) — a CLASS-NAMED nested aspect follows V1'S AUTHORED spelling law. v1's
-# `isClassKey k = classRegistry ? k` reads den.classes AS DECLARED (pin 11866c16
-# key-classification.nix:101; the hm battery registers camelCase `homeManager`, home-manager.nix:33), so
-# the kebab key `home-manager` is NOT a v1 class key — an aspect child so named (the corpus's
-# `core.users.home-manager`, roles/default.nix:16 — value `{ os = …; nixos = …; darwin = …; }`) is a
-# NESTED-ASPECT candidate and classifies NESTED (≥1 recognized class sub-key): stripped from its parent,
-# activated via its explicit include, its class halves split. The shim's grounded classSet carried BOTH
-# spellings, wrongly class-excluding the kebab key — the WHOLE record landed in the host's home-manager
-# bucket (inert until #74a delivered that bucket per-user: `home-manager.users.<u>.darwin` does not
-# exist, the re-probe abort). The fix: a grounded-ONLY spelling (v1ClassKeyMap values ∖ names) stays
-# candidate-ELIGIBLE; content decides (compile.nix mkIsNestedAspectKey).
+# The class/nested NAME RESERVATION (v1 `nix/lib/aspects/fx/key-classification.nix:69-80` `isNestedKey`,
+# pin 11866c16). A bare aspect key equal to a REGISTERED CLASS NAME is CLASS CONTENT by registry
+# membership — the reservation — regardless of its content shape (a rich attrset or a plain scalar); it is
+# NEVER stripped-as-nested. Classification is by NAME (does the key/sub-key name a registered class), not by
+# value inspection. To author a NESTED aspect you use a NON-class name — a key that is neither a facet nor a
+# registered class/channel, whose attrset value carries ≥1 registered-named sub-key, classifies NESTED and
+# is stripped from its parent (activated only via an explicit `includes`); the corpus follows this by naming
+# the shared-HM aspect `home-manager-shared` rather than the reserved class name `home-manager`.
 #
 # Witnesses:
-#   (1) the corpus shape: a namespace aspect's kebab `home-manager` child carrying class sub-keys is
-#       STRIPPED from the parent (nested — never class content in any bucket);
-#   (2) the native shape unchanged: a kebab `home-manager` key with PLAIN hm content (no recognized
-#       sub-keys) stays CLASS CONTENT;
-#   (3) end-to-end: with the nested child explicitly included at the host, its `nixos` half lands at
-#       the host terminal AND the per-user delivered hm content carries NO class-keyed record
-#       (`nixos`/`os` keys absent inside home-manager.users.<u>).
+#   (1)/(2) compile-level: a class-named key (`home-manager`) is CLASS CONTENT for both rich and plain
+#           content; a NON-class name (`home-manager-shared`) carrying a class sub-key STRIPS as nested;
+#   (3) end-to-end: a nested aspect under a legal (non-class) name, explicitly included at the host, delivers
+#       its `nixos` half to the host terminal;
+#   (4) the delivered per-user hm content carries NO class-keyed record (`nixos`/`os` absent inside
+#       home-manager.users.<u>).
 { denCompat, nixpkgsLib, ... }:
 let
   inherit (denCompat) route;
 
-  # (1)/(2) compile-level: the nested child strips; the plain hm key stays.
+  # (1)/(2) compile-level: a class-named key stays class content (content-shape-agnostic); a non-class
+  # aspect name carrying a class sub-key strips as nested.
   c = denCompat.compile {
-    aspects.ns = {
-      home-manager = {
-        # class-LIKE content (attrset-valued — v1 looksLikeClassContent :49-56 rejects flat scalars)
-        os.programs.zsh.enable = true;
-        nixos.users.mutableUsers = false;
-      };
+    # `home-manager` names a registered class → CLASS CONTENT (the reservation), NOT stripped, whatever its
+    # content shape.
+    aspects.ns.home-manager = {
+      programs.zsh.enable = true;
     };
-    aspects.plainhm = {
-      home-manager.tag = "plain-hm";
+    aspects.plainhm.home-manager.tag = "plain-hm";
+    # `home-manager-shared` is a NON-class name → its class-named sub-key (`nixos`) makes it a NESTED aspect,
+    # stripped from its parent.
+    aspects.nested.home-manager-shared = {
+      nixos.users.mutableUsers = false;
     };
     hosts.x86_64-linux.igloo.class = "nixos";
   };
@@ -46,9 +44,9 @@ let
       [ ];
   igloo = "host:igloo";
 
-  # (3) end-to-end: the corpus roles-shape — the host explicitly includes the nested child (navigated
-  # off den.aspects, the roles/default.nix:16 idiom) beside a genuine host hm module; one hm user cell
-  # fires the parent-targeted forward.
+  # (3) end-to-end: the corpus roles-shape — a nested aspect under a LEGAL (non-class) name is explicitly
+  # included at the host (navigated off den.aspects, the roles/default.nix:16 idiom) beside a genuine host hm
+  # module; one hm user cell fires the parent-targeted forward.
   fleet = denCompat.mkDen [
     (
       { config, ... }:
@@ -61,16 +59,19 @@ let
           schema.user.parent = "host";
           aspects.hostc.nixos.tag = "nixos-host";
           aspects.hmbase.home-manager.tag = "hm-host-base";
+          # a nested aspect named the LEGAL way (non-class) — its os/nixos halves split; activated via the
+          # explicit include below. (`home-manager` would be a reserved class name → class content, not a
+          # nested aspect — the reservation; the corpus renamed exactly this to `home-manager-shared`.)
           aspects.ns = {
-            home-manager = {
+            home-manager-shared = {
               os.programs.zsh.enable = true;
               nixos.tag = "nixos-from-nested";
-              nixos.marker.deep = true; # attrset-valued — class-like (v1 :49-56)
+              nixos.marker.deep = true; # attrset-valued class content
             };
           };
           aspects.roleish = {
             includes = [
-              config.den.aspects.ns.home-manager
+              config.den.aspects.ns.home-manager-shared
             ];
           };
           schema.host.includes = [
@@ -79,10 +80,10 @@ let
             "roleish"
           ];
           # the per-user hm cell content, authored the v1-SURFACE way (`homeManager`): v1 keys the hm class
-          # camelCase; kebab `home-manager` is den-hoag's GROUNDED name, not v1-surface. A parametric aspect's
-          # RESULT has no raw-splice, so a kebab class key freeform-mangles; the v1 spelling grounds to
-          # `home-manager` at compile. (The STATIC kebab `home-manager` aspects above — `ns.home-manager`,
-          # `hmbase.home-manager`, `plainhm.home-manager` — stay kebab, still accepted via the raw-splice.)
+          # camelCase; kebab `home-manager` is den-hoag's GROUNDED class name. A parametric aspect's RESULT has
+          # no raw-splice, so a kebab class key freeform-mangles; the v1 spelling grounds to `home-manager` at
+          # compile. (The STATIC kebab `home-manager` keys above — `hmbase.home-manager`, `plainhm.home-manager`
+          # — are class content, accepted via the raw-splice.)
           aspects.acct =
             { user, ... }:
             {
@@ -125,15 +126,22 @@ let
 in
 {
   flake.tests.compat-nested-class-named-aspect = {
-    # (1) the kebab class-named child with class sub-keys is STRIPPED from the parent (nested).
-    test-nested-child-stripped = {
+    # (1) a class-named key with rich content is CLASS CONTENT (present, not stripped) — the reservation is
+    #     content-shape-agnostic (name membership, no value inspection).
+    test-class-named-key-stays-class-content = {
       expr = c.aspects.ns ? home-manager;
-      expected = false;
+      expected = true;
     };
-    # (2) a plain-content kebab hm key stays CLASS CONTENT (the native shape unchanged).
-    test-plain-hm-key-stays-class-content = {
+    # (2) a plain-content class-named key is likewise class content (unchanged).
+    test-plain-class-named-key-stays-class-content = {
       expr = c.aspects.plainhm ? home-manager;
       expected = true;
+    };
+    # (2b) a NON-class aspect name carrying a class sub-key IS a nested aspect → stripped from its parent
+    #      (the legal nesting path — what an aspect must be named to nest).
+    test-nonclass-named-aspect-strips-as-nested = {
+      expr = c.aspects.nested ? home-manager-shared;
+      expected = false;
     };
     # (3) end-to-end: the explicitly-included nested child's nixos half lands at the host terminal…
     test-nested-nixos-half-lands-at-host = {
