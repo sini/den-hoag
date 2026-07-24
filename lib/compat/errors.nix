@@ -165,6 +165,20 @@ in
     name:
     fail "aspect-include policy record (#65)" "a `{ __isPolicy }` include record `${name}` reached include-normalization without a compiled `__aspectInclude__` rule — it was not found by the static collection walk over `den.aspects`/`den.default.includes` (a runtime-constructed or out-of-tree record; a NAMELESS record is a v1 authoring error too — v1's register-aspect-policy requires `name`, children.nix:57). Author the record in the registry aspect tree it fires from, or extend the walk to its surface";
 
+  # A class-content COLLAPSE reached include-normalization: an `includes` element whose navigated value was
+  # a class-named aspect key carries the gen-aspects classOptions-slot `{ imports = […] }` deferredModule.merge
+  # artifact (types.nix:257-264) — CLASS CONTENT, not a navigable aspect. The dominant cause: the include
+  # target names a REGISTERED CLASS. A bare aspect key equal to a registered class name is that class's
+  # CONTENT by registry membership (the declared-shadows-freeform reservation) and can NEVER be a nested
+  # aspect — so it cannot be included AS one. Fires the LOUD reservation error at the include boundary (where
+  # the used-as-aspect fact is known), replacing the misdirected §2.2 child-key abort (which blames the
+  # collapsed content's `imports` key). Names the include POSITION, not the specific class — the class name is
+  # lost when the Nix path selection (`with den.aspects; [ … ]`) collapses to a value (the terminal key is
+  # unrecoverable here).
+  reservedClassInclude =
+    name:
+    fail "aspect-include reservation (§2.2)" "include `${name}` resolved to CLASS CONTENT (a keyless `{ imports = … }` deferredModule with no aspect identity), not a navigable aspect. The include target most likely names a REGISTERED CLASS: a bare aspect key equal to a registered class name is class content, not a nested aspect, and can never be included AS one. Rename the aspect to a NON-class name (e.g. `<name>-host`, `<name>-shared`) and update its `includes` references; the class of the same name is unaffected. (If you meant to include a raw NixOS module, wrap it as a named `den.aspects.<name>` and reference it.)";
+
   # PARAMETRIC-ASPECT RESULT — NON-INCLUDE EFFECT IN A LIST (R14 list branch, v1 `mkParametricNext`
   # aspect.nix:72-84). A bare-fn include (`den.schema.<kind>.includes = [ ({ … }: <body>) ]`, a nested
   # bare fn, or an aspect-include bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose `__fn` RESULT is

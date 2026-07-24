@@ -295,6 +295,28 @@ let
       # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
       # registry-side instance; see `groundRec` for why the include path needs its own split.
       isNested = mkIsNestedAspectKey classNames quirkNames;
+      # CLASS-CONTENT COLLAPSE at the include boundary (Option 5 name-reservation, loud). An `includes`
+      # element whose navigated value was a class-named aspect key is CLASS CONTENT included AS an aspect. A
+      # bare aspect key equal to a REGISTERED CLASS NAME is that class's content by registry membership
+      # (mkIsNestedAspectKey's `isCandidate` excludes `classSet ? k`), so a
+      # `with den.aspects; [ virtualization.microvm ]` selection of a class-named key collapses to the
+      # gen-aspects classOptions slot — a `{ imports = […] }` deferredModule.merge artifact (types.nix:257-264).
+      # THE SIGNAL IS THAT `imports` LIST, NOT identity-absence: the clean nav-view sole-key `{imports}` (no
+      # `.key`) exists only at the raw navigation value — once it rides an aspect's `.includes`,
+      # restoreUnregistered (flake-module.nix) re-types the element (re-stamping a synthetic position `.key`,
+      # materializing empty class buckets) and splices the unregistered `imports` collapse-list back as a
+      # TOP-LEVEL content key. So identity-ABSENCE does NOT survive re-typing; the spliced `imports` LIST does.
+      # `imports` is the deferredModule merge slot, NEVER a v1 aspect content key (not a facet/class/quirk), so
+      # a top-level non-empty `imports` list is UNIQUELY the class-content collapse — pure STRUCTURE +
+      # gen-aspects' own materialization artifact, NOT a value-shape intent-heuristic (contrast the deleted
+      # `looksLikeClassContent`, which GUESSED intent from sub-key structure). Every legit include shape lacks
+      # it: a navigated aspect carries its content under registered class keys (no top-level `imports`); an
+      # inline literal, a bare reference (`{ name }`), and marker records have no `imports` slot (PROBE 4/5/6,
+      # empirically len 1 for the collapse vs absent for all three). So this discriminates ONLY inputs that
+      # already abort at §2.2 (groundRec grounds the unregistered `imports` → the unknown-key abort); it is a
+      # message-refinement of that throw, never a new abort path.
+      isClassContentCollapse =
+        ref: builtins.isAttrs ref && (ref ? imports) && builtins.isList ref.imports && ref.imports != [ ];
       # ── ASPECT-INCLUDE POLICY-RECORD DIVERSION (#65, ledger u16 — v1 children.nix:70-72 parity). ──
       # v1 `processInclude`'s FIRST arm routes ANY `{ __isPolicy }` include to `register-aspect-policy`,
       # never the aspect walk (pin 11866c16 aspect/children.nix:70-72) — at EVERY resolution path
@@ -538,6 +560,15 @@ let
             name = ref.name or name;
             onResult = grndDispatch name;
           } ref.__fn
+        else if builtins.isAttrs ref && isClassContentCollapse ref then
+          # A class-named aspect key was INCLUDED AS an aspect: the `with den.aspects; [ … ]` selection
+          # collapsed to a keyless `{ imports = … }` class-content deferredModule (no aspect identity).
+          # Left to fall through, this reaches the static-aspect arm below → `groundRec` → the `imports`
+          # key aborts at §2.2 naming a CHILD key of the collapsed content, not the real culprit. Intercept
+          # one step earlier with the LOUD reservation error — the used-as-aspect fact is known HERE, at the
+          # include boundary. MESSAGE-REFINEMENT of the existing §2.2 abort, NEVER a new abort path: this
+          # fires ONLY on inputs that already throw there (isClassContentCollapse excludes every legit shape).
+          errors.reservedClassInclude name
         else if builtins.isAttrs ref && !(ref ? id_hash) then
           # A STATIC aspect attrset (inline content / a `{ name }` reference): GROUND its class keys and
           # recurse its includes. A `{ __isPolicy; fn }` policy record NEVER reaches here — every include

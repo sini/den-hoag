@@ -123,6 +123,35 @@ let
   userHmTux = crossedHm.users.tux or { };
   userHmTags = tags userHmTux;
   userHmHasClassKeys = (userHmTux ? nixos) || (userHmTux ? os) || (userHmTux ? darwin);
+
+  # LOUD RESERVATION-INCLUDE (Option 5 name-reservation): a class-named container navigated + INCLUDED as
+  # an aspect. `microvm` names a registered class, so `aspects.virtualization.microvm` is CLASS CONTENT by
+  # registry membership; navigating it off the `den` legacy binding (the typed navigation view, the
+  # `with den.aspects; …` include surface) collapses it to a keyless `{ imports = … }` deferredModule (a
+  # gen-aspects classOptions slot, no aspect `.key`/`.name` identity). Including that value AS an aspect
+  # fires the loud reservation error (`errors.reservedClassInclude`) at the include boundary — a message-
+  # refinement of the misdirected §2.2 child-key abort, on an input that already threw there. (`config.den`
+  # would read the RAW pre-typed value — `{ nixos … }`, no collapse — which is NOT what a v1 `with
+  # den.aspects` navigation produces; the `den` module arg is bound to the navigation view, flake-module.nix
+  # bindLegacyEnv.)
+  throws = e: !(builtins.tryEval (builtins.deepSeq e true)).success;
+  redFleet = denCompat.mkDen [
+    (
+      { den, ... }:
+      {
+        den = {
+          classes.microvm = { };
+          hosts.x86_64-linux.igloo.class = "nixos";
+          aspects.virtualization.microvm = {
+            nixos.networking.firewall.enable = true;
+          };
+          aspects.rolec.includes = [ den.aspects.virtualization.microvm ];
+          schema.host.includes = [ "rolec" ];
+        };
+      }
+    )
+  ];
+  redTerm = redFleet.den.output.systems.nixos.${igloo}.modules or [ ];
 in
 {
   flake.tests.compat-nested-class-named-aspect = {
@@ -172,6 +201,15 @@ in
         tags = [ "hm-tux" ];
         hasClassKeys = false;
       };
+    };
+    # (5) LOUD reservation-include: a class-named aspect (`virtualization.microvm`, `microvm` ∈ classes)
+    #     navigated and included AS an aspect collapses to keyless class content → the include boundary
+    #     fires the loud reservation error (`errors.reservedClassInclude`). The homegrown CI asserter has no
+    #     message-text channel (no `expectedError`), so assert the THROW; the green nested-include siblings
+    #     above prove the guard does NOT fire on a legit non-class nested include (no false-positive).
+    test-reserved-class-named-include-throws-loud = {
+      expr = throws redTerm;
+      expected = true;
     };
   };
 }
