@@ -30,25 +30,41 @@ let
   # dummy args: the `classes` values this suite reads are LITERALS, never forcing prelude/errors/declare (the
   # lazy `policies`/`deliverLib` bindings + the `imports` fleet-context stay unforced) — a regression guard on
   # the ACTUAL wiring, the unit twin of the ship-gate corpus re-probe.
+  # `flakeOutputClasses = true` reads the ON view (the five flake-output classes registered); the curry
+  # default is `true`, so a flagless import is byte-equivalent, but we pass it explicitly to name the ON path.
   builtinsMod = import "${denHoagSrc}/lib/compat/builtins.nix" {
     prelude = { };
     errors = { };
     declare = { };
+    flakeOutputClasses = true;
   };
   classesView = builtinsMod.config.den.classes;
-  # the full v1 built-in class set this rung registers — each must be present + carry a description.
-  builtinClassNames = [
+  # the OFF view (the FLEET default, `defaultFeatures.flakeOutputClasses = false`): the five flake-output
+  # classes are OMITTED, so a nested aspect key of one of those names is a plain navigable namespace.
+  builtinsModOff = import "${denHoagSrc}/lib/compat/builtins.nix" {
+    prelude = { };
+    errors = { };
+    declare = { };
+    flakeOutputClasses = false;
+  };
+  classesViewOff = builtinsModOff.config.den.classes;
+  # the v1 built-ins split by the `flakeOutputClasses` gate: the ALWAYS-registered set (present regardless of
+  # the flag) and the FLAKE-OUTPUT set (present only when the feature is on).
+  alwaysClassNames = [
     "flake-parts"
     "wsl"
     "maid"
     "hjem"
+    "k8s-manifests"
+  ];
+  flakeOutputClassNames = [
     "packages"
     "apps"
     "checks"
     "devShells"
     "legacyPackages"
-    "k8s-manifests"
   ];
+  builtinClassNames = alwaysClassNames ++ flakeOutputClassNames;
 
   # ── a nixos host `igloo`; `withWsl` toggles a host-attached aspect emitting wsl content beside nixos ──
   # The mkDen UNIT path wires only `flakeModuleCore` — builtinsModule rides the OUTPUT `flakeModule` the
@@ -116,7 +132,7 @@ in
 {
   flake.tests.compat-builtin-classes = {
     # ── the ACTUAL builtins.nix registration (regression guard on the wiring, prelude-free) ─────────────
-    # every v1 built-in this rung ports is present in `config.den.classes` and carries a description.
+    # ON (flakeOutputClasses = true): every v1 built-in this rung ports is present + carries a description.
     test-builtins-registers-full-set = {
       expr = {
         registered = builtins.all (n: classesView ? ${n}) builtinClassNames;
@@ -125,6 +141,30 @@ in
       expected = {
         registered = true;
         described = true;
+      };
+    };
+    # the ALWAYS-registered set is present in the OFF (fleet-default) view too — the gate omits ONLY the five
+    # flake-output classes, never these.
+    test-builtins-always-set-off = {
+      expr = {
+        registered = builtins.all (n: classesViewOff ? ${n}) alwaysClassNames;
+        described = builtins.all (n: (classesViewOff.${n}.description or "") != "") alwaysClassNames;
+      };
+      expected = {
+        registered = true;
+        described = true;
+      };
+    };
+    # the FLAKE-OUTPUT set is GATED: ABSENT in the OFF (default) view, PRESENT in the ON view — the
+    # `den.features.flakeOutputClasses` removability witness at the builtinsModule grain.
+    test-builtins-flakeoutput-gated = {
+      expr = {
+        offAbsent = builtins.all (n: !(classesViewOff ? ${n})) flakeOutputClassNames;
+        onPresent = builtins.all (n: classesView ? ${n}) flakeOutputClassNames;
+      };
+      expected = {
+        offAbsent = true;
+        onPresent = true;
       };
     };
     # `wsl` specifically — the u14 blocker's fix (the compat primary-user battery emits `wsl.defaultUser`).

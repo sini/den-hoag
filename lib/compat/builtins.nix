@@ -52,6 +52,13 @@
   # compat-wiring change, not a kernel edit — every other builtin provision untouched). Default on for a
   # direct importer (the `ci/tests/compat-{flake-parts-class,builtin-classes}.nix` unit reads).
   fleetContext ? true,
+  # The compile-time `den.features.flakeOutputClasses` gate (den v2 OPT-IN, default OFF at the fleet grain,
+  # `defaultFeatures`). Off ⇒ OMIT the five v1 flake-SYSTEM-OUTPUT class registrations (packages/apps/checks/
+  # devShells/legacyPackages) from `config.den.classes`, so a NESTED aspect key matching one of those names
+  # types as a plain navigable NAMESPACE instead of an opaque class-content terminal. On ⇒ register them bare
+  # (classification only; the flake-output emission family is unbuilt). Curry default `true` mirrors
+  # `fleetContext`; the fleet default OFF lives in `defaultFeatures`.
+  flakeOutputClasses ? true,
 }:
 let
   deliverLib = import ./deliver.nix { inherit prelude errors; };
@@ -526,29 +533,6 @@ in
         description = "v1 Hjem user-environment class (batteries/hjem.nix:34); behavior wired above (hjem.{enable,module} host option + host-module import + hjem-user-detect forward), corpus-inert (no user carries the class).";
       };
 
-      # ── v1 FLAKE SYSTEM OUTPUT classes (modules/policies/flake.nix:12-16 `systemOutputs`, registered
-      # flake.nix:41-46: "Register system output names as classes so aspect keys dispatch correctly"). These are
-      # flake-SCOPE output classes. The corpus routes its flake-scope content through the `flake-parts`/`devshell`
-      # classes (devshell.nix), NEVER a bare `packages`/`devShells`/… top-level aspect key (verified corpus-wide),
-      # so they are inert here. Registered bare so a flake-parts-modules aspect key matching a v1 output name
-      # CLASSIFIES (CLASS branch) exactly as under v1, never aborts. A producing member would be the flake-OUTPUT
-      # family rung (gate class F/G, board #51 — the flake-parts devShells twin); corpus-absent ⇒ latent. ──
-      packages = {
-        description = "v1 flake `packages` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
-      };
-      apps = {
-        description = "v1 flake `apps` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
-      };
-      checks = {
-        description = "v1 flake `checks` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
-      };
-      devShells = {
-        description = "v1 flake `devShells` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised (the corpus routes devshell content through the flake-parts class, not this key).";
-      };
-      legacyPackages = {
-        description = "v1 flake `legacyPackages` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
-      };
-
       # ── v1 KUBERNETES-MANIFEST output class — a compat-provisioned built-in. NOT a kind-generic core class
       # (a bare generic den has no k8s built-in — k8s is a consumer/compat concern), so it is registered here
       # as a bare inert declared class, exactly like the battery/flake-output built-ins above. With no producing
@@ -556,6 +540,37 @@ in
       k8s-manifests = {
         description = "v1 kubernetes-manifest output class; bare inert compat built-in (no kind-generic core class), corpus-unexercised — registration unblocks classification only.";
       };
-    };
+    }
+    # ── v1 FLAKE SYSTEM OUTPUT classes (modules/policies/flake.nix:12-16 `systemOutputs`) behind the
+    # `den.features.flakeOutputClasses` gate (DEFAULT OFF, den v2 opt-in). v1 registered these UNCONDITIONALLY
+    # ("Register system output names as classes so aspect keys dispatch correctly", flake.nix:41). den v2 makes
+    # them opt-in: registering a name turns a NESTED aspect key of that name (a `<ns>.<output>.<leaf>` NAMESPACE
+    # directory) into an opaque class-content terminal, so a fleet using such a name as an aspect namespace
+    # loses navigation into it. OFF ⇒ the name stays a plain navigable namespace; ON ⇒ registered bare for
+    # CLASSIFICATION (a fleet emitting flake-system outputs — the emission routes are the flake-OUTPUT family,
+    # unbuilt). Corpus-INERT either way (no producing member ⇒ no output). Prelude-free `if`/`else` literal
+    # merge — the dummy-args unit forces `config.den.classes` without prelude. ──
+    // (
+      if flakeOutputClasses then
+        {
+          packages = {
+            description = "v1 flake `packages` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+          };
+          apps = {
+            description = "v1 flake `apps` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+          };
+          checks = {
+            description = "v1 flake `checks` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+          };
+          devShells = {
+            description = "v1 flake `devShells` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised (the corpus routes devshell content through the flake-parts class, not this key).";
+          };
+          legacyPackages = {
+            description = "v1 flake `legacyPackages` output class (modules/policies/flake.nix:41); bare inert flake-scope class, corpus-unexercised.";
+          };
+        }
+      else
+        { }
+    );
   };
 }

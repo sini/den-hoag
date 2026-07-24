@@ -46,6 +46,30 @@ let
   offHasAspect = denCompat.mkWiringWith { hasAspect = false; };
   offGather = denCompat.mkWiringWith { gather = false; };
 
+  # ── FEATURE: flakeOutputClasses (den v2 OPT-IN, default OFF) ──────────────────────────────────────────
+  # INVERTED default (opt-in, not removability): `full` (mkWiringWith { }) already has the feature OFF, so the
+  # register side drives an explicit-ON wiring. The gate provisions the five flake-output classes in the
+  # builtinsModule (the fleetContext precedent), so the STRUCTURAL probe reads
+  # `w.builtinsModule.config.den.classes` DIRECTLY — valid + mutation-provable (re-registering `apps` is what
+  # turns a `<ns>.apps.<leaf>` namespace opaque). The LOAD-BEARING behavioral off-navigates / on-breaks proof
+  # lives in the den-behavioral witness (through the BRIDGE, which wires builtinsModule); `compileFull`/`evalV1`
+  # wire only `flakeModuleCore`, so the flag is a NO-OP there — the mkDen-path rows below are FLAG-INVARIANT
+  # sanity (a flake-output-NAME namespace compiles + navigates when the name is not a class), NOT the gate proof.
+  onFlakeOutput = denCompat.mkWiringWith { flakeOutputClasses = true; };
+  flakeOutputClassPresent = w: (w.builtinsModule.config.den.classes or { }) ? apps;
+  # a fixture using a flake-output NAME (`apps`) as an aspect NAMESPACE directory (`parent.apps.leaf`); the
+  # leaf's content keys are registered (a quirk `q` + the `nixos` class), so it is unmistakably an aspect.
+  nsSanityFixture = {
+    quirks.q = { };
+    aspects.parent.apps.leaf = {
+      q = [ "x" ];
+      nixos.environment.variables.FROM_LEAF = "yes";
+    };
+  };
+  nsSanityCompiles =
+    w: (builtins.tryEval (builtins.deepSeq (w.compileFull nsSanityFixture).aspects null)).success;
+  nsSanityNavigates = w: ((w.evalV1 [ (v1mod nsSanityFixture) ]).aspects.parent.apps or { }) ? leaf;
+
   # ── byte-baseline oracles (reused verbatim from compat-legacy-severed) ────────────────────────────────
   # declaration-set projection — attrNames + id_hashes only (no function is forced, so a parametric body
   # never enters the comparison).
@@ -800,6 +824,31 @@ in
     test-fleetContext-content-clean-off = {
       expr =
         (builtins.tryEval (builtins.deepSeq (offFleetContext.compileFull edgeRoute).aspects null)).success;
+      expected = true;
+    };
+
+    # ══ FEATURE: flakeOutputClasses ─ the five v1 flake-output classes, OPT-IN (default OFF, den v2) ────────
+    # STRUCTURAL present/severed (reads builtinsModule directly — the mutation-provable carrier): the DEFAULT
+    # (OFF) wiring omits `apps` from the provisioned classes; the explicit-ON wiring registers it. Re-registering
+    # `apps` is EXACTLY what turns a `<ns>.apps.<leaf>` namespace opaque (the den-behavioral witness proves that
+    # end-to-end through the bridge).
+    test-flakeOutputClasses-default-off-absent = {
+      expr = flakeOutputClassPresent full;
+      expected = false;
+    };
+    test-flakeOutputClasses-on-present = {
+      expr = flakeOutputClassPresent onFlakeOutput;
+      expected = true;
+    };
+    # mkDen-path FLAG-INVARIANT sanity (NOT the gate proof — compileFull/evalV1 wire only flakeModuleCore, so
+    # the five classes are absent ON or OFF here): a flake-output-NAME namespace compiles clean and its leaf
+    # navigates on the mkDen path. The load-bearing off-navigates / on-breaks gate proof is the bridge witness.
+    test-flakeOutputClasses-mkden-namespace-compiles = {
+      expr = nsSanityCompiles full;
+      expected = true;
+    };
+    test-flakeOutputClasses-mkden-namespace-navigates = {
+      expr = nsSanityNavigates full;
       expected = true;
     };
   }

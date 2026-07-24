@@ -170,7 +170,7 @@ let
     import ./builtins.nix {
       inherit prelude errors;
       inherit (denHoag) declare;
-      inherit (feat) fleetContext;
+      inherit (feat) fleetContext flakeOutputClasses;
     };
   # The shared wiring builder both `mkWiring` (legacy-only signature — `compat-legacy-severed` drives it)
   # and `mkWiringWith` (the `den.features` front door) route through. Threads the seam-gate feature record
@@ -206,9 +206,14 @@ let
   # `den.features` — the COMPILE-TIME feature record that generalises the `mkWiring legacyArg` legacy-subset
   # severance handle (§2.1). It is a DRIVER ARGUMENT, not a `config.den.*` runtime option: the compat
   # two-eval reads `config.den` only AFTER the wiring is already built (flake-module.nix `evalV1Raw`), so a
-  # runtime flag would arrive too late to gate the wiring. Each feature defaults ON; `mkWiringWith { }`
-  # (every default) reduces to `mkWiring legacy` BYTE-IDENTICALLY — all-on = the current unconditional
-  # surface (the parity invariant). Flag-off drops the feature's collapse target to its identity default.
+  # runtime flag would arrive too late to gate the wiring. Each feature defaults ON EXCEPT `flakeOutputClasses`
+  # (the den v2 OPT-IN, default OFF). The `mkWiring legacy ≡ mkWiringWith { }` BYTE-IDENTITY still HOLDS — both
+  # take `flakeOutputClasses = false`, so the two wirings are identical. What the opt-in changes is that
+  # `defaultFeatures` is no longer all-true, so the DEFAULT wiring DE-REGISTERS the five flake-output classes:
+  # `den.classes` under `mkWiringWith { }` loses five keys versus the pre-D builtins surface. The corpus stays
+  # byte-identical ONLY because those five are INERT (no producing member ⇒ no edge/node/output — NOT because
+  # `den.classes` is byte-identical, it is not). Flag-off drops the feature's collapse target to its identity
+  # default.
   #
   # Class (a) fan-out — the LEGACY-MODULE SUBSET. Each legacy module rides the wiring iff its feature is on;
   # flag-off drops it from `legacy`, so `desugarLegacy` falls back to or-identity and a residual v1 key trips
@@ -254,6 +259,14 @@ let
     probeSentinel = true; # class (b) — OMIT probeSentinelModule ⇒ den.probeSentinelFields kernel `{ }`
     familyStamps = true; # class (b) — mkCompile name-sets → `[ ]` + OMIT the resolve/exclude seam modules
     fleetContext = true; # class (b) — OMIT fleetContextEnrichModule from the wiring's builtinsModule
+    # The FIRST opt-in (default-OFF) feature (den v2 terminal-classes). OFF ⇒ the builtinsModule OMITs the five
+    # v1 flake-SYSTEM-OUTPUT class registrations, so a nested aspect key of one of those names is a plain
+    # navigable NAMESPACE. This is a DELIBERATE v1-divergence: v1 registered them unconditionally, so with this
+    # default `mkWiringWith { }` de-registers them versus the pre-D builtins surface — output-neutral ONLY
+    # because the five are corpus-INERT (no producing member ⇒ no edge/node; NOT because `den.classes` is
+    # byte-identical — it loses five keys). `mkWiringWith { flakeOutputClasses = true; }` restores the v1
+    # registration (classification for a fleet emitting flake-system outputs).
+    flakeOutputClasses = false; # class (b) — OMIT the five flake-output class registrations from builtinsModule
     battery = builtins.mapAttrs (_: _: true) batteryNames; # class (b) — per-battery, nested sub-record
   };
   # Deep-merge the nested `battery` sub-record so a partial `{ battery.hostname = false; }` override keeps the
