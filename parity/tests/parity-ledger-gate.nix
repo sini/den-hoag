@@ -49,6 +49,15 @@ let
       id = "residual-n A15: user-cell user route";
       match = k: hasPrefix "root:user:" k && hasInfix "/user | nest" k;
     }
+    # residual-n2 (ledger row n2) — the EMITTED-DELIVERED TWIN of residual-n: den-hoag folds a user's `user`
+    # content at the (user,host) CELL edge-root (Law A15) and renders it from the HOST root as the delivery
+    # edge `collected:user:<u>@host:<h>/user | nest` (an `extra` on hoag; v1 has no cell counterpart). The
+    # `@host:` cell marker distinguishes it from v1's user-ROOT `collected:user:<u>/user` (residual-n
+    # `missing`, no `@host:`), so it does NOT blanket-classify — the user negative control still surfaces.
+    {
+      id = "residual-n2 A15: den-hoag emitted user-as-cell delivery edge (collected:user:<u>@host:<h>/user)";
+      match = k: hasInfix "collected:user:" k && hasInfix "@host:" k && hasInfix "/user | nest" k;
+    }
     {
       id = "residual-n A15: v1 host-aggregated hm fold (den v2 folds per-cell — absorbs former residual-o)";
       match = k: hasInfix "collected:host:" k && hasInfix "/homeManager | merge" k;

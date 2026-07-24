@@ -118,19 +118,28 @@ in
         "root:host:igloo/nixos |  | collected:host:igloo/os | merge"
       ];
     };
-    # …and the hoag arm stays EXACT — producing-class scoping never emits a phantom k8s/home-manager fold
-    # (the `class-modules` over-report the terminal's `contentIdsOf` also guards against), so `extra` is empty.
-    test-class-fold-no-extra = {
+    # …and the hoag arm's `extra` is EXACTLY the one user-as-cell delivery edge: producing-class scoping
+    # never emits a phantom k8s/home-manager fold (the `class-modules` over-report the terminal's
+    # `contentIdsOf` also guards against), and the sole `extra` is `collected:user:tux@host:igloo/user`
+    # (Law A15 — the (tux,igloo) cell folds its `user` content at the cell edge-root, which v1 has no
+    # counterpart for; its user-root twin `collected:user:tux/user` stays in `missing`). See ledger row n2.
+    test-class-fold-extra-is-user-cell = {
       expr = results.classFold.extra;
-      expected = [ ];
+      expected = [
+        "root:host:igloo/nixos | users/users/tux | collected:user:tux@host:igloo/user | nest"
+      ];
     };
 
     # The quirk fixture is the sharpest disjoint-domain witness: hoag renders a `collected:host/feat` edge
     # that v1 has NO counterpart for (v1 consumes quirk content into class folds), so it appears as an
-    # `extra` on the hoag arm — divergence in the OTHER direction from the missing class folds.
-    test-quirk-extra-is-feat-channel = {
+    # `extra` on the hoag arm — divergence in the OTHER direction from the missing class folds. The
+    # user-as-cell edge `collected:user:tux@host:igloo/user` (Law A15) joins it as the second `extra`.
+    test-quirk-extra-is-feat-and-user-cell = {
       expr = results.quirkChannel.extra;
-      expected = [ "root:host:igloo/feat |  | collected:host:igloo/feat | merge" ];
+      expected = [
+        "root:host:igloo/feat |  | collected:host:igloo/feat | merge"
+        "root:host:igloo/nixos | users/users/tux | collected:user:tux@host:igloo/user | nest"
+      ];
     };
   };
 }
