@@ -375,5 +375,12 @@
       formatter = inputs.nixpkgs.lib.genAttrs inputs.nixpkgs.lib.systems.flakeExposed (
         system: inputs.nixpkgs.legacyPackages.${system}.nixfmt-tree
       );
-    };
+    }
+    # den v1 `namespace` (denful/den nix/lib/namespace.nix, attrpath `namespace` at nix/default.nix:35): the
+    # curried `name: sources: <flake-parts module>` a corpus config imports as `(inputs.den.namespace "<x>"
+    # <bool>)`. A TOP-LEVEL output (sibling of `flakeOutputs`, NOT a `flakeModules` entry). `compat.flakeNamespace`
+    # is `{ namespace = <fn>; }` iff `den.features.namespace` is on (default), else `{ }` — the removability gate.
+    # Consumer-eval, additive; nothing in den-hoag's own CI or the parity harness imports it (parity-neutral,
+    # like `flakeOutputs`/`flakeModules.strict`). ZERO-COUPLING / first-to-cut (lib/compat/namespace.nix).
+    // compat.flakeNamespace;
 }

@@ -272,6 +272,11 @@ let
     # is a KNOWN no-op on the wiring); the sibling `mkFlakeDendritic` selector below reads it, keeping ONE
     # register SSOT. OMIT the `flakeModules.dendritic` output when off.
     dendritic = true;
+    # class (b) FLAKE-OUTPUT (den v1 nix/lib/namespace.nix): expose the top-level `namespace` output. Like
+    # `dendritic`, NOT a wiring seam — a static flake OUTPUT, so it does NOT route through `mkWiringFrom`
+    # (a `mkWiringWith { namespace = false; }` is a KNOWN no-op on the wiring); the sibling `mkFlakeNamespace`
+    # selector below reads it, keeping ONE register SSOT. OMIT the `namespace` output when off.
+    namespace = true;
     battery = builtins.mapAttrs (_: _: true) batteryNames; # class (b) — per-battery, nested sub-record
   };
   # `mkFlakeDendritic feat` — the gated `flakeModules.dendritic` flake-output selector (class (b)). It is a
@@ -281,6 +286,15 @@ let
   mkFlakeDendritic =
     feat: prelude.optionalAttrs feat.dendritic { dendritic = import ./flake-dendritic.nix; };
   flakeDendritic = mkFlakeDendritic defaultFeatures;
+  # `mkFlakeNamespace feat` — the gated `namespace` TOP-LEVEL flake-output selector (class (b), the
+  # `mkFlakeDendritic` twin). `flake.nix` merges `flakeNamespace` additively into its top-level output
+  # attrset (a sibling of `flakeOutputs`, NOT under `flakeModules` — den v1 exposes `namespace` at the flake
+  # top level, nix/default.nix:35). `feat.namespace` off ⇒ `{ }` ⇒ the output key vanishes (removable), on ⇒
+  # `{ namespace = <curried name: sources: module fn>; }` (lib/compat/namespace.nix). Reads the SAME feature
+  # record as the wiring/dendritic — ONE register SSOT.
+  mkFlakeNamespace =
+    feat: prelude.optionalAttrs feat.namespace { namespace = import ./namespace.nix; };
+  flakeNamespace = mkFlakeNamespace defaultFeatures;
   # Deep-merge the nested `battery` sub-record so a partial `{ battery.hostname = false; }` override keeps the
   # OTHER battery defaults on (a shallow `//` would replace the whole `battery` record with the singleton).
   mergeFeatures = a: b: a // b // { battery = a.battery // (b.battery or { }); };
@@ -385,6 +399,11 @@ in
   # additively into its `flakeModules` record; `mkFlakeDendritic` (the un-applied selector) is the
   # removability-gate handle (flip `defaultFeatures.dendritic` off → `{ }` → the output key vanishes).
   inherit mkFlakeDendritic flakeDendritic;
+  # `namespace` top-level flake-output selector (den v1 nix/lib/namespace.nix) — `flake.nix` merges
+  # `flakeNamespace` additively into its top-level output attrset (sibling of `flakeOutputs`);
+  # `mkFlakeNamespace` (the un-applied selector) is the removability-gate handle (flip
+  # `defaultFeatures.namespace` off → `{ }` → the output key vanishes). ZERO-COUPLING / first-to-cut.
+  inherit mkFlakeNamespace flakeNamespace;
   # The (all-on) gated battery-provisioning flake-parts module — `flake.nix` imports THIS (not the raw
   # `./lib/compat/batteries.nix` path) so `den.features.battery.<name>` can drop a battery. All-on
   # (`mkBatteriesModule defaultFeatures`, `filterAttrs (_: true)`) ≡ the former direct import, byte-identical.
