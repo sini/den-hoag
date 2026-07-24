@@ -71,7 +71,12 @@ let
   # the SAME `key-semantics.nix` helper den-hoag core uses — one class + channel vocabulary source.
   # NOTE the v1 `homeManager` spelling is DELIBERATELY EXCLUDED (den-hoag's built-in is grounded `home-manager`;
   # a v1 `homeManager` body rides freeform and is grounded by translateAspect's `groundKeys` downstream).
-  compileClassNamesBase = builtins.attrNames denHoag.classes ++ legacy.defaults.registeredClasses;
+  # `registeredClasses or [ ]` mirrors the `legacy.defaults.desugar or (v1: v1)` sibling-guard (below):
+  # severing `legacy.defaults` (the ambient-batteries subset wiring) drops the whole `defaults` module, so
+  # this base read must tolerate its absence — off ⇒ no ambient class names to seed (identity `[ ]`); on ⇒
+  # `.registeredClasses` present, the `or` is IDENTITY (byte-neutral).
+  compileClassNamesBase =
+    builtins.attrNames denHoag.classes ++ (legacy.defaults.registeredClasses or [ ]);
   mkCompileAspectsType =
     {
       declaredClassNames,

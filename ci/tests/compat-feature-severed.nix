@@ -148,6 +148,15 @@ let
     os = ((w.compileFull { }).policies or { }) ? __aspectInclude__os-to-host;
     user = ((w.compileFull { }).policies or { }) ? __aspectInclude__user-to-host;
   };
+  # CONTENT-compilation removability — the present/severed route pair above only route-PRESENCE-probes an
+  # EMPTY fleet (`compileFull { }`), which never types a content aspect tree, so it never forced the ambient-
+  # off `legacy.defaults` read at the compile class-name base (flake-module `compileClassNamesBase`). A
+  # content-bearing fixture typed under ambientBatteries-off must compile THROUGH cleanly — the base tolerates
+  # the severed `defaults` via `registeredClasses or [ ]` (the sibling-guard pattern). deepSeq the compiled
+  # `.aspects` (forces that class-name base) through tryEval: clean iff no escape. Mutation-provable: without
+  # the guard this ambient-off read hard-errors `attribute 'defaults' missing` and ESCAPES tryEval.
+  compilesCleanContent =
+    w: (builtins.tryEval (builtins.deepSeq (w.compileFull edgeRoute).aspects null)).success;
 
   # ── rung 2a: raw-seam probes (class (b)) ──────────────────────────────────────────────────────────────
   # STRUCTURAL seam-presence: the compat override is present at `config.den.<key>` on, ABSENT off (the
@@ -390,6 +399,13 @@ in
         os = true;
         user = true;
       };
+    };
+    # … and a CONTENT-bearing fleet still compiles THROUGH clean with the ambient severed — the removability
+    # proof the route-presence rows above miss (they only probe an empty fleet). Pre-guard the ambient-off
+    # class-name base read hard-errored and escaped tryEval; post-guard it types the content clean.
+    test-ambientBatteries-content-compiles-off = {
+      expr = compilesCleanContent offAmbient;
+      expected = true;
     };
 
     # ══ SEAM: hasAspect ─ den.enrichBindings + den.enrichContext (ONE flag, rung 2a) ─────────────────────
