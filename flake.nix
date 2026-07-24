@@ -326,8 +326,7 @@
       # nix-config's `modules/den/flake-parts.nix` imports; `flakeModules.default` is the flake-parts
       # convention alias. Both are the OUTPUT BRIDGE (ship-gate M1): it declares `options.den` with the
       # consumer's nixpkgs `lib` (raw absorption — never a gen-schema type in the strict eval), runs the
-      # compat assembly, and sets `config.flake.{nixosConfigurations,darwinConfigurations}`. `flakeModules.
-      # dendritic` (a den-diagram optional v1 carried) is intentionally absent — nix-config guards it `or {}`.
+      # compat assembly, and sets `config.flake.{nixosConfigurations,darwinConfigurations}`.
       flakeModule = {
         imports = [
           bridge
@@ -335,19 +334,32 @@
           compat.batteriesModule
         ];
       };
-      flakeModules.default = {
-        imports = [
-          bridge
-          compat.builtinsModule
-          compat.batteriesModule
-        ];
-      };
-      # den v1 `flakeModules.strict` (denful/den nix/default.nix:9 → nix/strict.nix): an opt-in flake-parts
-      # module a consumer imports to put every den schema kind into STRICT mode — an entity option set with
-      # no explicit declaration aborts (`den.lib.strict`, lib/compat/strict.nix). Consumer-eval, additive;
-      # den-hoag's own CI never imports it (parity-neutral). See lib/compat/flake-strict.nix for the
-      # `.imports = [ den.lib.strict ]` form (vs v1's bare assignment, which den-hoag's schema collector drops).
-      flakeModules.strict = import ./lib/compat/flake-strict.nix;
+      # `flakeModules` — the flake-parts-convention record. `default` = the bridge (≡ `flakeModule`); `strict`
+      # = the opt-in per-kind strict module; `// compat.flakeDendritic` merges `{ dendritic = <module>; }` iff
+      # `den.features.dendritic` is on (else `{ }` — the removability gate). den v1 nix/default.nix:6-9 exposes
+      # the same trio (`default`/`strict`/`dendritic`).
+      flakeModules = {
+        # den v1 `flakeModules.default` (nix/default.nix:38) — the flake-parts convention alias of the bridge.
+        default = {
+          imports = [
+            bridge
+            compat.builtinsModule
+            compat.batteriesModule
+          ];
+        };
+        # den v1 `flakeModules.strict` (denful/den nix/default.nix:9 → nix/strict.nix): an opt-in flake-parts
+        # module a consumer imports to put every den schema kind into STRICT mode — an entity option set with
+        # no explicit declaration aborts (`den.lib.strict`, lib/compat/strict.nix). Consumer-eval, additive;
+        # den-hoag's own CI never imports it (parity-neutral). See lib/compat/flake-strict.nix for the
+        # `.imports = [ den.lib.strict ]` form (vs v1's bare assignment, which den-hoag's schema collector drops).
+        strict = import ./lib/compat/flake-strict.nix;
+      }
+      # den v1 `flakeModules.dendritic` (nix/default.nix:7 → nix/dendritic.nix): the den flakeModule,
+      # dendritic-flavored (Form B — the minimal load-bearing `imports = [ (inputs.den.flakeModule or {}) ]`,
+      # dropping den's corpus-inert `flake-file.inputs.den.url` write; lib/compat/flake-dendritic.nix). Gated
+      # behind `den.features.dendritic` (default on) — `compat.flakeDendritic` is `{ }` when severed, so the
+      # output key is removable. 6-of-7 dendritic corpus configs guard it `(… .dendritic or {})`.
+      // compat.flakeDendritic;
       # den v1 `flakeOutputs` (denful/den nix/flakeOutputs.nix, verbatim): per-family flake-output MERGE
       # modules a consumer imports (`imports = [ inputs.den.flakeOutputs.nixosConfigurations ]`) to give a
       # multi-valued flake output merge semantics — distinct keys combine, a duplicate key aborts NAMED

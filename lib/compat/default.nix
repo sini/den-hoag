@@ -267,8 +267,20 @@ let
     # byte-identical — it loses five keys). `mkWiringWith { flakeOutputClasses = true; }` restores the v1
     # registration (classification for a fleet emitting flake-system outputs).
     flakeOutputClasses = false; # class (b) — OMIT the five flake-output class registrations from builtinsModule
+    # class (b) FLAKE-OUTPUT (den v1 nix/dendritic.nix): expose `flakeModules.dendritic`. NOT a wiring seam —
+    # a static flake OUTPUT, so it does NOT route through `mkWiringFrom` (a `mkWiringWith { dendritic = false; }`
+    # is a KNOWN no-op on the wiring); the sibling `mkFlakeDendritic` selector below reads it, keeping ONE
+    # register SSOT. OMIT the `flakeModules.dendritic` output when off.
+    dendritic = true;
     battery = builtins.mapAttrs (_: _: true) batteryNames; # class (b) — per-battery, nested sub-record
   };
+  # `mkFlakeDendritic feat` — the gated `flakeModules.dendritic` flake-output selector (class (b)). It is a
+  # SIBLING of the wiring (not a `mkWiringFrom` seam): `flake.nix` merges `flakeDendritic` additively into its
+  # `flakeModules` record, so `feat.dendritic` off ⇒ `{ }` ⇒ the output key vanishes (removable), on ⇒ the
+  # den v1 dendritic module (lib/compat/flake-dendritic.nix). Reads the SAME feature record as the wiring.
+  mkFlakeDendritic =
+    feat: prelude.optionalAttrs feat.dendritic { dendritic = import ./flake-dendritic.nix; };
+  flakeDendritic = mkFlakeDendritic defaultFeatures;
   # Deep-merge the nested `battery` sub-record so a partial `{ battery.hostname = false; }` override keeps the
   # OTHER battery defaults on (a shallow `//` would replace the whole `battery` record with the singleton).
   mergeFeatures = a: b: a // b // { battery = a.battery // (b.battery or { }); };
@@ -369,6 +381,10 @@ in
   # `mkWiringWith { <feature> = false; }` severs that feature (the `compat-feature-severed` removability
   # gate drives one row per feature). `defaultFeatures` is the closed all-on set (the totality boundary).
   inherit mkWiring mkWiringWith defaultFeatures;
+  # `flakeModules.dendritic` selector (den v1 nix/dendritic.nix, Form B) — `flake.nix` merges `flakeDendritic`
+  # additively into its `flakeModules` record; `mkFlakeDendritic` (the un-applied selector) is the
+  # removability-gate handle (flip `defaultFeatures.dendritic` off → `{ }` → the output key vanishes).
+  inherit mkFlakeDendritic flakeDendritic;
   # The (all-on) gated battery-provisioning flake-parts module — `flake.nix` imports THIS (not the raw
   # `./lib/compat/batteries.nix` path) so `den.features.battery.<name>` can drop a battery. All-on
   # (`mkBatteriesModule defaultFeatures`, `filterAttrs (_: true)`) ≡ the former direct import, byte-identical.
