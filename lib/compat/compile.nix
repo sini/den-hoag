@@ -637,6 +637,15 @@ let
     aspectRec: ref:
     if builtins.isAttrs ref && ref ? id_hash then
       ref
+    else if builtins.isAttrs ref && ref ? key then
+      # A typed navigation node (a `den.aspects.<path>` ref off the annotated tree) carries its NATIVE
+      # gen-aspects `.key` — the FULL container-relative slash-path (`core/secrets/collector`), the
+      # identity born in the type (flake-module.nix typedCompileTree). Resolve by that native key so a
+      # NESTED ref grounds to its (path-keyed) registry entry. A top-level node's `.key` equals its
+      # `.name` (both the top-level registry key), so this is byte-stable there; only a nested node —
+      # whose `.name` is the LAST SEGMENT alone (`collector`) — diverges, and it is exactly the nested
+      # node that the `.name` lookup missed (an empty stub → zero content). Prefer `.key` over `.name`.
+      aspectRec ref.key
     else if builtins.isAttrs ref && ref ? name then
       aspectRec ref.name
     else if builtins.isString ref then
@@ -1665,8 +1674,74 @@ let
   # depend only on normalizeList (⊥ aspectRec), so the `policies → aspectRec → aspects` DAG is preserved.
   kindIncludeAspects = kindInclude.aspects;
 
+  # NESTED-ASPECT REGISTRY (the `core.secrets.collector` rung). `translateAspect` STRIPS an aspect's
+  # nested sub-aspects from its parent (the §2.2 nested-key split, key-classification.nix:69-80) — so a
+  # nested aspect never appears in the top-level `mapAttrs` registry below. But a `den.aspects.<path>`
+  # NAMED reference (a typed nav node on `schema.<kind>.includes`, or a policy-emitted ref) resolves via
+  # `resolveAspectRef` by the node's NATIVE `.key` — the full slash-path (`core/secrets/collector`).
+  # Register every nested aspect under that native path so the ref grounds to REAL content; without it the
+  # edge attaches an EMPTY stub (`resolveAspectRef` fell back to the last-segment `.name`, a registry miss)
+  # → zero class/channel content (the corpus `age.secrets = {}` drop, and the firewall/resolved-user
+  # collectors alongside). Each node is translated by the SAME `translateAspect` the top level uses — so a
+  # nested node's v1 class spellings ground and its OWN deeper children strip (they recurse to their own
+  # path entries). Nested detection reproduces `translateAspect`'s internal grounding (`droppedAspectKeys`
+  # removed + `v1ClassKeyMap` on class keys) so `isNestedAspectKey` sees the SAME grounded view the parent
+  # split saw — identical child set. The registry key is the TRAVERSAL PATH (parent segments ++ child
+  # name, slash-joined): it equals the typed node's native `.key` on the bridge path (the native key is the
+  # slash-join of the aspect chain) and is robust on the direct-`compile` path, where raw decls carry no
+  # `.key` at all.
+  collectNestedAspects =
+    segs: aspect:
+    if !(builtins.isAttrs aspect) || builtins.isFunction aspect || (aspect.__isWrappedFn or false) then
+      { }
+    else
+      let
+        withoutDropped = builtins.removeAttrs aspect droppedAspectKeys;
+        grounded = prelude.foldl' (
+          acc: k: builtins.removeAttrs acc [ k ] // { ${v1ClassKeyMap.${k} or k} = aspect.${k}; }
+        ) withoutDropped (builtins.attrNames withoutDropped);
+        # A nested child carrying legacy `provides` (or the `meta.__forward` battery marker) is NOT a
+        # registry concern — the legacy `desugar` only rewrites TOP-LEVEL `provides` (legacy/provides.nix),
+        # so a nested `hw.amdgpu.provides` survives here and its resolution is owned by the den-brackets /
+        # nav-fallback mechanism (`resolveWithProvidesFallback`), NOT this registry. Translating it would
+        # trip `translateAspect`'s C5/C1 sentinels (the very abort those legacy paths exist to avoid), so
+        # exclude it from BOTH registration and the recursion (its subtree is provides-owned).
+        registrable = node: !(node ? provides) && ((node.meta or { }).__forward or null) == null;
+        nestedKeys = builtins.filter (k: isNestedAspectKey grounded k && registrable grounded.${k}) (
+          builtins.attrNames grounded
+        );
+      in
+      prelude.foldl' (
+        acc: k:
+        let
+          childSegs = segs ++ [ k ];
+          path = builtins.concatStringsSep "/" childSegs;
+          # A FLAT registry entry whose whole identity is its slash-PATH. `aspectRec path` stamps
+          # `name = path` (ingest.aspectEntry), and resolved-aspects re-derives a node's key as
+          # `pathKey (meta.aspect-chain ++ [ name ])` (gen-aspects identity; cf. legacy/provides.nix's
+          # aspect-chain zeroing). The typed node carries `meta.aspect-chain = <parent segments>`, so
+          # WITHOUT zeroing it the derived key DOUBLES the prefix (`grp/sub/` + `grp/sub/coll`). Zero the
+          # chain (flat aspect, no container) and set `.key = path` so the derived key is the path itself —
+          # the native identity a top-level ref already yields, extended to the nested path.
+          translated = translateAspect normalizeList isNestedAspectKey k grounded.${k};
+          flatEntry = translated // {
+            key = path;
+            meta = (translated.meta or { }) // {
+              aspect-chain = [ ];
+            };
+          };
+        in
+        acc // { ${path} = flatEntry; } // collectNestedAspects childSegs grounded.${k}
+      ) { } nestedKeys;
+  nestedAspects = prelude.foldl' (
+    acc: name: acc // collectNestedAspects [ name ] v1Aspects.${name}
+  ) { } (builtins.attrNames v1Aspects);
+
+  # The top-level `mapAttrs` result is folded LAST so a genuine top-level v1 aspect literally NAMED with a
+  # slash (a quoted `den.aspects."a/b"`, corpus-zero) always wins over a nested slash-path entry.
   aspects =
-    builtins.mapAttrs (translateAspect normalizeList isNestedAspectKey) v1Aspects
+    nestedAspects
+    // builtins.mapAttrs (translateAspect normalizeList isNestedAspectKey) v1Aspects
     // compiledPolicies.conditionalAspects
     // kindIncludeAspects
     // aspectIncludeBareFnArm.aspects;
