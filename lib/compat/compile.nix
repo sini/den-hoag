@@ -1191,6 +1191,36 @@ let
   normalizeList = mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { })) (
     if aspectIncludeArm then aspectIncludeDivertedNames else { }
   ) (if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFn ref) else (_: false));
+  # ATTACHMENT-RELATIVE late-dispatch, for the arm that attaches a bare-fn include at a KNOWN kind's
+  # nodes (the `den.schema.<K>.includes` synthetic-aspect arm below). The global `isLateDispatchFn`
+  # tests `parent != null`, i.e. "the required kind is a descendant of ROOT" — correct only where the
+  # include attaches at a root-ish scope (the regular-aspect / `den.default` paths). A kindInclude bare
+  # fn instead attaches at K-nodes, where K's OWN coord and every ANCESTOR coord are present (inherited
+  # down the P edge, structural.nix). So a required formal grounds IN PLACE iff it names K or an ancestor
+  # of K; only a STRICT DESCENDANT of K is absent and must radiate. `presentAtKind` walks the (acyclic)
+  # parent chain. For a single-rooted schema (the den/corpus case) `isLateDispatchFnFrom <root>` coincides
+  # with the global `isLateDispatchFn` — the global is that root-attached case; on a multi-root schema the
+  # attachment-relative predicate is strictly more correct (a sibling-root formal radiates, not grounds).
+  presentAtKind =
+    baseKind: k:
+    k == baseKind
+    || (
+      let
+        anc = ing.schema.${baseKind}.parent or null;
+      in
+      anc != null && presentAtKind anc k
+    );
+  isLateDispatchFnFrom = baseKind: fn: builtins.any (k: !(presentAtKind baseKind k)) (firesAtOf fn);
+  # Per-kind `normalizeList` — MIRRORS the global's four args, swapping ONLY the radiate/divert predicate
+  # for the attachment-relative one so a bare-fn `schema.<K>.includes` grounds at its K-nodes instead of
+  # being force-radiated. Honours the `lateDispatch` toggle identically (off → never divert).
+  normalizeListForKind =
+    kind:
+    mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { }))
+      (if aspectIncludeArm then aspectIncludeDivertedNames else { })
+      (
+        if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFnFrom kind ref) else (_: false)
+      );
   # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
   # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
   isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
@@ -1577,9 +1607,9 @@ let
                 name = synthName;
                 value =
                   if builtins.isFunction ref then
-                    { includes = normalizeList "${synthName}:include" [ ref ]; }
+                    { includes = (normalizeListForKind kind) "${synthName}:include" [ ref ]; }
                   else
-                    builtins.head (normalizeList "${synthName}:content" [ ref ]);
+                    builtins.head ((normalizeListForKind kind) "${synthName}:content" [ ref ]);
               }
             ) synthRefs
           );

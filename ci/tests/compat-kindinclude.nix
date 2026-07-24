@@ -17,6 +17,9 @@ let
     den: id: cls:
     (den.structural.eval.get id "class-modules").${cls} or [ ];
   keysAt = den: id: map (n: n.key) (den.structural.eval.get id "resolved-aspects");
+  hasKeyAt =
+    den: id: k:
+    builtins.elem k (keysAt den id);
   raOkAt = den: id: (builtins.tryEval (builtins.deepSeq (keysAt den id) true)).success;
 
   # An agenix-shaped bare-fn kind-include: aspect CONTENT keyed by the per-class `${host.class}` dynamic
@@ -121,6 +124,37 @@ let
         };
       }
     ]).den;
+
+  # A SIBLING of `agShaped` that requires a STRICT DESCENDANT coord `{ host, user }` — `user` is absent at a
+  # host node (a host does NOT carry a `user` coord), so it MUST stay late-dispatch (diverted from node-local
+  # grounding) even when the attachment-relative predicate grounds `{ host }`-only fns in place. This guards
+  # the generalization against over-grounding: it must NOT land at the host node.
+  agSibling =
+    { host, user, ... }:
+    {
+      name = "sib/${host.name}";
+      home-manager.sibMarker = "S-${host.name}";
+    };
+  # `host` RE-PARENTED below an `environment` (the corpus agenix.nix schema shape: `schema.host.parent =
+  # "environment"`) makes host a NON-ROOT kind. `agShaped` requires only `{ host }` — present at the host node
+  # — so it grounds IN PLACE; `agSibling` requires the descendant `user` coord and stays diverted.
+  parentedFleet =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          schema.environment = { };
+          schema.host.parent = "environment";
+          schema.host.includes = [
+            agShaped
+            agSibling
+          ];
+          hosts.x86_64-linux.igloo = {
+            class = "nixos";
+            users.tux = { };
+          };
+        };
+      }
+    ]).den;
 in
 {
   flake.tests.compat-kindinclude = {
@@ -209,6 +243,43 @@ in
     test-unresolvable-fallthrough-aborts = {
       expr = raOkAt intFleet "host:h1";
       expected = false;
+    };
+    # (8) ATTACHMENT-RELATIVE GROUNDING (the non-root-kind rung): with `host` RE-PARENTED below an
+    #     `environment` (corpus agenix.nix `schema.host.parent = "environment"`), a bare-fn
+    #     `schema.host.includes` requiring only `{ host }` still grounds IN PLACE at the host node — the
+    #     `host` coord (and every ancestor) is present there, so it must NOT late-dispatch. The late-dispatch
+    #     predicate is relative to the include's OWNER KIND, not to root; a coarse `parent != null` test
+    #     mislabels every bare fn on a non-root kind as late-dispatch and drops its grounding (the agenix
+    #     `config.age` drop). Asserts the `…:include:0` grounded child present + the host's nixos bucket len 1.
+    test-barefn-parented-host-grounds-in-place = {
+      expr = {
+        ok = raOkAt parentedFleet "host:igloo";
+        includePresent = hasKeyAt parentedFleet "host:igloo" "__kindInclude__host__aspect__0:include:0";
+        nixosLen = builtins.length (bucketAt parentedFleet "host:igloo" "nixos");
+      };
+      expected = {
+        ok = true;
+        includePresent = true;
+        nixosLen = 1;
+      };
+    };
+    # (9) SIBLING GUARD (the generalization is not too broad): in the SAME parented fleet, `agShaped`
+    #     ({ host }) grounds at the host node while `agSibling` ({ host, user }) does NOT — `user` is a
+    #     strict DESCENDANT coord absent at a host node, so it stays diverted from node-local grounding. This
+    #     proves the predicate discriminates by REQUIRED FORMAL, not merely by host being non-root (else the
+    #     generalization would over-ground the descendant-formal fn at the host). Descendant-radiation for the
+    #     kindInclude arm is a separate, unbuilt rung, so the diverted fn is simply not grounded here.
+    test-descendant-formal-stays-diverted = {
+      expr = {
+        selfFormalGrounds = hasKeyAt parentedFleet "host:igloo" "__kindInclude__host__aspect__0:include:0";
+        descendantFormalAtHost =
+          hasKeyAt parentedFleet "host:igloo"
+            "__kindInclude__host__aspect__1:include:0";
+      };
+      expected = {
+        selfFormalGrounds = true;
+        descendantFormalAtHost = false;
+      };
     };
   };
 }
