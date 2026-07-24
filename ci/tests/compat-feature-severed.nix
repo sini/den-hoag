@@ -321,6 +321,190 @@ let
   # clean iff BOTH arm and ambient are off — a bare fleet compiles without the coupling abort, proving the
   # coupling is EXACTLY ambientBatteries (no other ambient consumer of the arm).
   compilesClean = w: (builtins.tryEval (builtins.deepSeq (w.compileFull { }) true)).success;
+
+  # ── rung 5: Tier-2 coupling-review gates (register compat-feature-register.md) ─────────────────────────
+  # Empirically-corrected tiering: probeSentinel + familyStamps are CLEAN byte-baseline
+  # (the ambient routes read their coord fields GUARDED, `host.class or null`, and the family policies are
+  # corpus-#49-gated, absent from the ambient route names); fleetContext is the genuine no-clean-baseline
+  # member (the enrich provision rides every fleet at the flake-parts consumer eval).
+  inherit (denHoag) declare;
+  R = denHoag.policy.resolve;
+  offProbeSentinel = denCompat.mkWiringWith { probeSentinel = false; };
+  offFamilyStamps = denCompat.mkWiringWith { familyStamps = false; };
+  offFleetContext = denCompat.mkWiringWith { fleetContext = false; };
+
+  # trace-baseline severability over the non-feature fixtures — the mkDen-path NET (probeSentinelFields is
+  # consumed ONLY at mkDen's value-less stratum probe, NEVER in compile.nix, so `declSeverableOn`/compileFull
+  # is tautological for probeSentinel; `traceEq` is its tiering confirmation). The ambient routes read their
+  # coord fields `host.class or null` GUARDED, so the sentinel on/off is byte-neutral on these fixtures.
+  traceSeverableOn = offW: builtins.all (fx: traceEq offW fx) nonFeatureFixtures;
+
+  # ── probeSentinel (class b): OMIT probeSentinelModule ⇒ den.probeSentinelFields kernel `{ }` ─────────────
+  # (a) on-DETECTS / off-PARKS teeth via a coord-PRESENCE-gated enrich. At mkDen's value-less stratum probe
+  # the sentinel entry is `{ id_hash; name } // probeSentinelFields`: ON it carries `class`, so `host ? class`
+  # is TRUE at the probe → the enrich is DETECTED (a single-group structural rule, clean); OFF the field is
+  # absent → `host ? class` FALSE → the policy reads value-conditional → the enrich rides an EXPANSION sub-rule
+  # → `errors.expansionEnrich` NAMED throw (an enrich cannot ride expansion). The off-park is thus the ABSENCE
+  # of the sentinel field surfaced as a CATCHABLE den throw — NOT a native missing-attr (which would escape
+  # tryEval and crash the suite). Mutation-provable: re-provision the field off ⇒ `host ? class` true ⇒
+  # detected ⇒ the off-park row reddens.
+  probeEnrichFixture = {
+    hosts.x86_64-linux.axon.class = "nixos";
+    policies.probe-enrich =
+      { host, ... }:
+      if host ? class then
+        [
+          (declare.enrich {
+            key = "probeMark";
+            value = true;
+          })
+        ]
+      else
+        [ ];
+  };
+  probeEnrichParks =
+    w:
+    !(builtins.tryEval (
+      builtins.deepSeq ((w.mkDen [ (v1mod probeEnrichFixture) ]).den.structural.eval.get "host:axon"
+        "declarations"
+      ) true
+    )).success;
+  # the CONTENT-CLEAN ON arm (the ambientBatteries lesson): a policy reading a bare coord field UNGUARDED at
+  # the probe (`builtins.seq host.class …`, the `host-modules-capture` corpus shape) types THROUGH clean with
+  # the sentinel ON (the field present lets the unguarded probe read succeed). OFF the SAME fixture native-
+  # misses at the probe and escapes tryEval (the documented LOUD ceiling) — so it is driven ON only.
+  probeUnguardedFixture = {
+    hosts.x86_64-linux.axon.class = "nixos";
+    aspects.seedaspect.nixos.networking.hostName = "axon";
+    policies.probe-coord = { host, ... }: [
+      (builtins.seq host.class {
+        __policyEffect = "include";
+        value = {
+          name = "seedaspect";
+        };
+      })
+    ];
+  };
+  probeUnguardedClean =
+    w:
+    (builtins.tryEval (builtins.deepSeq (unionTrace (w.mkDen [ (v1mod probeUnguardedFixture) ])) true))
+    .success;
+
+  # ── familyStamps (class b): mkCompile name-sets → `[ ]` + OMIT the resolve/exclude seam modules, ATOMIC ──
+  # (b) the TWO gate sites, each with its own park. resolve half = the COMPILE-side stamp (the mkCompile bake):
+  # a resolve policy wired via a kind-include whose source ref's v1 name ∈ resolveFamilyNames gets
+  # `__resolveFamily` stamped ON its synthetic-keyed compiled record — ON the bake carries the corpus set ⇒
+  # stamped; OFF the bake collapses to `[ ]` ⇒ unstamped (the pre-pass feed goes empty).
+  kiResolveFixture = {
+    schema = {
+      zone.parent = null;
+      rack.parent = "zone";
+      blade.parent = "rack";
+      rack.includes = [
+        {
+          __isPolicy = true;
+          name = "env-to-hosts"; # ∈ resolve-family-names.nix
+          fn =
+            {
+              token ? null,
+              ...
+            }: # value-conditional (empty probe → expansion), the corpus resolve idiom
+            if token != null then [ (R.to "blade" { blade.name = "b1"; }) ] else [ ];
+        }
+      ];
+    };
+    policies = { };
+  };
+  resolveStampOf =
+    w:
+    ((w.compileFull kiResolveFixture).policies."__kindInclude__rack__policy__0").__resolveFamily
+      or false;
+  # exclude half = the SEAM-module omit (`den.excludeFamilyNames`): the corpus value-conditional excluder
+  # (`drop-user-to-host-on-droid` ∈ exclude-family-names.nix) fires a `suppress` at the droid host — ON the
+  # seam names it ⇒ the pre-pass feed consumes it ⇒ benign double-fire; OFF the seam is omitted ⇒ `[ ]` ⇒ its
+  # main-run suppress is untagged ⇒ `errors.excludeFamilyUntagged` NAMED throw (catchable). ON/OFF collapse
+  # ATOMICALLY (both the bake and the seam) — a lone-site collapse desyncs the two `den.*FamilyNames` writers.
+  userToHostRef = {
+    __isPolicy = true;
+    name = "user-to-host";
+    fn = _: [ ];
+  };
+  excludeFixture = {
+    hosts.x86_64-linux.d1 = {
+      class = "droid";
+      users.tux = { };
+    };
+    classes.droid = { };
+    schema.user.parent = "host";
+    aspects.hostc.nixos.tag = "nixos-host";
+    schema.host.includes = [ "hostc" ];
+    aspects.uacct =
+      { user, ... }:
+      {
+        user = [ "u-${user.name}" ];
+      };
+    schema.user.includes = [ "uacct" ];
+    policies.drop-user-to-host-on-droid =
+      { host, ... }:
+      if (host.class or null) == "droid" then [ (denCompat.exclude userToHostRef) ] else [ ];
+  };
+  excludeFamilyParks =
+    w:
+    !(builtins.tryEval (
+      builtins.deepSeq ((w.mkDen [ { den = excludeFixture; } ]).den.structural.eval.get "host:d1"
+        "declarations"
+      ) true
+    )).success;
+
+  # ── fleetContext (class b, the genuine no-clean-baseline member): OMIT fleetContextEnrichModule from the
+  # wiring's builtinsModule (the batteriesModule precedent). The enrich provision rides EVERY fleet at the
+  # flake-parts consumer eval (never the compat mkDen path), so the witness is at the builtinsModule grain:
+  # the provisioned enrich present/severed + a PRESENCE-IS-NOT-REMOVABILITY behavioral binding proof (the
+  # ambientBatteries lesson). Evaluate the (gated) provisioning submodule with a synthetic env registry and
+  # extract the `fleet-context-enrich` policy (null when severed ⇒ the `imports` is empty).
+  enrichPolicyOf =
+    w:
+    let
+      imps = w.builtinsModule.imports or [ ];
+    in
+    if imps == [ ] then
+      null
+    else
+      ((builtins.head imps) {
+        config.den = {
+          environments.prod = {
+            domain = "prod.example";
+          };
+          secretsConfig = {
+            age = "k1";
+          };
+        };
+      }).config.den.policies.fleet-context-enrich or null;
+  # apply the provisioned enrich at a host ctx and project the BOUND keys → values — the S1 behavioral proof
+  # the provision is a WORKING binder (not merely present); OFF `enrichPolicyOf` is null ⇒ NOTHING binds the
+  # `environment`/`secretsConfig`/`fleet` ctx keys, so the ~40 corpus `{ environment, … }` sites' bindings are
+  # ABSENT (the CEILING — asserted as absence, `enrichBoundKeys off == null`, never a forced native-miss).
+  enrichBoundKeys =
+    w:
+    let
+      p = enrichPolicyOf w;
+    in
+    if p == null then
+      null
+    else
+      builtins.listToAttrs (
+        map
+          (d: {
+            name = d.key;
+            value = d.value;
+          })
+          (p {
+            host = {
+              environment = "prod";
+              name = "axon";
+            };
+          })
+      );
 in
 {
   flake.tests.compat-feature-severed = {
@@ -513,6 +697,109 @@ in
     # EXACTLY ambientBatteries (design §6.1 — the removability gate NAMES its coupling).
     test-aspectIncludeArm-ambient-coupled-clean = {
       expr = compilesClean offAspectIncludeArmAmbient;
+      expected = true;
+    };
+
+    # ══ PROBE: probeSentinel ─ den.probeSentinelFields value-less-probe sentinel (rung 5, clean baseline) ──
+    # (a) trace byte-baseline NET — the mkDen-path tiering confirmation (declSeverableOn is tautological here:
+    # compile.nix never reads probeSentinelFields). Green because the ambient routes read `host.class or null`
+    # GUARDED, so the sentinel on/off is byte-neutral on the non-feature fixtures.
+    test-probeSentinel-trace-baseline = {
+      expr = traceSeverableOn offProbeSentinel;
+      expected = true;
+    };
+    # (b) on-DETECTS — ON the sentinel carries `class`, so a coord-presence-gated enrich is DETECTED at the
+    # value-less probe (single-group, clean).
+    test-probeSentinel-on-detects = {
+      expr = probeEnrichParks full;
+      expected = false;
+    };
+    # (b) off-PARKS — OFF the field is absent → `host ? class` false at the probe → the enrich rides an
+    # expansion sub-rule → `expansionEnrich` NAMED throw (the ABSENCE surfaced as a catchable park).
+    test-probeSentinel-off-parks = {
+      expr = probeEnrichParks offProbeSentinel;
+      expected = true;
+    };
+    # CONTENT-CLEAN ON arm — a policy reading a bare coord field UNGUARDED at the probe (`builtins.seq
+    # host.class …`, the host-modules-capture corpus shape) types THROUGH clean with the sentinel ON. Mutation-
+    # provable: strip the field from probeSentinelModule ⇒ this native-misses at the probe (the LOUD ceiling).
+    test-probeSentinel-unguarded-on-clean = {
+      expr = probeUnguardedClean full;
+      expected = true;
+    };
+
+    # ══ STAMPS: familyStamps ─ resolve/exclude-family tag sets (rung 5, clean baseline, TWO gate sites) ─────
+    # (a) decl + trace byte-baseline — the family policies are corpus-#49-gated, absent from the non-feature
+    # fixtures, so both sites collapse byte-neutrally.
+    test-familyStamps-decl-baseline = {
+      expr = declSeverableOn offFamilyStamps;
+      expected = true;
+    };
+    test-familyStamps-trace-baseline = {
+      expr = traceSeverableOn offFamilyStamps;
+      expected = true;
+    };
+    # (b) resolve half = the mkCompile bake site — ON a kind-include resolve policy whose ref name ∈ the set
+    # gets `__resolveFamily` stamped; OFF the bake collapses to `[ ]` ⇒ unstamped (the pre-pass feed empties).
+    test-familyStamps-resolve-stamp-on = {
+      expr = resolveStampOf full;
+      expected = true;
+    };
+    test-familyStamps-resolve-stamp-off = {
+      expr = resolveStampOf offFamilyStamps;
+      expected = false;
+    };
+    # (b) exclude half = the seam-module omit site — ON the corpus excluder's main-run `suppress` is benign
+    # (the seam names it ⇒ the pre-pass feed consumed it); OFF the seam is `[ ]` ⇒ `excludeFamilyUntagged`
+    # NAMED throw. The two sites collapse ATOMICALLY (a lone-site collapse desyncs the two writers).
+    test-familyStamps-exclude-benign-on = {
+      expr = excludeFamilyParks full;
+      expected = false;
+    };
+    test-familyStamps-exclude-park-off = {
+      expr = excludeFamilyParks offFamilyStamps;
+      expected = true;
+    };
+
+    # ══ FEATURE: fleetContext ─ the fleet-context enrich provision (rung 5, genuine no-clean-baseline) ──────
+    # present/severed — ON the wiring's builtinsModule provisions the `fleet-context-enrich` policy; OFF the
+    # provision is dropped from `imports` (the enrich rides no fleet).
+    test-fleetContext-provision-on = {
+      expr = enrichPolicyOf full != null;
+      expected = true;
+    };
+    test-fleetContext-provision-severed = {
+      expr = enrichPolicyOf offFleetContext == null;
+      expected = true;
+    };
+    # S1 BEHAVIORAL — the provisioned enrich is a WORKING binder (presence ≠ removability, the ambientBatteries
+    # lesson): applied at a host ctx it binds `environment`/`secretsConfig`/`fleet` off the synthetic registry.
+    test-fleetContext-behavioral-on-binds = {
+      expr = enrichBoundKeys full;
+      expected = {
+        environment = {
+          domain = "prod.example";
+        };
+        secretsConfig = {
+          age = "k1";
+        };
+        fleet = {
+          name = "fleet";
+        };
+      };
+    };
+    # ABSENCE — OFF nothing provisions the enrich ⇒ the `environment`/`secretsConfig`/`fleet` ctx bindings
+    # are ABSENT (the CEILING the ~40 corpus `{ environment, … }` sites park on), asserted as absence, not a
+    # forced native-miss.
+    test-fleetContext-behavioral-off-absent = {
+      expr = enrichBoundKeys offFleetContext == null;
+      expected = true;
+    };
+    # CONTENT-CLEAN OFF arm — a NON-env fixture compiles THROUGH clean with fleetContext severed (the enrich
+    # never rode the compat mkDen path, so a non-consumer fleet is untouched).
+    test-fleetContext-content-clean-off = {
+      expr =
+        (builtins.tryEval (builtins.deepSeq (offFleetContext.compileFull edgeRoute).aspects null)).success;
       expected = true;
     };
   }

@@ -103,19 +103,6 @@
         denLib = migrationLib;
       };
 
-      # ── Compat built-in provisioning (ship-gate) — presents v1's built-in policies + routing kinds at the
-      # v1 attrpaths a consumer references (`den.policies.system-to-flake-parts`, `den.schema.flake-system`,
-      # …), merged into the freeform `config.den` via the flakeModule import (mirroring v1's flakeModule
-      # importing `modules/policies/*`). PROVIDE (host-to-users inert, user-to-host identity-linked) + STUB
-      # (flake-output policies, class-F/G). See lib/compat/builtins.nix.
-      builtinsModule = import ./lib/compat/builtins.nix {
-        prelude = inputs.gen-prelude.lib;
-        errors = import ./lib/compat/errors.nix { prelude = inputs.gen-prelude.lib; };
-        # den-hoag's declaration vocabulary — the fleet-context enrichment policy emits `declare.enrich`
-        # (there is no v1 vocabulary for enrich; v1's `resolve.to` binding is the stubbed fan-out).
-        declare = lib.declare;
-      };
-
       # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
       # den's consumers (nix-config) import `inputs.den.flakeModule` and author policies with
       # `inputs.den.lib.policy.*` etc. — den v1's TOP-LEVEL attrpaths. den-hoag exposes the same
@@ -344,14 +331,14 @@
       flakeModule = {
         imports = [
           bridge
-          builtinsModule
+          compat.builtinsModule
           compat.batteriesModule
         ];
       };
       flakeModules.default = {
         imports = [
           bridge
-          builtinsModule
+          compat.builtinsModule
           compat.batteriesModule
         ];
       };

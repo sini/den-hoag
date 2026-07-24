@@ -28,6 +28,9 @@
   features ? {
     hasAspect = true;
     gather = true;
+    probeSentinel = true;
+    familyStamps = true;
+    fleetContext = true;
   },
 }:
 let
@@ -715,10 +718,23 @@ let
       [
         (mkFleetModuleWith (compileFull (evalV1Raw userModules)) nixosTerminal)
         interpretModule
-        probeSentinelModule
-        resolveFamilyModule
-        excludeFamilyModule
       ]
+      # `probeSentinel` off ⇒ OMIT probeSentinelModule ⇒ `den.probeSentinelFields` unset ⇒ the kernel `{ }`
+      # identity default stands (a policy reading a bare coord field at the value-less probe then hard-fails
+      # LOUDLY — the documented CEILING, not a silent mis-resolve).
+      ++ (if features.probeSentinel then [ probeSentinelModule ] else [ ])
+      # `familyStamps` off ⇒ OMIT both seam modules (ATOMIC with the mkCompile name-set collapse — default.nix
+      # mkCompile) ⇒ `den.{resolveFamilyNames,excludeFamilyNames}` unset ⇒ the kernel `[ ]` defaults stand
+      # (a resolve/exclude policy firing a member/suppress at a root then aborts NAMED — the untagged guards).
+      ++ (
+        if features.familyStamps then
+          [
+            resolveFamilyModule
+            excludeFamilyModule
+          ]
+        else
+          [ ]
+      )
       ++ hoagModules
     );
   mkDen = userModules: mkDenWith userModules { };

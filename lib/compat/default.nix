@@ -64,7 +64,26 @@ let
   # surface, byte-identical. The external `compile`/`compileFull` API stays 1-arg (the fleet fn is NOT
   # curried) — a per-wiring compile is a distinct closed core, so `compile fx` callers are unaffected.
   mkCompile =
-    feat: import ./compile.nix (compileBaseArgs // { inherit (feat) aspectIncludeArm lateDispatch; });
+    feat:
+    import ./compile.nix (
+      compileBaseArgs
+      // {
+        inherit (feat) aspectIncludeArm lateDispatch;
+      }
+      # `familyStamps` off ⇒ collapse the resolve/exclude tag sets to the kernel-identity `[ ]` at the
+      # compile half (ATOMIC with the flake-module seam-module omit below — see mkDenWith; collapsing one
+      # site alone desyncs the two `den.{resolveFamilyNames,excludeFamilyNames}` writers). All-on keeps the
+      # `compileBaseArgs` corpus sets, byte-identical.
+      // (
+        if feat.familyStamps then
+          { }
+        else
+          {
+            resolveFamilyNames = [ ];
+            excludeFamilyNames = [ ];
+          }
+      )
+    );
   compile = mkCompile defaultFeatures;
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
@@ -140,6 +159,19 @@ let
   # `batteries.nix` curried by the feature record — `feat.battery.<name>` gates the provision (an off
   # battery drops from `config.den.batteries`, so a reference native-misses LOUD; register §3.1(b)).
   mkBatteriesModule = feat: import ./batteries.nix feat;
+  # `builtins.nix` curried by the feature record — `feat.fleetContext` gates the `fleetContextEnrichModule`
+  # provision (the enrich policy binding environment/secretsConfig/fleet). Flag-off OMITs the enrich from the
+  # provisioning module's `imports`, so `fleet-context-enrich` drops from every fleet (the batteriesModule
+  # precedent: the wiring exposes this gated module, and `flake.nix` imports the wiring's version rather than
+  # the raw path, so the feature record reaches the flake-parts consumer eval). All-on ≡ the former direct
+  # import, byte-identical. `declare` = den-hoag's declaration vocabulary (the enrich constructor).
+  mkBuiltinsModule =
+    feat:
+    import ./builtins.nix {
+      inherit prelude errors;
+      inherit (denHoag) declare;
+      inherit (feat) fleetContext;
+    };
   # The shared wiring builder both `mkWiring` (legacy-only signature — `compat-legacy-severed` drives it)
   # and `mkWiringWith` (the `den.features` front door) route through. Threads the seam-gate feature record
   # into `flake-module.nix` and exposes the (gated) battery provisioning module as `.batteriesModule`.
@@ -163,6 +195,7 @@ let
     })
     // {
       batteriesModule = mkBatteriesModule feat;
+      builtinsModule = mkBuiltinsModule feat;
     };
   mkWiring =
     legacyArg:
@@ -217,6 +250,10 @@ let
     gather = true; # class (b) — den.channelGather
     aspectIncludeArm = true; # class (c) — compile.nix `{ __isPolicy }`-in-aspect-includes diversion arm
     lateDispatch = true; # class (c) — compile.nix descendant-formal bare-fn radiation arm
+    # Rung-5 Tier-2 coupling-review flags (register compat-feature-register.md):
+    probeSentinel = true; # class (b) — OMIT probeSentinelModule ⇒ den.probeSentinelFields kernel `{ }`
+    familyStamps = true; # class (b) — mkCompile name-sets → `[ ]` + OMIT the resolve/exclude seam modules
+    fleetContext = true; # class (b) — OMIT fleetContextEnrichModule from the wiring's builtinsModule
     battery = builtins.mapAttrs (_: _: true) batteryNames; # class (b) — per-battery, nested sub-record
   };
   # Deep-merge the nested `battery` sub-record so a partial `{ battery.hostname = false; }` override keeps the
@@ -235,7 +272,12 @@ let
     if unknown != [ ] || unknownBattery != [ ] then
       throw "den.features: unknown feature key(s) ${
         prelude.concatStringsSep ", " (unknown ++ map (b: "battery.${b}") unknownBattery)
-      } (known: ${prelude.concatStringsSep ", " (builtins.attrNames defaultFeatures)})"
+      } (known: ${
+        prelude.concatStringsSep ", " (
+          builtins.attrNames (builtins.removeAttrs defaultFeatures [ "battery" ])
+          ++ map (b: "battery.${b}") (builtins.attrNames defaultFeatures.battery)
+        )
+      })"
     else
       mkWiringFrom {
         legacy = legacySubset;
@@ -318,6 +360,11 @@ in
   # `./lib/compat/batteries.nix` path) so `den.features.battery.<name>` can drop a battery. All-on
   # (`mkBatteriesModule defaultFeatures`, `filterAttrs (_: true)`) ≡ the former direct import, byte-identical.
   inherit (flakeModuleWiring) batteriesModule;
+  # The (all-on) gated builtin-provisioning module — `flake.nix` imports THIS (not the raw
+  # `./lib/compat/builtins.nix` path) so `den.features.fleetContext` can drop the fleet-context enrich.
+  # All-on (`mkBuiltinsModule defaultFeatures`, `fleetContext = true`) ≡ the former direct import,
+  # byte-identical (the batteriesModule precedent).
+  inherit (flakeModuleWiring) builtinsModule;
   flakeModule = flakeModuleWiring.flakeModule;
   # parity — the two-sided harness (frozen edge schema + the v1/hoag oracle + firstDivergent triage),
   # Task 7. `schema` is fully self-contained; `oracle.traceHoag` needs only this tree; `oracle.mkV1` is a

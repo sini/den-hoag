@@ -47,6 +47,11 @@
   prelude,
   errors,
   declare,
+  # The compile-time `den.features.fleetContext` gate. Off ⇒ OMIT `fleetContextEnrichModule` from this
+  # provisioning module's `imports`, so the `fleet-context-enrich` enrich policy is never provisioned (a
+  # compat-wiring change, not a kernel edit — every other builtin provision untouched). Default on for a
+  # direct importer (the `ci/tests/compat-{flake-parts-class,builtin-classes}.nix` unit reads).
+  fleetContext ? true,
 }:
 let
   deliverLib = import ./deliver.nix { inherit prelude errors; };
@@ -54,7 +59,7 @@ let
   # host-bearing node's enriched-context, the compat twin of v1's fleet.nix scope-inheritance fan-out
   # (see fleet-context.nix for the law + v1 cites). Provisioned below as a config-dependent sub-module
   # (`imports`), so it can read the bridge-ingested `config.den.environments` / `config.den.secretsConfig`.
-  fleetContext = import ./fleet-context.nix { inherit declare; };
+  fleetContextLib = import ./fleet-context.nix { inherit declare; };
   # The provisioning module (config-dependent — reads the flake-parts `config.den` registries). Kept in
   # `imports` (not the top-level `config` below) so `builtins.nix`'s static `config.den.{classes,schema,
   # policies}` view stays a plain attrset for the unit suites that read it directly.
@@ -64,7 +69,7 @@ let
       # SINGLE WRITER of environment/secretsConfig/fleet (structural.nix:108-118): the corpus fleet.nix
       # `to-fleet`/`env-to-hosts` fan-out that would ALSO bind them stays lazily inert (its `self`/
       # `environment` gate coords are never bound by the stubbed resolve surface), so no collision.
-      config.den.policies.fleet-context-enrich = fleetContext.mkEnrichPolicy {
+      config.den.policies.fleet-context-enrich = fleetContextLib.mkEnrichPolicy {
         envs = config.den.environments or { };
         secretsConfig = config.den.secretsConfig or { };
       };
@@ -398,7 +403,8 @@ let
   };
 in
 {
-  imports = [ fleetContextEnrichModule ];
+  # `fleetContext`-gated: off ⇒ no enrich provision (`den.features.fleetContext` removability handle).
+  imports = if fleetContext then [ fleetContextEnrichModule ] else [ ];
   config.den = {
     policies = {
       host-to-users = _ctx: [ ];
