@@ -63,6 +63,13 @@ lib
 // {
   compat = import ./lib/compat {
     denHoag = lib;
-    inherit prelude schema edge;
+    inherit
+      prelude
+      schema
+      aspects
+      merge
+      edge
+      ;
+    edgeCore = import "${fetch "gen-edge"}/lib/core.nix" { inherit prelude; };
   };
 }

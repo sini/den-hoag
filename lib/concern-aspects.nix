@@ -28,23 +28,14 @@
   aspectIdHash,
 }:
 let
-  # The shared class + channel keySemantics builder. The SAME class + channel vocabulary feeds
-  # this concern AND every other consumer of the aspect schema, so no channel key falls to freeform.
+  # The shared keySemantics vocabulary builders. The SAME class + channel vocabulary feeds this concern AND
+  # every other consumer of the aspect schema (so no channel key falls to freeform), and `mkFacetSemantics`
+  # owns the config-free facet MODULES (neededBy/settings/artifact) so their option types live in ONE source
+  # shared with the typed-view consumers — a `.settings` block types identically wherever it is registered.
   keySemanticsLib = import ./key-semantics.nix { inherit prelude; };
   # The deferredModule SHAPE helper — the one peel/emptiness rule (class-modules `classSliceOf` uses it too).
   # `artifactExclusive` reads it to decide whether a class content key is a real declaration or an empty no-op.
   inherit (import ./module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
-  # §B4a reverse injection — declared on the aspect submodule (not inside a parametric body).
-  # `raw` holds either a literal `[ aspectRef … ]` or a single gen-select selector unmerged.
-  neededByModule =
-    { ... }:
-    {
-      options.neededBy = merge.mkOption {
-        type = merge.types.raw;
-        default = [ ];
-        description = "Reverse injection (§B4a): a list of aspect refs (literal form) or a gen-select selector.";
-      };
-    };
 
   # §B4b conditional activation — a predicate over the in-flight path set. A9.1: it receives
   # `{ pathSet, hasAspect }` ONLY (no settings, no entity context), so presence never depends on
@@ -67,36 +58,6 @@ let
         type = merge.types.raw;
         default = [ ];
         description = "Aspect-level constraint: aspect refs pruned from this subtree's resolved set.";
-      };
-    };
-
-  # Settings SCHEMA (§2.6 source 1) — the aspect's declared `{ <bare-field> = { default; merge ? }; }`.
-  # A facet (§2.2), NOT a nested aspect: declared as a structured option so lib/settings.nix reads it
-  # as the static field-spec for `gen-settings.mkSchema`. `raw` holds each field record unmerged.
-  settingsModule =
-    { ... }:
-    {
-      options.settings = merge.mkOption {
-        type = merge.types.lazyAttrsOf merge.types.raw;
-        default = { };
-        description = "Settings schema (§2.6): `<bare-field> = { default; merge ? \"replace\"; }`.";
-      };
-    };
-
-  # The PREBUILT ARM (§4.1 value mode) — an aspect declaring `artifact = <value>` carries a prebuilt,
-  # already-elaborated face injected VERBATIM at its receiver (never re-evaluated by den). A facet (§2.2),
-  # NOT a nested aspect: declaring it a facet keeps it out of the class/channel branches so `classifyKey`
-  # routes it as behaviour, not content. `raw` holds the value unmerged (opaque). Its EXCLUSIVITY with class
-  # content is `artifactExclusive` (below): a prebuilt aspect's class buckets must be EMPTY. `null` (the
-  # default) marks an aspect with no prebuilt arm. SYNTHETIC-ONLY for now — the consumer arrives with the
-  # nest families; the surface + the exclusivity throw exist so a corpus can declare a prebuilt aspect today.
-  artifactModule =
-    { ... }:
-    {
-      options.artifact = merge.mkOption {
-        type = merge.types.raw;
-        default = null;
-        description = "Prebuilt arm (§4.1 value mode): an already-elaborated face injected verbatim; its class buckets must be empty (artifactExclusive).";
       };
     };
 
@@ -129,22 +90,12 @@ let
       inherit classNames;
       quirkChannels = builtins.attrNames quirkChannels;
     })
+    # neededBy/settings/artifact — the config-free facets, from the SHARED vocabulary source (so a typed-view
+    # consumer mounts the SAME option types; the settings block is `lazyAttrsOf raw` on both sides).
+    // (keySemanticsLib.mkFacetSemantics { inherit merge; })
     // {
-      neededBy = {
-        category = "facet";
-        module = neededByModule;
-      };
-      settings = {
-        category = "facet";
-        module = settingsModule;
-      };
-      # the prebuilt-arm facet (§4.1 value mode) — a sibling of settings/neededBy; declaring it a facet keeps
-      # it out of the class/channel branches so classifyKey won't reject it as an unregistered content key.
-      artifact = {
-        category = "facet";
-        module = artifactModule;
-      };
-      # a MODULE (declares `options.id_hash` AND `config.id_hash` off `config.key`) — NOT a bare option.
+      # a MODULE (declares `options.id_hash` AND `config.id_hash` off `config.key`) — NOT a bare option, so it
+      # stays local to this concern (the identity authority is caller-specific, unshared with the views).
       id_hash = {
         category = "facet";
         module = idModule;

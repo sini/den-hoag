@@ -12,6 +12,8 @@
   prelude,
   schema,
   aspects,
+  # gen-merge's mkOption/types — threaded to flake-module.nix for the shared facet keySemantics vocabulary.
+  merge,
   edge,
   edgeCore,
   ...
@@ -183,6 +185,7 @@ let
         prelude
         schema
         aspects
+        merge
         ingest
         hasAspect
         ;

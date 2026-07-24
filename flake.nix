@@ -68,6 +68,8 @@
         denHoag = lib;
         prelude = inputs.gen-prelude.lib;
         schema = inputs.gen-schema.lib;
+        # gen-merge's mkOption/types — for the compile/nav view's shared facet keySemantics (settings facet).
+        merge = inputs.gen-merge.lib;
         # gen-aspects — the aspect TAG owner. The shim calls `aspects.wrapFn` to wrap a v1 bare-fn aspect
         # include (which bypasses the option-type merge under R10 raw-absorption) into den-hoag's
         # `__isWrappedFn` functor — the same wrap the type applies to native guard fns. Injected directly

@@ -17,6 +17,10 @@
   prelude,
   schema,
   aspects,
+  # gen-merge's mkOption/types — supplied to `key-semantics.nix mkFacetSemantics` so the compile/nav view
+  # mounts the SAME facet option modules the aspects concern declares (a `.settings` block is `lazyAttrsOf raw`
+  # on the typed nav surface, not freeform-absorbed as a nested aspect).
+  merge,
   compile,
   ingest,
   hasAspect,
@@ -88,10 +92,17 @@ let
     aspects.aspectsType (
       aspectsViewCnf
       // {
-        keySemantics = keySemanticsLib.mkClassChannelSemantics {
-          classNames = compileClassNamesBase ++ declaredClassNames;
-          quirkChannels = quirkChannelNames;
-        };
+        keySemantics =
+          (keySemanticsLib.mkClassChannelSemantics {
+            classNames = compileClassNamesBase ++ declaredClassNames;
+            quirkChannels = quirkChannelNames;
+          })
+          # Register the config-free facet vocabulary (neededBy/settings/artifact) the aspects concern declares,
+          # from the SAME source — so a `.settings` block on this typed tree is the kernel's `lazyAttrsOf raw`
+          # facet, not a freeform nested-aspect submodule. Without it a `settings.<field> = mkOption {...}` leaf
+          # reflects as an aspectSubmodule and collides with the authored value at merge. `id_hash` is left OUT
+          # (its module injects `config.id_hash` onto every node — a shape change with no view consumer).
+          // (keySemanticsLib.mkFacetSemantics { inherit merge; });
       }
     );
   # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW v1 aspect tree
