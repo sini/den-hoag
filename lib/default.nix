@@ -18,9 +18,16 @@
   demand,
   pipe,
   flake,
+  # gen-lsp — the general LSP/MCP projection lib (pure builtins, dep-free). Threaded in for the
+  # `lsp` binding below, which feeds a built fleet's option/aspect/gen-lib surface into it.
+  lsp,
 }:
 let
   errors = import ./errors.nix;
+  # The gen-lsp binding (lib/lsp-binding.nix): the den-side adapter feeding a BUILT fleet's option/aspect/
+  # gen-lib surface into gen-lsp's general projection. Closes over the injected `lsp` lib; a consumer calls
+  # `lsp.forNixd { den = <built>.den; internal = <this lib>.internal; }` (the passthroughs + the 19-lib filter).
+  lspBinding = import ./lsp-binding.nix { inherit lsp; };
   # The reserved-vocabulary-table compile combinator (Law A1): the ONE shape shared by the products /
   # disciplines / edges registries — a framework reserved seed unioned under a user table, mapAttrs-
   # validated, with a NAMED abort on a reserved-name collision. Threaded into those three libs below.
@@ -2382,6 +2389,15 @@ let
       den = {
         schema = ent.kinds;
         inherit (ent) registries meta roots;
+        # Internal passthroughs (underscore-prefixed = OFF the output/parity surface): construction-time
+        # schema data a downstream LSP/MCP projection reads WITHOUT forcing `.config`. `_options`/
+        # `_provenance` are the evaluated option-declaration tree + its provenance the entity build
+        # otherwise discards (each leaf `_type == "option"`); `_keySemantics` is the aspect key vocabulary
+        # (concern-aspects `cnf`) — the schema map that classifies each aspect key (a facet projects; a
+        # class/channel content bucket does not), which the resolved aspect instances do not carry.
+        _options = ent.options;
+        _provenance = ent.provenance;
+        _keySemantics = denAspects.cnf.keySemantics;
         aspects = ent.config.den.aspects;
         fleet = theFleet;
         cells = product.cells theFleet;
@@ -2512,6 +2528,10 @@ let
 in
 {
   inherit errors mkDen;
+  # The gen-lsp binding: `lsp.forNixd`/`lsp.forNixdJSON { den = <built fleet>.den; internal; }` → the
+  # composed LSP/MCP projection over the fleet's option-declaration tree, aspect registry, and 19 gen libs
+  # (lib/lsp-binding.nix — the den-side mapping onto gen-lsp's general, neutral-keyed projection).
+  lsp = lspBinding;
   # The greenfield v2 flake-parts mount (§4.4/§4.6, D8): `flakeAdapter <built den fleet>` → a flake-parts
   # module handing the fleet's transposed family map to `config.flake` — `imports = [ (den.flakeAdapter
   # (den.mkDen [ … ])) ]`. A v2 entry distinct from the drop-in v1 `flakeModule` (zero shared splice); see

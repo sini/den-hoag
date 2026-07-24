@@ -2,6 +2,11 @@
   inputs = {
     gen.url = "github:sini/gen";
     den-hoag.url = "path:..";
+    # gen-lsp — den-hoag's LSP/MCP projection dep. Declared as a DIRECT ci input (+ den-hoag follows it)
+    # so `--override-input gen-lsp path:$HOME/Documents/repos/sini/gen-lsp` on THIS flake reaches den-hoag's
+    # transitive `gen-lsp` during dev (it is not yet published).
+    gen-lsp.url = "github:sini/gen-lsp";
+    den-hoag.inputs.gen-lsp.follows = "gen-lsp";
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
     # home-manager + nix-darwin: the behavioral-migration scaffold imports
     # `home-manager.nixosModules.home-manager` into every crossed host so a homeManager-classed user's

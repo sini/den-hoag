@@ -21,6 +21,10 @@
     gen-demand.url = "github:sini/gen-demand";
     gen-pipe.url = "github:sini/gen-pipe";
     gen-flake.url = "github:sini/gen-flake";
+    # gen-lsp — the general LSP/MCP projection lib (pure builtins, dep-free). Consumed by the `lsp`
+    # binding (lib/lsp-binding.nix). NOT yet published: during dev it is supplied via
+    # `--override-input gen-lsp path:$HOME/Documents/repos/sini/gen-lsp`.
+    gen-lsp.url = "github:sini/gen-lsp";
 
     # FORMATTER-ONLY input. The lib/ substrate is nixpkgs-lib-free (ci/tests/zero-machinery +
     # boundary enforce it) and never imports this; nixpkgs enters the root ONLY to supply the
@@ -59,6 +63,7 @@
         demand = inputs.gen-demand.lib;
         pipe = inputs.gen-pipe.lib;
         flake = inputs.gen-flake.lib;
+        lsp = inputs.gen-lsp.lib;
       };
       # den-compat (L4) — the den v1 compatibility shim + the two-sided parity harness, on top of the
       # assembled `lib`. `denHoag` = the four-concern API (this flake's `lib`); the shim reaches every

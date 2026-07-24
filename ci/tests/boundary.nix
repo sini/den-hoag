@@ -63,6 +63,7 @@ let
     "outputs.nix"
     "nest.nix"
     "graph-escape.nix"
+    "lsp-binding.nix"
     "attributes/default.nix"
     "attributes/structural.nix"
     "attributes/resolved-aspects.nix"

@@ -30,6 +30,7 @@
   demand ? dep "gen-demand",
   pipe ? dep "gen-pipe",
   flake ? dep "gen-flake",
+  lsp ? dep "gen-lsp",
 }:
 let
   lib = import ./lib {
@@ -53,6 +54,7 @@ let
       demand
       pipe
       flake
+      lsp
       ;
   };
 in
