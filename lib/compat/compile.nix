@@ -1251,15 +1251,19 @@ let
         && !(classSet ? ${v1ClassKeyMap.${k} or k})
         && !(quirkSet ? ${k})
         && builtins.isAttrs v.${k};
-      # seen-set identity: the value's `name`, else its native `.key` (born in gen-aspects' type — every typed
-      # registry value, top-level and nested, carries it, so a nameless registry aspect still cycle-breaks; an
-      # inline anonymous literal has neither and terminates by structure, finite authored data).
+      # seen-set identity (cycle-break): the value's native `.key` — the structural, path-unique identity
+      # born in gen-aspects' type (`blade/sini` ≠ `sini`), matching v1's aspect registration keyed by
+      # `identity.key` (children.nix), NOT by `.name`. A per-host `<host>.<user>` sub-aspect legitimately
+      # shares its `.name` with the top-level `<user>` aspect, so name-first over-dedups: the earlier-walked
+      # sub-aspect poisons `seen` and the distinct top-level aspect's includes are skipped. `.name` is only a
+      # fallback for a keyless value (e.g. a raw-path node with neither); an inline anonymous literal has
+      # neither and terminates by structure (finite authored data).
       idOf =
         v:
-        if (v.name or null) != null then
-          v.name
-        else if (v.key or null) != null then
+        if (v.key or null) != null then
           v.key
+        else if (v.name or null) != null then
+          v.name
         else
           null;
       go =

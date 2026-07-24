@@ -167,6 +167,46 @@ let
     fleet: cls: id:
     fleet.den.output.systems.${cls}.${id}.bindings;
 
+  # ── (6) NESTED-NAME COLLISION: the aspect-include collection walk's cycle-break `seen` set must key on
+  # the structural, path-unique `.key` — NOT the non-unique `.name`. A per-host `<host>.<user>` sub-aspect
+  # legitimately shares its `.name` with the top-level `<user>` aspect (the corpus's
+  # `den.aspects.blade.sini` beside `den.aspects.sini`). Here `blade.sini` (name `"sini"`, key
+  # `blade/sini`) is walked BEFORE the top-level `sini` (name `"sini"`, key `sini`) — `blade` < `sini`.
+  # A name-keyed seen-set poisons `"sini"` at the sub-aspect and SKIPS the top-level aspect's includes, so
+  # the `{ __isPolicy }` record it carries is never collected and `normalizeList`'s `keepInclude` aborts
+  # NAMED at resolution. Key-first cycle-breaking (v1 registers aspects by `identity.key`, children.nix)
+  # distinguishes the two nodes: the record diverts + FIRES, no abort. Must run the TYPED path
+  # (`compileFull` — the nodes carry native `.key` there; the raw `compile` path has neither name nor key
+  # so `idOf = null` and never collides). `blade`/`blade.sini` carry own class bodies but are unattached
+  # (only `sini` is host-included), so ONLY the fired include-effect content lands at the terminal.
+  collisionDecls = {
+    hosts.x86_64-linux.igloo.class = "nixos";
+    aspects.injected.nixos.tag = "injected-by-policy";
+    aspects.sini.includes = [
+      {
+        __isPolicy = true;
+        name = "collision-project";
+        fn =
+          { host, ... }:
+          [
+            {
+              __policyEffect = "include";
+              value = {
+                name = "injected";
+              };
+            }
+          ];
+      }
+    ];
+    aspects.blade = {
+      nixos.tag = "blade-own";
+      sini.nixos.tag = "blade-sini-own";
+    };
+    schema.host.includes = [ "sini" ];
+  };
+  collision = denCompat.mkDen [ { den = collisionDecls; } ];
+  collisionCompiled = denCompat.compileFull collisionDecls;
+
   igloo = "host:igloo";
 in
 {
@@ -256,6 +296,24 @@ in
         compiles = true;
         ageSecrets = [ "age-for-igloo" ];
         k8sManifests = true;
+      };
+    };
+
+    # (6) a top-level aspect NAME-shadowed by an earlier-walked nested `<host>.<user>` sub-aspect still has
+    # its `{ __isPolicy }` include COLLECTED (`__aspectInclude__collision-project` registers), DIVERTED (no
+    # `keepInclude` abort — `forces` clean), and FIRED (the injected content lands at the host). RED before
+    # the walk keys its cycle-break seen-set by `.key`: the name-keyed seen-set skips the top-level aspect
+    # and the record aborts NAMED (forces = false, rule absent).
+    test-nested-name-collision-diverts-and-fires = {
+      expr = {
+        forces = ok (forceEdges collision);
+        ruleRegistered = collisionCompiled.policies ? __aspectInclude__collision-project;
+        terminal = termTags collision igloo "nixos";
+      };
+      expected = {
+        forces = true;
+        ruleRegistered = true;
+        terminal = [ "injected-by-policy" ];
       };
     };
   };
