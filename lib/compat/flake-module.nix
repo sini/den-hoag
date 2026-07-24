@@ -167,6 +167,11 @@ let
       # parametric FACET) is NOT malformed — it rides raw + is grounded/wrapped by compile's `wrapGatedFn`
       # exactly like an attrset-valued `homeManager` facet already does (an attrset facet reaches compile via
       # the raw-splice; a fn facet must clear this fn-key gate to reach it too).
+      # CARVE-OUT (2): a fn-valued key naming a REGISTERED quirk channel (`quirkSet ? ${k}`) is NOT
+      # malformed — a v1 channel body may be a `{ ctx… }: <content>` producer, materialized unconditionally
+      # by v1 and gathered fn-and-all by the downstream channel-gather seam. The lookup mirrors the sibling
+      # `recognizedSubKey`/`isCandidate` predicates (bare `k`, not `groundK` — quirks are not class-grounded)
+      # and compile's own `walkableChild` quirk exemption.
       malformedFnKeys =
         inc:
         builtins.filter (
@@ -174,6 +179,7 @@ let
           builtins.isFunction inc.${k}
           && !(isStructuralRawKey k)
           && !(classSet ? ${groundK k})
+          && !(quirkSet ? ${k})
           && builtins.substring 0 2 k != "__"
         ) (builtins.attrNames inc);
       isMalformedFnInclude =

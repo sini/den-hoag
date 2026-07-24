@@ -138,6 +138,35 @@ let
     }
   ];
 
+  # ── (5) FN-VALUED REGISTERED QUIRK on an include record: a channel key whose value is a `{ ctx… }:
+  # <content>` PRODUCER rides an include record. A fn key on an include record aborts §2.2 UNLESS it
+  # names a registered class facet, is a `{ __isPolicy }` diversion — OR names a REGISTERED QUIRK CHANNEL
+  # (the third exemption). A quirk channel body may be fn-valued: v1 materializes it unconditionally and
+  # the channel-gather seam binds it fn-and-all. So §2.2 must ACCEPT it and the resolved fragment reaches
+  # the channel binding. Two quirk keys ride ONE record: an `{ host, … }` producer resolved at the host
+  # scope (its delivered fragment asserted), and a `{ config, … }` config-thunk sibling — the deferred
+  # path — which must clear the SAME gate (its local binding forces clean, no cross-scope collect).
+  quirkDecls = {
+    hosts.x86_64-linux.igloo.class = "nixos";
+    quirks.age-secrets = { };
+    quirks.k8s-manifests = { };
+    aspects.carrier = {
+      nixos.tag = "carrier-own";
+      includes = [
+        {
+          name = "bootstrap";
+          age-secrets = { host, ... }: [ "age-for-${host.name}" ];
+          k8s-manifests = { config, ... }: [ "manifests" ];
+        }
+      ];
+    };
+    schema.host.includes = [ "carrier" ];
+  };
+  quirkFleet = denCompat.mkDen [ { den = quirkDecls; } ];
+  bindingsOf =
+    fleet: cls: id:
+    fleet.den.output.systems.${cls}.${id}.bindings;
+
   igloo = "host:igloo";
 in
 {
@@ -212,6 +241,22 @@ in
     test-malformed-fn-attrset-still-aborts = {
       expr = !(ok (forceEdges malformed));
       expected = true;
+    };
+
+    # (5) a fn-valued key naming a REGISTERED quirk channel is ACCEPTED (no §2.2 abort) and its resolved
+    # fragment reaches the channel binding. The `{ host, … }` producer resolves at the host; the
+    # `{ config, … }` config-thunk sibling clears the SAME gate (local binding forces clean).
+    test-fn-valued-quirk-accepted-and-delivered = {
+      expr = {
+        compiles = ok (forceEdges quirkFleet);
+        ageSecrets = (bindingsOf quirkFleet "nixos" igloo).age-secrets;
+        k8sManifests = ok (bindingsOf quirkFleet "nixos" igloo).k8s-manifests;
+      };
+      expected = {
+        compiles = true;
+        ageSecrets = [ "age-for-igloo" ];
+        k8sManifests = true;
+      };
     };
   };
 }
