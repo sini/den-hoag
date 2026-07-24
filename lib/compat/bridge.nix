@@ -293,6 +293,27 @@ let
       }
     )
   );
+  # The value-less stratum probe (concern-policies) produces every corpus policy against a sentinel entity
+  # that lacks real field values. A corpus policy PREDICATE reading a bare `host.settings.<…>` attrpath
+  # (nixpkgs-overlays' un-`or`'d `.core.users.home-manager.useGlobalPkgs`) then throws `attribute 'settings'
+  # missing` — a MISSING-ATTR error `tryEval` cannot catch — hard-failing the whole probe. Supply the
+  # sentinel a TYPE-CORRECT NON-MATCHING `.settings`: the settingsType submodule (`_settings-type.nix`
+  # `types.submodule (nodeModule den.aspects)`, carried on the host `settings` option) materialized at its
+  # DEFAULTS as `settings.value` of the host
+  # probe eval — an empty (override-free) host, so every leaf is its real default (`useGlobalPkgs = false`)
+  # and the bare read reaches a genuine `false` → the policy takes its FALSE branch → the empty/expansion
+  # probe, never a fire. This is the SAME materialization the `_entityStamps` twin uses (bridge.nix, `stampOf`
+  # over a host's merged config reads `cfg.settings`), so the sentinel is byte-identical to what a REAL host's
+  # `.settings` carries minus its overrides — a real host binds the same submodule plus its overrides and so
+  # still fires with live values. (A raw string or an auto-vivifying attrset would instead re-crash at `.core`
+  # / at the leaf `lib.optionals` bool-coercion; the materialized submodule default is the only faithful
+  # value.) Threaded LAZILY as the reserved `_probeSentinelFields` (twin of `_entityStamps`, `_`-exempt from
+  # surface-totality) — one un-forced thunk, so a settings-policy-free fleet never materializes it
+  # (byte-neutral). Absent when no host `settings` option exists (a native fleet) → the shim omits the field →
+  # the kernel `{ }` sentinel default stands.
+  probeSentinelFields = lib.optionalAttrs (hostInstanceOpts ? settings) {
+    settings = hostInstanceOpts.settings.value;
+  };
   fleet = [
     {
       # The fleet's `den.*` surface handed to the shim; `mkDenWith` types `den.aspects` through the
@@ -313,6 +334,11 @@ let
           # builds the custom-kind registries by it, so a namespace whose instances carry a
           # derived/internal primitive (cluster.sopsAgeRecipient) still reaches the fleet.
           _registryKinds = registryKinds;
+          # The all-defaults settingsType submodule for the value-less probe sentinel (`_`-exempt like
+          # `_entityStamps`; one un-forced thunk). The shim merges it onto `den.probeSentinelFields` so a
+          # corpus policy predicate reading a bare `host.settings.<…>` chain at the probe reaches a
+          # type-correct non-matching value instead of hard-failing `attribute 'settings' missing`.
+          _probeSentinelFields = probeSentinelFields;
         };
     }
   ];

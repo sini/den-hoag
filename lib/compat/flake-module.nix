@@ -687,11 +687,23 @@ let
   # branch → EXPANSION (the conservative branch, correct at real nodes), and an unconditional body (`host-
   # modules-capture` → instantiate) emits its fixed stratum with the fake value DISCARDED after the probe.
   # CEILING: a corpus policy reading an un-enriched field still hard-fails LOUDLY (self-announcing → add it).
-  probeSentinelModule = {
+  # A DEEP field (`settings`) needs a submodule-tree sentinel, not a string. The bridge threads the
+  # all-defaults settingsType submodule (materialized at its DEFAULTS, so `.core.users.home-manager.
+  # useGlobalPkgs = false`) as the reserved `_probeSentinelFields.settings` (bridge.nix), and this module
+  # merges it onto the string sentinels above — so nixpkgs-overlays' un-`or`'d `host.settings.<…>`
+  # predicate read reaches a genuine non-matching `false` at the probe (→ FALSE branch → expansion, never
+  # a fire) instead of the uncatchable `attribute 'settings' missing`. LAZY: `? settings` / `inherit` never
+  # force the submodule, so a settings-policy-free fleet never materializes it (byte-neutral). On the
+  # mkDen-DIRECT path (no bridge) `_probeSentinelFields` is absent → the field is omitted → a direct fixture
+  # reading bare `host.settings` in a policy still self-announces LOUDLY (the documented CEILING, unchanged).
+  probeSentinelModule = rawDen: {
     config.den.probeSentinelFields = {
       class = "«probe»";
       system = "«probe»";
       hostName = "«probe»";
+    }
+    // prelude.optionalAttrs (rawDen ? _probeSentinelFields && rawDen._probeSentinelFields ? settings) {
+      inherit (rawDen._probeSentinelFields) settings;
     };
   };
   # THE CORPUS RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2) — the SAME corpus-facts-as-config
@@ -720,15 +732,20 @@ let
       nixosTerminal ? denHoag.internal.terminal.collect,
       hoagModules ? [ ],
     }:
+    let
+      # Shared across the compile input and the probe-sentinel module (the shim reads the bridge-threaded
+      # reserved `_probeSentinelFields` off the freeform raw `den`) — one eval, not two.
+      rawDen = evalV1Raw userModules;
+    in
     denHoag.mkDen (
       [
-        (mkFleetModuleWith (compileFull (evalV1Raw userModules)) nixosTerminal)
+        (mkFleetModuleWith (compileFull rawDen) nixosTerminal)
         interpretModule
       ]
       # `probeSentinel` off ⇒ OMIT probeSentinelModule ⇒ `den.probeSentinelFields` unset ⇒ the kernel `{ }`
       # identity default stands (a policy reading a bare coord field at the value-less probe then hard-fails
       # LOUDLY — the documented CEILING, not a silent mis-resolve).
-      ++ (if features.probeSentinel then [ probeSentinelModule ] else [ ])
+      ++ (if features.probeSentinel then [ (probeSentinelModule rawDen) ] else [ ])
       # `familyStamps` off ⇒ OMIT both seam modules (ATOMIC with the mkCompile name-set collapse — default.nix
       # mkCompile) ⇒ `den.{resolveFamilyNames,excludeFamilyNames}` unset ⇒ the kernel `[ ]` defaults stand
       # (a resolve/exclude policy firing a member/suppress at a root then aborts NAMED — the untagged guards).
