@@ -6,7 +6,11 @@
 # while the policy's declarations self-route by kind. An enrich-kind declaration or a DERIVED/route
 # pipeOp from an expansion policy aborts LOUD (probe-time compose/feed commitments a value-less policy
 # cannot make); a pure SITE-MARK pipeOp on a bare channel ref is per-node emission DATA and rides the
-# `#collection` sub-rule (`declare.isSiteMarkData`), seeding no compose op. Exercised directly through
+# `#collection` sub-rule (`declare.isSiteMarkData`), seeding no compose op. A policy that DECLARES its
+# produced-kind family (`__produces` / `producesByName`) skips the fan entirely: `dispatch.deriveGroup`
+# stamps its group at DEFINITION time (gen-dispatch declared-stratum), so ONE declared rule keyed by the
+# bare name is built (the corpus path); the blind fan is the additive fallback for undeclared policies.
+# Exercised directly through
 # `denHoag.internal.compilePolicies` (concern-policies' rule compiler) + the compat compile output.
 { denHoag, denCompat, ... }:
 let
@@ -397,6 +401,123 @@ in
       expected = {
         ids = [ "foo" ];
         group = "resolution";
+      };
+    };
+
+    # ── DECLARED-STRATUM (gen-dispatch deriveGroup). A value-conditional policy carrying a DECLARED
+    #    produced-kind family (`__produces`) has its group stamped at DEFINITION time by
+    #    `dispatch.deriveGroup declare.stratumOfKind` — so ONE declared rule keyed by the BARE name is
+    #    built, NOT the blind per-stratum fan. This is the corpus path (the five value-conditional corpus
+    #    policies declare via `producesByName`); here `__produces` on the record exercises the SAME
+    #    mechanism directly. The undeclared fixtures above stay on the `mkExpanded` fan (produces == null),
+    #    the additive fallback. ────────────────────────────────────────────────────────────────────────
+    # A single-stratum declared value-conditional policy (cluster-aspect shape: edge → resolution) →
+    # ONE rule, bare name, no `#stratum` fan; it fires the edge at a matching ctx.
+    test-declared-single-stratum-no-fan = {
+      expr =
+        let
+          c = compile {
+            foo = (gated hostCond (vc (declare.edge (ent "asp")))) // {
+              __produces = [ "edge" ];
+            };
+          };
+          r = builtins.head c.policy;
+        in
+        {
+          ids = ids c.policy;
+          group = r.group;
+          produces = r.produces;
+          firesAtMatch = producedKinds r matchCtx;
+          firesAtNonMatch = producedKinds r noMatchCtx;
+        };
+      expected = {
+        ids = [ "foo" ];
+        group = "resolution";
+        produces = [ "edge" ];
+        firesAtMatch = [ "edge" ];
+        firesAtNonMatch = [ ];
+      };
+    };
+
+    # The broadcast-hub-peer shape declared: a value-conditional SITE-MARK pipeOp declares `[ pipeOp ]` →
+    # ONE collection rule (bare name). It STILL seeds no compose op (`pipeOps == []` — value-conditional
+    # makes no compose commitment), and `assertCovered`'s site-mark allowance rides the declared rule
+    # exactly as it rode the `#collection` fan sub-rule.
+    test-declared-sitemark-collection = {
+      expr =
+        let
+          c = compile {
+            foo = (gated hostCond (vc hubPeerPipeOp)) // {
+              __produces = [ "pipeOp" ];
+            };
+          };
+          r = builtins.head c.policy;
+        in
+        {
+          ids = ids c.policy;
+          group = r.group;
+          composeSeeds = c.pipeOps;
+          collectionAtMatch = producedKinds r matchCtx;
+        };
+      expected = {
+        ids = [ "foo" ];
+        group = "collection";
+        composeSeeds = [ ];
+        collectionAtMatch = [ "pipeOp" ];
+      };
+    };
+
+    # A single-group (probe-emitting) rule now carries `produces` (probe-DERIVED — a free by-product of the
+    # compose-seed fire), so `dispatch` HONORS the declaration and skips its per-dispatch fire-and-classify.
+    test-single-group-carries-produces = {
+      expr =
+        (builtins.head (compile { foo = gated hostCond (_ctx: [ (declare.edge (ent "asp")) ]); }).policy)
+        .produces;
+      expected = [ "edge" ];
+    };
+
+    # The declared-slice GENERALISATION (future bucket-b, no corpus case): a MIXED-strata declared policy
+    # (link=structural, edge=resolution) emits ONE slice PER group — `produces` filtered to that group's
+    # kinds, deriveGroup stamping each — NOT the 3-way blind fan (no inert `#collection` sibling).
+    test-declared-multi-group-slices = {
+      expr =
+        let
+          c = compile {
+            foo =
+              (gated hostCond (
+                ctx:
+                if ctx.host.name == "match" then
+                  [
+                    (declare.link { target = ent "t"; })
+                    (declare.edge (ent "asp"))
+                  ]
+                else
+                  [ ]
+              ))
+              // {
+                __produces = [
+                  "link"
+                  "edge"
+                ];
+              };
+          };
+        in
+        {
+          ids = ids c.policy;
+          structural = producedKinds (ruleBy c.policy "foo#structural") matchCtx;
+          resolution = producedKinds (ruleBy c.policy "foo#resolution") matchCtx;
+          structProduces = (ruleBy c.policy "foo#structural").produces;
+          resProduces = (ruleBy c.policy "foo#resolution").produces;
+        };
+      expected = {
+        ids = [
+          "foo#resolution"
+          "foo#structural"
+        ];
+        structural = [ "link" ];
+        resolution = [ "edge" ];
+        structProduces = [ "link" ];
+        resProduces = [ "edge" ];
       };
     };
 

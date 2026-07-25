@@ -698,11 +698,11 @@
         "gen-prelude": "gen-prelude_11"
       },
       "locked": {
-        "lastModified": 1783387059,
-        "narHash": "sha256-9Uo59L9XPV9OGfrEQ24CLRqZArVpEhI/7XyNamODKLA=",
+        "lastModified": 1784937313,
+        "narHash": "sha256-FAlU1WjqwXLZv1d2S6eVilNfgtF+m91kGrdR+IYmbi4=",
         "owner": "sini",
         "repo": "gen-dispatch",
-        "rev": "bf541dd0c222efbeb22940058c115eafa0473c7b",
+        "rev": "8f537ec79de9988bdc0e008b3c5de4d8523e1df3",
         "type": "github"
       },
       "original": {

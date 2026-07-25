@@ -759,6 +759,14 @@ let
   excludeFamilyModule = {
     config.den.excludeFamilyNames = import ./exclude-family-names.nix;
   };
+  # The declared-stratum produced-kind map (`den.producesByName`, single source produces-by-name.nix): the
+  # value-conditional corpus policies whose declared produced-kind family lets `dispatch.deriveGroup` stamp
+  # the group at definition time — ONE declared rule per policy instead of the blind per-stratum fan.
+  # A policy authored directly under `den.policies.<name>` matches by attr key; a kind-include-wired one
+  # (synthetic key) is caught by compile's `producesStamp`. Native default `{ }` (undeclared → the fan).
+  producesModule = {
+    config.den.producesByName = import ./produces-by-name.nix;
+  };
   # `mkDenWith userModules { nixosTerminal ? collect; hoagModules ? [] }` — build the shim fleet with the
   # nixos terminal SEAM (the parity harness / a real ship supplies `crossNixos` for real NixOS systems) and
   # optional extra native den-hoag modules. `mkDen` = this at the default (collect, no extra modules) — the
@@ -791,6 +799,7 @@ let
           [
             resolveFamilyModule
             excludeFamilyModule
+            producesModule
           ]
         else
           [ ]

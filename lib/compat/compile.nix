@@ -41,6 +41,14 @@
   # twin; single source compat/exclude-family-names.nix). Same posture: the include-arm stamp is the
   # only path for a corpus excluder wired through an include (its compiled key is synthetic).
   excludeFamilyNames ? [ ],
+  # THE PRODUCED-KIND MAP (declared-stratum, `den.producesByName`, single source compat/produces-by-name.nix)
+  # — the resolveFamilyNames twin as a `name → [kind]` MAP. Threaded HERE so the kind-include arms stamp
+  # `__produces = producesByName.<name>` on a compiled include policy whose SOURCE REF's v1 name is a key
+  # (the corpus's value-conditional resolve/include policies ride kind-includes → synthetic keys, so the
+  # name-based lookup in concern-policies never catches them — the stamp is the only path). The declared
+  # produced-kind family lets `dispatch.deriveGroup` stamp the rule's group at definition time, retiring
+  # the fire-and-observe blind fan for these. Native callers pass `{ }` (the default), byte-identical.
+  producesByName ? { },
   # den.features compat-desugar-arm gates (Tier-1, register compat-feature-register.md). Both default ON,
   # so a native/non-flag caller keeps the unconditional surface (all-on ≡ pre-feature, byte-identical).
   # `aspectIncludeArm` — the `{ __isPolicy }`-in-a-regular-aspect's-`.includes` diversion arm: off collapses
@@ -69,7 +77,16 @@ let
     prelude.optionalAttrs (builtins.elem (ref.name or null) excludeFamilyNames) {
       __excludeFamily = true;
     };
-  familyStamps = ref: resolveFamilyStamp ref // excludeFamilyStamp ref;
+  # The declared-stratum stamp — `__produces = producesByName.<name>` iff a policy REF's v1 name is a key
+  # in the map, the twin of the family stamps for a value-conditional policy wired via an include (its
+  # compiled key is synthetic, so concern-policies' `name ∈ producesByName` lookup never matches it). The
+  # kinds are read at concern-policies as `v.__produces`, driving deriveGroup's definition-time group stamp.
+  producesStamp =
+    ref:
+    prelude.optionalAttrs ((ref.name or null) != null && producesByName ? ${ref.name}) {
+      __produces = producesByName.${ref.name};
+    };
+  familyStamps = ref: resolveFamilyStamp ref // excludeFamilyStamp ref // producesStamp ref;
 
   # #72 — THE SUPPRESSION GATE (v1 dispatch-policies.nix:15-33: dispatch filters `aspectPolicies` by
   # name against the scoped exclude constraints). den-hoag rendering: the pre-pass's suppression sets

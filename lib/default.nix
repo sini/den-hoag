@@ -861,6 +861,19 @@ let
           description = "policy names concern-policies stamps `__excludeFamily = true` on, so the staged pre-pass dispatches them for suppression collection (#72). Native default `[ ]`.";
         };
       };
+      # den.producesByName (declared-stratum) — the resolveFamilyNames twin as a `name → [declare-kind]`
+      # MAP: the VALUE-CONDITIONAL policies whose DECLARED produced-kind family lets `dispatch.deriveGroup`
+      # stamp the rule's group at DEFINITION time, so concern-policies compiles ONE declared rule per policy
+      # instead of the blind per-stratum fan (the fire-and-observe holdover). A value-less probe emits
+      # nothing, so the kinds cannot be DETECTED — the shim DECLARES them (its `producesModule`). An
+      # unmapped value-conditional policy degrades to the proven `mkExpanded` fan. Native default `{ }`.
+      producesByNameDecl = {
+        options.den.producesByName = merge.mkOption {
+          type = merge.types.raw;
+          default = { };
+          description = "map `name → [declare-kind]` naming value-conditional policies whose declared produced-kind family lets deriveGroup stamp the dispatch group at definition time (declared-stratum), retiring the blind per-stratum fan. Native default `{ }`.";
+        };
+      };
 
       # The collector NAMES probe (§4.7) — the gate for the framework `collector` kind: a fleet declaring no
       # `den.collectors` gets no collector kind (`metaAugment { hasCollectors = false } == { }`, corpus-inert).
@@ -908,6 +921,7 @@ let
           probeSentinelDecl
           resolveFamilyNamesDecl
           excludeFamilyNamesDecl
+          producesByNameDecl
           # The `den.collectors` DECLARATION option (§4.7, always present, the classesDecl posture — inert
           # default `{ }`). The collector schema kind + the `den.collector` registry bridge ride separately,
           # GATED on collectors present, so a corpus fleet gets neither the kind nor the registry.
@@ -1312,6 +1326,7 @@ let
           ent.config.den.probeSentinelFields
           ent.config.den.resolveFamilyNames
           ent.config.den.excludeFamilyNames
+          ent.config.den.producesByName
           ent.config.den.policies;
 
       # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
@@ -2607,9 +2622,10 @@ in
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
     # The probe-sentinel convenience (`compilePoliciesWith sentinelFields policies`) keeps its 2-arg shape —
-    # the resolve-family tag set defaults to `[ ]` here (the R2 knob is a fleet-level `den.resolveFamilyNames`
-    # option, not a unit-suite concern). `compileWith` is the full 4-arg form default.nix threads.
-    compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ] [ ];
+    # the resolve-family / produced-kind knobs default to `[ ]` / `{ }` here (they are fleet-level
+    # `den.{resolveFamilyNames,producesByName}` options, not a unit-suite concern). `compileWith` is the
+    # full 5-arg form default.nix threads.
+    compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ] [ ] { };
     # The strata-aware compiler (spec §5): compile with an explicit stratum order + stratum→ctx-key map,
     # so the capability-scoped ctx projection is exercisable from the suite (the seeded config = the
     # byte-identical no-op the fleet path uses). `compilePoliciesWithStrata { order; ctxKeyStrata } sentinel rf ef`.

@@ -460,13 +460,15 @@ in
       expr = {
         tagged = (kiPolicy "env-to-hosts").__resolveFamily or false; # v1 name ∈ resolveFamilyNames → stamped
         untagged = (kiPolicy "local-noise").__resolveFamily or false; # v1 name ∉ set → no stamp
-        feedTagged = kiFeedIds "env-to-hosts"; # reaches the pre-pass resolve-family feed (structural sub-rule)
+        feedTagged = kiFeedIds "env-to-hosts"; # reaches the pre-pass resolve-family feed (the declared structural rule)
         feedUntagged = kiFeedIds "local-noise"; # absent — synthetic key never matched by the name check
       };
       expected = {
         tagged = true;
         untagged = false;
-        feedTagged = [ "__kindInclude__rack__policy__0#structural" ];
+        # env-to-hosts declares `produces = [member spawn]` (both structural), so deriveGroup builds ONE
+        # declared rule keyed by the bare synthetic name — no per-stratum fan, no `#structural` suffix.
+        feedTagged = [ "__kindInclude__rack__policy__0" ];
         feedUntagged = [ ];
       };
     };

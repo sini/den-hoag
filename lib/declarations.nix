@@ -161,6 +161,11 @@ let
   # decl → its B2 stratum (the mkActions group); decl → its KIND tag.
   stratumOf = actions.classify;
   kindOf = a: a.__action;
+  # KIND tag → its B2 stratum, WITHOUT an action value (gen-dispatch mkActions.groupOfKind). The static
+  # counterpart to `stratumOf` (= `classify`, which reads a FIRED action): `dispatch.deriveGroup`
+  # discharges a rule's declared produced-kind family through THIS, so a declared-stratum policy's group
+  # is stamped at definition time rather than probed. The contract names it `declare.stratumOfKind`.
+  stratumOfKind = actions.groupOfKind;
 
   # LAW: the collection stratum's compose commitments are the DERIVED-op DAG (channel-shaping) and the
   # delivery ROUTES — those seed the ONE fleet gen-pipe compose BEFORE eval, from ctx-INDEPENDENT bodies.
@@ -397,6 +402,7 @@ actions
     strataChain
     stratumOf
     kindOf
+    stratumOfKind
     kindToStratum
     isSiteMarkData
     isResolveFamily

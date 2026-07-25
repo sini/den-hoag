@@ -266,7 +266,8 @@ in
     #     emits the syncthing-peers pipe effect (v1's dispatch-time read, restored at the ctx level);
     #   firingNodeResolvesClean — the SITE-MARK rung: the fired emission is a pure SITE-MARK pipeOp
     #     (broadcast mark on a bare channel ref), recognized as per-node DATA by `declare.isSiteMarkData`
-    #     and allowed through the `#collection` expansion sub-rule, so the hub node RESOLVES CLEAN —
+    #     and allowed through the declared collection rule (broadcast-hub-peer declares `produces = [pipeOp]`,
+    #     so deriveGroup stamps its group at compile — one declared rule, not the blind fan), so the hub node RESOLVES CLEAN —
     #     u6's LOUD named abort is GONE (the corpus re-probe frontier clears). Site marks stay UNCONSUMED
     #     by lib wiring (ledger u9); delivery is the next rung (this pin flips again when it lands);
     #   declaredLayerIngestKnown — the host-FILE-declared settings layer stays ingest-visible raw data

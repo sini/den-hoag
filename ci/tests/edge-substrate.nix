@@ -594,7 +594,7 @@ in
           c = compileWithStrata {
             order = fourStrata;
             ctxKeyStrata = { };
-          } { } [ ] [ ] { foo = linkFoo; };
+          } { } [ ] [ ] { } { foo = linkFoo; };
           rule = builtins.head c.policy;
         in
         map (a: a.__action) (
@@ -617,7 +617,7 @@ in
           c = compileWithStrata {
             order = fourStrata;
             ctxKeyStrata.resolution = [ "thing" ];
-          } { } [ ] [ ] { foo = linkFoo; };
+          } { } [ ] [ ] { } { foo = linkFoo; };
           rule = builtins.head c.policy;
         in
         (builtins.tryEval (
@@ -645,7 +645,7 @@ in
           c = compileWithStrata {
             order = fourStrata;
             ctxKeyStrata.structural = [ "asp" ];
-          } { } [ ] [ ] { foo = edgeFoo; };
+          } { } [ ] [ ] { } { foo = edgeFoo; };
           rule = builtins.head c.policy;
         in
         map (a: a.__action) (

@@ -64,6 +64,10 @@ let
     # THE #72 EXCLUDE-FAMILY TAG SET (`den.excludeFamilyNames`) — the twin knob's single source
     # (exclude-family-names.nix), shared with flake-module's excludeFamilyModule.
     excludeFamilyNames = import ./exclude-family-names.nix;
+    # THE DECLARED-STRATUM PRODUCED-KIND MAP (`den.producesByName`) — single source produces-by-name.nix,
+    # shared with flake-module's producesModule; the include-arm stamp for a value-conditional policy
+    # wired via a kind-include (its compiled key is synthetic).
+    producesByName = import ./produces-by-name.nix;
   };
   # `mkCompile feat` — the per-feature compile: bakes the two desugar-arm gates from the wiring's feature
   # record (register compat-feature-register.md). All-on (`defaultFeatures`) reduces to the unconditional
@@ -87,6 +91,7 @@ let
           {
             resolveFamilyNames = [ ];
             excludeFamilyNames = [ ];
+            producesByName = { };
           }
       )
     );
