@@ -481,30 +481,20 @@ let
     if route.adaptArgs == null && !evalTimeGuard then
       placed # (1) NOT a crossing route — identity (a content-time guard, if any, is handled by guardHolds).
     else if !evalTimeGuard then
-      # (2) adaptArgs only — the arg-env wrapper (no guard gating imports ⇒ no cycle).
-      args: {
-        imports = [ placed ];
-        _module.args = route.adaptArgs args;
+      # (2) adaptArgs only — the `_module.args` sibling-injection channel (no guard gating imports ⇒ no cycle):
+      # gen-bind's arg-env `adaptArgs` fires the placed slice as a sibling module and injects `adaptArgs args`.
+      bind.adaptArgs {
+        adapt = route.adaptArgs;
+        module = placed;
       }
     else
-      # (3) eval-time guard (± adaptArgs) — CONFIG-GATE via a nested eval (no import-cycle). The nested eval
-      # uses the terminal's OWN evaluator (`args.lib.evalModules`), a freeform absorber for the opaque slice,
-      # and the adaptArgs injection as its `_module.args`. `mkIf (guard args)` gates the nested config.
-      args:
-      let
-        nestedArgs = if route.adaptArgs == null then { } else route.adaptArgs args;
-        nested = args.lib.evalModules {
-          modules = [
-            # freeform absorber in the terminal's OWN type system (`args.lib`), so the opaque slice's config
-            # keys land regardless of which terminal (nixpkgs / gen-merge) runs the crossing.
-            { config._module.freeformType = args.lib.types.lazyAttrsOf args.lib.types.raw; }
-            placed
-            { config._module.args = nestedArgs; }
-          ];
-        };
-      in
-      {
-        config = args.lib.mkIf (route.guard args) nested.config;
+      # (3) eval-time guard (± adaptArgs) — the CONFIG-GATE (no import-cycle) via gen-bind's arg-env `configGate`:
+      # the guard rides as `mkIf (guard args)` over the slice resolved in a nested cross-eval (the terminal's own
+      # evaluator + freeform absorber), the adaptArgs injection threaded as that nested eval's `_module.args`.
+      bind.configGate {
+        gate = route.guard;
+        module = placed;
+        adapt = if route.adaptArgs == null then (_: { }) else route.adaptArgs;
       };
 
   # The route class-remap contribution to `projectClass id C`: for each route TARGETING C whose guard holds
@@ -567,15 +557,13 @@ let
       # (den channel values win — they are the authoritative resolved bindings).
       fullArgs = args // (args.config._module.args or { }) // srcBindings;
       special = if route.adaptArgs == null then fullArgs else route.adaptArgs fullArgs;
-      nested = args.lib.evalModules {
+      # The opaque slice resolves in gen-bind's arg-env `crossEval` — the terminal's OWN evaluator (`args.lib`)
+      # with the derived `special` on the caller-only `specialArgs` channel and the freeform absorber (default)
+      # so the slice's config keys land regardless of which terminal (nixpkgs / gen-merge) runs the crossing.
+      nested = bind.crossEval {
+        inherit (args) lib;
+        module = sliceMod;
         specialArgs = special;
-        modules = [
-          # Freeform absorber in the TERMINAL's own type system (`args.lib`), so the opaque slice's config
-          # keys land regardless of which terminal (nixpkgs / gen-merge) runs the crossing — matching the
-          # argEnvWrap case-3 absorber.
-          { config._module.freeformType = args.lib.types.lazyAttrsOf args.lib.types.raw; }
-          sliceMod
-        ];
       };
     in
     {
