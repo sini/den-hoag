@@ -36,6 +36,7 @@ let
         aspects
         select
         ;
+      graph = denHoag.internal.genGraph;
     } { }).reach;
 
   # ── settings-layers (§2.7): the per-(node, aspect) layer fold ────────────────────────────────────

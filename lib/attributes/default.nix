@@ -47,6 +47,7 @@ let
       resolve
       aspects
       select
+      graph
       ;
   };
   collections = import ./collections.nix {

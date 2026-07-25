@@ -10,7 +10,9 @@
 # unique and arrival-path independent (Knaster–Tarski; the r1 guard-convergence argument, now joint).
 #
 # Deps: prelude (folds/filters), scope (circular), resolve (attr), aspects (key), select (matches +
-# scope adapter for selector-form neededBy). Instance args: allAspects = the compiled aspect
+# scope adapter for selector-form neededBy), graph (gen-graph preorder combinators — the ordered
+# payload-carrying DFS-preorder `expandPreorder`/`foldReach` the forward-expansion + edge-closure walks
+# run through). Instance args: allAspects = the compiled aspect
 # registry (`config.den.aspects`); directIncludes = the static entity-scoped include list
 # (`config.den.include` = [ { at = <entity>; aspects = [ … ]; } ]) — the §370 `directAspects` source.
 {
@@ -19,6 +21,7 @@
   resolve,
   aspects,
   select,
+  graph,
 }:
 {
   allAspects ? { },
@@ -103,51 +106,32 @@ let
       in
       if p == null then null else "${key}|${p}";
 
-  # Layer 1 — forward expansion (recursive, evaluates parametrics inline). foldl' over an aspect
-  # list: skip already-seen keys, otherwise mark seen, resolve concrete (a parametric __isWrappedFn
-  # is invoked with ctx; a static submodule passes through), and recurse its `includes`. Returns
-  # { seen; nodes } with seen ⊇ the input seen (monotone). Threads acc.nodes through the fold so
-  # sibling roots are all retained. A node is `{ key; content }` — bare, no provenance marker.
+  # Layer 1 — forward expansion. gen-graph's `expandPreorder`: an ordered, payload-carrying DFS-preorder
+  # closure over the aspect list — each frame is emitted BEFORE its children (node-before-`includes`),
+  # siblings in list order, the visited/`seen` keyset threaded first-occurrence across the whole walk and
+  # seeded by `seen0` (Kahn demand: a pre-seeded key drop-prunes that subtree unforced). `resolve` performs
+  # the parametric evaluation LAZILY (a `__isWrappedFn` aspect is invoked with ctx, a static submodule passes
+  # through); `edges` reads the RESOLVED payload's `includes`, so a parametric aspect's successors exist only
+  # post-invocation. `emit` receives BOTH the pre-resolution frame and the resolved payload — the node is
+  # `{ key; content }` (bare, no provenance marker) plus the additive `sharedFoldKey` dedup discriminator.
+  # Returns { nodes; seen } with seen ⊇ seen0 (monotone).
   forwardExpand =
     ctx: seen0: aspectList:
-    prelude.foldl'
-      (
-        acc: aspect:
-        let
-          key = keyOf aspect;
-        in
-        if acc.seen ? ${key} then
-          acc
-        else
-          let
-            concrete = if aspect.__isWrappedFn or false then aspect ctx else aspect;
-            newSeen = acc.seen // {
-              ${key} = true;
-            };
-            childResult = forwardExpand ctx newSeen (concrete.includes or [ ]);
-          in
-          {
-            seen = childResult.seen;
-            nodes =
-              acc.nodes
-              ++ [
-                {
-                  inherit key;
-                  content = concrete;
-                  # The v1 stable cross-scope dedup discriminator (ADDITIVE — `.key`/`.content` consumers are
-                  # unaffected). Computed from the PRE-resolution `aspect` + `ctx` (force-free); the reach +
-                  # classSubtreeAt folds dedup a genuinely-shared host+user aspect on it.
-                  sharedFoldKey = sharedFoldKeyOf aspect ctx key;
-                }
-              ]
-              ++ childResult.nodes;
-          }
-      )
-      {
-        seen = seen0;
-        nodes = [ ];
-      }
-      aspectList;
+    graph.expandPreorder {
+      roots = aspectList;
+      key = keyOf;
+      seen0 = seen0;
+      resolve = aspect: if aspect.__isWrappedFn or false then aspect ctx else aspect;
+      edges = concrete: concrete.includes or [ ];
+      emit = aspect: concrete: {
+        key = keyOf aspect;
+        content = concrete;
+        # The v1 stable cross-scope dedup discriminator (ADDITIVE — `.key`/`.content` consumers are
+        # unaffected). Computed from the PRE-resolution `aspect` + `ctx` (force-free); the reach +
+        # classSubtreeAt folds dedup a genuinely-shared host+user aspect on it.
+        sharedFoldKey = sharedFoldKeyOf aspect ctx (keyOf aspect);
+      };
+    };
 
   # Aspects bound directly on an entity (the §370 `directAspects` seed): the static include list,
   # filtered to entries registered AT this node's own entity. Node-local — an include at an
@@ -362,43 +346,6 @@ in
           in
           builtins.filter (e: !(suppressed ? ${e.target})) (positiveEdgesAt nid);
 
-        # Fold one edge's (class-filtered, not-yet-seen) target aspects into the accumulator, recursing into
-        # the target's own edges FIRST-occurrence-preserving. `acc = { seen; nodes; visitedIds; }`: seen =
-        # keyset for node single-visit, nodes = the ordered result, visitedIds = edge-cycle guard.
-        addTarget =
-          acc: edge:
-          if acc.visitedIds ? ${edge.target} then
-            acc
-          else
-            let
-              targetNodes = builtins.filter (passesClassFilter edge.classFilter) (
-                self.get edge.target "resolved-aspects"
-              );
-              acc' = acc // {
-                visitedIds = acc.visitedIds // {
-                  ${edge.target} = true;
-                };
-              };
-              withNodes = prelude.foldl' addNode acc' targetNodes;
-            in
-            # transitively follow the target's own edges (same class filter is NOT inherited — each edge
-            # carries its own filter; the target's edges apply their own).
-            prelude.foldl' addTarget withNodes (edgesAt edge.target);
-
-        # Add a single resolved-aspect node if its key is unseen (single-visit dedup, first-occurrence).
-        addNode =
-          acc: n:
-          if acc.seen ? ${n.key} then
-            acc
-          else
-            {
-              seen = acc.seen // {
-                ${n.key} = true;
-              };
-              nodes = acc.nodes ++ [ n ];
-              inherit (acc) visitedIds;
-            };
-
         # STRUCTURAL-DESCENDANT EDGE (spec §2, subsumes v1's `classSubtreeAt` down-fold). The OWN/structural
         # component of reach is not node-local: it is the scope SUBTREE `[ id ] ++ scope.descendants self id`
         # (own node FIRST, then descendants in lexicographic-DFS order — the same `[id] ++ scope.descendants
@@ -419,8 +366,8 @@ in
         # Task-2 anchor). The single-visit / bare-key dedup law applies to the EDGE closure + WITHIN a node
         # ONLY (own-node dedup is upstream in `applyConstraints`; each descendant's list is already key-unique).
         #
-        # EDGE-DEDUP SEEDING: the structural keys STILL seed the `seen` keyset, so the EDGE closure
-        # (`addTarget`/`addNode`, bare-key dedup) collapses an aspect reached BOTH structurally AND via an edge
+        # EDGE-DEDUP SEEDING: the structural keys STILL seed the `foldReach` item keyset (`seen0`), so the EDGE
+        # closure (bare-key `itemKey` dedup) collapses an aspect reached BOTH structurally AND via an edge
         # to the structural occurrence (spicetify own+opt-in → one node; the radiation-double own+default → one
         # node — spec §3). Own-subtree wins per merge_ord (it is folded first). `seen` is a set (union of all
         # structural keys); the `nodes` list keeps the FULL structural sequence (multiplicity preserved there).
@@ -442,17 +389,31 @@ in
         # delivered-child/guest content) carries a DISTINCT per-cell `user`/guest `id_hash` ⇒ distinct
         # `sharedFoldKey` ⇒ kept (the #111 no-collapse invariant `class-fold-subtree` pins).
         structuralNodes = dedupByKey (n: n.sharedFoldKey or null) structuralNodesRaw;
-        seededOwn = {
-          # `seen` = the UNION of every structural node's key over the RAW list (edge closure dedups against
-          # it — do NOT narrow to the deduped list, or an edge-reached aspect could re-enter); `nodes` = the
-          # cross-scope-deduped structural sequence (per-provider multiplicity kept, shared copies collapsed).
-          seen = prelude.foldl' (acc: n: acc // { ${n.key} = true; }) { } structuralNodesRaw;
-          nodes = structuralNodes;
-          visitedIds = {
+
+        # The edge closure — gen-graph's `foldReach` (labeled, suppression-aware transitive reach). Each
+        # frame is an outgoing edge: `target` (the reached vertex id) is the DFS cycle guard (a 2nd edge to
+        # an already-visited target is dropped — first-edge-wins); `project` exposes the whole edge and slices
+        # the target's resolved-aspects by its `classFilter`; `edges` reads a vertex's outgoing edges with
+        # negative-edge suppression already baked in (`edgesAt` = positive minus held suppressions), so the
+        # fold is suppression-aware by construction. The structural subtree seeds the traversal: `nodes0` = the
+        # cross-scope-deduped own/descendant sequence (own-first, per-provider multiplicity kept), `seen0` =
+        # the UNION of every structural node's key over the RAW list so an edge-reached aspect present
+        # structurally collapses to its structural occurrence (do NOT narrow to the deduped list, or it could
+        # re-enter), and `visited0` marks the own node so its own edges compose after the subtree.
+        result = graph.foldReach {
+          roots = edgesAt id;
+          edges = edgesAt;
+          target = edge: edge.target;
+          project =
+            edge:
+            builtins.filter (passesClassFilter edge.classFilter) (self.get edge.target "resolved-aspects");
+          itemKey = n: n.key;
+          visited0 = {
             ${id} = true;
           };
+          seen0 = prelude.foldl' (acc: n: acc // { ${n.key} = true; }) { } structuralNodesRaw;
+          nodes0 = structuralNodes;
         };
-        result = prelude.foldl' addTarget seededOwn (edgesAt id);
       in
       result.nodes;
   };

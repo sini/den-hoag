@@ -53,6 +53,7 @@ let
       select
       resolve
       ;
+    graph = denHoag.internal.genGraph;
   } { };
   # A reach-graph stub `self` (resolved-aspects / declarations / children).
   mkStub = graph: {

@@ -42,6 +42,7 @@ let
         aspects
         select
         ;
+      graph = denHoag.internal.genGraph;
     } instanceArgs;
   ra = mkRa { };
 
