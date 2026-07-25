@@ -2,11 +2,14 @@
 # ports, reproduced FAITHFULLY (value-identically) from the frozen v1 pin
 # (github:denful/den/11866c16, modules/aspects/batteries/), presented at `config.den.batteries.<name>`
 # via a flake-parts MODULE imported into the flakeModule (mirroring v1's flakeModule importing each
-# battery module). The `lib`/`withSystem`/`inputs`/`self`/`den` a battery body closes over come from the
-# MODULE ARGS (the flake-parts module system supplies them) — the compat layer captures no nixpkgs `lib`
-# (R10 consumer-lib principle, the same posture as home-env's hostConf). Every battery body stays LAZY:
-# a battery is inert data consumed BY REFERENCE (`den.default.includes = [ den.batteries.<x> ]` / a user
-# aspect's includes); an unreferenced battery never forces its `lib`/`withSystem`/`den` reads (v1 posture).
+# battery module). The `lib`/`inputs`/`den` a battery body closes over come from the MODULE ARGS (the
+# flake-parts module system supplies them) — the compat layer captures no nixpkgs `lib` (R10 consumer-lib
+# principle, the same posture as home-env's hostConf). (The flake-parts `withSystem`/`self` the v1 inputs'/
+# self' batteries once closed over are gone: those values are now delivered as inherited NODE attributes
+# via the kernel `den.systemViews` fold, constructed at the compat boundary in bridge.nix — see the inputs'/
+# self' records below, retired to inert no-ops.) Every battery body stays LAZY: a battery is inert data
+# consumed BY REFERENCE (`den.default.includes = [ den.batteries.<x> ]` / a user aspect's includes); an
+# unreferenced battery never forces its `lib`/`inputs`/`den` reads (v1 posture).
 #
 # The seven the CORPUS exercises: define-user, hostname, primary-user, host-aspects, inputs', self',
 # unfree. Five additional COVERAGE ports (corpus-unexercised, faithful to the frozen v1 pin — the
@@ -21,9 +24,7 @@ feat:
 {
   config,
   lib,
-  withSystem,
   inputs,
-  self,
   den,
   ...
 }:
@@ -223,14 +224,12 @@ let
         aspect, it configures `inputs'` for the corresponding Home Manager configuration.
       '';
 
-      mkAspect =
-        class: system:
-        withSystem system (
-          { inputs', ... }:
-          {
-            ${class}._module.args.inputs' = inputs';
-          }
-        );
+      # INERT no-op (source-compat): `inputs'` is now delivered as an inherited node attribute
+      # (den.systemViews → the scopeRoots fold → scope.inheritAll), so this battery emits nothing. Kept as a
+      # referenceable aspect record so `den.default.includes = [ den.batteries.inputs' ]` still resolves
+      # (byte-identical no-op). The former `${class}._module.args.inputs' = inputs'` seam — which rode the
+      # value through the module fixpoint and caused the nixpkgs↔config overlay recursion — is retired.
+      mkAspect = _class: _system: { };
 
       osAspect =
         { host }:
@@ -296,14 +295,10 @@ let
         aspect, it configures `self'` for the corresponding Home Manager configuration.
       '';
 
-      mkAspect =
-        class: system:
-        withSystem system (
-          { self', ... }:
-          {
-            ${class}._module.args.self' = self';
-          }
-        );
+      # INERT no-op (source-compat), the `self'` twin of inputs' above: delivered as an inherited node
+      # attribute (den.systemViews → scopeRoots fold → scope.inheritAll), so the former
+      # `${class}._module.args.self' = self'` seam is retired. Kept referenceable (byte-identical no-op).
+      mkAspect = _class: _system: { };
 
       osAspect =
         { host }:

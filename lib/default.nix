@@ -663,6 +663,23 @@ let
         };
       };
 
+      # den.systemViews.<system> = { <key> = <value>; } — the per-system EXTERNAL flake-value surface. An
+      # external per-system value (the flake's `inputs'`/`self'` — a `withSystem`-selected flake view, or any
+      # future per-system output) is a NODE attribute, not a handler write: the scopeRoots decorator folds
+      # `den.systemViews.${root.__entry.system}` onto each system-bearing root's decls, and `scope.inheritAll`
+      # (inherited-context, attr 1) carries it down the P edges to that root and its cells. A producer
+      # `{ inputs', ... }:` then DISCOVERS it through the ordinary inherited-attribute surface (resolveParametric's
+      # enriched-context / a class-module's bindingsAt) — zero `_module.args`, zero enrich. Absent (the native
+      # default `{ }`) ⇒ the decorator folds nothing (byte-identical). The value is a per-system memo: two roots
+      # on one system reference the same thunk, forced only when a producer reads it (Nix laziness).
+      systemViewsDecl = {
+        options.den.systemViews = merge.mkOption {
+          type = merge.types.lazyAttrsOf merge.types.raw;
+          default = { };
+          description = "Per-system external flake-view values: `<system> = { inputs'; self'; ... }`, folded onto each system-bearing root's decls and inherited down P edges (attr 1). The delivery surface for the flake's per-system inputs'/self'.";
+        };
+      };
+
       # den.overrides — the pre-identity-freeze match/rewrite tier (§2.4). An ordered list of
       # `{ match = { kind ?; from ?; to ?; data ? {}; }; rewrite = <data-patch> | null; }`: a framework
       # edge intent passes through BEFORE its edgeId, first match wins, `rewrite = null` suppresses.
@@ -878,6 +895,7 @@ let
           outputsDecl
           systemsDecl
           axesDecl
+          systemViewsDecl
           overridesDecl
           demandKindsDecl
           demandContextDecl
@@ -1039,13 +1057,29 @@ let
       # (dispatch-policies.nix:15-33) — sibling-isolated (#613) because only the emitting root's decls
       # carry it. The compiled-rule GATES read it (the shim-side fn wrap, `gateSuppression`);
       # it is never a module binding read (gen-bind binds destructured args only) and never traced.
+      # …AND each per-system external flake-view (den.systemViews) folded onto its system-bearing root's decls:
+      # the flake's `inputs'`/`self'` delivered as INHERITED NODE ATTRIBUTES, not a `_module.args` battery. A
+      # root carries its OWN system coordinate on `__entry.system` (a host/home); the view selected by that
+      # coordinate lands in its decls, and inherited-context (attr 1, which strips only __edges/__containment/
+      # __coords) threads it to the root and its cells — a cell's system == its host's, so the host is the LCA
+      # of a system-homogeneous subtree and no single decl above a mixed-system boundary ever carries a
+      # system-specific value. A root with no system coordinate (an environment/cluster) folds nothing; a
+      # system with no declared view folds nothing — both byte-identical. Cheap thunks, forced only when a
+      # producer reads inputs'/self' (Nix laziness), so an unread fleet is byte-neutral.
+      systemViews = ent.config.den.systemViews or { };
       scopeRoots = builtins.mapAttrs (
         id: node:
+        let
+          nodeSystem = node.decls.__entry.system or null;
+          systemView =
+            if nodeSystem != null && systemViews ? ${nodeSystem} then systemViews.${nodeSystem} else { };
+        in
         node
         // {
           decls =
             node.decls
             // (prePass.relationBindings.${id} or { })
+            // systemView
             // prelude.optionalAttrs (prePass.suppressions ? ${id}) {
               __denSuppressedPolicies = prePass.suppressions.${id};
             };

@@ -50,6 +50,10 @@
   lib,
   config,
   options,
+  # flake-parts flake-level args — the ONE seam where `withSystem`/`inputs` are in scope. Used to construct
+  # the per-system flake views (inputs'/self') handed to the kernel `den.systemViews` surface.
+  withSystem,
+  inputs,
   ...
 }:
 let
@@ -347,11 +351,47 @@ let
   # through THAT channel regardless of the two lines below. These control the FALLBACK grain for hosts
   # with no per-host instantiate (M1): one `crossNixos` for every such nixos member when `den.nixpkgs`
   # is set, else the nixpkgs-free `collect` terminal (member keys present, no build).
+  # The per-system flake VIEWS — the flake's external `inputs'`/`self'` values, one per declared system,
+  # constructed HERE (the compat boundary, the only seam with `withSystem`/`inputs`/`self` in scope) and
+  # threaded into the native kernel `den.systemViews` option as a hoagModule carrying a PLAIN Nix value.
+  # The kernel folds each system's view onto its system-bearing root's decls and `scope.inheritAll` delivers
+  # inputs'/self' to producers as inherited node attributes — retiring v1's `_module.args` battery seam
+  # (which rode the value through the module fixpoint, the source of the nixpkgs↔config overlay recursion).
+  #
+  # The value rides as a plain closure straight to the `lazyAttrsOf raw` kernel option, NEVER through the
+  # flake-parts `config.den` freeform (`anything`) merge — `anything` deep-`isAttrs`-recurses to decide its
+  # merge, which would force the nested inputs'/self' thunks (transposing `self`) at every fleet. Each view
+  # is config-INDEPENDENT `withSystem` data, forced only when a producer reads it (Nix laziness): the overlay
+  # quirk resolves EAGERLY at structural time to a concrete list, so no raw function rides into
+  # `nixpkgs.overlays` and the cycle dissolves.
+  #
+  # `inputs'` = per-input `raw // (withSystem system).inputs'.<name>`: the bare flake-parts `inputs'` carries
+  # only the per-system TRANSPOSITION outputs and LACKS `.overlays`/`.nixosModules` that aspects read —
+  # merging the raw flake outputs (`inputs.<name>`) back in supplies them. `self'` = the BARE
+  # `(withSystem system).self'` (v1 delivers bare self', not `self // …`). The distinct systems come from the
+  # flake's declared `config.systems` (the `withSystem` domain); every host system is a `withSystem` system
+  # by construction, so this is a superset (an unread per-system view is a lazy thunk, byte-neutral).
+  flakeViews = lib.genAttrs (config.systems or [ ]) (
+    system:
+    let
+      perSystemInputs = withSystem system ({ inputs', ... }: inputs');
+    in
+    {
+      inputs' = builtins.mapAttrs (name: raw: raw // (perSystemInputs.${name} or { })) inputs;
+      self' = withSystem system ({ self', ... }: self');
+    }
+  );
+  systemViewsModule = {
+    config.den.systemViews = flakeViews;
+  };
   built =
     if npkgs == null then
-      compat.mkDen fleet
+      compat.mkDenWith fleet { hoagModules = [ systemViewsModule ]; }
     else
-      compat.mkDenWith fleet { nixosTerminal = mkCrossNixos npkgs; };
+      compat.mkDenWith fleet {
+        nixosTerminal = mkCrossNixos npkgs;
+        hoagModules = [ systemViewsModule ];
+      };
 in
 {
   # nixpkgs-native raw absorption: a freeform SUBMODULE whose `freeformType` deep-merges the whole `den.*`
