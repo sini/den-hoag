@@ -35,7 +35,7 @@ let
   # recompute of an entry's id_hash read THESE fns, so the helper lives in exactly one place per
   # namespace (no drift, Law C6); an aspect node stamps its OWN id_hash via gen-aspects' universal option.
   identityPreimage = import ./identity-preimage.nix { inherit aspects schema; };
-  inherit (identityPreimage) aspectIdHash classIdHash;
+  inherit (identityPreimage) aspectIdHash aspectIdHashFor classIdHash;
   # The edge-kind registry (den.edges): pre-registered vocabulary + validation (§2.2), the override tier
   # (§2.4), the synthetic edge-assembly pipeline (§2.1), and the cell/containment nest-edge producer
   # (§4.2/§4.6). Its `output` stratum is dogfooded into the fleet strata order below; the compiled table
@@ -2527,7 +2527,9 @@ in
   # den's namespace-identity helpers (§A2) — the SINGLE authority for the aspect/class id_hashes (routed
   # onto gen-native's `aspects.aspectId` / `schema.hashIdentity`), so a downstream recompute of an entry's
   # id_hash reads the SAME fn the kernel authorities use (Law C6 — "shared BY CONSTRUCTION", no formula twin).
-  inherit aspectIdHash classIdHash;
+  # `aspectIdHashFor origin key` is the origin-aware form (`aspectIdHash = aspectIdHashFor []`): a local
+  # origin (e.g. a namespace) stamps its aspects with `origin=["<name>"]`, partitioning their content-address.
+  inherit aspectIdHash aspectIdHashFor classIdHash;
   # den's declaration vocabulary (verb): the tagged constructors + stratum classifier +
   # identity-law checks, independent of any one mkDen instance. Policies read `declare.member`,
   # `declare.edge`, etc.

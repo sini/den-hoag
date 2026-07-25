@@ -144,18 +144,23 @@ let
   #   API surfaces (denHoag.<x>):
   #     mkDen     — the four-concern driver (the shim's whole output target).
   #     classes   — the class-tag entry registry (identity-law class entries).
-  #     aspectIdHash / classIdHash — the §A2 namespace-identity helpers (lib/identity-preimage.nix, routed
-  #                 onto gen-native's `aspects.aspectId` / `schema.hashIdentity`): the SINGLE authority for
-  #                 the aspect/class id_hash, so a shim entry's recomputed id_hash reads the kernel fn
-  #                 rather than a formula twin (Law C6, no drift).
+  #     aspectIdHash / aspectIdHashFor / classIdHash — the §A2 namespace-identity helpers
+  #                 (lib/identity-preimage.nix, routed onto gen-native's `aspects.aspectId` /
+  #                 `schema.hashIdentity`): the SINGLE authority for the aspect/class id_hash, so a shim
+  #                 entry's recomputed id_hash reads the kernel fn rather than a formula twin (Law C6, no
+  #                 drift). `aspectIdHashFor origin key` is the origin-aware form (`aspectIdHash =
+  #                 aspectIdHashFor []`): the namespace factory stamps its aspects `origin=["<name>"]`.
   #     declare   — the declaration-constructor vocabulary (edge/drop/spawn/member/delivery).
   #     sel       — the selector vocabulary (neededBy / nameMatches predicates).
   #     query     — the §3 query calculus over a supplied flat labeled edge list onto gen-graph. The
   #                 re-layered cross-scope channel gather (lib/compat/gather.nix) routes its EXPOSE arm
   #                 through it (paths mode) — the sole graph traversal; the collect/collectAll/broadcast
   #                 arms are one-hop predicate filters over the node set (no query layer).
-  #     internal  — the non-public builders; the shim reaches ONLY `internal.terminal.collect` (the
-  #                 nixpkgs-free terminal for its systemFor-injecting instantiate wrapper).
+  #     internal  — the non-public builders; the shim reaches `internal.terminal.collect` (the nixpkgs-free
+  #                 terminal for its systemFor-injecting instantiate wrapper) and `internal.classifyKey` (the
+  #                 aspect-key facet/class/channel classifier, which the namespace factory reads to tell a
+  #                 namespace's sub-aspect children — which carry an origin-stamped id — from its
+  #                 class-content / facet keys, which do not).
   #   CONFIG surfaces the shim SETS on mkDen input (`config.den.*`, via the module system — NOT denHoag.<x>
   #   calls, so not scanned): aspects, policies, classes, quirks, include, membership, contentClass,
   #   schema, <kind> instances, nixpkgs, interpret (the M1 declared-classes + interpret seams ride here).
@@ -164,13 +169,17 @@ let
     "mkDen"
     "classes"
     "aspectIdHash"
+    "aspectIdHashFor"
     "classIdHash"
     "declare"
     "sel"
     "query"
     "internal"
   ];
-  seamInternalSurfaces = [ "terminal" ];
+  seamInternalSurfaces = [
+    "terminal"
+    "classifyKey"
+  ];
 
   # Scan the shim source for `denHoag.<ident>` and `inherit (denHoag) <idents>` references.
   compatDir = "${denHoagSrc}/lib/compat";
@@ -343,15 +352,21 @@ in
       expr = seamViolations;
       expected = [ ];
     };
-    # the internal-surface sub-seam is exactly `terminal` (the collect terminal) — a new `internal.<x>`
-    # reached from the shim widens the private-surface coupling and must be reviewed.
+    # the internal-surface sub-seam is exactly `terminal` (the collect terminal) + `classifyKey` (the
+    # namespace factory's aspect-key classifier) — a new `internal.<x>` reached from the shim widens the
+    # private-surface coupling and must be reviewed. Sorted, so the assertion is file-iteration-order-robust.
     test-shim-internal-seam = {
-      expr = nixpkgsLib.unique (
-        builtins.concatMap (
-          f: capturesOf "denHoag\\.internal\\.([a-zA-Z_][a-zA-Z0-9_]*)" (readCompat f)
-        ) compatFiles
+      expr = builtins.sort (a: b: a < b) (
+        nixpkgsLib.unique (
+          builtins.concatMap (
+            f: capturesOf "denHoag\\.internal\\.([a-zA-Z_][a-zA-Z0-9_]*)" (readCompat f)
+          ) compatFiles
+        )
       );
-      expected = [ "terminal" ];
+      expected = [
+        "classifyKey"
+        "terminal"
+      ];
     };
 
     # the checked-in core file list has not drifted from the on-disk core set (adding a core file must

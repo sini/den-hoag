@@ -16,6 +16,18 @@
 # The module runs in the CONSUMER's flake-parts eval (v1's namespace module did too), so `lib` here is the
 # consumer's nixpkgs lib — the substrate's nixpkgs-lib-free `lib/**` purity is untouched (this file is a
 # top-level flake OUTPUT, never part of the `import ./lib { … }` assembly).
+#
+# Threaded: `aspectIdHashFor origin key` (the origin-aware content-address, gen-native `aspectId`) + the
+# aspect-key classifier (`classifyKey` — the facet/class/channel vocabulary in one call) + the v1 STRUCTURAL
+# keyset (`structuralKeysSet` — provides/policies/excludes/into/classes/__*/_module/_, the pipeline-internal
+# surfaces). The latter two together tell a namespace's sub-aspect children (which carry an id) from its
+# class-content / facet / structural keys (which do not), so the origin-stamp walk below descends exactly the
+# aspect nodes.
+{
+  aspectIdHashFor,
+  classifyKey,
+  structuralKeysSet,
+}:
 name: sources:
 { config, lib, ... }:
 let
@@ -67,10 +79,53 @@ let
     };
     config.flake.denful.${name} = config.den.aspects.${name} or { };
   };
+
+  # ORIGIN-STAMP. A namespace IS a local ORIGIN: every aspect it contributes carries `origin=["<name>"]` in
+  # its id_hash (via gen-aspects `aspectId` — the formula gen-link `nodeId` delegates to; see
+  # aspectIdHashFor). Key + attr-placement stay UNCHANGED — the den-brackets nav, and include/dedup/delivery
+  # (all BY-KEY, lib/attributes/resolved-aspects.nix), are byte-neutral; ONLY the internal, never-emitted
+  # id_hash content-address shifts (drv-neutral, partition-gated).
+  #
+  # The walk RE-SOURCES off the RAW authored alias content (`config.${name}` — what aliasModule copies) and
+  # NOT the typed merged `config.den.aspects.${name}`: enumerating that merged node's keyset to redefine the
+  # same node structurally self-references its keyset → `infinite recursion`. Reading one option (the raw
+  # keyset/values) to WRITE another (`den.aspects.<path>.id_hash`) is acyclic. Each node's key is its
+  # ATTR-PATH (raw content carries no typed `.key`).
+  #
+  # Children fall in THREE buckets; only the third is a sub-aspect (recurse + stamp):
+  #   • REGISTERED content — a facet/class/channel key (`classifyKey` returns cleanly): nixos/home-manager,
+  #     settings/includes/meta/tags/… — carry no aspect id ⇒ SKIP.
+  #   • STRUCTURAL — a pipeline-internal key (`structuralKeysSet`): `provides` (the sub-aspect CONTAINER, not
+  #     an aspect itself), policies/excludes/into/classes/__*/_module/_ — not aspects, and stamping an
+  #     id_hash STRING under `provides` would poison the legacy-provides walk's `attrNames provides` ⇒ SKIP.
+  #   • UNREGISTERED nested-aspect — the freeform-absorbed branch `classifyKey` aborts on (neither structural
+  #     nor a registered key) ⇒ the actual sub-aspect ⇒ STAMP + recurse.
+  # A wrapped-fn / guard aspect authored under a namespace is a bare FUNCTION (not an attrset) ⇒ fails the
+  # `isAttrs` recurse-guard below ⇒ SKIP, a named ceiling (corpus-zero, sibling to the externals-mixin
+  # ceiling above). id_hash is a `readOnly` option with a default, so one config def legally overrides it;
+  # the stamp value reads only the path (never id_hash) ⇒ lazy-safe against its own contribution.
+  isSubAspectKey =
+    key: !(structuralKeysSet ? ${key}) && !(builtins.tryEval (classifyKey name key)).success;
+  stampNode =
+    path: node:
+    let
+      key = builtins.concatStringsSep "/" ([ name ] ++ path);
+      subKeys = builtins.filter (k: builtins.isAttrs (node.${k} or null) && isSubAspectKey k) (
+        builtins.attrNames node
+      );
+    in
+    {
+      id_hash = aspectIdHashFor [ name ] key;
+    }
+    // lib.genAttrs subKeys (k: stampNode (path ++ [ k ]) node.${k});
+  originStampModule = {
+    config.den.aspects.${name} = stampNode [ ] (config.${name} or { });
+  };
 in
 {
   imports = [
     aliasModule
+    originStampModule # after aliasModule — the raw content exists to re-source + stamp against
     outputModule
     classModule
   ]

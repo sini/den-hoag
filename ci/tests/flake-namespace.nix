@@ -19,6 +19,7 @@
 #       `<hardware/amdgpu/sea-islands>` shape) resolves + DELIVERS the marker to the host's NixOS config. The
 #       whole chain: factory → alias → den.aspects → deep bracket → delivered class content.
 {
+  denHoag,
   denCompat,
   denHoagFlakeModule,
   homeManagerModule,
@@ -82,11 +83,16 @@ in
           # (a) the alias put the authored content into the den.aspects tree the resolver reads.
           landedInDenAspects = den.aspects.hw.amdgpu ? nixos;
           # (b) the deep bracket resolved through resolveWithProvidesFallback and DELIVERED to the host.
+          #     (unchanged, still green — proves the id shift did NOT break by-key delivery.)
           deepDelivered = igloo.environment.variables.HW_DEEP or "<missing>";
+          # (c) the PLACED namespace node carries `origin=["hw"]` (the origin-stamp landed on den.aspects,
+          #     not only the helper). id_hash is drv-invisible, so (b) delivery is untouched.
+          nodeOrigin = den.aspects.hw.amdgpu.id_hash == denHoag.aspectIdHashFor [ "hw" ] "hw/amdgpu";
         };
         expected = {
           landedInDenAspects = true;
           deepDelivered = "deep";
+          nodeOrigin = true;
         };
       }
     );

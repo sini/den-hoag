@@ -305,7 +305,20 @@ let
   # `{ namespace = <curried name: sources: module fn>; }` (lib/compat/namespace.nix). Reads the SAME feature
   # record as the wiring/dendritic — ONE register SSOT.
   mkFlakeNamespace =
-    feat: prelude.optionalAttrs feat.namespace { namespace = import ./namespace.nix; };
+    feat:
+    prelude.optionalAttrs feat.namespace {
+      # Thread the origin-aware content-address helper + the aspect-key classifier + the v1 structural keyset:
+      # the factory stamps each namespace-placed aspect with `origin=["<name>"]` (a namespace = a local
+      # origin), classifying its sub-aspect children through `classifyKey` (registered content) and
+      # `structuralKeysSet` (pipeline-internal keys like `provides`) so neither is mistaken for an aspect.
+      # Pure gen — no consumer `lib` edge. `classifyKey` is a reviewed `internal.` sub-seam
+      # (ci/tests/boundary.nix); reached dotted so the boundary scan tracks it.
+      namespace = import ./namespace.nix {
+        inherit (denHoag) aspectIdHashFor;
+        inherit (keyClassification) structuralKeysSet;
+        classifyKey = denHoag.internal.classifyKey;
+      };
+    };
   flakeNamespace = mkFlakeNamespace defaultFeatures;
   # Deep-merge the nested `battery` sub-record so a partial `{ battery.hostname = false; }` override keeps the
   # OTHER battery defaults on (a shallow `//` would replace the whole `battery` record with the singleton).
