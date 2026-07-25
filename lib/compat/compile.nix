@@ -877,7 +877,7 @@ let
   # checks pass; a stray string would abort named. `ctx` (the firing scope's coords) and `normalizeList`
   # serve ONLY the content-set include arm (the scope-coord emission identity + grounding).
   translateEffect =
-    ing: normalizeList: aspectRec: ctx: effect:
+    ing: normalizeList: aspectRec: policyId: ctx: effectIdx: effect:
     let
       kind = effect.__policyEffect or null;
     in
@@ -1081,7 +1081,7 @@ let
       # fold left-to-right into a gen-pipe op DAG on the named channel, the delivery/site stages ride as
       # inert markers (pipe.nix `compilePipe`). No value is forced (Law C2); a deferred (config-thunk)
       # channel value crosses the compiled pipe untouched to the terminal (parity-watch items 5, 6).
-      [ (pipeLib.compilePipe declare effect.value) ]
+      [ (pipeLib.compilePipe declare policyId effectIdx effect.value) ]
     else if kind == "instantiate" then
       # Native per-cluster instantiation (nixidy k8s; PIN.md census) — a spawn of the entity's class
       # content. The entity carries its own instantiate/intoAttr metadata (read at output assembly).
@@ -1141,9 +1141,16 @@ let
   # it. A `for`/`when` policy record (`{ __isPolicy; fn }`) contributes its inner `fn`'s formals + effects
   # the same way (`innerFn`). A value-conditional body (emits nothing at concern-policies' value-less
   # probe) has its stratum derived per-declaration there; this compile stays stratum-agnostic.
-  compilePolicy = ing: normalizeList: aspectRec: value: {
+  compilePolicy = ing: normalizeList: aspectRec: policyId: value: {
     __condition = fnArgsOf (innerFn value);
-    fn = ctx: prelude.concatMap (translateEffect ing normalizeList aspectRec ctx) (innerFn value ctx);
+    # `imap0` threads each effect's within-policy index (its position in the body's effect list) into
+    # `translateEffect` alongside the owning policy identity — the per-declaration disambiguator a compiled
+    # deriving `pipe.from` folds into its gen-pipe declaration-`site` (pipe.nix `compilePipe`).
+    fn =
+      ctx:
+      builtins.concatLists (
+        prelude.imap0 (translateEffect ing normalizeList aspectRec policyId ctx) (innerFn value ctx)
+      );
   };
 
   # A `__denCanTake` policy — the FORMAL-PRESERVING compile path (the twin of the bare-ctx `compilePolicy`
@@ -1164,7 +1171,7 @@ let
   # value-absent target renders a `__dropped` no-op — translateDelivery). A CORPUS USER policy that emits
   # value-conditionally will hit the same misclassification — a C8 watch item: it aborts loudly by design
   # (never silently mis-fires), and the resolution is to rewrite it in the canTake + null-target-drop shape.
-  compileCanTake = ing: normalizeList: aspectRec: value: {
+  compileCanTake = ing: normalizeList: aspectRec: policyId: value: {
     # The route's fixed SHAPE retires into an explicit `__condition` coord set — the coords it gates
     # on, in the `functionArgs` shape (`false` = required). A hand-written formal lambda per shape is no
     # longer needed now that a rule's gate can be declared as data.
@@ -1180,7 +1187,11 @@ let
         errors.unsupportedEffect "canTake:${value.__denCanTake}";
     # Emits UNCONDITIONALLY given its coordinates (a single-group probe classifies it as resolution); a
     # value-absent target renders a `__dropped` no-op (translateDelivery).
-    fn = ctx: prelude.concatMap (translateEffect ing normalizeList aspectRec ctx) (value.fn ctx);
+    fn =
+      ctx:
+      builtins.concatLists (
+        prelude.imap0 (translateEffect ing normalizeList aspectRec policyId ctx) (value.fn ctx)
+      );
   };
 
   compilePolicies =
@@ -1203,10 +1214,10 @@ let
         # name IS the attr key here — user-to-host etc.), so a pre-pass-collected exclude suppresses it
         # at the emitting scope + descendants.
         prelude.genAttrs policyNames (
-          name: gateSuppression name (compilePolicy ing normalizeList aspectRec policies.${name})
+          name: gateSuppression name (compilePolicy ing normalizeList aspectRec name policies.${name})
         )
         // prelude.genAttrs canTakeNames (
-          name: gateSuppression name (compileCanTake ing normalizeList aspectRec policies.${name})
+          name: gateSuppression name (compileCanTake ing normalizeList aspectRec name policies.${name})
         );
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
@@ -1521,7 +1532,9 @@ let
       {
         name = "__aspectInclude__${ref.name}";
         value =
-          gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref)
+          gateSuppression (ref.name or null) (
+            compilePolicy ing normalizeList aspectRec "__aspectInclude__${ref.name}" ref
+          )
           // familyStamps ref
           // prelude.optionalAttrs (firesAt != [ ]) { __firesAtKinds = firesAt; };
       }
@@ -1765,7 +1778,9 @@ let
               name = "__kindInclude__${kind}__policy__${toString i}";
               value =
                 let
-                  base = gateSuppression (ref.name or null) (compilePolicy ing normalizeList aspectRec ref);
+                  base = gateSuppression (ref.name or null) (
+                    compilePolicy ing normalizeList aspectRec "__kindInclude__${kind}__policy__${toString i}" ref
+                  );
                 in
                 base
                 // {

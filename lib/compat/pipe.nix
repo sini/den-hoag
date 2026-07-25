@@ -267,7 +267,7 @@ in
   # named channel: the deriving op DAG (rooted at `name`), the delivery routes, and the site markers — all
   # inert (Law C2, NO EFFECT RUNTIME). den-hoag's collection stratum consumes it at channel wiring.
   compilePipe =
-    declare: value:
+    declare: policyId: effectIdx: value:
     let
       pipeName = value.pipeName;
       compiled = map (stageOp declare) (value.stages or [ ]);
@@ -298,11 +298,28 @@ in
       # deriving pipe delivering to an identity-deduped channel is the boundary; making the flatten
       # dedup-sound there needs a per-element identity in gen-pipe `over` (a gen-pipe change, out of scope).
       flatten1 = v: if builtins.isList v then v else [ v ];
+      # Declaration-site derived-channel identity (gen-pipe L12a). gen-pipe's `mkDerived` names a derived
+      # channel by input+op alone (`<input>.<op>`), so two structurally-distinct deriving declarations over
+      # the SAME base+op collapse onto one id and compose's first-wins byId collection silently drops the
+      # later's predicate — at EVERY depth of a multi-stage chain (the shared prefix ids collide too). A
+      # per-declaration `site` token folds into the derived id (`<base>#<idOf site>`), giving distinct
+      # declarations distinct ids with NO ordinal renamer; it feeds the internal id ONLY — compose recomputes
+      # the channel NAME as `<input>.<op>.<declIndex>` from the op + input name, never the site, so natural
+      # names are untouched. The token is INJECTIVE per declaration: the owning policy's identity dash-joined
+      # to its within-policy effect index (`#`-free — gen-pipe adds the single `#`). Distinct policies →
+      # distinct policyId; one policy's distinct pipe declarations → distinct effectIdx; den-hoag never shares
+      # a pipe node ⇒ no false merge. Baked at construction on the flatten `over` root — chains are linear, so
+      # id-stacking propagates the one root site to every depth. Confined to deriving pipes (an as/to pipe
+      # keeps its bare base ref, byte-identical and never disambiguated).
+      site = "${policyId}-${toString effectIdx}";
       flattenBase =
         if derives == [ ] then
           channelRef pipeName
         else
-          declare.pipe.over (vals: prelude.concatMap flatten1 vals) (channelRef pipeName);
+          declare.pipe.over {
+            f = vals: prelude.concatMap flatten1 vals;
+            inherit site;
+          } (channelRef pipeName);
       # left-to-right operator composition onto the (flattened) base channel (§2.4 "select channel +
       # left-to-right op composition"): each deriving stage's transformer is applied to the running channel,
       # in order. `dag` is the DERIVED TERMINAL: the (flatten) base ref when the pipe has no deriving stages,

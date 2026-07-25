@@ -1383,94 +1383,30 @@ let
       # channel's OWN value in place (v1 `applyPipeEffects` on the untargeted effects) — its terminal
       # SUPERSEDES the base at the binding grain (below, threaded to output-modules as `derivedBaseNames`).
       # gen-pipe's `mkDerived` names a derived channel `<input>.<op>` (predicate-blind), so TWO policies
-      # deriving the SAME base with the SAME op collide on one id and compose's first-wins byId dedup
-      # SILENTLY drops the later policy's predicate — AT EVERY DEPTH, not just the terminal: two multi-stage
-      # policies (`[ filter, transform ]`) share intermediate `<base>.filter` ids too, so a terminal-only
-      # rename would leave both terminals' `__derive.inputs` pointing at ONE surviving intermediate (policy-b's
-      # non-terminal predicate dropped). When a base carries MULTIPLE untargeted-deriving pipes, rename the
-      # WHOLE chain of each colliding pipe (`renameChain` — every derived node gets a per-pipe-ordinal +
-      # per-depth unique id, `__derive.inputs` re-pointed to the renamed predecessor), so no CSE collision
-      # arises at any depth and both policies' every stage survives. A LONE untargeted pipe (`udBaseCount == 1`)
-      # is UNTOUCHED — it keeps its natural gen-pipe names (the composed-name form the white-box goldens
-      # assert); its terminal id resolves through `idToName` below. SCOPED to untargeted-deriving ONLY: an
-      # as/to/route pipe (`routes ≠ [ ]`) is never renamed, so the as-trio is byte-identical by construction.
-      # The rename must FEED the compose — `pipeChannelOps` walks the RENAMED chains, else the stamp is inert
-      # (the `idToName` miss THROW in `derivedBaseNames` catches that).
+      # deriving the SAME base+op would collide on one id and compose's first-wins byId dedup would SILENTLY
+      # drop the later policy's predicate — at EVERY DEPTH of a multi-stage chain (the shared prefix ids
+      # collide too). That disambiguation is now routed through gen-pipe's declaration-`site` id: `compilePipe`
+      # stamps a per-declaration site (the owning policy identity + within-policy effect index) on the flatten
+      # `over` root, and id-stacking propagates it to every depth — so distinct declarations carry distinct ids
+      # WITHOUT the old `<base>.__ud.<ord>.<depth>` ordinal renamer, and the site feeds the internal id ONLY,
+      # leaving the composed NAMES the natural `<input>.<op>.<declIndex>`. Here the derived terminals are simply
+      # COLLECTED (base → terminal id); `derivedBaseNames` resolves each id to its composed name via `idToName`.
+      # SCOPED to untargeted-deriving ONLY: an as/to/route pipe (`routes ≠ [ ]`) has no derived-supersede
+      # terminal, so the as-trio is untouched.
       isUntargetedDeriving =
         p:
         (p.derived.__derived or false)
         && (p.routes or [ ]) == [ ]
         && (p.targeted or [ ]) == [ ]
         && !(builtins.any (m: (m.__pipeMark or null) == "expose") (p.marks or [ ]));
-      # how many untargeted-deriving pipes share each base — the collision the rename guards against.
-      udBaseCount = prelude.foldl' (
-        acc: p:
-        if isUntargetedDeriving p then acc // { ${p.channel} = (acc.${p.channel} or 0) + 1; } else acc
-      ) { } (policiesRules.pipeOps or [ ]);
-      # Rename a colliding pipe's ENTIRE derive chain: each derived node gets a `<base>.__ud.<ord>.<depth>`
-      # id (depth = the node's derived-chain length, strictly decreasing base-ward, so unique within the
-      # linear chain), and its `__derive.inputs` are re-pointed to the renamed predecessors (a base ref is
-      # `__derived == false` → returned untouched, so the chain still roots on the registered channel). This
-      # makes intermediate nodes distinct across policies too, closing the multi-stage CSE collision. The
-      # explicit `name` makes gen-pipe's `nameOf` return it verbatim (op-independent — `honorWholeList` may
-      # still rewrite a node's op downstream without disturbing the name).
-      renameChain =
-        base: ord: d:
-        if (d.__derived or false) then
-          let
-            nm = "${base}.__ud.${toString ord}.${toString (builtins.length (pipeChainOf d))}";
-          in
-          d
-          // {
-            name = nm;
-            id = nm;
-            __derive = d.__derive // {
-              inputs = map (renameChain base ord) d.__derive.inputs;
-            };
-          }
-        else
-          d;
-      renamedPipes =
-        prelude.foldl'
-          (
-            acc: p:
-            if isUntargetedDeriving p then
-              if (udBaseCount.${p.channel} or 0) > 1 then
-                let
-                  renamedTerminal = renameChain p.channel acc.ord p.derived;
-                in
-                {
-                  ord = acc.ord + 1;
-                  ops = acc.ops ++ [ (p // { derived = renamedTerminal; }) ];
-                  terminals = acc.terminals ++ [
-                    {
-                      base = p.channel;
-                      inherit (renamedTerminal) id;
-                    }
-                  ];
-                }
-              else
-                acc
-                // {
-                  ops = acc.ops ++ [ p ];
-                  terminals = acc.terminals ++ [
-                    {
-                      base = p.channel;
-                      inherit (p.derived) id;
-                    }
-                  ];
-                }
-            else
-              acc // { ops = acc.ops ++ [ p ]; }
-          )
-          {
-            ord = 0;
-            ops = [ ];
-            terminals = [ ];
-          }
-          (policiesRules.pipeOps or [ ]);
+      # base → derived-terminal id, one per untargeted-deriving pipe. The site-disambiguated ids keep colliding
+      # same-base pipes distinct, so a plain collect suffices (the ordinal renamer is retired).
+      pipeTerminals = map (p: {
+        base = p.channel;
+        inherit (p.derived) id;
+      }) (builtins.filter isUntargetedDeriving (policiesRules.pipeOps or [ ]));
       pipeChannelOps = builtins.map honorWholeList (
-        prelude.concatMap (p: pipeChainOf p.derived) renamedPipes.ops
+        prelude.concatMap (p: pipeChainOf p.derived) (policiesRules.pipeOps or [ ])
       );
       # `as` delivery routes — gen-pipe `route` op records (built by `compilePipe`, from = derived terminal,
       # to = target channel ref). They join the ONE fleet compose alongside the channel decls: compose
@@ -1478,32 +1414,31 @@ let
       # `pipeChannelOps`, the target from its `den.quirks` channelDecl), then folds inbound deliveries at
       # the target per L11. Ordered AFTER `pipeChannelOps` so the whole-list-rewritten terminal (id-stable)
       # is collected first and a route's terminal ref dedups onto it.
-      pipeRouteOps = prelude.concatMap (p: p.routes or [ ]) renamedPipes.ops;
+      pipeRouteOps = prelude.concatMap (p: p.routes or [ ]) (policiesRules.pipeOps or [ ]);
       quirkDag = concernQuirks.compose {
         inherit quirks;
         policyOps = [ demandLib.demandChannel ] ++ pipeChannelOps ++ pipeRouteOps;
       };
       # composed-channel id → final name. compose keys `quirkDag.channels` by the FINAL name and records the
-      # source id on each channel (`.id`); a derived channel's id is either gen-pipe's natural `<input>.<op>`
-      # or — for a renamed collision terminal — the stamped name. This transpose lets `derivedBaseNames`
-      # resolve BOTH forms uniformly by the terminal id carried on `renamedPipes.terminals`.
+      # source id on each channel (`.id`); a derived channel's id is gen-pipe's natural `<input>.<op>`,
+      # optionally site-suffixed (`<input>.<op>#<site>`). This transpose lets `derivedBaseNames` resolve the
+      # terminal id (carried on `pipeTerminals`) back to its composed name.
       idToName = prelude.foldl' (acc: nm: acc // { ${quirkDag.channels.${nm}.id or nm} = nm; }) { } (
         builtins.attrNames quirkDag.channels
       );
       # base channel → [ terminal name … ] for the untargeted-deriving supersede (output-modules
       # `channelBindingsAt` aggregates each base's terminals, REPLACE-semantics — v1 runs each policy's
       # effect from the base values, concatenating the per-policy results). Each terminal id MUST resolve to
-      # a composed channel; a miss = the derive chain did not join `quirkDag` (rename inert / unconsumed) →
-      # THROW, naming the id.
+      # a composed channel; a miss = the derive chain did not join `quirkDag` (unconsumed) → THROW, naming the id.
       derivedBaseNames = prelude.foldl' (
         acc: t:
         let
           nm =
             idToName.${t.id}
-              or (throw "den-hoag: untargeted-deriving terminal id `${t.id}` (base `${t.base}`) resolves to no composed channel — the derive chain did not join quirkDag (rename inert / unconsumed)");
+              or (throw "den-hoag: untargeted-deriving terminal id `${t.id}` (base `${t.base}`) resolves to no composed channel — the derive chain did not join quirkDag (unconsumed)");
         in
         acc // { ${t.base} = (acc.${t.base} or [ ]) ++ [ nm ]; }
-      ) { } renamedPipes.terminals;
+      ) { } pipeTerminals;
 
       # classOfNode — the producing-scope → class-entry function (§2.5). Resolve each kind's declared
       # `contentClass` (a class-name string or an entry) to a class entry; a kind with no mapping is

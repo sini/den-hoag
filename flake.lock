@@ -533,11 +533,11 @@
         "gen-select": "gen-select"
       },
       "locked": {
-        "lastModified": 1784289830,
-        "narHash": "sha256-cxs8MJWLBamhTtJVJFQCBIm6VInrBH7eUqSwKFIjCQQ=",
+        "lastModified": 1784937675,
+        "narHash": "sha256-Fonm87aSLbNH4F4lTflgDTmorD7GqaK03vpWrLMquwY=",
         "owner": "sini",
         "repo": "gen-pipe",
-        "rev": "debd089b99bdd87cdf90b4d8f35e3c47a54bf743",
+        "rev": "535093083069ec2cfe6d373c08b12305939462ee",
         "type": "github"
       },
       "original": {

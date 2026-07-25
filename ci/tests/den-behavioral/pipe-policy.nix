@@ -479,10 +479,10 @@ in
     );
 
     # Multi-STAGE multi-policy: two policies on the same base, each `[ filter, transform ]` with DISTINCT
-    # predicates. Their INTERMEDIATE filter nodes share the predicate-blind `<base>.filter` id, so a
-    # terminal-only rename would collapse them (compose first-wins) and policy-b's filter would be silently
-    # replaced by policy-a's — dropping a non-terminal predicate. Full-chain rename gives each stage a
-    # distinct id, so both policies' filter AND transform survive.
+    # predicates. Their INTERMEDIATE filter nodes would share the predicate-blind `<base>.filter` id, so
+    # without disambiguation compose's first-wins byId dedup would silently replace policy-b's filter with
+    # policy-a's — dropping a non-terminal predicate. Each declaration's gen-pipe `site` folds a distinct id
+    # into every stage (the site propagates down the linear chain), so both policies' filter AND transform survive.
     test-pipe-multi-policy-multi-stage = denTest (
       { den, igloo, ... }:
       {
