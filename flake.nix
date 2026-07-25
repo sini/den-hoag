@@ -75,6 +75,10 @@
         # `__isWrappedFn` functor — the same wrap the type applies to native guard fns. Injected directly
         # (like `schema`/`edge`), not reached through `denHoag`.
         aspects = inputs.gen-aspects.lib;
+        # gen-graph — the ordered preorder-fold calculus (`foldPreorder`). The compat aspect-include
+        # reachability walk routes through it (a graph traversal expressed as gen's primitive, not a
+        # hand-rolled recursion), the same substrate the resolved-aspects forward-expansion rides.
+        graph = inputs.gen-graph.lib;
         edge = inputs.gen-edge.lib;
         # gen-edge's core primitives (`edgeSortKey`/`renderName`/`traceEntryOf`) — the frozen trace
         # renderer the parity harness renders BOTH arms into. gen-edge's public lib deliberately keeps

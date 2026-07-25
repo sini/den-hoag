@@ -12,6 +12,9 @@
   prelude,
   schema,
   aspects,
+  # gen-graph — the ordered preorder-fold calculus (`foldPreorder`), threaded to compile.nix for the
+  # aspect-include reachability walk (a graph traversal routed through gen's primitive, not hand-rolled).
+  graph,
   # gen-merge's mkOption/types — threaded to flake-module.nix for the shared facet keySemantics vocabulary.
   merge,
   edge,
@@ -46,6 +49,7 @@ let
       sentinels
       aspects
       schema
+      graph
       ;
     inherit (denHoag) declare aspectIdHash;
     # den-hoag's built-in class set (`denHoag.classes` = nixos/darwin/home-manager; k8s-manifests is

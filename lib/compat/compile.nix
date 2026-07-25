@@ -15,6 +15,10 @@
   errors,
   sentinels,
   aspects,
+  # gen-graph's ordered preorder-fold calculus (`foldPreorder`) — the aspect-include reachability walk
+  # (`aspectIncludeWalk`) routes through it: a pre-order DFS fold over an accessor-described graph,
+  # threading a caller-owned accumulator + first-occurrence visited set, in place of a hand recursion.
+  graph,
   builtinClasses,
   # gen-schema's content-address FORMULA (schema.hashIdentity) — the SINGLE definition the registry factor
   # nodes hash through (gen-schema identity.nix:16). `idHashOf` routes through it so the resolve-arm's
@@ -1296,49 +1300,86 @@ let
           v.name
         else
           null;
-      go =
-        acc: v:
-        if !(builtins.isAttrs v) then
-          acc
-        else if idOf v != null && acc.seen ? ${idOf v} then
-          acc
+      # UNIFORM-FRAME MAPPING onto gen-graph's ordered `foldPreorder`: policy record, late-dispatch bare
+      # fn, and aspect attrset all ride ONE frame type; `expand` classifies by ref type. This REPRODUCES
+      # v1's interleave EXACTLY — a nested attrset include recurses inline (DFS pre-order) BEFORE a later
+      # sibling policy is collected — because an aspect frame's children are `includes ++ walkableChildren`
+      # in that order and the fold is depth-first pre-order (`expand` sees `acc` before any child does).
+      # A classify-includes-then-children mapping would REORDER (append every sibling policy after the
+      # child recursion) and is NOT faithful.
+      isBareFnFrame = f: isBareFnRef f && isLateDispatchFn f;
+      # cycle-guard / first-occurrence key. An aspect attrset guards by its structural `.key` (`idOf` —
+      # aspect dedup, first occurrence). A policy / late-dispatch bare-fn / inert frame is UNGUARDED
+      # (`null` → per-occurrence; a policy is collected wherever it is reached, never deduped by the
+      # visited set). `idOf` is only ever computed on an attrset (a non-attrs frame short-circuits to null),
+      # mirroring v1's `go`, which read `idOf` only past its `!(isAttrs v)` guard.
+      frameKey =
+        frame:
+        if isPolicyRef frame || isBareFnFrame frame then
+          null
+        else if builtins.isAttrs frame then
+          idOf frame
         else
+          null;
+      walkableChildFrames = v: map (k: v.${k}) (builtins.filter (walkableChild v) (builtins.attrNames v));
+      # An aspect frame's ordered successors: its `.includes` list elements FIRST (the interleave source),
+      # then its walkable namespace/sub-aspect children — the exact order v1's `go` folded them in.
+      childFrames =
+        v:
+        (
           let
-            seen' = if idOf v == null then acc.seen else acc.seen // { ${idOf v} = true; };
-            incs =
-              let
-                i = v.includes or null;
-              in
-              if builtins.isList i then i else [ ];
-            afterIncs = prelude.foldl' (
-              a: x:
-              if isPolicyRef x then
-                a
-                // {
-                  recs = a.recs ++ [ x ];
-                }
-              # LATE-DISPATCH RADIATION (§5.2): a bare-fn include that genuinely LATE-DISPATCHES — requires a DESCENDANT
-              # entity coord absent where it attaches (`isLateDispatchFn`, the SAME predicate `radiatedBareFn`
-              # the node-local walk diverts by) — RADIATES as a synthetic aspect + edge policy (below). An
-              # in-place or no-entity-formal bare fn falls to `go` (a no-op on a function) and keeps the
-              # node-local `wrapGatedFn` path.
-              else if isBareFnRef x && isLateDispatchFn x then
-                a
-                // {
-                  bareRecs = a.bareRecs ++ [ x ];
-                }
-              else
-                go a x
-            ) (acc // { seen = seen'; }) incs;
+            i = v.includes or null;
           in
-          prelude.foldl' (a: k: go a v.${k}) afterIncs (
-            builtins.filter (walkableChild v) (builtins.attrNames v)
-          );
-      walked = prelude.foldl' go {
-        recs = [ ];
-        bareRecs = [ ];
-        seen = { };
-      } (builtins.attrValues v1Aspects);
+          if builtins.isList i then i else [ ]
+        )
+        ++ walkableChildFrames v;
+      # Classification is path-INDEPENDENT here (every frame is typed by ref, wherever it was reached),
+      # vs the pre-`foldPreorder` walk which classified policy/bare-fn refs only inside the includes-fold.
+      # Byte-equivalent by invariant: a policy record (`__isPolicy`, an attrs) only ever appears in a
+      # `.includes` list — walkable children are sub-aspects/namespaces (`walkableChild` excludes policy
+      # records + bare fns), so a policy is never reached as a walkable child. A policy at a namespace key
+      # (`den.aspects.foo.<key> = <policy record>`) is malformed and impossible on valid/corpus input.
+      expandFrame =
+        acc: frame:
+        if isPolicyRef frame then
+          {
+            acc = acc // {
+              recs = acc.recs ++ [ frame ];
+            };
+            children = [ ];
+          }
+        # LATE-DISPATCH RADIATION (§5.2): a bare-fn include that genuinely LATE-DISPATCHES — requires a DESCENDANT
+        # entity coord absent where it attaches (`isLateDispatchFn`, the SAME predicate `radiatedBareFn`
+        # the node-local walk diverts by) — RADIATES as a synthetic aspect + edge policy (below). An
+        # in-place or no-entity-formal bare fn is inert here (a leaf frame, no children) and keeps the
+        # node-local `wrapGatedFn` path.
+        else if isBareFnFrame frame then
+          {
+            acc = acc // {
+              bareRecs = acc.bareRecs ++ [ frame ];
+            };
+            children = [ ];
+          }
+        else if builtins.isAttrs frame then
+          {
+            inherit acc;
+            children = childFrames frame;
+          }
+        else
+          {
+            inherit acc;
+            children = [ ];
+          };
+      walked =
+        (graph.foldPreorder {
+          roots = builtins.attrValues v1Aspects;
+          key = frameKey;
+          expand = expandFrame;
+          acc = {
+            recs = [ ];
+            bareRecs = [ ];
+          };
+        }).acc;
       # per-NAME dedup (first occurrence wins — deterministic: attrNames order + list order), v1's
       # name-keyed registry posture. A nameless record never collects (it aborts named at the
       # normalizeList filter — v1's own `inherit (p) name` would throw there too).
