@@ -24,8 +24,9 @@
   # nodes hash through (gen-schema identity.nix:16). `idHashOf` routes through it so the resolve-arm's
   # name-preimage aligns to the factor nodes BY CONSTRUCTION, not by a coincident literal copy.
   schema,
-  # The `den-aspect:` namespace-identity preimage (§A2), from den-hoag's kernel single-authority
-  # (denHoag.aspectIdHash) — the compat aspect-edge sites recompute the SAME id_hash the kernel stamps.
+  # The aspect namespace-identity helper (§A2), from den-hoag's kernel single-authority
+  # (denHoag.aspectIdHash, routed onto gen-native's `aspects.aspectId`) — the compat aspect-edge sites
+  # recompute the SAME id_hash the kernel stamps.
   aspectIdHash,
   # THE RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2, `den.resolveFamilyNames`) — threaded HERE
   # so the KIND-INCLUDE / DEFAULT-INCLUDE policy arms can stamp `__resolveFamily = true` on a compiled

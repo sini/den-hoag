@@ -197,15 +197,27 @@ in
       expr = orderOf denFwd "ssh-peers" == orderOf denRev "ssh-peers";
       expected = true;
     };
-    # the canonical winner is literally [beta, alpha] (self-documenting complement to the equality
-    # above): producer identity — the A12 tie-break key is the aspect id_hash (§A12), and beta's
-    # id_hash sorts before alpha's — decides, not include order or the display name string.
+    # the canonical winner is decided by producer identity — the A12 tie-break key is the aspect id_hash
+    # (§A12, `producerLt`: ascending `identity`), NOT include order or the display name string. Identity
+    # is gen-native now (den-hoag retired its `sha256 "den-aspect:${key}"` hand-roll onto `aspects.aspectId`,
+    # gen-aspects/lib/default.nix:53), so the concrete order derives from the SAME helper the engine sorts by
+    # (`content.id_hash` == `aspectIdHash key`) — the winner is whichever key's id_hash sorts first, a
+    # coherence check on the tie-break rather than a hand-copied byte-literal. NB the `aspectIdHash "<name>"`
+    # equivalence holds because alpha/beta are top-level CHAINLESS aspects (key == name); a nested fixture
+    # would derive its id from `identity.key` (the aspect-chain slash-path), not the bare name.
     test-order-canonical-winner = {
       expr = orderOf denFwd "ssh-peers";
-      expected = [
-        "beta"
-        "alpha"
-      ];
+      expected =
+        if denHoag.aspectIdHash "alpha" < denHoag.aspectIdHash "beta" then
+          [
+            "alpha"
+            "beta"
+          ]
+        else
+          [
+            "beta"
+            "alpha"
+          ];
     };
 
     # ── neron ORDER: self → imports → parent (B5) ──

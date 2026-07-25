@@ -64,23 +64,43 @@ in
       expr = ev.customFreeform or "<absent>";
       expected = "rides-freeform";
     };
-    # ── the exported preimage helpers reproduce the exact namespace literal (helper == the formula the
-    #    kernel single-authority owns; lib/identity-preimage.nix). ──
-    test-aspect-preimage-literal = {
-      expr = denHoag.aspectIdHash "core/network/manager";
-      expected = builtins.hashString "sha256" "den-aspect:core/network/manager";
+    # ── PARTITION LAW (value-agnostic): identity is gen-native's responsibility now — den-hoag retired its
+    #    `sha256 "den-aspect:"/"den-class:"` hand-roll onto the gen-native content-address (`aspects.aspectId`
+    #    / `schema.hashIdentity`; the designed route at gen-aspects/lib/default.nix:53). The id_hash VALUES
+    #    are gen-native's (not pinned here); what the kernel single-authority guarantees is the PARTITION —
+    #    same key ⇒ same id, distinct key ⇒ distinct id, and the `aspect`/`class` kind tags keep the two
+    #    namespaces from colliding on a like key. ──
+    test-aspect-identity-partition = {
+      expr = {
+        stable = denHoag.aspectIdHash "core/network/manager" == denHoag.aspectIdHash "core/network/manager";
+        distinct = denHoag.aspectIdHash "core/network/manager" != denHoag.aspectIdHash "core/network/other";
+      };
+      expected = {
+        stable = true;
+        distinct = true;
+      };
     };
-    test-class-preimage-literal = {
-      expr = denHoag.classIdHash "nixos";
-      expected = builtins.hashString "sha256" "den-class:nixos";
+    test-class-identity-partition = {
+      expr = {
+        stable = denHoag.classIdHash "nixos" == denHoag.classIdHash "nixos";
+        distinct = denHoag.classIdHash "nixos" != denHoag.classIdHash "darwin";
+        # aspect and class namespaces partition (distinct hashIdentity `kind` tag) — a class named like an
+        # aspect key never shares its id.
+        crossKind = denHoag.classIdHash "nixos" != denHoag.aspectIdHash "nixos";
+      };
+      expected = {
+        stable = true;
+        distinct = true;
+        crossKind = true;
+      };
     };
-    # ── single-source, not a coincidence: on a REAL navigated node's key, the exported helper reproduces
-    #    the exact `den-aspect:` preimage the aspect authority (concern-aspects idModule = `aspectIdHash
-    #    config.key`) stamps. (An assembled aspect's id_hash itself equalling the literal is separately
-    #    witnessed green by compat-nested-aspects test-emitted-identity-native.) ──
-    test-authority-key-routes-through-helper = {
-      expr = denHoag.aspectIdHash nav.key;
-      expected = builtins.hashString "sha256" "den-aspect:${nav.key}";
+    # ── COHERENCE (the C6 single-authority invariant): a REAL navigated kernel node carries its OWN id_hash
+    #    (gen-aspects' universal readOnly option — `aspectId (cnf.providerPrefix or []) config`, providerPrefix
+    #    unset ⇒ origin=[]), and the exported helper recompute over that node's key reproduces it EXACTLY. A
+    #    downstream recompute can never drift from the node's own stamp because both route the same formula. ──
+    test-node-id-coheres-with-helper = {
+      expr = nav.id_hash == denHoag.aspectIdHash nav.key;
+      expected = true;
     };
   };
 }

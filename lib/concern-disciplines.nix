@@ -156,9 +156,9 @@ let
         a ++ builtins.filter (n: !(seen ? ${n.key})) b;
       engine = "reach in-attribute ordered fold (resolved-aspects)";
       # THE RULING RECORD (review-refuted, carried — the dedup key STAYS aspect-ident):
-      # (1) the previously-planned key→id_hash migration is VACUOUS — `id_hash = hashString
-      #     "den-aspect:${key}"` (concern-aspects.nix: "Same key ⇒ same id_hash") is a BIJECTION of the
-      #     key, so the seen-set is extensionally identical under either; Shape B's path-bearing keys
+      # (1) the previously-planned key→id_hash migration is VACUOUS — the aspect id_hash (gen-native's
+      #     `aspects.aspectId [] {key}`, an injective fn of the key) is a BIJECTION of the key, so the
+      #     seen-set is extensionally identical under either; Shape B's path-bearing keys
       #     already de-collided the nested same-leaf-name shape. The key therefore stays `aspect-ident`.
       # (2) reach's EDGE identity (the bare `target` string, resolved-aspects.nix "no separate edge-id
       #     field yet") ports onto the unified edgeId scheme at the substrate-CONSUMPTION step (reach edges

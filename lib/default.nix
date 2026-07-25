@@ -29,11 +29,12 @@ let
   # routed through gen-graph's `cycles` self-reachability, REFERENCE.md). Exposed through `internal`
   # for the substrate suite; the substrate consumers reach it there.
   identity = import ./identity.nix { inherit prelude graph; };
-  # The den-hoag NAMESPACE-identity preimages (§A2) — the SINGLE authority for the `den-aspect:`/
-  # `den-class:` id_hashes. Both kernel authorities (classEntries/effectiveClassEntries below,
-  # concern-aspects' idModule) and any downstream recompute of an entry's id_hash read THESE fns,
-  # so the namespace preimage lives in exactly one place per namespace (no drift, Law C6).
-  identityPreimage = import ./identity-preimage.nix { };
+  # The den-hoag NAMESPACE-identity helpers (§A2) — the SINGLE authority for the aspect/class id_hashes,
+  # routed onto the gen-native content-address (`aspects.aspectId`/`schema.hashIdentity`; identity is
+  # gen-native's responsibility now). Both class authorities (classEntries below) and any downstream
+  # recompute of an entry's id_hash read THESE fns, so the helper lives in exactly one place per
+  # namespace (no drift, Law C6); an aspect node stamps its OWN id_hash via gen-aspects' universal option.
+  identityPreimage = import ./identity-preimage.nix { inherit aspects schema; };
   inherit (identityPreimage) aspectIdHash classIdHash;
   # The edge-kind registry (den.edges): pre-registered vocabulary + validation (§2.2), the override tier
   # (§2.4), the synthetic edge-assembly pipeline (§2.1), and the cell/containment nest-edge producer
@@ -216,7 +217,6 @@ let
       merge
       classNames
       errors
-      aspectIdHash
       ;
     kindNames = [ ];
   };
@@ -352,7 +352,7 @@ let
       # branch of `classifyKey`, gains a `class` content bucket (gen-aspects `cnf.classes`), a class entry,
       # and a terminal — everything a built-in class has. `classNames` (the core constant) is UNCHANGED;
       # the extension is per-fleet, computed here from user config. `effectiveClassEntries` mirrors the
-      # top-level `classEntries` identity convention (sha256 "den-class:<name>") over the widened set.
+      # top-level `classEntries` identity convention (`classIdHash <name>`, gen-native) over the widened set.
       discoveredClasses = entity.discoverClasses userModules;
       effectiveClassNames =
         classNames ++ builtins.filter (n: !(builtins.elem n classNames)) discoveredClasses;
@@ -367,7 +367,6 @@ let
           aspects
           merge
           errors
-          aspectIdHash
           ;
         classNames = effectiveClassNames;
         quirkChannels = channelSet;
@@ -2590,9 +2589,9 @@ in
   # mkDen tags contributions with, exposed for writing quirk `adapters` (cross-class coercions) that
   # reference a class by its entry rather than a bare name.
   classes = classEntries;
-  # den's namespace-identity preimages (§A2) — the SINGLE authority for the `den-aspect:`/`den-class:`
-  # id_hashes, so a downstream recompute of an entry's id_hash reads the SAME fn the kernel authorities
-  # use (Law C6 — the "shared BY CONSTRUCTION" promise made literal, no formula twin).
+  # den's namespace-identity helpers (§A2) — the SINGLE authority for the aspect/class id_hashes (routed
+  # onto gen-native's `aspects.aspectId` / `schema.hashIdentity`), so a downstream recompute of an entry's
+  # id_hash reads the SAME fn the kernel authorities use (Law C6 — "shared BY CONSTRUCTION", no formula twin).
   inherit aspectIdHash classIdHash;
   # den's declaration vocabulary (verb): the tagged constructors + stratum classifier +
   # identity-law checks, independent of any one mkDen instance. Policies read `declare.member`,

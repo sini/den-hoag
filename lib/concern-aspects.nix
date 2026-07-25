@@ -22,10 +22,6 @@
   # kind-name literals — the standard `host`/`user` set arrives from the probe, never a core constant.
   kindNames,
   errors,
-  # The `den-aspect:` namespace-identity preimage (§A2), owned by the kernel single-authority
-  # (lib/identity-preimage.nix). This is the aspect id_hash AUTHORITY — it calls the shared fn rather
-  # than a local formula copy, so a downstream recompute can never drift from it.
-  aspectIdHash,
 }:
 let
   # The shared keySemantics vocabulary builders. The SAME class + channel vocabulary feeds this concern AND
@@ -61,22 +57,6 @@ let
       };
     };
 
-  # Aspect identity (A2) — a content-stable id_hash derived from the structural `key`, so den-hoag
-  # aspects are identity-law entries usable by gen-settings (mkSchema/resolveAll route by id_hash) and
-  # by `ref` (E6 requires an id_hash-bearing target). Same key ⇒ same id_hash (dedup-coherent with the
-  # resolved-aspects fixpoint, which dedups by key).
-  idModule =
-    { config, ... }:
-    {
-      options.id_hash = merge.mkOption {
-        type = merge.types.str;
-        internal = true;
-        readOnly = true;
-        description = "Content-stable aspect identity (sha256 over the structural key).";
-      };
-      config.id_hash = aspectIdHash config.key;
-    };
-
   # cnf drives gen-aspects' `aspectType`: ONE `keySemantics` map declares every aspect key's
   # semantics. gen-aspects builds each key's option generically: `class → deferredModule` content bucket,
   # `channel → raw` passthrough (an emission — plain data, attrset, or config-thunk — rides untouched, never
@@ -92,15 +72,7 @@ let
     })
     # neededBy/settings/artifact — the config-free facets, from the SHARED vocabulary source (so a typed-view
     # consumer mounts the SAME option types; the settings block is `lazyAttrsOf raw` on both sides).
-    // (keySemanticsLib.mkFacetSemantics { inherit merge; })
-    // {
-      # a MODULE (declares `options.id_hash` AND `config.id_hash` off `config.key`) — NOT a bare option, so it
-      # stays local to this concern (the identity authority is caller-specific, unshared with the views).
-      id_hash = {
-        category = "facet";
-        module = idModule;
-      };
-    };
+    // (keySemanticsLib.mkFacetSemantics { inherit merge; });
   cnf = {
     inherit keySemantics;
     # `settings`/`aspects` are the FACET vocabulary (static, kind-independent); the entity coordinates are
@@ -134,7 +106,7 @@ let
     "description"
     "key"
     "artifact" # the §4.1 prebuilt-arm facet — behaviour (a value injection), not class content
-    "id_hash" # injected by idModule — a structural facet, not content
+    "id_hash" # gen-aspects' native universal content-address option — a structural facet, not content
   ];
   # §2.2 three-branch key dispatch — an aspect key is a declared facet, a registered output class, a
   # registered quirk channel, or a definition-time error. `class-modules` (attribute 9) reuses this to
@@ -143,8 +115,9 @@ let
   # aborts here naming the aspect and key.
   classifyKey =
     aspectName: key:
-    # Structural facets FIRST — `name`/`includes`/`meta`/`tags`/`projects`/`key`/`description` are built-in
-    # submodule options, NOT `keySemantics` entries; `settings`/`neededBy`/`id_hash` ARE keySemantics facet
+    # Structural facets FIRST — `name`/`includes`/`meta`/`tags`/`projects`/`key`/`description`/`id_hash` are
+    # built-in submodule options (`id_hash` is gen-aspects' native universal content-address, no longer a
+    # den-hoag keySemantics entry), NOT `keySemantics` entries; `settings`/`neededBy` ARE keySemantics facet
     # entries but are listed here too, so the class-modules walk skips them without a keySemantics lookup.
     if builtins.elem key facets then
       "facet"

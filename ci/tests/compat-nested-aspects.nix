@@ -23,7 +23,11 @@
 #   • the INTEGRATION: at a real (user,host) cell the auto-included sub-aspect's home-manager content
 #     materializes in the cell's home-manager bucket (the relaxed w3 witness; full byte-parity rides the
 #     ship-gate content oracle).
-{ denCompat, ... }:
+{
+  denCompat,
+  denHoag,
+  ...
+}:
 let
   bucketAt =
     den: id: cls:
@@ -388,7 +392,10 @@ in
       expected = {
         name = "shuo";
         chain = [ "blade" ];
-        idHash = builtins.hashString "sha256" "den-aspect:blade/shuo";
+        # gen-native aspect id (den-hoag retired its `sha256 "den-aspect:${key}"` hand-roll onto
+        # `aspects.aspectId`, gen-aspects/lib/default.nix:53) — recompute through the SAME kernel helper
+        # the emitted node stamps with, so this pins the coherence invariant, not a hand-computed literal.
+        idHash = denHoag.aspectIdHash "blade/shuo";
         cellIndependent = true;
         grounded = true;
       };

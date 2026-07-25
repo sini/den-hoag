@@ -5,7 +5,12 @@
 # parametric class key + a quirk key, one `policy.include`, one class — against a snapshot derived
 # from first principles (id_hashes recomputed here, not copied from a run), and proves purity by
 # poisoning a parametric body with `throw` and showing the structural projection still computes.
-{ denCompat, denHoagSrc, ... }:
+{
+  denCompat,
+  denHoag,
+  denHoagSrc,
+  ...
+}:
 let
   # The parametric class body is a THROW: if `compile` (or any structural read below) forced it, the
   # suite would abort. It never does — the aspect row is near-identity passthrough, values stay thunks.
@@ -33,9 +38,12 @@ let
 
   compiled = denCompat.compile fixture;
 
-  # Expected identities, recomputed from the frozen conventions (gen-schema entry / den-hoag aspect).
+  # Expected identities. The entity hash is the frozen gen-schema convention; the aspect id is now
+  # gen-native's (den-hoag retired its `sha256 "den-aspect:${key}"` hand-roll onto `aspects.aspectId`,
+  # gen-aspects/lib/default.nix:53), so recompute it through the SAME kernel helper the ingest boundary
+  # stamps with — the coherence invariant (edge id == helper recompute) is what this pins, not a literal.
   hostAxonHash = builtins.hashString "sha256" "host|name=axon";
-  aspectSystemHash = builtins.hashString "sha256" "den-aspect:system";
+  aspectSystemHash = denHoag.aspectIdHash "system";
 
   # Run the compiled policy body to observe the translated declaration (the include → edge row). The
   # body is unconditional, so any ctx yields the same edge.

@@ -9,9 +9,9 @@
 # freeform) — AND the SHARED FACET-VOCABULARY half (`mkFacetSemantics`): the `neededBy`/`settings`/`artifact`
 # facet keySemantics MODULES, in ONE source so the aspect concern and every typed-view consumer mount the SAME
 # facet option types (a `.settings` block is `lazyAttrsOf raw` wherever the vocabulary is registered, never
-# freeform-absorbed as a nested aspect). The `id_hash` facet is NOT shared here — its module carries a
-# `config.id_hash = aspectIdHash config.key` injection (caller-specific authority, a config-bearing shape), so
-# the aspect concern merges it in separately and the identity-view consumers omit it.
+# freeform-absorbed as a nested aspect). `id_hash` is NOT a shared facet here — it is gen-aspects' native
+# universal content-address option (types.nix `default = aspectId (cnf.providerPrefix or []) config`), so
+# both the aspect concern and the identity-view consumers inherit it from the aspect type, not this vocabulary.
 { prelude }:
 {
   # `mkClassChannelSemantics { classNames; quirkChannels; }` — the class + channel keySemantics entries.

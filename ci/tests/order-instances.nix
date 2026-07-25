@@ -17,6 +17,24 @@ let
   # the A12 producer sort (scope-adapter.nix `sortByProducer` over `producerLt`) — for the tie-break
   # triple-shape pin (rank < identity < emissionIndex) against the live scope-adapter behavior.
   inherit (denHoag.internal.scopeAdapter) sortByProducer;
+  # the A12 same-position tie-break order over the two producer aspects (alpha, beta), derived from the
+  # SAME identity fn the engine sorts by (`producerLt`: ascending `content.id_hash` == `aspectIdHash key`).
+  # Identity is gen-native now (den-hoag retired its `sha256 "den-aspect:${key}"` hand-roll onto
+  # `aspects.aspectId`, gen-aspects/lib/default.nix:53), so the winner is whichever key's id_hash sorts
+  # first — a coherence check on the tie-break, not a hand-copied byte-literal. NB `aspectIdHash "<name>"`
+  # == the engine's `content.id_hash` only because alpha/beta are top-level CHAINLESS aspects (key == name);
+  # a nested fixture would derive its id from `identity.key` (the aspect-chain slash-path), not the bare name.
+  abOrder =
+    if denHoag.aspectIdHash "alpha" < denHoag.aspectIdHash "beta" then
+      [
+        "alpha"
+        "beta"
+      ]
+    else
+      [
+        "beta"
+        "alpha"
+      ];
   # the reach attribute driven synthetically (the reach-graph.nix precedent): import resolved-aspects.nix
   # with the REAL internal deps and drive `reach.compute stub id` against a stub graph — reach-edges have
   # no policy vocabulary yet, so the closure is exercised as a pure graph function.
@@ -533,16 +551,13 @@ in
     };
 
     # ── THE ORDER ORACLE: the LIVE received-collections order matches the declared neron + A12 order ──
-    # two same-position producers land in the plain channel in A12 producer-identity order (beta's aspect
-    # id_hash sorts before alpha's) — the neron traversal + tie-break the instance declares. The traversal
-    # LEG itself (self → imports → parent) has its own pre-existing oracle in b5-channel-order.nix; this
-    # pins the A12 same-position tie-break the instance's `order` declares.
+    # two same-position producers land in the plain channel in A12 producer-identity order (by aspect
+    # id_hash, `abOrder`) — the neron traversal + tie-break the instance declares. The traversal LEG itself
+    # (self → imports → parent) has its own pre-existing oracle in b5-channel-order.nix; this pins the A12
+    # same-position tie-break the instance's `order` declares.
     test-collections-oracle-received-order = {
       expr = producersOf rcFwd "peers";
-      expected = [
-        "beta"
-        "alpha"
-      ];
+      expected = abOrder;
     };
     # THE COMBINE VALUE-AGREEMENT: folding the live contributions' values through the INSTANCE combine from
     # its empty reproduces the live channel value — the declared algebra computes what gen-pipe computes.
@@ -572,8 +587,8 @@ in
 
     # ── KEEP-FIRST GOLDEN (risk register #2): per-channel declared dedup keeps the FIRST occurrence ──
     # a channel that DECLARES `dedup = { keep = "first"; }` collapses the two same-position producers to
-    # ONE, keeping the first per the A12 order (beta). Default channels never exercise dedup (the trap);
-    # keep-direction is per-channel-declared — there is NO unified default (the plain channel keeps both).
+    # ONE, keeping the first per the A12 order (`head abOrder`). Default channels never exercise dedup (the
+    # trap); keep-direction is per-channel-declared — no unified default (the plain channel keeps both).
     test-golden-collections-keep-first = {
       expr = {
         dedupedCount = builtins.length rcFwd.deduped.contributions;
@@ -582,7 +597,7 @@ in
       };
       expected = {
         dedupedCount = 1;
-        dedupedKept = [ "beta" ];
+        dedupedKept = [ (builtins.head abOrder) ];
         plainCount = 2;
       };
     };
