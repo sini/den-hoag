@@ -2105,7 +2105,7 @@ let
         in
         if mode == "content" then
           # the raw class slice. Uncatchable-clean by construction on a content-empty member: `classSubtreeAt`
-          # is `concatMap (nid: (classModulesAt nid).${class} or [ ]) …`, so an absent class bucket yields `[ ]`
+          # is `concatMap (nid: (classModulesKeyedAt nid).${class} or [ ]) …`, so an absent class bucket yields `[ ]`
           # (an empty aggregate), never an attr-miss — no guard needed. The artifact arm below is the ASYMMETRIC
           # case (output.systems FILTERS content-empty nodes → the key is absent → a bare miss), so only it guards.
           output.classSubtreeAt memberNodeId memberClass
@@ -2727,6 +2727,9 @@ in
     # class-modules + output + terminal-crossing scenarios.
     compileClasses = concernClasses.compile;
     terminal = terminalLib;
+    # The raw class-modules producer builder (attributes/class-modules), for the class-bucket-query suite's
+    # direct per-node class-slice + chained-reroute + inject scenarios.
+    classModulesBuilder = attributesLib.classModulesBuilder;
     # The synthetic loc the shared class-invariant core occupies in share.core=true output —
     # exported so tests detect the share path via this constant instead of re-hardcoding the string.
     classShareCoreAttr = "denClassShareCore";

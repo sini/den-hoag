@@ -242,6 +242,11 @@ in
   # structural equations over hand-built roots/rules).
   inherit structural;
 
+  # The raw class-modules producer builder (`{ classNames; classifyKey; … }` → the class-modules /
+  # class-modules-keyed equation records + the `classSliceKeyedAt` query atom), for the class-bucket-query
+  # suite's direct per-node class-slice + chained-reroute + inject scenarios.
+  classModulesBuilder = classModules;
+
   runResolve =
     {
       roots,

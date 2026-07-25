@@ -26,8 +26,6 @@
   artifactExclusive ? (_: true),
 }:
 let
-  emptyBuckets = prelude.genAttrs classNames (_: [ ]);
-
   # A class reference on an inject/reroute declaration is an entry (identity law) or, defensively, a
   # bare class-name string; resolve it to the bucket key (the class name).
   className =
@@ -46,8 +44,8 @@ let
   # `m == { }` drop.
   inherit (import ../module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
 
-  # THE ONE per-aspect class-slice extraction (Phase 2 Task 2, factored out of `classContentOf` below so
-  # `class-modules` buckets AND `projectClass` — the reach-based projection — share EXACTLY one extraction).
+  # THE ONE per-aspect class-slice extraction (Phase 2 Task 2) so the `class-modules` buckets AND `projectClass`
+  # — the reach-based projection — share EXACTLY one extraction.
   # `classSliceOf aspect class` = the `class`-C bucket contribution of a SINGLE resolved-aspect node
   # (`{ key; content; }`): the aspect's `content.${class}` deferredModule IFF that key is a registered
   # `class` key (via `classifyKey`, §2.2) and its body is a non-empty declaration. Returns a `[ { module; } ]`
@@ -102,11 +100,11 @@ let
 
   # §2.2 TOTALITY at the projection terminal (ruling 2026-07-14). Classify EVERY non-`_` content key of an
   # aspect via `classifyKey` — a `facet`/`class`/`channel` key passes, a genuinely UNREGISTERED key (a typo
-  # like `nixxos`) ABORTS NAMED (`errors.unknownAspectKey`, the identical message `classContentOf` raises).
+  # like `nixxos`) ABORTS NAMED (`errors.unknownAspectKey`, the identical message the `classifyKey` pass raises).
   # `projectClass` forces this per REACHED aspect before returning its projected-class slice, so a typo'd key
   # on a reachable aspect can NEVER silently vanish on the drv path (`classSliceOf class` alone classifies
   # ONLY the projected class key — the totality hole this closes; spec §2.2/§5 silent-content-loss). Returns
-  # `null` (forced for the abort side-effect only); the classify-all logic is `classContentOf`'s, shared.
+  # `null` (forced for the abort side-effect only); shares its classify-all logic with `classifyAllKeysAt`.
   # NAME ROBUSTNESS: `classifyKey` takes the aspect NAME only to frame the `errors.unknownAspectKey` abort.
   # A reached aspect whose `content` lacks a populated `.name` (a synthetic/degenerate node) must STILL abort
   # with the NAMED `unknownAspectKey`-shaped message on a genuinely unregistered key — never a raw
@@ -130,62 +128,17 @@ let
       prelude.foldl' (acc: k: builtins.seq (classifyKey aspectName k) acc) null keys
     );
 
-  # One resolved aspect's class-bucket contributions: iterate its content keys (skipping the module
-  # system's own `_`-prefixed keys), and collect each `class` key's slice (via `classSliceOf` — THE ONE
-  # extraction). A `channel`/`facet` key contributes `[ ]`; an unregistered key aborts inside `classifyKey`
-  # (§2.2). Each collected entry is a `{ module; }` record; the public bucket strips back to the bare
-  # `module` (`splitBuckets`).
-  classContentOf =
-    exempt: aspect:
+  # inject/reroute (v1 `forwards` tier-1, spec §2.3 resolution) — the resolution-stratum WHOLE-MAP post-
+  # transform over the direct per-node class-slice query base, applied HERE (not by `classSliceOf`), which is
+  # why `classSubtreeAt` consumes the keyed form rather than re-slicing reach (a reroute/inject fleet would
+  # otherwise diverge). WHOLE-MAP, not per-class: a chained reroute `[ {A→B}, {B→C} ]` must land A's content
+  # in C via B, which a per-class-INDEPENDENT fold would miss — so this stays a sequential fold over the whole
+  # map.
+  applyInjectReroute =
+    resolutionActs: base:
     let
-      content = aspect.content;
-      keys = builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames content);
-    in
-    prelude.foldl' (
-      acc: k:
-      let
-        slice = classSliceOf exempt aspect k;
-      in
-      if slice == [ ] then acc else acc // { ${k} = (acc.${k} or [ ]) ++ slice; }
-    ) { } keys;
-
-  mergeBuckets =
-    acc: m:
-    prelude.foldl' (acc': cn: acc' // { ${cn} = (acc'.${cn} or [ ]) ++ m.${cn}; }) acc (
-      builtins.attrNames m
-    );
-
-  # Strip the record-carrying buckets (`{ <class> = [ { module; } ]; }`) to the PUBLIC attribute value:
-  # the bare-module buckets `{ <class> = [ <deferredModule> ]; }` — every reader at output-modules reads
-  # `.${class}` positionally.
-  splitBuckets =
-    recBuckets:
-    prelude.foldl' (acc: cn: acc // { ${cn} = map (e: e.module) recBuckets.${cn}; }) { } (
-      builtins.attrNames recBuckets
-    );
-
-  # The record-carrying bucket build (`{ <class> = [ { module; sharedFoldKey ? null } ]; }`) shared by the
-  # public `class-modules` (stripped bare) and `class-modules-keyed` (records, for the `classSubtreeAt`
-  # cross-scope dedup) — ONE build, so the two are consistent by construction. inject/reroute (v1 `forwards`
-  # tier-1) are applied HERE (not by `classSliceOf`), which is why `classSubtreeAt` consumes THIS keyed form
-  # rather than re-slicing reach (a reroute/inject fleet would otherwise diverge).
-  recBucketsOf =
-    self: id:
-    let
-      resolvedAspects = self.get id "resolved-aspects";
-      resolutionActs = (self.get id "declarations").actions.resolution or [ ];
-
-      # iv-b: the node-local forward-source exemption (from this node's own resolved forward specs) — a
-      # forward SOURCE class materializes its bucket here too (the base-build classify runs BEFORE the
-      # reroute at :177). `{ }` on every non-forward node ⇒ byte-identical.
-      exempt = forwardSourceClassesOf resolvedAspects;
-
-      base = prelude.foldl' (
-        acc: a: mergeBuckets acc (classContentOf exempt a)
-      ) emptyBuckets resolvedAspects;
-
-      # `inject { class; module }` (spec §2.3 resolution) — appends a module to a class bucket. Node-local
-      # content (no owning shared aspect), so `sharedFoldKey = null` ⇒ never cross-scope-deduped (v1 anon).
+      # `inject { class; module }` — appends a module to a class bucket. Node-local content (no owning shared
+      # aspect), so `sharedFoldKey = null` ⇒ never cross-scope-deduped (v1 anon).
       injects = builtins.filter (a: a.__action == "inject") resolutionActs;
       withInject = prelude.foldl' (
         acc: inj:
@@ -203,8 +156,8 @@ let
         }
       ) base injects;
 
-      # `reroute { from; to }` (spec §2.3 resolution) — moves a class's collected content to another
-      # class (v1 `forwards` tier-1 target). A no-op when nothing was collected for `from`.
+      # `reroute { from; to }` — moves a class's collected content to another class (v1 `forwards` tier-1
+      # target). A no-op when nothing was collected for `from`; sequential so a chained reroute composes.
       reroutes = builtins.filter (a: a.__action == "reroute") resolutionActs;
       withReroute = prelude.foldl' (
         acc: rr:
@@ -220,13 +173,68 @@ let
       ) withInject reroutes;
     in
     withReroute;
+
+  # THE direct per-node class-slice query base. One class's OWN keyed slice at a node = the concatMap of
+  # `classSliceOf` (THE per-aspect extraction) over the node's resolved aspects — a DIRECT per-(node,class)
+  # query, no whole-map materialization; `genAttrs` forces only the class actually queried (a class with no
+  # content is `[ ]`). Same extraction / exempt / empty-drop the terminal projection (`projectClass`) uses.
+  classSliceKeyedBaseAt =
+    exempt: resolvedAspects: class:
+    prelude.concatMap (a: classSliceOf exempt a class) resolvedAspects;
+
+  # §2.2 TOTALITY classification side-effect (Law A1/A2). The direct per-class query base touches only the
+  # `classNames` keys, so on its own it would silently skip a genuinely-unregistered typo key on some OTHER
+  # content key. The edge/trace path (`classBucketsOf`/`contentsOf`, which forces the bucket spine, NOT
+  # `projectClass`) requires that key to abort NAMED, so this pass classifies EVERY non-`_` content key of
+  # every resolved aspect (force `classSliceOf` → `classifyKey`), WITHOUT building a bucket. Returns null
+  # (forced for the abort side-effect only); `artifactExclusive` is NOT forced here (it rides
+  # `assertKeysRegistered` at the projection terminal — the class-modules force path stays abort-faithful).
+  classifyAllKeysAt =
+    exempt: resolvedAspects:
+    prelude.foldl' (
+      acc: aspect:
+      prelude.foldl' (acc2: k: builtins.seq (classSliceOf exempt aspect k) acc2) acc (
+        builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames aspect.content)
+      )
+    ) null resolvedAspects;
+
+  # The keyed bucket map = the direct per-(node,class) query base + the shared inject/reroute post-transform.
+  # `genAttrs classNames` keys ONLY over the registered classes (an exempt forward-source key outside
+  # `classNames` is dropped; it is never read positionally, so byte-invisible). The SINGLE class-content
+  # source both equations strip / carry, and the record `classSubtreeAt` reads through `class-modules-keyed`.
+  keyedBucketsOf =
+    self: id:
+    let
+      resolvedAspects = self.get id "resolved-aspects";
+      resolutionActs = (self.get id "declarations").actions.resolution or [ ];
+      exempt = forwardSourceClassesOf resolvedAspects;
+      # force the §2.2 classification of every content key before returning the query base — so an unregistered
+      # key aborts NAMED on the bucket-spine force path (the edge/trace consumers that never reach projectClass).
+      base = builtins.seq (classifyAllKeysAt exempt resolvedAspects) (
+        prelude.genAttrs classNames (classSliceKeyedBaseAt exempt resolvedAspects)
+      );
+    in
+    applyInjectReroute resolutionActs base;
+
+  # The DIRECT per-node class-slice query ATOM: one class's keyed slice at a node, inject/reroute applied
+  # (projected off the whole keyed map so a chained reroute is faithful). The direct (own-node) accessor the
+  # class-slice-as-query surface exposes; the REACHABLE descendant-closure (`classSubtreeAt`, output-modules)
+  # folds it over `[ id ] ++ scope.descendants`. The equations build it through the shared `keyedBucketsOf`.
+  classSliceKeyedAt =
+    self: id: class:
+    (keyedBucketsOf self id).${class} or [ ];
 in
 {
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, exported for `projectClass`
   # (output-modules Task 2/3). NEITHER is an equation record — the assembly (attributes/default.nix) selects
   # `class-modules` into the equations map and threads these to `mkOutputModules` separately (a bare function
   # would break gen-resolve's two-stratum equation classification if spread into the map).
-  inherit classSliceOf assertKeysRegistered forwardSourceClassesOf;
+  inherit
+    classSliceOf
+    assertKeysRegistered
+    forwardSourceClassesOf
+    classSliceKeyedAt
+    ;
 
   class-modules = resolve.attr {
     name = "class-modules";
@@ -236,7 +244,14 @@ in
       "resolved-aspects"
       "declarations"
     ];
-    compute = self: id: splitBuckets (recBucketsOf self id);
+    # Strip the direct-query keyed map (`genAttrs classNames`, forcing only the bucket read per class) to the
+    # bare `.module` lists every reader takes positionally.
+    compute =
+      self: id:
+      let
+        km = keyedBucketsOf self id;
+      in
+      prelude.genAttrs classNames (c: map (e: e.module) (km.${c} or [ ]));
   };
 
   # The KEYED twin of `class-modules` — the same buckets carrying each entry's `sharedFoldKey`, consumed
@@ -252,6 +267,6 @@ in
       "resolved-aspects"
       "declarations"
     ];
-    compute = self: id: recBucketsOf self id;
+    compute = self: id: keyedBucketsOf self id;
   };
 }

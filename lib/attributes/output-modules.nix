@@ -150,7 +150,6 @@ let
   # class content movement is the EXPLICIT deliver/inject edge, never the default fold. NO-EFFECT-RUNTIME: one
   # producing-class read (the node's contentClass) — never a module body (deferred content stays A17-lazy).
   isClassName = cn: classesByName ? ${cn};
-  classModulesAt = id: result.get id "class-modules";
   # The KEYED class buckets (`{ <class> = [ { module; sharedFoldKey } ]; }`) — `classSubtreeAt` reads THIS
   # (not the bare public `class-modules`) so it can collapse a genuinely-shared host+user aspect cross-scope.
   classModulesKeyedAt = id: result.get id "class-modules-keyed";
@@ -180,7 +179,7 @@ let
   # key on the descendant's resolved aspects (the mechanism that surfaced the ledger-u14 `wsl` abort: cells
   # whose class-modules were previously never read now classify at the host's assembly) — while the module
   # BODIES inside each bucket stay unforced (the A17 claim above is about bodies, and stays true). IDENTITY:
-  # a cell-less / descendant-less node ⇒ `[ id ]` ⇒ `(classModulesAt id).${class}` exactly (the 820 baseline
+  # a cell-less / descendant-less node ⇒ `[ id ]` ⇒ `(classModulesKeyedAt id).${class}` exactly (the 820 baseline
   # is the proof — unchanged).
   # CROSS-SCOPE SHARED-ASPECT DEDUP (v1 `wrapPerScope` `dedupByKey`, resolve.nix:43-66 @ pin 11866c16 — the
   # `classSubtreeAt` twin of the reach dedup, resolved-aspects.nix). The keyed subtree buckets are gathered
