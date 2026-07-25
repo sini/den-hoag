@@ -123,6 +123,11 @@ let
           # reflects as an aspectSubmodule and collides with the authored value at merge. `id_hash` is left OUT
           # (its module injects `config.id_hash` onto every node — a shape change with no view consumer).
           // (keySemanticsLib.mkFacetSemantics { inherit merge; });
+        # A raw guard closure / `{ __fn; … }` battery record / `{ __isPolicy; … }` policy record in an
+        # aspect's `includes` passes THROUGH the type opaquely (same as the existing `__keyRef` pass-through):
+        # its value never returns aspect content, so functor-wrapping it chokes at compile-side merge. compile's
+        # `normalize` does the registry-aware wrap downstream instead.
+        deferIncludeResolution = true;
       }
     );
   # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW v1 aspect tree
@@ -242,12 +247,6 @@ let
       # a legit nested-aspect CHILD to recurse into (raw attrset whose value looks nested).
       isNestedChild = raw: k: isCandidate k && builtins.isAttrs raw.${k} && looksNested raw.${k};
     };
-  # A POLICY RECORD (`{ __isPolicy | __denCanTake; fn; … }`) in an aspect's `includes` is NOT aspect content:
-  # its `fn` returns a v1 EFFECT LIST, so `aspectOrFn` would wrap it as a guard functor whose merge chokes
-  # (`expected a set but found a list`) when compile applies it. It must ride RAW in the typed tree; the
-  # markers survive the type wrap, so the restore splices the raw record back over the typed include.
-  isPolicyRec =
-    v: builtins.isAttrs v && ((v.__isPolicy or false) || (v.__denCanTake or null) != null);
   # splice raw unregistered keys + raw policy-record includes back onto the parallel typed node (+ recurse
   # legit nested children / non-policy includes).
   restoreUnregistered =
@@ -278,17 +277,10 @@ let
                 tinc
               else if tot.isMalformedFnInclude rinc then
                 tot.malformedFnIncludeAbort rinc
-              else if isPolicyRec rinc then
-                # a policy record rides RAW (its `fn` returns an effect list, never aspect content).
-                rinc
-              else if builtins.isFunction rinc || (builtins.isAttrs rinc && (rinc.__fn or null) != null) then
-                # a PARAMETRIC include (a bare fn, or a `{ __fn; name }` record — the unfree battery shape)
-                # rides RAW: the aspect type wraps a bare fn into a functor whose applicator merges
-                # UNCONDITIONALLY (throwing on a missing required coord) and BEFORE class-key grounding, so a
-                # v1-spelled body (`homeManager.…`) never grounds, and it would strip the `{ __fn }` record's
-                # own gate. Passing the raw value lets compile's `normalize` wrap it via `wrapGatedFn` — v1's
-                # canTake gate (missing coord ⇒ `{ }` inert) with `groundKeys` on the plain fn result.
-                rinc
+              # A policy record / bare parametric fn / `{ __fn; … }` battery record passes through the TYPE
+              # un-mangled (`deferIncludeResolution`), so `tinc == rinc` here: a bare fn is not an attrset →
+              # `else tinc` (identity); an attrset policy/`{ __fn }` record falls to the recurse arm below with
+              # `tinc == rinc` → identity. compile's `normalize` does the registry-aware wrap downstream.
               else if builtins.isAttrs rinc && builtins.isAttrs tinc then
                 # a STATIC aspect include — recurse so a policy record / bare-fn nested in ITS `.includes`
                 # (the battery shape `include.includes = [ { __isPolicy } ]`, or a named sub-aspect carrying a
