@@ -4,15 +4,16 @@
 #
 #   • routes a policy-emitted CELL membership into the fleet (the deferred Task 4 — A5's promised law);
 #   • folds a CONTAINMENT tuple's bindings (source zone -> existing rack, `containTo = "rack"`) into the
-#     target's ctx, visible to a LATER-phase policy (the rack phase reads `authToken`) AND the main run;
-#   • derives the phase order from the DISCOVERED topology (zone before rack — never a hardcoded list);
+#     target's ctx via a per-target transpose slice, demand-read where the consuming rack policy fires
+#     (`authToken`) AND folded onto the target's decls for the main run;
+#   • materializes the binding carrier as an order-INDEPENDENT per-target map (no parent-before-child phase
+#     schedule): two sources to DISTINCT targets each deliver to their OWN target;
 #   • holds the DOUBLE-FIRE / A5 discipline: a resolve-family emission at a membership-DERIVED node aborts
 #     LOUD (never a silent drop);
 #   • leaves a native fleet (no resolution emissions) BYTE-IDENTICAL to the static-membership fleet.
 { denHoag, ... }:
 let
   inherit (denHoag) declare sel;
-  S = denHoag.internal.stagedResolution;
 
   sort = builtins.sort (a: b: a < b);
 
@@ -115,6 +116,25 @@ let
           })
         ];
     };
+  # a SECOND containment source, to a DISTINCT target (rack r2), carrying its own token. Two sources fired
+  # in one collection prove the carrier is per-TARGET keyed and order-independent: r2's slice never leaks
+  # into r1's and vice versa, with no phase schedule between them.
+  zoneRelateR2Mod =
+    { config, ... }:
+    {
+      config.den.policies.grant-token-r2 =
+        { zone, ... }:
+        [
+          (declare.member {
+            coords = {
+              inherit zone;
+              rack = config.den.rack.r2;
+            };
+            bindings.authToken = "tok2-${zone.name}";
+            containTo = "rack";
+          })
+        ];
+    };
   # rack phase: reads the relation-carried `authToken` and emits a leaf-dim MEMBERSHIP (rack, blade) — the
   # blade cell. Value-conditional (emits nothing without the token → expansion). `__firesAtKinds = [rack]`
   # keeps it off the blade cell (which inherits `rack` + the injected `authToken`) — the resolve-policy
@@ -162,6 +182,39 @@ let
   # (B) the STATIC-equivalent fleet: the SAME (rack, blade) tuple declared statically, NO resolve policies
   #     — the native/identity path. viaPolicy's routing must produce a byte-identical fleet.
   staticEquiv = (denHoag.mkDen (baseFleet ++ [ rackBladeStatic ])).den;
+  # two containment sources to DISTINCT targets in ONE fleet — the per-target / order-independence witness.
+  twoSource =
+    (denHoag.mkDen (
+      baseFleet
+      ++ [
+        zoneRelateMod
+        zoneRelateR2Mod
+      ]
+    )).den;
+
+  # COLLISION: two SAME-KIND sources (zones z1, z2) both emit `containTo = "rack"` to the SAME target
+  # rack:r1. The merge is deterministic and byte-faithful to the pre-transpose flat fold: same-kind roots
+  # iterate alphabetically (`attrNames`) in BOTH, so the alphabetically-LAST source (z2) wins. This is the
+  # ONLY reachable multi-source shape — a target of kind K has one parent KIND in the schema forest, so its
+  # containment sources are all of kind parent(K); cross-kind emitters to one target (two parent kinds for
+  # one node) are topology-unreachable. INVARIANT (not a deferred case): the corpus + every other fixture is
+  # single-source per target (one env per host, `host.environment` scalar; on the real corpus the env→host
+  # fan-out is stubbed entirely), so `containmentBindings.${id}` derives from exactly one source there.
+  collisionInstances =
+    { config, ... }:
+    {
+      config.den = {
+        zone.z1 = { };
+        zone.z2 = { };
+        rack.r1 = { };
+      };
+    };
+  collisionDen =
+    (denHoag.mkDen [
+      schema
+      collisionInstances
+      zoneRelateMod
+    ]).den;
 
   cellId = "blade:b1@rack:r1";
   keysAt = den: id: map (n: n.key) (den.structural.eval.get id "resolved-aspects");
@@ -213,20 +266,28 @@ let
 in
 {
   flake.tests.staged-resolution = {
-    # ── PHASE ORDER derived from the discovered containment topology (parent-before-child), never a
-    #    hardcoded kind list. rack.parent = zone ⇒ zone precedes rack. ──────────────────────────────────
-    test-phase-order-derived-from-topology = {
-      expr = S.orderRootKinds {
-        rootKinds = [
-          "rack"
-          "zone"
-        ];
-        parentOf = k: if k == "rack" then "zone" else null;
+    # ── THE PER-TARGET CARRIER is order-INDEPENDENT: two containment sources fired in one collection each
+    #    deliver to their OWN target's ctx (r1 gets its token, r2 gets its own), with no phase schedule and
+    #    no cross-leak. This is the property that replaces the former parent-before-child phase sort. ──────
+    test-per-target-binding-order-independent = {
+      expr = {
+        r1 = (twoSource.structural.eval.get "rack:r1" "enriched-context").authToken or null;
+        r2 = (twoSource.structural.eval.get "rack:r2" "enriched-context").authToken or null;
       };
-      expected = [
-        "zone"
-        "rack"
-      ];
+      expected = {
+        r1 = "tok-z1";
+        r2 = "tok2-z1";
+      };
+    };
+
+    # ── MULTI-SOURCE COLLISION to ONE target is deterministic + byte-faithful to the pre-transpose fold:
+    #    two same-kind sources (zones z1, z2) to rack:r1 merge last-wins in alphabetical (`attrNames`) source
+    #    order, so z2's token wins — identical to the old kind-ordered fold's within-kind alphabetical
+    #    last-wins. Corpus/fixtures are single-source per target (an invariant, stated above), so this path
+    #    is corpus/fixture-zero; it is defined here, not deferred. ──────────────────────────────────────────
+    test-same-kind-collision-last-wins = {
+      expr = (collisionDen.structural.eval.get "rack:r1" "enriched-context").authToken or null;
+      expected = "tok-z2";
     };
 
     # ── MEMBERSHIP ROUTING (Task 4): the rack policy's leaf-dim `member` emission (r1, b1) ROUTES into the

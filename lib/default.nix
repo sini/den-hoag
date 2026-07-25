@@ -960,18 +960,16 @@ let
       };
       # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED CELL tuples (Task 4, A5's
       # promised law): a policy-emitted bare `member` at a membership-independent root routes into the
-      # fleet. `prePass` also carries `relationBindings` (nodeId -> ctx additions from a `containTo`-marked
-      # member), injected into the target roots' decls (`scopeRoots`, below) so the main run's inherited-
-      # context threads them, AND `containmentRelations` (nodeId -> [ ancestor slice ]), threaded to
-      # resolved-settings for the settings-chain env slice (§3c-UNIFIED, byte-neutral when unset).
-      # THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` + `relationBindings =
-      # { }`, so `membershipTuples`/`scopeRoots` are byte-identical to the pre-R1 values. The pre-pass reads
-      # `prePassScopeRoots` (structural, un-injected) + `policiesRules` + `ent.meta` topology — none depend
-      # on `membershipTuples`/`theFleet`/the classification, so no cycle.
+      # fleet. `prePass` also carries `containmentBindings` (a targetNodeId -> merged-bindings transpose map
+      # from every `containTo`-marked member), folded onto the target roots' decls (`scopeRoots`, below) so
+      # the main run's inherited-context threads them, AND `containmentAncestors` (targetNodeId -> [ ancestor
+      # slice ]), threaded to resolved-settings for the settings-chain env slice (§3c-UNIFIED, byte-neutral
+      # when unset). THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` +
+      # `containmentBindings = { }`, so `membershipTuples`/`scopeRoots` are byte-identical to the pre-R1
+      # values. The pre-pass reads `prePassScopeRoots` (structural, un-injected) + `policiesRules` — neither
+      # depends on `membershipTuples`/`theFleet`/the classification, so no cycle.
       prePass = stagedResolution.runPrePass {
         scopeRoots = prePassScopeRoots;
-        rootKinds = prePassRootKinds;
-        parentOf = k: ent.meta.${k}.parent;
         inherit (ent) registries;
         # The resolve-family feed (concern-policies) — the structural-group rules that CAN emit
         # member/relate (single-group probe DETECTED, or the `__resolveFamily` tag DECLARED). Dispatching
@@ -1047,10 +1045,10 @@ let
         inherit (ent) registries;
         roots = rootScopeKinds;
       };
-      # The main-run root scope nodes: base roots with each `relate`-carried binding folded onto its
-      # TARGET root's decls (the enriched-context/decls seam — the corpus's `resolve.to host { accessGroups }`
-      # binds into the host SCOPE's ctx; inherited-context threads it to the host's cells, attr 1). A fleet
-      # with no relations gives `relationBindings = { }`, so `scopeRoots` is byte-identical to base.
+      # The main-run root scope nodes: base roots with each target's transpose binding slice folded onto its
+      # decls (the enriched-context/decls seam — the corpus's `resolve.to host { accessGroups }` binds into
+      # the host SCOPE's ctx; inherited-context threads it to the host's cells, attr 1). A fleet with no
+      # relations gives `containmentBindings = { }`, so `scopeRoots` is byte-identical to base.
       # …AND (#72) each pre-pass SUPPRESSION set folded onto its emitting root's decls as the typed
       # `suppressedPolicies` slot: the `suppressed-policies` inherited attribute (gen-scope inheritSet,
       # structural.nix) carries it self ∪ ancestors down the P-edge subtree to the root's DESCENDANTS,
@@ -1081,7 +1079,7 @@ let
         // {
           decls =
             node.decls
-            // (prePass.relationBindings.${id} or { })
+            // (prePass.containmentBindings.${id} or { })
             // systemView
             // prelude.optionalAttrs (prePass.suppressions ? ${id}) {
               suppressedPolicies = prePass.suppressions.${id};
@@ -1281,7 +1279,7 @@ let
       settingsProduction = attributesLib.mkSettingsProduction {
         fleet = theFleet;
         allAspects = ent.config.den.aspects;
-        inherit (prePass) containmentRelations;
+        containmentRelations = prePass.containmentAncestors;
         inherit
           lin
           settingsLayers
@@ -2600,7 +2598,6 @@ in
       parseParent
       runResolve
       scopeAdapter
-      stagedResolution
       ;
     # gen-flake's flake-parts crossing (`terminals.mkFlakeTerminal { inputs; self; modules; systems ? [] }` →
     # the transposed `config.flake`), for the suite's real-flake-parts witnesses to hand an aggregate render's
