@@ -4,7 +4,7 @@
 # distinct, the F-ing modules honesty ceiling). Function values never enter fingerprints;
 # produced values never enter the structural fill map — only the PRODUCING node's
 # instanceId does, so identity hashing can never force content.
-{ prelude }:
+{ prelude, graph }:
 let
   hash = v: builtins.hashString "sha256" (builtins.toJSON v);
 
@@ -54,22 +54,16 @@ let
 
   # fill-reference acyclicity: fills : { <instanceId> = [ referenced instanceId … ]; }.
   # A cycle would make instance identity an undeclared fixpoint — abort naming a member.
-  # Detection: id is cyclic iff id ∈ closure(its direct references) — catches self-loops
-  # and longer cycles alike.
+  # Detection via gen-graph's `cycles`: a node is cyclic iff reachable from itself over the
+  # fill-reference edges (catches self-loops and longer cycles alike). `cycles` returns the
+  # cyclic-node ids sorted, so `head` is the lexicographically-first offender.
   checkFillAcyclic =
     fills:
     let
-      reachableFrom =
-        id:
-        map (i: i.key) (
-          builtins.genericClosure {
-            startSet = map (r: { key = r; }) (fills.${id} or [ ]);
-            operator = item: map (r: { key = r; }) (fills.${item.key} or [ ]);
-          }
-        );
-      cyclic = builtins.filter (id: builtins.any (r: r == id) (reachableFrom id)) (
-        builtins.attrNames fills
-      );
+      cyclic = graph.cycles {
+        edges = id: fills.${id} or [ ];
+        nodes = builtins.attrNames fills;
+      };
     in
     if cyclic == [ ] then
       null

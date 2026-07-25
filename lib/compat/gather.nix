@@ -25,8 +25,8 @@
 #     per-node-memoized attrset: forced at most ONCE per node, reused by every consumer that matches it as
 #     a collect peer (was: recomputed per matched-peer × per collect-mark × per consumer — the dominant
 #     cost). The per-channel edge set is likewise built once (`exposeEdgesByChannel`), not per (node,P).
-#   • sibling buckets (`siblingBuckets`) — parent → [child ids] in attrNames order, one O(n) pass; a
-#     `collect` mark scans only its parent's bucket, not all nodes.
+#   • siblings — read off the engine-materialized parent→children transpose (`childrenIds result p`);
+#     a `collect` mark scans only its parent's children, not all nodes.
 #   • broadcaster index (`broadcastersByChannel`) — channel → [{sid;receiver}] in attrNames order, one O(n)
 #     pass; a consumer tests only the (few) actual broadcasters of a channel, not `filter (≠self) allNodes`.
 #
@@ -367,23 +367,17 @@ in
       );
       exposePoolFor = sid: exposePoolByNode.${sid} or { };
 
-      # (2) sibling buckets — parent → [child ids] in attrNames order, one O(n) pass. Parentless ROOTS are
-      #     mutual siblings (v1 `parentOf sid == parentOf nid` with both null), kept in `rootIds` (a `null`
-      #     parent cannot key an attrset).
-      siblingBuckets = prelude.foldl' (
-        acc: sid:
-        let
-          p = (result.node sid).parent;
-        in
-        if p == null then acc else acc // { ${p} = (acc.${p} or [ ]) ++ [ sid ]; }
-      ) { } allIds;
+      # (2) siblings — a node's siblings are its parent's children minus itself, read straight off the
+      #     engine-materialized parent→children transpose (`childrenIds result p` = gen-scope's `children`
+      #     query). Parentless ROOTS are mutual siblings (v1 `parentOf sid == parentOf nid` with both null),
+      #     kept in `rootIds` (a `null` parent cannot key an attrset).
       rootIds = builtins.filter (sid: (result.node sid).parent == null) allIds;
       siblingsOf =
         nid:
         let
           p = (result.node nid).parent;
         in
-        builtins.filter (sid: sid != nid) (if p == null then rootIds else siblingBuckets.${p} or [ ]);
+        builtins.filter (sid: sid != nid) (if p == null then rootIds else childrenIds result p);
 
       # (3) broadcaster index — channel → [{sid;receiver}] in attrNames order, one O(n) pass.
       broadcastersByChannel = prelude.foldl' (

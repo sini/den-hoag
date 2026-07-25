@@ -207,16 +207,9 @@ let
     self: id:
     let
       node = self.node id;
-      parentChain =
-        let
-          go =
-            nid:
-            let
-              p = (self.node nid).parent;
-            in
-            if p == null then [ ] else [ p ] ++ go p;
-        in
-        go id;
+      # the P-parent chain — gen-scope's structural `ancestors` query walks `node.parent` upward
+      # (immediate parent first, cycle-protected) instead of an inline chain walk.
+      parentChain = scope.ancestors self id;
       containment = node.decls.__containment or [ ];
       ancestorIds = prelude.unique (parentChain ++ containment);
       keysAt =

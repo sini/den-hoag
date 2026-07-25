@@ -25,10 +25,10 @@ let
   # disciplines / edges registries — a framework reserved seed unioned under a user table, mapAttrs-
   # validated, with a NAMED abort on a reserved-name collision. Threaded into those three libs below.
   reservedRegistry = import ./reserved-registry.nix { inherit prelude; };
-  # Two-level edge identity (assembly/instance/edge hashes + fill-graph acyclicity) — pure over the
-  # builtins, no gen dep (REFERENCE.md). Exposed through `internal` for the substrate suite; the
-  # substrate consumers reach it there.
-  identity = import ./identity.nix { inherit prelude; };
+  # Two-level edge identity (assembly/instance/edge hashes + fill-graph acyclicity — the latter
+  # routed through gen-graph's `cycles` self-reachability, REFERENCE.md). Exposed through `internal`
+  # for the substrate suite; the substrate consumers reach it there.
+  identity = import ./identity.nix { inherit prelude graph; };
   # The den-hoag NAMESPACE-identity preimages (§A2) — the SINGLE authority for the `den-aspect:`/
   # `den-class:` id_hashes. Both kernel authorities (classEntries/effectiveClassEntries below,
   # concern-aspects' idModule) and any downstream recompute of an entry's id_hash read THESE fns,
