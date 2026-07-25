@@ -165,6 +165,7 @@ in
         "enrichments"
         "imports"
         "inherited-context"
+        "suppressed-policies"
       ];
     };
   };

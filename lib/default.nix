@@ -1051,12 +1051,15 @@ let
       # TARGET root's decls (the enriched-context/decls seam — the corpus's `resolve.to host { accessGroups }`
       # binds into the host SCOPE's ctx; inherited-context threads it to the host's cells, attr 1). A fleet
       # with no relations gives `relationBindings = { }`, so `scopeRoots` is byte-identical to base.
-      # …AND (#72) each pre-pass SUPPRESSION set folded onto its emitting root's decls as the reserved
-      # `__denSuppressedPolicies` ctx key: inherited-context threads it to the root's DESCENDANTS (attr 1
-      # strips only __edges/__containment/__coords), matching v1's scope+ancestors constraint consult
-      # (dispatch-policies.nix:15-33) — sibling-isolated (#613) because only the emitting root's decls
-      # carry it. The compiled-rule GATES read it (the shim-side fn wrap, `gateSuppression`);
-      # it is never a module binding read (gen-bind binds destructured args only) and never traced.
+      # …AND (#72) each pre-pass SUPPRESSION set folded onto its emitting root's decls as the typed
+      # `suppressedPolicies` slot: the `suppressed-policies` inherited attribute (gen-scope inheritSet,
+      # structural.nix) carries it self ∪ ancestors down the P-edge subtree to the root's DESCENDANTS,
+      # matching v1's scope+ancestors constraint consult (dispatch-policies.nix:15-33) — sibling-isolated
+      # (#613) because only the emitting root's decls carry it. The slot is stripped from generic
+      # inherited-context (attr 1) so it rides ONLY its typed carrier; the compiled-rule GATES read the
+      # ctx-injected inherited set (`gateSuppression`, dispatch ctx). It is never a module binding read
+      # (gen-bind binds destructured args only) and never traced. Union (not `//`-shadow) composes
+      # multiple suppressing ancestors at different depths — v1-faithful, corpus sibling-isolated.
       # …AND each per-system external flake-view (den.systemViews) folded onto its system-bearing root's decls:
       # the flake's `inputs'`/`self'` delivered as INHERITED NODE ATTRIBUTES, not a `_module.args` battery. A
       # root carries its OWN system coordinate on `__entry.system` (a host/home); the view selected by that
@@ -1081,7 +1084,7 @@ let
             // (prePass.relationBindings.${id} or { })
             // systemView
             // prelude.optionalAttrs (prePass.suppressions ? ${id}) {
-              __denSuppressedPolicies = prePass.suppressions.${id};
+              suppressedPolicies = prePass.suppressions.${id};
             };
         }
       ) baseScopeRoots;

@@ -4002,11 +4002,11 @@
         "gen-prelude": "gen-prelude_33"
       },
       "locked": {
-        "lastModified": 1783052517,
-        "narHash": "sha256-RvKDPOp4jbwCGCmQMIstYpenASj9JfCIcUqkHXHPiTw=",
+        "lastModified": 1784939426,
+        "narHash": "sha256-mAFAP3egiMO/mPOzrl1/Fa9xMNQeO4xjxKjIozEvBzw=",
         "owner": "sini",
         "repo": "gen-scope",
-        "rev": "8599e5f51417e4e6a57ec0d3e36522b967b5e89b",
+        "rev": "ceabe5ed28fd46c17a999d9f1b59de1159623033",
         "type": "github"
       },
       "original": {

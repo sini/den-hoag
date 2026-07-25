@@ -41,19 +41,45 @@
       self: id:
       let
         layers = scope.inheritAll {
-          # Strip reserved `__` decls from the context: `__edges` (gen-scope's own) and
+          # Strip reserved decls from the generic context: `__edges` (gen-scope's own) and
           # `__containment` (the cell's coordinate-root ids, a resolution-only visibility aid) are
           # graph machinery, not entity bindings — a settings/policy read must never see them.
+          # `suppressedPolicies` is the typed suppression control-fact: it rides its OWN inherited
+          # carrier (`suppressed-policies`, gen-scope inheritSet) and must NOT re-leak into the generic
+          # binding context, so it is stripped here alongside the graph-machinery keys.
           extract =
             node:
             removeAttrs (node.decls or { }) [
               "__edges"
               "__containment"
               "__coords"
+              "suppressedPolicies"
             ];
         } self id;
       in
       prelude.foldl' (acc: layer: layer // acc) { } layers;
+  };
+
+  # 1s. suppressed-policies — the typed suppression control-fact carrier. The pre-pass' exclude family
+  #     emits a per-root suppression set (the v1 `policy.exclude <name>` constraint, dispatch-policies.nix:
+  #     15-33); it rides the emitting root's decls as the typed `suppressedPolicies` slot (default.nix
+  #     scopeRoots). This attribute delivers it self ∪ every ancestor (gen-scope inheritSet, an idempotent
+  #     union walking UP the P-edge parent chain), so a suppression fact reaches every scope-subtree
+  #     descendant of its emitting root — exactly v1's scope+ancestors consult. inheritSet's true UNION
+  #     composes multiple suppressing ancestors at different depths, where the generic `layer // acc`
+  #     context merge would shadow the farther under a single-key `//`; membership (`elem`) is the
+  #     semantics, so order/multiplicity carry no meaning. The gate (`gateSuppression`) reads this set
+  #     ctx-injected at the `declarations` dispatch (attr 4). Empty set at every node ⇒ inert.
+  suppressed-policies = resolve.attr {
+    name = "suppressed-policies";
+    kind = "inherited";
+    stratum = "structural";
+    readsAttrs = [ ];
+    compute =
+      self: id:
+      scope.inheritSet {
+        extract = node: node.decls.suppressedPolicies or [ ];
+      } self id;
   };
 
   # 2. enrichments — the REAL cross-enrichment fixpoint (r2 §B1), as INERT DATA. The enrich
@@ -154,11 +180,21 @@
   declarations = resolve.attr {
     name = "declarations";
     kind = "synthesized";
-    readsAttrs = [ "enriched-context" ];
+    readsAttrs = [
+      "enriched-context"
+      "suppressed-policies"
+    ];
     compute =
       self: id:
       let
-        ctx0 = self.get id "enriched-context";
+        # The dispatch context: the enriched bindings PLUS the typed suppression control-fact
+        # (`suppressedPolicies`, self ∪ ancestors — the `suppressed-policies` inherited attribute). The
+        # compiled-rule gate (`gateSuppression`) reads `ctx.suppressedPolicies` to fire a suppressed policy
+        # as `[ ]` at this scope subtree — v1's name-keyed dispatch filter. It rides its own carrier (not
+        # generic inherited-context, which strips it) so the control-fact never pollutes an entity binding.
+        ctx0 = (self.get id "enriched-context") // {
+          suppressedPolicies = self.get id "suppressed-policies";
+        };
         # SCOPE-LOCAL FIRING pre-filter (see attr 2): drop a rule whose `__firesAtKinds` excludes this
         # node's kind before dispatch (absent = every node), so an include-scoped rule fires only at its
         # owner-kind nodes — an ancestor coord inherited by a descendant kind no longer over-fires.

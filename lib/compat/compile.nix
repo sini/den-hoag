@@ -69,11 +69,13 @@ let
 
   # #72 — THE SUPPRESSION GATE (v1 dispatch-policies.nix:15-33: dispatch filters `aspectPolicies` by
   # name against the scoped exclude constraints). den-hoag rendering: the pre-pass's suppression sets
-  # ride the emitting root's decls as `__denSuppressedPolicies` (default.nix scopeRoots), inherited-
-  # context threads them to descendants, and every compiled rule whose v1 NAME is known consults the key
-  # before producing — a suppressed policy fires as `[ ]` at that scope subtree, exactly v1's filter.
-  # The v1 NAME (not the synthetic compiled key) is the match, so include-arm rules gate correctly.
-  # `null` name (an anonymous include fn) ⇒ ungateable ⇒ identity (v1's filter is name-keyed too).
+  # ride the emitting root's decls as the typed `suppressedPolicies` slot (default.nix scopeRoots), the
+  # `suppressed-policies` inherited attribute (gen-scope inheritSet) carries them self ∪ ancestors to
+  # descendants, and it is ctx-injected as `suppressedPolicies` at the dispatch. Every compiled rule
+  # whose v1 NAME is known consults the set before producing — a suppressed policy fires as `[ ]` at that
+  # scope subtree, exactly v1's filter. The v1 NAME (not the synthetic compiled key) is the match, so
+  # include-arm rules gate correctly. `null` name (an anonymous include fn) ⇒ ungateable ⇒ identity
+  # (v1's filter is name-keyed too).
   gateSuppression =
     v1Name: compiled:
     if v1Name == null then
@@ -81,8 +83,7 @@ let
     else
       compiled
       // {
-        fn =
-          ctx: if builtins.elem v1Name (ctx.__denSuppressedPolicies or [ ]) then [ ] else compiled.fn ctx;
+        fn = ctx: if builtins.elem v1Name (ctx.suppressedPolicies or [ ]) then [ ] else compiled.fn ctx;
       };
   # The §2.4 pipe stage vocabulary: `den.quirks.<name>` → a channel registration (`channelOf`) and the
   # `pipe.from name [stages]` policy effect → a collection-stratum `pipeOp` declaration (`compilePipe`).

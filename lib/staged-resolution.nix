@@ -93,9 +93,10 @@ let
   #                              coordinate, the target root's containment ANCESTOR — the settings-chain
   #                              env slice, read by resolved-settings.nix).
   #   • `suppressions`         — a nodeId -> [ policyName ] map (#72: the exclude family's `suppress`
-  #                              emissions at each root), injected onto the emitting root's decls as
-  #                              `__denSuppressedPolicies` (default.nix scopeRoots) so inherited-context
-  #                              delivers v1's scope+descendants suppression.
+  #                              emissions at each root), injected onto the emitting root's decls as the
+  #                              typed `suppressedPolicies` slot (default.nix scopeRoots) which the
+  #                              `suppressed-policies` inherited attribute (gen-scope inheritSet) carries
+  #                              down the P-edge subtree, delivering v1's scope+descendants suppression.
   #
   #   scopeRoots     = the BASE (un-injected) root scope nodes { id; type; parent; decls } (buildRoots).
   #   rootKinds      = the root scope kinds we FIRE at (default.nix `prePassRootKinds`).
@@ -121,8 +122,9 @@ let
       # the resolve family, collecting per-root SUPPRESSION SETS — v1's `policy.exclude <policy>`
       # constraint registration (pin 11866c16 fx/handlers/dispatch-policies.nix:15-33: name-keyed at the
       # emitting scope, consulted scope+ancestors ⇒ descendants inherit, siblings isolated per #613).
-      # The caller injects each set onto its root's decls (`__denSuppressedPolicies`), so inherited-
-      # context delivers the v1 semantics. Default `[ ]` → `suppressions = { }` → byte-identical.
+      # The caller injects each set onto its root's decls (the typed `suppressedPolicies` slot), which the
+      # `suppressed-policies` inherited attribute (gen-scope inheritSet) delivers with the v1 semantics.
+      # Default `[ ]` → `suppressions = { }` → byte-identical.
       excludeRules ? [ ],
     }:
     let

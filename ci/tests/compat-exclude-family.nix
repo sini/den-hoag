@@ -7,9 +7,10 @@
 #   • the exclude-family feed (concern-policies `__excludeFamily` — detected by probe or declared via
 #     `den.excludeFamilyNames`, compat/exclude-family-names.nix) dispatched by the pre-pass with real
 #     ctx (staged-resolution.nix), producing per-root SUPPRESSION SETS;
-#   • the sets ride the emitting root's decls (`__denSuppressedPolicies`, default.nix scopeRoots) —
-#     inherited-context threads them to descendants;
-#   • every compiled rule with a known v1 NAME consults the key before producing (compile.nix
+#   • the sets ride the emitting root's decls (the typed `suppressedPolicies` slot, default.nix
+#     scopeRoots) — the `suppressed-policies` inherited attribute (gen-scope inheritSet) carries them
+#     self ∪ ancestors to descendants;
+#   • every compiled rule with a known v1 NAME consults the set before producing (compile.nix
 #     `gateSuppression`) — a suppressed policy fires as `[ ]`, exactly v1's dispatch filter.
 #
 # Witnesses (the user-to-host route is parent-targeted — `appendToParent` — so its delivery edge roots at
