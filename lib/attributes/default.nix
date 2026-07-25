@@ -68,6 +68,7 @@ let
       settingsLib
       projects
       errors
+      graph
       ;
   };
   classModules = import ./class-modules.nix {

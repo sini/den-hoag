@@ -372,6 +372,126 @@ let
   # (without) the env→host relation → the env layer is INERT (env not in the cell's slice set).
   mlWithout = (denHoag.mkDen (mlBase ++ [ mlLayers ])).den;
   mlProv = d: map (e: e.rendered) (mlRsOf d).svc.provenance.mem;
+
+  # ── FLEET D — axis 7b: MULTI-LEVEL containment-relation chain (the reversal order witness) ──────────
+  # A TWO-level containment chain org→env→host stacked above the {host,user} product cell: `host` records
+  # `env` as its containment ancestor AND `env` records `org` as ITS ancestor. The ancestor walk must fold
+  # LEAST-specific-first (org before env before host) — the load-bearing order the gen-graph route recovers
+  # by REVERSING gen-graph's nearest-first pre-order. Single-level axis-7 can't discriminate the reversal;
+  # this transitive two-level chain can. Distinct `mem` per tier proves each slice folds; the PROVENANCE
+  # ORDER is the discriminator (a mis-reversed walk swaps org/env while leaving the last-wins value at host).
+  # Corpus-shaped (single-source per node, linear, acyclic) so byte-neutral — it only pins the order the
+  # route already had to preserve. `org`/`env` are containment sources, NOT product dims of the cell.
+  dSchema = {
+    config.den.schema = {
+      org.parent = null;
+      env.parent = "org";
+      host.parent = "env";
+      user.parent = "host";
+    };
+  };
+  dInstances = {
+    config.den = {
+      org.acme = { };
+      env.prod = { };
+      host.axon = { };
+      user.alice = { };
+    };
+  };
+  dMembership =
+    { config, ... }:
+    {
+      config.den.membership = [
+        {
+          coords = {
+            host = config.den.host.axon;
+            user = config.den.user.alice;
+          };
+        }
+      ];
+    };
+  # org→env containment relation (the DEEPER level): records org as env's containment ancestor.
+  dOrgToEnv =
+    { config, ... }:
+    {
+      config.den.policies.org-to-env =
+        { org, ... }:
+        [
+          (declare.member {
+            coords = {
+              inherit org;
+              env = config.den.env.prod;
+            };
+            containTo = "env";
+          })
+        ];
+    };
+  # env→host containment relation (the NEARER level): records env as host's containment ancestor.
+  dEnvToHost =
+    { config, ... }:
+    {
+      config.den.policies.env-to-host =
+        { env, ... }:
+        [
+          (declare.member {
+            coords = {
+              inherit env;
+              host = config.den.host.axon;
+            };
+            containTo = "host";
+          })
+        ];
+    };
+  dApp =
+    { config, ... }:
+    {
+      config.den.aspects.svc = {
+        settings.mem.default = 0;
+      };
+      config.den.include = [
+        {
+          at = config.den.user.alice;
+          aspects = [ config.den.aspects.svc ];
+        }
+      ];
+    };
+  # a distinct mem per relation tier — the fold's last-wins lands on host, but the provenance ORDER
+  # exposes whether org (deepest) folded before env (nearer).
+  dLayers =
+    { config, ... }:
+    {
+      config.den.settings.layers = [
+        {
+          at.org = config.den.org.acme;
+          of = config.den.aspects.svc;
+          set.mem = 1;
+        }
+        {
+          at.env = config.den.env.prod;
+          of = config.den.aspects.svc;
+          set.mem = 2;
+        }
+        {
+          at.host = config.den.host.axon;
+          of = config.den.aspects.svc;
+          set.mem = 3;
+        }
+      ];
+    };
+  dWith =
+    (denHoag.mkDen [
+      dSchema
+      dInstances
+      dMembership
+      dOrgToEnv
+      dEnvToHost
+      dApp
+      dLayers
+    ]).den;
+  dProv = map (e: e.rendered) (
+    (dWith.structural.eval.get mlCellId "resolved-settings").svc.provenance.mem
+  );
+  dValue = (dWith.structural.eval.get mlCellId "resolved-settings").svc.value.mem;
 in
 {
   flake.tests.settings-witness = {
@@ -523,6 +643,25 @@ in
         "host"
         "user"
       ];
+    };
+
+    # ── axis 7b — MULTI-LEVEL chain ORDER: the transitive two-level containment chain org→env→host folds
+    #    LEAST-specific-first (org before env before host). This is the discriminating witness for the
+    #    ancestor walk's reversal — single-level axis-7 can't tell a correct reversal from none, this
+    #    transitive chain can (a mis-reversed walk swaps org/env). Load-bearing: the fold ORDER, not the
+    #    last-wins value, is what proves the containment closure is emitted least-specific-first. ──
+    test-axis7b-multilevel-chain-order = {
+      expr = dProv;
+      expected = [
+        "default"
+        "org=acme" # ← deepest containment source, folds FIRST after default
+        "env=prod" # ← nearer containment source
+        "host=axon"
+      ];
+    };
+    test-axis7b-multilevel-chain-value = {
+      expr = dValue;
+      expected = 3;
     };
 
     # ── axis 8 — SCHEMA EXTENSION: gen-schema kind extension auto-attached per aspect (id_hash) + metadata ──

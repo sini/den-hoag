@@ -35,6 +35,7 @@
   settingsLib,
   projects,
   errors,
+  graph,
 }:
 let
   # Reserved decls keys are graph machinery, never producing-scope coordinates (mirrors
@@ -103,33 +104,74 @@ let
     }:
     let
       # Transitive containment-relation ancestors of a node (least→most specific `fixed` coord-sets). Each
-      # ancestor slice is single-kind ({ <kind> = entry }); its own node id ("kind:name") is walked FIRST,
-      # so a multi-level chain (fleet→env→host) resolves least-specific first. Empty for a node with no
-      # containment relation (the corpus's environment root, and every native fleet without a containTo
-      # member) ⇒ the chain is byte-identical to the pre-§3c product chain.
-      # CYCLE GUARD (loud-error discipline): a VISITED set (the node ids on the current path) threads the
-      # recursion — a revisit is a cyclic `containTo` topology (A contains B contains A) and aborts NAMED
-      # (`errors.containmentCycle`) instead of hanging. Corpus-unreachable (a v1-surface adapter's source
-      # coordinate strictly ascends the acyclic schema topology); a native fixture can author it.
+      # ancestor slice is single-kind ({ <kind> = entry }); the reversed pre-order emission (below) puts
+      # the deepest source first, so a multi-level chain (fleet→env→host) resolves least-specific first.
+      # Empty for a node with no containment relation (the corpus's environment root, and every native
+      # fleet without a containTo member) ⇒ the chain is byte-identical to the pre-§3c product chain.
+      # CYCLE GUARD (loud-error discipline): a cyclic `containTo` topology (A contains B contains A)
+      # aborts NAMED (`errors.containmentCycle`) instead of hanging. Corpus-unreachable (a v1-surface
+      # adapter's source coordinate strictly ascends the acyclic schema topology); a native fixture can
+      # author it.
       ancNodeId =
         slice:
         let
           k = builtins.head (builtins.attrNames slice);
         in
         "${k}:${slice.${k}.name}";
-      ancestorsOf' =
-        visited: nid:
+      # Containment-edge accessor over the MULTI-VALUED `containmentRelations` map (nid -> [ source
+      # slice ]): a node id's upward edges are the ids of its containment-ancestor slices. This is a
+      # separate map from the single-parent self-graph P-edge (`node.parent`) — a node may sit under
+      # several containment sources — so it is untraversable by a single-parent inherit walk and is a
+      # genuine graph accessor. `containEdges`/`sliceById` only touch the containment topology + slice
+      # names (id strings), never aspect/settings content.
+      containEdges = nid: map ancNodeId (containmentRelations.${nid} or [ ]);
+      # Ancestor id back to the single-kind coord-set it names: every slice is an entry in some node's
+      # `containmentRelations` list, and its id (`kind:name`) is its identity.
+      sliceById = builtins.listToAttrs (
         prelude.concatMap (
-          anc:
-          let
-            aid = ancNodeId anc;
-          in
-          if visited ? ${aid} then
-            errors.containmentCycle aid
-          else
-            ancestorsOf' (visited // { ${aid} = true; }) aid ++ [ anc ]
-        ) (containmentRelations.${nid} or [ ]);
-      ancestorsOf = nid: ancestorsOf' { ${nid} = true; } nid;
+          nid:
+          map (s: {
+            name = ancNodeId s;
+            value = s;
+          }) (containmentRelations.${nid} or [ ])
+        ) (builtins.attrNames containmentRelations)
+      );
+      # The containment-ancestor upward closure, routed through gen-graph. `expandPreorder` carries the
+      # slice payload and visits in first-occurrence PRE-order (nearest-first over `containEdges`);
+      # reversing it yields the LEAST-specific-first emission the settings-precedence fold consumes at
+      # `chain` (default < env < host < user, ORDER load-bearing). `cycles`/`selfReachable` over the
+      # SAME edge accessor is the loud back-edge guard — a cyclic `containTo` topology throws NAMED
+      # (`errors.containmentCycle`) rather than hanging. SEMANTICS-NORMALIZING vs the prior hand-rolled
+      # path-scoped grey-set DFS over a BRANCHING ancestor forest, on TWO off-corpus deltas: (1) gen-graph's
+      # global first-occurrence visited set dedups a diamond (shared-grandparent) slice the path-scoped walk
+      # emitted TWICE (a latent duplicate-layer fix); (2) reverse-of-pre-order ≠ the old post-order for
+      # SIBLING branches, so two ancestors of one node fold in the opposite relative order (sibling
+      # precedence is unspecified either way). Byte-neutral on the corpus, whose containment is single-source
+      # / linear / acyclic — `containmentRelations.<nid>` is singleton|empty, so neither a diamond nor a
+      # sibling forest is reachable and both deltas are latent.
+      # Dep-free list reversal (gen-prelude keeps its own `reverseList` internal to `toposort`): turns
+      # gen-graph's nearest-first pre-order into the least-specific-first emission the fold consumes.
+      reverseList =
+        xs:
+        let
+          l = builtins.length xs;
+        in
+        builtins.genList (n: builtins.elemAt xs (l - n - 1)) l;
+      ancestorsOf =
+        nid:
+        let
+          walk = graph.expandPreorder {
+            roots = containEdges nid;
+            key = anc: anc;
+            edges = containEdges;
+            emit = anc: _payload: sliceById.${anc};
+          };
+          cyclic = graph.cycles {
+            edges = containEdges;
+            nodes = builtins.attrNames walk.seen;
+          };
+        in
+        if cyclic == [ ] then reverseList walk.nodes else errors.containmentCycle (builtins.head cyclic);
 
       # A14 (projects facet) — `projectionLayersAt`: expand every projecting aspect into `via`-carrying
       # den-layer records at its attachment scopes, added to the scoped-override pool. resolved-settings
