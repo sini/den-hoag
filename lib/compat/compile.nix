@@ -311,8 +311,12 @@ let
   # collapse to one key and only the FIRST fires — silently dropping sibling includes (define-user's
   # hmContext, and via den.default radiation hostname/inputs'/… ). We thread a per-position NAME PATH
   # (owning-aspect prefix + list index, recursively) so every wrap has a DISTINCT, traceable key.
+  # `aspectRec`/`registry` are threaded from the inner function body so the include arm can RESOLVE a
+  # registered nav reference to its canonical grounded record (delegation, not re-grounding) — see the
+  # `registry ? ${ref.key}` arm in `normalize`. Both are lazy (functions / an attrset built FROM
+  # `normalizeList`); the closure captures them as thunks and forces them only at resolution, acyclically.
   mkNormalize =
-    classNames: quirkNames: divertedPolicyNames: radiatedBareFn:
+    classNames: quirkNames: divertedPolicyNames: radiatedBareFn: aspectRec: registry:
     let
       # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
       # registry-side instance; see `groundRec` for why the include path needs its own split.
@@ -591,19 +595,46 @@ let
           # include boundary. MESSAGE-REFINEMENT of the existing §2.2 abort, NEVER a new abort path: this
           # fires ONLY on inputs that already throw there (isClassContentCollapse excludes every legit shape).
           errors.reservedClassInclude name
-        else if builtins.isAttrs ref && !(ref ? id_hash) then
-          # A STATIC aspect attrset (inline content / a `{ name }` reference): GROUND its class keys and
-          # recurse its includes. A `{ __isPolicy; fn }` policy record NEVER reaches here — every include
-          # arm diverts it at its own grain, mirroring v1 (children.nix:70-72: `processInclude`'s FIRST arm
-          # routes an `__isPolicy` include to `register-aspect-policy`, never the aspect walk): a
-          # `den.schema.<kind>.includes` record via `isPolicyRef` → `kindIncludePolicies`; a record
-          # nested in a REGULAR aspect's `.includes` via `keepInclude` above (#65, ledger u16 — the
-          # `normalizeList` filter + the `aspectIncludePolicies` static walk; the old "corpus-zero" claim
-          # for this grain was FALSIFIED by corpus users/sini.nix:4 → the host-aspects battery, u15). A
-          # MALFORMED fn-bearing attrset that is NOT a policy record (no `__isPolicy`/`__denCanTake` —
-          # e.g. `{ name; fn; }`) still grounds here and its `fn` key aborts at the §2.2 three-branch
-          # dispatch — self-announcing, never a silent drop. An id_hash-bearing entry is already a
-          # resolved record — pass it (and strings) through the `else`.
+        else if builtins.isAttrs ref && ref ? key && builtins.isString ref.key && registry ? ${ref.key} then
+          # A REGISTERED NAV REFERENCE — a `with den.aspects; [ … ]` node carries its native gen-aspects `.key`
+          # (the full container-relative slash-path, `core/systemd/boot`), which is a registry key. It is a
+          # REFERENCE, not fresh content: RESOLVE it to the ONE canonical grounded record via `aspectRec
+          # ref.key` (the same record a `neededBy`/policy-edge reference to it yields — dedup-coherent), rather
+          # than re-grounding the reference's own materialized buckets in place. `translateAspect` already
+          # ground its class keys, split its nested sub-aspects, and normalized its includes ONCE at the
+          # registry mapAttrs site, so this delegates all of that (den-hoag does LESS) and cannot
+          # double-process. The record is returned WHNF (its `.includes` thunk is forced later by
+          # resolved-aspects, which carries the seen-dedup), so the registry-graph walk never cycles here.
+          # The `isString ref.key` guard keeps the membership test's `${ref.key}` interpolation from
+          # coerce-THROWING on a malformed non-string `.key` — such a ref falls to the inline `groundRec` arm,
+          # whose §2.2 dispatch names the offending key clearly rather than a raw coercion error.
+          #
+          # THE DISCRIMINATOR IS REGISTRY MEMBERSHIP, NOT `id_hash` (holdover dissolution). This arm formerly
+          # gated the STATIC branch on `!(ref ? id_hash)`, reading id_hash-presence as "already a den-hoag
+          # RESOLVED record — pass through". gen-aspects now mounts an UNCONDITIONAL `id_hash` option on EVERY
+          # typed aspect submodule (the universal `aspectId` content-address) — the `id_hash` submodule option
+          # in gen-aspects/lib/types.nix — so a PRE-grounding typed nav node carries id_hash alongside its
+          # native `.key` and its v1-spelled un-grounded class buckets (an empty `homeManager` deferredModule
+          # on every node, from types.nix `classOptions`) — the old guard then passed it through UN-grounded
+          # and `homeManager` aborted §2.2 at `classifyKey` (concern-aspects.nix; the kernel registers only the
+          # kebab `home-manager`). den-hoag must NEVER key control flow on an identity marker: a REFERENCE is
+          # discriminated by STRUCTURE (its key names a registered aspect), and identity (gen-native aspectId)
+          # is orthogonal to the v1ClassKeyMap grounding this arm exists for (a permanent compat-dialect
+          # translation). An inline literal ALSO carries a `.key` (a POSITIONAL path, `h4/includes/0`) but is
+          # NOT a registry member, so it falls to `groundRec` below — the structural split, not id_hash.
+          aspectRec ref.key
+        else if builtins.isAttrs ref then
+          # INLINE CONTENT with no registry identity (an anonymous `{ nixos… }` literal, a `{ name }` bare
+          # reference, an unregistered positional node): GROUND its class keys in place, split off nested
+          # sub-aspects, and recurse its includes. A `{ __isPolicy; fn }` policy record NEVER reaches here —
+          # every include arm diverts it at its own grain, mirroring v1 (children.nix:70-72: `processInclude`'s
+          # FIRST arm routes an `__isPolicy` include to `register-aspect-policy`, never the aspect walk): a
+          # `den.schema.<kind>.includes` record via `isPolicyRef` → `kindIncludePolicies`; a record nested in a
+          # REGULAR aspect's `.includes` via `keepInclude` above (#65, ledger u16 — the `normalizeList` filter
+          # + the `aspectIncludePolicies` static walk; the old "corpus-zero" claim for this grain was FALSIFIED
+          # by corpus users/sini.nix:4 → the host-aspects battery, u15). A MALFORMED fn-bearing attrset that is
+          # NOT a policy record (no `__isPolicy`/`__denCanTake` — e.g. `{ name; fn; }`) still grounds here and
+          # its `fn` key aborts at the §2.2 three-branch dispatch — self-announcing, never a silent drop.
           groundRec name (stampIdentity name ref)
         else
           ref;
@@ -657,9 +688,7 @@ let
   # key a `neededBy` inclusion produces (dedup-coherent), and `id_hash` satisfies `declare.edge`'s A2.
   resolveAspectRef =
     aspectRec: ref:
-    if builtins.isAttrs ref && ref ? id_hash then
-      ref
-    else if builtins.isAttrs ref && ref ? key then
+    if builtins.isAttrs ref && ref ? key then
       # A typed navigation node (a `den.aspects.<path>` ref off the annotated tree) carries its NATIVE
       # gen-aspects `.key` — the FULL container-relative slash-path (`core/secrets/collector`), the
       # identity born in the type (flake-module.nix typedCompileTree). Resolve by that native key so a
@@ -667,11 +696,30 @@ let
       # `.name` (both the top-level registry key), so this is byte-stable there; only a nested node —
       # whose `.name` is the LAST SEGMENT alone (`collector`) — diverges, and it is exactly the nested
       # node that the `.name` lookup missed (an empty stub → zero content). Prefer `.key` over `.name`.
+      #
+      # Every navigable REFERENCE resolves via the registry FIRST — `.key` (here), `.name`, then a bare
+      # string — and the `id_hash` pass-through is LAST (holdover dissolution): den-hoag must NEVER key
+      # control flow on an identity marker. gen-aspects now mounts an UNCONDITIONAL `id_hash` option on EVERY
+      # typed aspect submodule (the universal `aspectId` content-address) — the `id_hash` submodule option in
+      # gen-aspects/lib/types.nix — so a typed nav node carries id_hash ALONGSIDE its native `.key` and its v1-spelled
+      # un-grounded class buckets. With the old id_hash-FIRST order it short-circuited to the pass-through and
+      # delivered its RAW un-grounded content (a `homeManager` bucket aborting §2.2 at classifyKey / an empty
+      # registry stub). A REFERENCE is discriminated by STRUCTURE (it carries a navigable `.key`/`.name`); the
+      # emitted-content-set and bare-fn arms divert upstream (translateEffect ~:843-854), so a key-bearing ref
+      # is ALWAYS a registry address — look it up.
       aspectRec ref.key
     else if builtins.isAttrs ref && ref ? name then
       aspectRec ref.name
     else if builtins.isString ref then
       aspectRec ref
+    else if builtins.isAttrs ref && ref ? id_hash then
+      # A record carrying id_hash but NEITHER a `.key` NOR a `.name` — NOT a navigable reference — pass it
+      # through (satisfies declare.edge's A2; the residual case, e.g. a synthetic A2-satisfaction stub). This
+      # arm is LAST BY DESIGN: a `.key`/`.name`-bearing reference MUST resolve via the registry arms above and
+      # must NEVER reach this pass-through — returning it verbatim would deliver its un-grounded/empty content
+      # instead of the canonical registry record (an empty-stub / §2.2 regression). Only a keyless AND nameless
+      # record — which no registry lookup could resolve — legitimately passes through here.
+      ref
     else
       errors.identityLaw "policy aspect reference" ref;
 
@@ -776,12 +824,22 @@ let
   # A `policy.include <value>` whose value is a CONTENT SET (not a `{ name }`/`{ id_hash }` reference to a
   # registered aspect): either a NAVIGATED node off the typed `den` arg (carries its OWN native `.key` — the
   # corpus `user-aspect-auto-include` emitting `den.aspects.<host>.<user>`) or a closure-captured / synthetic
-  # value with neither `key` nor `name` (the scope-coord fallback). An id_hash-bearing resolved record, a
-  # bare `{ name }` reference, a functor, and a policy record are NOT content sets.
+  # value with neither `key` nor `name` (the scope-coord fallback). A bare `{ name }`/`{ id_hash; name }`
+  # reference, a functor, and a policy record are NOT content sets.
+  #
+  # THE DISCRIMINATOR IS `(v ? key || !(v ? name))` (holdover dissolution): a content set is either a
+  # key-bearing navigated node or a key-less/name-less synthetic value; every REFERENCE stub carries a `name`
+  # WITHOUT a `key`, so it is excluded here and routed to `resolveAspectRef` for registry lookup. This arm
+  # formerly ALSO gated `!(v ? id_hash)` as a "not-an-already-resolved-record" proxy — but gen-aspects now
+  # mounts an UNCONDITIONAL `id_hash` option on EVERY typed aspect submodule (the universal `aspectId`
+  # content-address) — the `id_hash` submodule option in gen-aspects/lib/types.nix — so a navigated content
+  # set now carries id_hash and that clause EXCLUDED it — misrouting the emit to `resolveAspectRef`, whose registry
+  # lookup MISSES a strip-only nested sub-aspect (`blade/shuo`, never registered) and returns an empty stub
+  # (the C1 zero-content gap). The clause was redundant for the reference cases it meant to catch (a
+  # `{ id_hash; name }` stub has a `name` and no `key`, so it is already excluded); dropped.
   isEmittedContentSet =
     v:
     builtins.isAttrs v
-    && !(v ? id_hash)
     && (v ? key || !(v ? name))
     && !(v ? __functor)
     && !((v.__isPolicy or false) || (v.__denCanTake or null) != null);
@@ -1219,9 +1277,12 @@ let
   # confinement). The radiate GUARD, the node-local divert predicate, and the walk collector all share THIS
   # ONE computation, so they never diverge.
   isLateDispatchFn = fn: builtins.any (k: (ing.schema.${k}.parent or null) != null) (firesAtOf fn);
-  normalizeList = mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { })) (
-    if aspectIncludeArm then aspectIncludeDivertedNames else { }
-  ) (if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFn ref) else (_: false));
+  normalizeList =
+    mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { }))
+      (if aspectIncludeArm then aspectIncludeDivertedNames else { })
+      (if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFn ref) else (_: false))
+      aspectRec
+      aspects;
   # ATTACHMENT-RELATIVE late-dispatch, for the arm that attaches a bare-fn include at a KNOWN kind's
   # nodes (the `den.schema.<K>.includes` synthetic-aspect arm below). The global `isLateDispatchFn`
   # tests `parent != null`, i.e. "the required kind is a descendant of ROOT" — correct only where the
@@ -1251,7 +1312,9 @@ let
       (if aspectIncludeArm then aspectIncludeDivertedNames else { })
       (
         if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFnFrom kind ref) else (_: false)
-      );
+      )
+      aspectRec
+      aspects;
   # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
   # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
   isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
