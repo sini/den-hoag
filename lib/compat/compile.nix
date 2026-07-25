@@ -1290,19 +1290,18 @@ let
   # include attaches at a root-ish scope (the regular-aspect / `den.default` paths). A kindInclude bare
   # fn instead attaches at K-nodes, where K's OWN coord and every ANCESTOR coord are present (inherited
   # down the P edge, structural.nix). So a required formal grounds IN PLACE iff it names K or an ancestor
-  # of K; only a STRICT DESCENDANT of K is absent and must radiate. `presentAtKind` walks the (acyclic)
-  # parent chain. For a single-rooted schema (the den/corpus case) `isLateDispatchFnFrom <root>` coincides
-  # with the global `isLateDispatchFn` — the global is that root-attached case; on a multi-root schema the
-  # attachment-relative predicate is strictly more correct (a sibling-root formal radiates, not grounds).
+  # of K; only a STRICT DESCENDANT of K is absent and must radiate. For a single-rooted schema (the
+  # den/corpus case) `isLateDispatchFnFrom <root>` coincides with the global `isLateDispatchFn` — the
+  # global is that root-attached case; on a multi-root schema the attachment-relative predicate is
+  # strictly more correct (a sibling-root formal radiates, not grounds).
+  # The kind-ancestor membership walk routes through gen-graph `ancestorsOf` over the single-parent
+  # schema chain (`ing.schema.<K>.parent`): `ancestorsOf` returns baseKind's PROPER ancestors (self
+  # excluded), so the `k == baseKind ||` prefix supplies the reflexive case. Consumed inside
+  # `builtins.any`, so membership is order-independent and gen's nearest-first traversal is byte-neutral.
   presentAtKind =
     baseKind: k:
     k == baseKind
-    || (
-      let
-        anc = ing.schema.${baseKind}.parent or null;
-      in
-      anc != null && presentAtKind anc k
-    );
+    || builtins.elem k (graph.ancestorsOf { parent = kk: ing.schema.${kk}.parent or null; } baseKind);
   isLateDispatchFnFrom = baseKind: fn: builtins.any (k: !(presentAtKind baseKind k)) (firesAtOf fn);
   # Per-kind `normalizeList` — MIRRORS the global's four args, swapping ONLY the radiate/divert predicate
   # for the attachment-relative one so a bare-fn `schema.<K>.includes` grounds at its K-nodes instead of
