@@ -231,16 +231,18 @@ let
       ) (builtins.attrValues allAspects);
       selectors = builtins.filter (a: isSelector a.neededBy) carriers;
       literals = builtins.filter (a: !(isSelector a.neededBy)) carriers;
-      byTrigger = prelude.foldl' (
-        acc: a:
-        prelude.foldl' (
-          acc': trigger:
-          let
-            k = keyOf trigger;
-          in
-          acc' // { ${k} = (acc'.${k} or [ ]) ++ [ a ]; }
-        ) acc a.neededBy
-      ) { } literals;
+      # Multi-key inverted index (one carrier indexed under EACH of its trigger keys): flatten to
+      # (triggerKey, carrier) pairs in carrier×trigger order, then gen-prelude.groupBy by key. Its
+      # order-preserving foldl' reproduces the original nested-fold accumulation exactly (a plain
+      # single-key groupBy or gen-graph.transpose cannot — the latter would set-dedup the buckets).
+      triggerPairs = prelude.concatMap (
+        a:
+        map (trigger: {
+          k = keyOf trigger;
+          inherit a;
+        }) a.neededBy
+      ) literals;
+      byTrigger = builtins.mapAttrs (_: ps: map (p: p.a) ps) (prelude.groupBy (p: p.k) triggerPairs);
     in
     {
       inherit byTrigger selectors;

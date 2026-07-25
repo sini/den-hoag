@@ -2003,9 +2003,9 @@ let
         else
           let
             kindForward = builtins.filter (e: e.kind == rel) forwardRelationEdges;
-            adjacency = builtins.foldl' (
-              acc: e: acc // { ${e.from} = (acc.${e.from} or [ ]) ++ [ e.to ]; }
-            ) { } kindForward;
+            # from → [to] adjacency: gen-prelude.groupBy buckets the edges by source (order-preserving
+            # foldl'), then each bucket projects to its target node-ids for gen-graph.transpose.
+            adjacency = builtins.mapAttrs (_: es: map (e: e.to) es) (prelude.groupBy (e: e.from) kindForward);
             nodes = prelude.unique (
               prelude.concatMap (e: [
                 e.from

@@ -280,10 +280,13 @@ let
       userFieldsFor ? (_host: _user: { }),
     }:
     let
+      # last-wins dedup by "user@host": gen-prelude.groupBy buckets the bindings by key (order-preserving),
+      # then last-of-bucket is the final binding for that key — reproducing the original overwriting fold.
+      # attrValues yields the surviving bindings in key order.
       deduped = builtins.attrValues (
-        prelude.foldl' (
-          acc: b: acc // { "${b.user}@${if b.host == null then "" else b.host}" = b; }
-        ) { } bindings
+        builtins.mapAttrs (_: prelude.last) (
+          prelude.groupBy (b: "${b.user}@${if b.host == null then "" else b.host}") bindings
+        )
       );
     in
     prelude.concatMap (

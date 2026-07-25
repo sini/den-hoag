@@ -120,12 +120,7 @@ let
 
   # Per-channel list-concat merge of `{ <channel> = [ contribution ]; }` maps (v1's ordered accumulation).
   # Source-order-preserving, no dedup (A12 / v1 concat).
-  mergeMaps =
-    maps:
-    prelude.foldl' (
-      acc: m:
-      prelude.foldl' (a: ch: a // { ${ch} = (a.${ch} or [ ]) ++ m.${ch}; }) acc (builtins.attrNames m)
-    ) { } maps;
+  mergeMaps = maps: builtins.zipAttrsWith (_: prelude.concatLists) maps;
 
   # The channels a node RE-EXPOSES: the `channel` of each `expose` site-mark it carries, deduped by CHANNEL
   # (the multi-policy doubling ceiling — v1 would push once per policy).
@@ -379,22 +374,23 @@ in
         in
         builtins.filter (sid: sid != nid) (if p == null then rootIds else childrenIds result p);
 
-      # (3) broadcaster index — channel → [{sid;receiver}] in attrNames order, one O(n) pass.
-      broadcastersByChannel = prelude.foldl' (
-        acc: sid:
-        prelude.foldl' (
-          a: m:
-          a
-          // {
-            ${m.channel} = (a.${m.channel} or [ ]) ++ [
-              {
-                inherit sid;
-                inherit (m) receiver;
-              }
-            ];
-          }
-        ) acc (broadcastMarksAt result sid)
-      ) { } allIds;
+      # (3) broadcaster index — channel → [{sid;receiver}] in attrNames order. Multi-key group (one sid
+      # indexed under EACH of its broadcast marks' channels): flatten to (channel, {sid;receiver}) pairs in
+      # sid×mark order, then gen-prelude.groupBy by channel — its order-preserving foldl' reproduces the
+      # original nested-fold accumulation.
+      broadcasterPairs = prelude.concatMap (
+        sid:
+        map (m: {
+          inherit (m) channel;
+          entry = {
+            inherit sid;
+            inherit (m) receiver;
+          };
+        }) (broadcastMarksAt result sid)
+      ) allIds;
+      broadcastersByChannel = builtins.mapAttrs (_: ps: map (p: p.entry) ps) (
+        prelude.groupBy (p: p.channel) broadcasterPairs
+      );
 
       collectAt = collectGatheredWith {
         inherit

@@ -349,13 +349,12 @@ let
       ]) resolved;
       instanceIdSet = prelude.genAttrs (map (s: s.instanceId) sides) (_: true);
       # entityId -> the instanceIds it has in this assembly (an entity may fan out to several instances).
-      entityInstances = prelude.foldl' (
-        acc: s:
-        acc
-        // {
-          ${s.entityId} = prelude.unique ((acc.${s.entityId} or [ ]) ++ [ s.instanceId ]);
-        }
-      ) { } sides;
+      # gen-prelude.groupBy buckets the sides by entity (order-preserving), then each bucket's instanceIds
+      # are first-occurrence deduped — folding unique over the ordered bucket equals the original per-append
+      # unique.
+      entityInstances = builtins.mapAttrs (_: ss: prelude.unique (map (s: s.instanceId) ss)) (
+        prelude.groupBy (s: s.entityId) sides
+      );
       # resolve one S string leaf to a referenced instanceId, or `null` if it names nothing in the
       # assembly. A literal instanceId is a direct ref; an entityId is INSTANCE-DISCRIMINATING sugar —
       # it resolves iff the entity has exactly ONE instance here, else it is ambiguous and aborts NAMED
@@ -378,13 +377,12 @@ let
         else
           null;
       refsOf = side: builtins.filter (r: r != null) (map resolveRef (stringLeaves side.s));
-      fillGraph = prelude.foldl' (
-        acc: s:
-        acc
-        // {
-          ${s.instanceId} = prelude.unique ((acc.${s.instanceId} or [ ]) ++ refsOf s);
-        }
-      ) { } sides;
+      # instanceId -> its resolved structural-fill refs. gen-prelude.groupBy buckets by instanceId
+      # (order-preserving), then each bucket's refs are concatenated in side order and first-occurrence
+      # deduped — folding unique over the ordered concat equals the original per-side unique.
+      fillGraph = builtins.mapAttrs (_: ss: prelude.unique (prelude.concatMap refsOf ss)) (
+        prelude.groupBy (s: s.instanceId) sides
+      );
     in
     if unknownKinds != [ ] then
       throw "den.edges: assembleEdges intent names unknown kind '${(builtins.head unknownKinds).kind}' (not in the registry)"

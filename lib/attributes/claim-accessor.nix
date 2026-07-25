@@ -65,9 +65,9 @@ let
         kind:
         let
           kindEdges = builtins.filter (e: e.kind == kind) pool;
-          adjacency = builtins.foldl' (
-            acc: e: acc // { ${e.from} = (acc.${e.from} or [ ]) ++ [ e.to ]; }
-          ) { } kindEdges;
+          # from → [to] adjacency: gen-prelude.groupBy buckets by source (order-preserving), each
+          # bucket projects to target node-ids for the delegated gen-graph.transpose.
+          adjacency = builtins.mapAttrs (_: es: map (e: e.to) es) (prelude.groupBy (e: e.from) kindEdges);
           nodes = prelude.unique (
             prelude.concatMap (e: [
               e.from
@@ -99,18 +99,15 @@ let
         kind:
         let
           kindEdges = builtins.filter (e: e.kind == kind) pool;
-          payloadByTo = builtins.foldl' (
-            acc: e:
-            acc
-            // {
-              ${e.to} = (acc.${e.to} or [ ]) ++ [
-                {
-                  from = e.from;
-                  data = e.data or null;
-                }
-              ];
-            }
-          ) { } kindEdges;
+          # to → [{ from; data }] payload index: gen-prelude.groupBy buckets by target (order-preserving),
+          # each bucket projects to the claimer id plus its carried edge payload.
+          payloadByTo = builtins.mapAttrs (
+            _: es:
+            map (e: {
+              from = e.from;
+              data = e.data or null;
+            }) es
+          ) (prelude.groupBy (e: e.to) kindEdges);
         in
         {
           name = kind;

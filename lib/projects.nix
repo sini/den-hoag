@@ -127,9 +127,7 @@ let
   assertNoCollision =
     layers:
     let
-      grouped = prelude.foldl' (
-        acc: l: acc // { ${addressKey l} = (acc.${addressKey l} or [ ]) ++ [ l ]; }
-      ) { } layers;
+      grouped = prelude.groupBy addressKey layers;
       check =
         _: group:
         if builtins.length (prelude.unique (map (l: l.via.id_hash) group)) >= 2 then
