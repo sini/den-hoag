@@ -291,14 +291,14 @@ let
     in
     prelude.concatMap (contributionsOf result exposePoolFor nid mark.channel) matched;
 
-  # The collect half at a node: `{ <channel> = [ contribution ]; }` over its collect/collectAll marks.
+  # The collect half at a node: `{ <channel> = [ contribution ]; }` — group its collect/collectAll marks by
+  # channel (gen-prelude.groupBy, order-preserving), then concat each channel's per-mark gathers in mark order.
   collectGatheredWith =
     args@{ result, ... }:
     nid:
-    prelude.foldl' (
-      acc: mark:
-      acc // { ${mark.channel} = (acc.${mark.channel} or [ ]) ++ gatherMarkWith args nid mark; }
-    ) { } (collectMarksAt result nid);
+    builtins.mapAttrs (_: marks: prelude.concatMap (gatherMarkWith args nid) marks) (
+      prelude.groupBy (mark: mark.channel) (collectMarksAt result nid)
+    );
 
   # ── BROADCAST arm — direct filter over the channel's broadcaster set (push-dual) ──────────────────────
   # `broadcastersByChannel` is `{ <channel> = [ { sid; receiver } ]; }`, attrNames-sorted (built once). A
@@ -312,29 +312,30 @@ let
       broadcastersByChannel,
     }:
     consumerId:
-    prelude.foldl' (
-      acc: P:
-      let
-        producers = builtins.filter (
-          b: b.sid != consumerId && predicateMatches entityKinds result b.receiver consumerId
-        ) broadcastersByChannel.${P};
-        # Source-side transform (residual #4, now wired): a broadcast pipe carrying a `transform` before the
-        # `broadcast` mark has a DERIVED terminal (the KERNEL's untargeted-deriving supersede named it, and
-        # `pipe.run` already folded it into the source's received-collections). Read that terminal in place of
-        # the raw `localContribs` — a THIN wire, one `result.get` swapped for another; the derive-fold stays
-        # in the kernel. A BARE broadcast (no source transform) has no terminal for `P` (`Ts == [ ]`) → the
-        # raw path, byte-unchanged.
-        Ts = derivedBaseNames.${P} or [ ];
-        sourceOf =
-          b:
-          if Ts == [ ] then
-            localContribs result b.sid P
-          else
-            prelude.concatMap (T: (result.get b.sid "received-collections").${T}.contributions or [ ]) Ts;
-        v = prelude.concatMap sourceOf producers;
-      in
-      if v == [ ] then acc else acc // { ${P} = v; }
-    ) { } (builtins.attrNames broadcastersByChannel);
+    prelude.filterAttrs (_: v: v != [ ]) (
+      prelude.genAttrs (builtins.attrNames broadcastersByChannel) (
+        P:
+        let
+          producers = builtins.filter (
+            b: b.sid != consumerId && predicateMatches entityKinds result b.receiver consumerId
+          ) broadcastersByChannel.${P};
+          # Source-side transform (residual #4, now wired): a broadcast pipe carrying a `transform` before the
+          # `broadcast` mark has a DERIVED terminal (the KERNEL's untargeted-deriving supersede named it, and
+          # `pipe.run` already folded it into the source's received-collections). Read that terminal in place of
+          # the raw `localContribs` — a THIN wire, one `result.get` swapped for another; the derive-fold stays
+          # in the kernel. A BARE broadcast (no source transform) has no terminal for `P` (`Ts == [ ]`) → the
+          # raw path, byte-unchanged.
+          Ts = derivedBaseNames.${P} or [ ];
+          sourceOf =
+            b:
+            if Ts == [ ] then
+              localContribs result b.sid P
+            else
+              prelude.concatMap (T: (result.get b.sid "received-collections").${T}.contributions or [ ]) Ts;
+        in
+        prelude.concatMap sourceOf producers
+      )
+    );
 in
 {
   # The witness surface: `gatheredAt` (the gated-transitive expose ascent, for the depth-semantics unit
