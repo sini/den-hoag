@@ -2649,11 +2649,12 @@ in
     # `memberProducer { collectors; memberIdsFor; classNameOf }` (§4.7) — the selector-driven member-edge
     # producer (collector→member), the nestProducer twin the aggregate folds over. Pure over the gather.
     inherit (collectorsLib) memberProducer;
-    # classifyKey (the §2.2 three-branch dispatch) + its `facets` vocabulary — the shim's
-    # key-classification consistency suite reads `facets` to pin the structural-key agreement.
-    # `artifactExclusive` (§4.1) is the pure prebuilt-arm buckets-empty check, for the suite's exclusivity
-    # scenarios (also fired at the projection terminal via mkClassSlice's assertKeysRegistered).
-    inherit (concernAspects) classifyKey facets artifactExclusive;
+    # `classifyKey` is now routing-only (class/channel/facet dispatch) delegating to `aspectSchema.keyCategory`
+    # — the single classification authority the shim's key-classification suite reads. `artifactExclusive`
+    # (§4.1) is the pure prebuilt-arm buckets-empty check (also forced at the projection terminal via
+    # mkClassSlice's assertKeysRegistered). `aspectSchema` exposes `keyCategory` for the namespace origin-stamp
+    # walk and the suite's classification scenarios.
+    inherit (concernAspects) classifyKey artifactExclusive aspectSchema;
     # The quirks concern's composer + class-relative read, for the suite's channel scenarios.
     inherit (concernQuirks) compose consumeAt;
     # Settings/linearization builders + the raw gen-settings/gen-algebra surfaces, for the suite's

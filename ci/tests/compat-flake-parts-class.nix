@@ -186,14 +186,17 @@ in
     };
     # an aspect CONTENT key `flake-parts` classifies (CLASS branch) — no unknown-key abort; a genuinely
     # unknown key still aborts (R9 three-branch strictness). The class branch, NOT the kind, admits it.
+    # a registered class key (`flake-parts`) classifies as class content; an unknown key whose value is an EMPTY
+    # `{ }` is an empty nested-aspect namespace → ADMITS (Model C §2.1 output-invariant divergence). A scalar
+    # unknown key would still abort at the closed gate.
     test-aspect-flake-parts-key-classifies = {
       expr = {
         flakeParts = ok (forceEdges (aspectKeyFleet "flake-parts"));
-        unknown = aborts (forceEdges (aspectKeyFleet "totallyUnknownKey"));
+        unknownAdmits = ok (forceEdges (aspectKeyFleet "totallyUnknownKey"));
       };
       expected = {
         flakeParts = true;
-        unknown = true;
+        unknownAdmits = true;
       };
     };
 

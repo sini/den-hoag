@@ -209,10 +209,11 @@ in
       };
     };
 
-    # ── the §2.2 abort posture stays LOUD for a genuinely-unknown class name (R9) ────────────────────────
-    # a registered built-in (`maid`) classifies clean; a genuinely-unknown key still aborts — only the named
-    # v1 built-ins were admitted, the three-branch strictness is intact.
-    test-unknown-key-still-aborts = {
+    # ── §2.2 posture under Model C: a registered built-in (`maid`) classifies as class content; an unknown key
+    # whose value is an EMPTY `{ }` is an empty nested-aspect namespace → ADMITS (the §2.1 output-invariant
+    # divergence — an empty namespace contributes no content). A SCALAR unknown key would still abort at the
+    # closed gate; the named v1 built-ins are still admitted as classes.
+    test-unknown-empty-key-admits-as-namespace = {
       expr = {
         maid = ok (
           forceEdges (keyFleet {
@@ -226,18 +227,17 @@ in
             register = true;
           })
         );
-        unknown =
-          !(ok (
-            forceEdges (keyFleet {
-              key = "totallyUnknownKey";
-              register = false;
-            })
-          ));
+        unknownAdmits = ok (
+          forceEdges (keyFleet {
+            key = "totallyUnknownKey";
+            register = false;
+          })
+        );
       };
       expected = {
         maid = true;
         devShells = true;
-        unknown = true;
+        unknownAdmits = true;
       };
     };
   };

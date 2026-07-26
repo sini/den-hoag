@@ -131,15 +131,17 @@ in
       };
     };
     # (4) the DIRECT-`compile` path registers the nested aspect under the traversal path — the key derives
-    #     from the walk (raw decls have no `.key`), and the parent stays stripped.
+    #     from the walk. Under Model C the nested node also PERSISTS on the parent (a typed node the closed gate
+    #     admits, skipped by the class-modules walk), so both the slash-path registration and the parent's own
+    #     node are present.
     test-direct-compile-path-key = {
       expr = {
         registered = directCompiled.aspects ? "blade/sub";
-        parentStripped = !(directCompiled.aspects.blade ? sub);
+        parentRetainsNode = directCompiled.aspects.blade ? sub;
       };
       expected = {
         registered = true;
-        parentStripped = true;
+        parentRetainsNode = true;
       };
     };
   };

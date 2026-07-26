@@ -157,10 +157,10 @@ let
   #                 through it (paths mode) — the sole graph traversal; the collect/collectAll/broadcast
   #                 arms are one-hop predicate filters over the node set (no query layer).
   #     internal  — the non-public builders; the shim reaches `internal.terminal.collect` (the nixpkgs-free
-  #                 terminal for its systemFor-injecting instantiate wrapper) and `internal.classifyKey` (the
-  #                 aspect-key facet/class/channel classifier, which the namespace factory reads to tell a
-  #                 namespace's sub-aspect children — which carry an origin-stamped id — from its
-  #                 class-content / facet keys, which do not).
+  #                 terminal for its systemFor-injecting instantiate wrapper) and `internal.aspectSchema`
+  #                 (its `keyCategory` — the schema's single classification surface, which the namespace factory
+  #                 reads to tell a namespace's sub-aspect children — unregistered, `keyCategory null`, carrying
+  #                 an origin-stamped id — from its class-content / facet keys, which do not).
   #   CONFIG surfaces the shim SETS on mkDen input (`config.den.*`, via the module system — NOT denHoag.<x>
   #   calls, so not scanned): aspects, policies, classes, quirks, include, membership, contentClass,
   #   schema, <kind> instances, nixpkgs, interpret (the M1 declared-classes + interpret seams ride here).
@@ -178,7 +178,7 @@ let
   ];
   seamInternalSurfaces = [
     "terminal"
-    "classifyKey"
+    "aspectSchema"
   ];
 
   # Scan the shim source for `denHoag.<ident>` and `inherit (denHoag) <idents>` references.
@@ -352,9 +352,9 @@ in
       expr = seamViolations;
       expected = [ ];
     };
-    # the internal-surface sub-seam is exactly `terminal` (the collect terminal) + `classifyKey` (the
-    # namespace factory's aspect-key classifier) — a new `internal.<x>` reached from the shim widens the
-    # private-surface coupling and must be reviewed. Sorted, so the assertion is file-iteration-order-robust.
+    # the internal-surface sub-seam is exactly `terminal` (the collect terminal) + `aspectSchema` (the
+    # namespace factory reads its `keyCategory` classifier) — a new `internal.<x>` reached from the shim widens
+    # the private-surface coupling and must be reviewed. Sorted, so the assertion is file-iteration-order-robust.
     test-shim-internal-seam = {
       expr = builtins.sort (a: b: a < b) (
         nixpkgsLib.unique (
@@ -364,7 +364,7 @@ in
         )
       );
       expected = [
-        "classifyKey"
+        "aspectSchema"
         "terminal"
       ];
     };

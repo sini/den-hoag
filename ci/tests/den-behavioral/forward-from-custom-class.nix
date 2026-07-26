@@ -46,6 +46,7 @@ in
           };
       in
       {
+        den.classes.custom = { }; # the forward SOURCE class — declared so the closed gate admits its bucket.
         den.hosts.x86_64-linux.igloo.users.tux = { };
         den.aspects.igloo = {
           includes = [ forwarded ];
@@ -80,6 +81,7 @@ in
           };
       in
       {
+        den.classes.src = { }; # the forward SOURCE class — declared so the closed gate admits its bucket.
         den.hosts.x86_64-linux.igloo.users.tux = { };
         den.aspects.igloo = {
           includes = [ forwarded ];
@@ -130,6 +132,7 @@ in
             };
         in
         {
+          den.classes.git = { }; # the forward SOURCE class — declared so the closed gate admits its bucket.
           den.hosts.x86_64-linux.igloo.users.tux = { };
 
           den.aspects.igloo.homeManager.home.stateVersion = "25.11";
@@ -171,6 +174,7 @@ in
             };
         in
         {
+          den.classes.nix = { }; # the forward SOURCE class — declared so the closed gate admits its bucket.
           den.hosts.x86_64-linux.igloo.users.tux = { };
 
           den.aspects.igloo.homeManager.home.stateVersion = "25.11";
@@ -228,6 +232,7 @@ in
           };
       in
       {
+        den.classes.iced = { }; # the forward SOURCE class — declared so the closed gate admits its bucket.
         den.hosts.x86_64-linux.igloo.users.tux = { };
         den.hosts.x86_64-linux.iceberg.users.tux = { };
 

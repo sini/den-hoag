@@ -18,14 +18,14 @@
 # top-level flake OUTPUT, never part of the `import ./lib { … }` assembly).
 #
 # Threaded: `aspectIdHashFor origin key` (the origin-aware content-address, gen-native `aspectId`) + the
-# aspect-key classifier (`classifyKey` — the facet/class/channel vocabulary in one call) + the v1 STRUCTURAL
-# keyset (`structuralKeysSet` — provides/policies/excludes/into/classes/__*/_module/_, the pipeline-internal
-# surfaces). The latter two together tell a namespace's sub-aspect children (which carry an id) from its
-# class-content / facet / structural keys (which do not), so the origin-stamp walk below descends exactly the
-# aspect nodes.
+# aspect-key CATEGORY reader (`keyCategory` — the schema's single classification surface, `null` for an
+# unregistered key) + the v1 STRUCTURAL keyset (`structuralKeysSet` — provides/policies/excludes/into/classes/
+# __*/_module/_, the pipeline-internal surfaces). The latter two together tell a namespace's sub-aspect
+# children (unregistered — carry an id) from its class-content / facet / structural keys (registered or
+# pipeline-internal — do not), so the origin-stamp walk below descends exactly the aspect nodes.
 {
   aspectIdHashFor,
-  classifyKey,
+  keyCategory,
   structuralKeysSet,
 }:
 name: sources:
@@ -93,19 +93,19 @@ let
   # ATTR-PATH (raw content carries no typed `.key`).
   #
   # Children fall in THREE buckets; only the third is a sub-aspect (recurse + stamp):
-  #   • REGISTERED content — a facet/class/channel key (`classifyKey` returns cleanly): nixos/home-manager,
+  #   • REGISTERED content — a facet/class/channel/structural key (`keyCategory ≠ null`): nixos/home-manager,
   #     settings/includes/meta/tags/… — carry no aspect id ⇒ SKIP.
   #   • STRUCTURAL — a pipeline-internal key (`structuralKeysSet`): `provides` (the sub-aspect CONTAINER, not
   #     an aspect itself), policies/excludes/into/classes/__*/_module/_ — not aspects, and stamping an
   #     id_hash STRING under `provides` would poison the legacy-provides walk's `attrNames provides` ⇒ SKIP.
-  #   • UNREGISTERED nested-aspect — the freeform-absorbed branch `classifyKey` aborts on (neither structural
-  #     nor a registered key) ⇒ the actual sub-aspect ⇒ STAMP + recurse.
+  #     The `structuralKeysSet` guard is RETAINED even though `keyCategory` also returns `null` for these.
+  #   • UNREGISTERED nested-aspect — a key the schema does not recognize (`keyCategory null`) that is not
+  #     pipeline-internal ⇒ the actual sub-aspect ⇒ STAMP + recurse.
   # A wrapped-fn / guard aspect authored under a namespace is a bare FUNCTION (not an attrset) ⇒ fails the
   # `isAttrs` recurse-guard below ⇒ SKIP, a named ceiling (corpus-zero, sibling to the externals-mixin
   # ceiling above). id_hash is a `readOnly` option with a default, so one config def legally overrides it;
   # the stamp value reads only the path (never id_hash) ⇒ lazy-safe against its own contribution.
-  isSubAspectKey =
-    key: !(structuralKeysSet ? ${key}) && !(builtins.tryEval (classifyKey name key)).success;
+  isSubAspectKey = key: !(structuralKeysSet ? ${key}) && keyCategory key == null;
   stampNode =
     path: node:
     let

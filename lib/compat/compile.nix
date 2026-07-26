@@ -243,16 +243,10 @@ let
   # aspectContentType typing the raw bridge never constructs (the same reason `__provider` is absent). The
   # discriminator is now NAME-only (registry membership of the sub-key) — it never forces a sub-VALUE, so
   # the former class-content value-heuristic and its #580 flake-fixpoint WHNF-forcing guard are moot.
+  # The v1-verbatim STRUCTURAL key set (`builtinStructuralKeys` + reserved) — the aspect-include walk's
+  # structural-key filter (`walkableChild`, below). KEPT: the v1 compat-export SoT, unrelated to the retired
+  # raw discriminator.
   v1StructuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
-  # den-hoag-only facets (concern-aspects.nix `facets`) that v1's structural set lacks — a parent key
-  # named like these is shim vocabulary, never a nested-aspect candidate. KEEP IN SYNC with that list.
-  hoagOnlyFacets = [
-    "neededBy"
-    "tags"
-    "projects"
-    "key"
-    "id_hash"
-  ];
   # `isEmptyDeferredModule` (the empty class-wrap peel) — retained here as the single source shared with
   # class-modules (the class-bucket unwrap below at the classSet arm). The former `looksLikeClassContent`
   # VALUE-shape heuristic that also lived here is GONE: it inspected a class-named sub-value's structure to
@@ -261,45 +255,6 @@ let
   # de-collided (no aspect is named after a class), so class-vs-nested is decided by REGISTRY MEMBERSHIP
   # alone; the value-guess is inert and removed.
   inherit (import ../module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
-  # `mkIsNestedAspectKey classNames quirkNames` → `attrs: k: bool` — fleet-parameterised (the class set is
-  # builtins + declared classes, the quirk set the fleet's channels; same cnf grain as mkNormalize).
-  # REDUCED to pure NAME-membership — the sole remaining job is the §2.2 TYPO-TOTALITY / nested-aspect
-  # STRIP split (v1 key-classification.nix:69-80 `isNestedKey`, pin 11866c16): a non-structural/non-facet/
-  # non-class/non-quirk key whose ATTRSET value carries ≥1 sub-key that is itself a REGISTERED name
-  # (structural | quirk | grounded class) is a NESTED ASPECT → stripped from the parent (strip-only,
-  # Fork-B); a scalar, or an attrset with NO registered-named sub-key, is an `unregisteredClassKey` TYPO →
-  # LEFT IN PLACE and aborts LOUD at the §2.2 three-branch dispatch. No value inspection: `recognizedSubKey`
-  # tests sub-key NAMES only (the class arm grounds the sub-key through v1ClassKeyMap before the membership
-  # test — nested content is untouched by the parent fold; the parent key `k` is tested POST-grounding, so
-  # a class-named parent is registry-excluded, never a candidate).
-  mkIsNestedAspectKey =
-    classNames: quirkNames:
-    let
-      classSet = prelude.genAttrs classNames (_: true);
-      quirkSet = prelude.genAttrs quirkNames (_: true);
-      # `__`-prefixed sub-keys are INVISIBLE to the discriminator (board #58): the annotation walk
-      # stamps `__provider` (a v1 STRUCTURAL key) onto every unregistered attrset child, so counting it
-      # recognized would flip every annotated typo-attrset to nested (silently stripped) — weakening the
-      # §2.2 abort posture this discriminator exists to preserve. v1 classifies over UNWRAPPED values
-      # (`unwrapContentValuesForClassification`), so its own annotation never feeds its discriminator
-      # either; skipping `__*` reproduces that invisibility at the raw boundary.
-      recognizedSubKey =
-        sk:
-        !(prelude.hasPrefix "__" sk)
-        && (v1StructuralKeysSet ? ${sk} || quirkSet ? ${sk} || classSet ? ${v1ClassKeyMap.${sk} or sk});
-      isCandidate =
-        k:
-        !(v1StructuralKeysSet ? ${k})
-        && !(builtins.elem k hoagOnlyFacets)
-        && !(classSet ? ${k})
-        && !(quirkSet ? ${k})
-        && builtins.substring 0 2 k != "__";
-    in
-    attrs: k:
-    isCandidate k
-    && builtins.isAttrs attrs.${k}
-    && builtins.any recognizedSubKey (builtins.attrNames attrs.${k});
-
   # ── v1 aspect-include WRAP-GROUND builder (§339; cf. v1 `nix/lib/aspects/fx/aspect/normalize.nix`
   #    `wrapChild`/`wrapBareFn`). den-hoag requires a parametric aspect include to be a gen-aspects
   #    `__isWrappedFn` functor; a v1 bare-fn include (`includes = [ ({host,...}: <content>) ]`) is NOT
@@ -325,31 +280,6 @@ let
   mkNormalize =
     gateAspect: classNames: quirkNames: divertedPolicyNames: radiatedBareFn: aspectRec: registry:
     let
-      # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
-      # registry-side instance; see `groundRec` for why the include path needs its own split.
-      isNested = mkIsNestedAspectKey classNames quirkNames;
-      # CLASS-CONTENT COLLAPSE at the include boundary (Option 5 name-reservation, loud). An `includes`
-      # element whose navigated value was a class-named aspect key is CLASS CONTENT included AS an aspect. A
-      # bare aspect key equal to a REGISTERED CLASS NAME is that class's content by registry membership
-      # (mkIsNestedAspectKey's `isCandidate` excludes `classSet ? k`), so a
-      # `with den.aspects; [ virtualization.microvm ]` selection of a class-named key collapses to the
-      # gen-aspects classOptions slot — a `{ imports = […] }` deferredModule.merge artifact (types.nix:257-264).
-      # THE SIGNAL IS THAT `imports` LIST, NOT identity-absence: the clean nav-view sole-key `{imports}` (no
-      # `.key`) exists only at the raw navigation value — once it rides an aspect's `.includes`,
-      # restoreUnregistered (flake-module.nix) re-types the element (re-stamping a synthetic position `.key`,
-      # materializing empty class buckets) and splices the unregistered `imports` collapse-list back as a
-      # TOP-LEVEL content key. So identity-ABSENCE does NOT survive re-typing; the spliced `imports` LIST does.
-      # `imports` is the deferredModule merge slot, NEVER a v1 aspect content key (not a facet/class/quirk), so
-      # a top-level non-empty `imports` list is UNIQUELY the class-content collapse — pure STRUCTURE +
-      # gen-aspects' own materialization artifact, NOT a value-shape intent-heuristic (contrast the deleted
-      # `looksLikeClassContent`, which GUESSED intent from sub-key structure). Every legit include shape lacks
-      # it: a navigated aspect carries its content under registered class keys (no top-level `imports`); an
-      # inline literal, a bare reference (`{ name }`), and marker records have no `imports` slot (PROBE 4/5/6,
-      # empirically len 1 for the collapse vs absent for all three). So this discriminates ONLY inputs that
-      # already abort at §2.2 (groundRec grounds the unregistered `imports` → the unknown-key abort); it is a
-      # message-refinement of that throw, never a new abort path.
-      isClassContentCollapse =
-        ref: builtins.isAttrs ref && (ref ? imports) && builtins.isList ref.imports && ref.imports != [ ];
       # ── ASPECT-INCLUDE POLICY-RECORD DIVERSION (#65, ledger u16 — v1 children.nix:70-72 parity). ──
       # v1 `processInclude`'s FIRST arm routes ANY `{ __isPolicy }` include to `register-aspect-policy`,
       # never the aspect walk (pin 11866c16 aspect/children.nix:70-72) — at EVERY resolution path
@@ -509,7 +439,7 @@ let
           # drop / excludes→meta.drop fold / provides sentinel the parametric path was missing — THEN gate, so
           # gated-parametric-shape == gated-static-shape and a typo throws NAMED at the gate at resolution.
           gateAspect name (
-            translateAspect normalizeList isNested name {
+            translateAspect normalizeList name {
               includes = map toInclude (builtins.filter (e: e != null) (flattenList result));
             }
           )
@@ -529,7 +459,7 @@ let
         else
           # §9.5 parametric-result gate (attrset terminal): `result` is already the aspect attrset, so feed it
           # straight to `translateAspect` (desugar to the static pre-gate shape) THEN gate.
-          gateAspect name (translateAspect normalizeList isNested name result);
+          gateAspect name (translateAspect normalizeList name result);
       # ── FORWARD-CONTEXT surfacing (§2-iv, u1 close for the `{ class, aspect-chain }` forward shape). ──
       # v1 binds `class = entityCls` + `aspect-chain = [ self ]` onto EVERY aspect-fn ctx (pipeline.nix:39/
       # 211 `defaultHandlers`/`resolve`). den-hoag's enriched-context binds NEITHER (the class-coord gap,
@@ -601,15 +531,6 @@ let
             name = ref.name or name;
             onResult = grndDispatch name;
           } ref.__fn
-        else if builtins.isAttrs ref && isClassContentCollapse ref then
-          # A class-named aspect key was INCLUDED AS an aspect: the `with den.aspects; [ … ]` selection
-          # collapsed to a keyless `{ imports = … }` class-content deferredModule (no aspect identity).
-          # Left to fall through, this reaches the static-aspect arm below → `groundRec` → the `imports`
-          # key aborts at §2.2 naming a CHILD key of the collapsed content, not the real culprit. Intercept
-          # one step earlier with the LOUD reservation error — the used-as-aspect fact is known HERE, at the
-          # include boundary. MESSAGE-REFINEMENT of the existing §2.2 abort, NEVER a new abort path: this
-          # fires ONLY on inputs that already throw there (isClassContentCollapse excludes every legit shape).
-          errors.reservedClassInclude name
         else if builtins.isAttrs ref && ref ? key && builtins.isString ref.key && registry ? ${ref.key} then
           # A REGISTERED NAV REFERENCE — a `with den.aspects; [ … ]` node carries its native gen-aspects `.key`
           # (the full container-relative slash-path, `core/systemd/boot`), which is a registry key. It is a
@@ -658,25 +579,15 @@ let
       # `{ homeManager._module.args… }` → `home-manager` and wraps a nested bare fn (transitive), each
       # child keyed distinctly under `${name}:include`.
       #
-      # THE NESTED SPLIT (board #58 follow-through): v1 never auto-walks a nested sub-aspect at ANY
-      # resolution path — "sub-aspects are never auto-walked … they activate via explicit `includes`"
-      # (v1 key-classification.nix:67-68 @ pin) applies during v1's resolve WALK, i.e. to navigated
-      # include values exactly as to registry records. The shim's split lived only on the registry path
-      # (translateAspect) because pre-#58 a navigated static include never resolved far enough for its
-      # content to be classified (the "<anon>" collapse starved it); with provider identities every
-      # navigated value's content now reaches §2.2, so a parent aspect carrying nested sub-aspects
-      # (corpus `core.nix` with `linux-builder`/…) would abort `aspect declares key <nested>` at the
-      # including scope without the split here. Strip-ONLY, same as the registry side (Fork-B): the
-      # nested value is re-reachable by explicit navigation, never registered. This also aligns the
-      # parametric-RESULT arm with v1 (a result's nested keys nested-classify at resolution — the old
-      # "no nested arm" ceiling comment above is superseded by exactly this).
+      # NO NESTED SPLIT (Model C): v1 never auto-walks a nested sub-aspect ("sub-aspects are never auto-walked
+      # … they activate via explicit `includes`", v1 key-classification.nix:67-68 @ pin), and neither does
+      # den-hoag — a nested sub-aspect persists as a typed freeform aspect NODE the closed gate admits and the
+      # class-modules content walk skips (`classifyKey` routes it `facet`). It is re-reachable by explicit
+      # navigation. So `groundRec` grounds the class keys + normalizes `.includes`, leaving nested nodes in
+      # place.
       groundRec =
         name: attrs:
-        let
-          grounded = groundKeys attrs;
-          nestedKeys = builtins.filter (isNested grounded) (builtins.attrNames grounded);
-        in
-        (builtins.removeAttrs grounded nestedKeys)
+        groundKeys attrs
         // prelude.optionalAttrs (attrs ? includes) {
           includes = normalizeList "${name}:include" attrs.includes;
         };
@@ -755,10 +666,10 @@ let
   # class/quirk keys ride THROUGH untouched (a quirk key becomes a channel contribution at the aspect's
   # producing class+scope, so PR #623 falls out). The rewrites: a bare parametric FUNCTION coerces
   # to `{ includes = [ fn ]; }` (v1's own coercion), `excludes` folds into `meta.drop`, class keys are
-  # grounded, NESTED-ASPECT keys are split off (v1 `isNestedKey` — see mkIsNestedAspectKey; strip-only,
-  # the emission path re-reads them off the bridge config), and the v1-only structural keys are dropped.
+  # grounded, and the v1-only structural keys are dropped. A nested sub-aspect is NOT split off — it persists
+  # as a typed node the closed gate admits (Model C); the class-modules walk skips it (routes `facet`).
   translateAspect =
-    normalizeList: isNestedAspectKey: name: aspect:
+    normalizeList: name: aspect:
     # LEGACY SURFACE SENTINEL (C5): `provides` must have been desugared by legacy/provides.nix (applied
     # by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is severed —
     # fail LOUDLY naming the surface rather than dropping the declaration (sentinels.nix / errors.nix).
@@ -793,14 +704,13 @@ let
               in
               builtins.removeAttrs acc [ k ] // { ${k'} = aspect.${k}; }
             ) withoutDropped (builtins.attrNames withoutDropped);
-            # NESTED-ASPECT SPLIT (v1 key-classification.nix:69-80 `isNestedKey`, applied POST-grounding):
-            # strip the nested sub-aspect keys (blade's `sini`/`shuo`) from the parent, so the parent's
-            # content is pure facet/class/quirk and never trips the §2.2 dispatch at its own scope (v1
-            # never auto-walks a nested aspect). Strip-ONLY (Fork-B): the dispatch-emitted include re-reads
-            # the sub-aspect off the bridge config and re-wraps it (translateEffect content-set arm). A
-            # typo key fails the discriminator and STAYS — aborting at §2.2, v1's unregisteredClassKeys.
-            nestedKeys = builtins.filter (isNestedAspectKey grounded) (builtins.attrNames grounded);
-            parent = builtins.removeAttrs grounded nestedKeys;
+            # Under Model C a nested sub-aspect (blade's `sini`/`shuo`) is NOT stripped — it persists as a typed
+            # freeform aspect NODE (identity-bearing) that the closed gate admits and the class-modules content
+            # walk skips (`classifyKey` routes it `facet`, since `keyCategory` is null); it is registered
+            # separately (`collectNestedAspects`) and re-reachable via explicit `includes`. v1 never auto-walks a
+            # nested aspect, and neither does den-hoag — the node just carries no class content at the parent's
+            # scope. So the parent's content is the grounded map verbatim.
+            parent = grounded;
             # Fold `excludes` into `meta.drop` (aspect-level constraint) without clobbering a declared drop.
             meta = parent.meta or { };
             metaWithDrop =
@@ -1347,9 +1257,6 @@ let
       )
       aspectRec
       aspects;
-  # The nested-aspect discriminator for THIS fleet (same cnf grain as normalizeList): the quirk set is
-  # the fleet's declared channels, so `blade.firewall` classifies quirk while `blade.shuo` splits nested.
-  isNestedAspectKey = mkIsNestedAspectKey allClassNames (builtins.attrNames (v1Decls.quirks or { }));
 
   # ── Aspect-include POLICY-RECORD arm, the REGULAR-ASPECT grain (#65, ledger u16 — v1 children.nix:70-72
   # parity, the THIRD and last include grain). v1 routes a `{ __isPolicy }` include to
@@ -1390,13 +1297,24 @@ let
     let
       classSet = prelude.genAttrs allClassNames (_: true);
       quirkSet = prelude.genAttrs (builtins.attrNames (v1Decls.quirks or { })) (_: true);
+      # `isAttrs v.${k}` is a READINESS-guarded force: with the gate unmasked, forcing a TYPO freeform child
+      # (`bad.nixxos = "x"`) throws — but this STATIC walk runs over EVERY aspect, resolved or not, so an
+      # UNRESOLVED typo aspect must not abort the build (the laziness contract). A child that throws when its
+      # WHNF is forced is not a walkable namespace here; resolution still aborts on it when the owning aspect is
+      # resolved (class-modules content walk). This is the flagged readiness guard, not a value-heuristic.
+      childIsWalkableNamespace =
+        v: k:
+        let
+          r = builtins.tryEval (builtins.isAttrs v.${k});
+        in
+        r.success && r.value;
       walkableChild =
         v: k:
         !(prelude.hasPrefix "__" k)
         && !(v1StructuralKeysSet ? ${k})
         && !(classSet ? ${v1ClassKeyMap.${k} or k})
         && !(quirkSet ? ${k})
-        && builtins.isAttrs v.${k};
+        && childIsWalkableNamespace v k;
       # seen-set identity (cycle-break): the value's native `.key` — the structural, path-unique identity
       # born in gen-aspects' type (`blade/sini` ≠ `sini`), matching v1's aspect registration keyed by
       # `identity.key` (children.nix), NOT by `.name`. A per-host `<host>.<user>` sub-aspect legitimately
@@ -1678,8 +1596,8 @@ let
   # nested keys inside the host-aspect blocks) —
   #   • `user-aspect-auto-include` (defaults.nix:14-22, `den.aspects.<host>.<user>`) FIRES at FOUR corpus
   #     sites: blade.nix:51/61 + cortex.nix:175/185 (hosts blade/cortex × users sini/shuo, each a nested
-  #     `{ includes = […]; }` sub-aspect). Served by THIS rung: translateAspect splits the nested keys off
-  #     the parent (mkIsNestedAspectKey) and the include arm re-wraps the emitted value with the
+  #     `{ includes = […]; }` sub-aspect). Served by THIS rung: a nested sub-aspect persists as a typed node
+  #     (the class-modules walk skips it), and the include arm re-wraps the emitted value with the
   #     deterministic cell identity (`<emitted>@blade.shuo` ≠ `<emitted>@cortex.shuo`).
   #   • `cluster-aspect` (policies/clusters.nix:73 — path corrected from the old `clusters.nix:79` cite,
   #     `den.aspects.<cluster>`) fires for `den.aspects.axon` (clusters/axon.nix:101): the SAME arm,
@@ -1841,10 +1759,10 @@ let
   # edge attaches an EMPTY stub (`resolveAspectRef` fell back to the last-segment `.name`, a registry miss)
   # → zero class/channel content (the corpus `age.secrets = {}` drop, and the firewall/resolved-user
   # collectors alongside). Each node is translated by the SAME `translateAspect` the top level uses — so a
-  # nested node's v1 class spellings ground and its OWN deeper children strip (they recurse to their own
-  # path entries). Nested detection reproduces `translateAspect`'s internal grounding (`droppedAspectKeys`
-  # removed + `v1ClassKeyMap` on class keys) so `isNestedAspectKey` sees the SAME grounded view the parent
-  # split saw — identical child set. The registry key is the TRAVERSAL PATH (parent segments ++ child
+  # nested node's v1 class spellings ground and its OWN deeper children recurse to their own path entries.
+  # Nested detection reads the TYPE: a freeform child that is itself a typed aspect NODE (identity-bearing,
+  # carries a string `.key`) is a nested aspect, enumerated after the same grounding (`droppedAspectKeys`
+  # removed + `v1ClassKeyMap` on class keys). The registry key is the TRAVERSAL PATH (parent segments ++ child
   # name, slash-joined): it equals the typed node's native `.key` on the bridge path (the native key is the
   # slash-join of the aspect chain) and is robust on the direct-`compile` path, where raw decls carry no
   # `.key` at all.
@@ -1865,7 +1783,22 @@ let
         # trip `translateAspect`'s C5/C1 sentinels (the very abort those legacy paths exist to avoid), so
         # exclude it from BOTH registration and the recursion (its subtree is provides-owned).
         registrable = node: !(node ? provides) && ((node.meta or { }).__forward or null) == null;
-        nestedKeys = builtins.filter (k: isNestedAspectKey grounded k && registrable grounded.${k}) (
+        # A nested aspect is a freeform child that is itself a typed aspect NODE (identity-bearing: carries a
+        # string `.key`), structurally distinct from a class-bucket deferredModule / channel raw / facet value —
+        # enumerated from the TYPE, no value-heuristic. The `tryEval` is a READINESS guard, NOT a value-
+        # heuristic: with the gate on, forcing a TYPO freeform child throws (it should — at RESOLUTION), but this
+        # EAGER registry fold must not turn that into a compile-time abort of an UNRESOLVED aspect (the laziness
+        # contract). A child that throws when forced is not a registrable nested node here; resolution still
+        # aborts on it when the owning aspect is resolved (class-modules content walk).
+        probe =
+          v: builtins.tryEval (builtins.isAttrs v && (v.key or null) != null && builtins.isString v.key);
+        isNestedNode =
+          v:
+          let
+            r = probe v;
+          in
+          r.success && r.value;
+        nestedKeys = builtins.filter (k: isNestedNode grounded.${k} && registrable grounded.${k}) (
           builtins.attrNames grounded
         );
       in
@@ -1881,7 +1814,7 @@ let
           # WITHOUT zeroing it the derived key DOUBLES the prefix (`grp/sub/` + `grp/sub/coll`). Zero the
           # chain (flat aspect, no container) and set `.key = path` so the derived key is the path itself —
           # the native identity a top-level ref already yields, extended to the nested path.
-          translated = translateAspect normalizeList isNestedAspectKey k grounded.${k};
+          translated = translateAspect normalizeList k grounded.${k};
           flatEntry = translated // {
             key = path;
             meta = (translated.meta or { }) // {
@@ -1899,7 +1832,7 @@ let
   # slash (a quoted `den.aspects."a/b"`, corpus-zero) always wins over a nested slash-path entry.
   aspects =
     nestedAspects
-    // builtins.mapAttrs (translateAspect normalizeList isNestedAspectKey) v1Aspects
+    // builtins.mapAttrs (translateAspect normalizeList) v1Aspects
     // compiledPolicies.conditionalAspects
     // kindIncludeAspects
     // aspectIncludeBareFnArm.aspects;

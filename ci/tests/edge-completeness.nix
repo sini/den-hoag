@@ -308,13 +308,15 @@ in
       expected = true;
     };
 
-    # ── three-branch key dispatch (§2.2) ──
-    # an unregistered aspect content key (a typo) aborts named at class-modules.
-    test-unregistered-key-aborts = {
+    # ── three-branch key dispatch (§2.2, Model C) ──
+    # an undeclared ATTRSET content key (`bad.nixxos = { foo = 1; }`) is a nested-aspect NAMESPACE — ADMITTED,
+    # its own leaves validated only when it is itself resolved/included (lazy totality). A SCALAR undeclared key
+    # still aborts (covered by compat-nested-aspects). So building the host admits the nested namespace.
+    test-unregistered-attrset-admits-as-nested = {
       expr =
         (builtins.tryEval (builtins.deepSeq (builtins.attrNames denTypo.output.systems.nixos) true))
         .success;
-      expected = false;
+      expected = true;
     };
 
     # ── one instantiate per host (r2 check 4) ──

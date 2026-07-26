@@ -63,6 +63,7 @@ in
           };
       in
       {
+        den.classes.imper = { }; # the forward SOURCE class — declared so the closed gate admits its bucket.
         den.hosts.x86_64-linux.igloo.users.tux = { };
         den.aspects.igloo = {
           includes = [ forwarded ];
@@ -95,6 +96,7 @@ in
           };
       in
       {
+        den.classes.imper = { }; # the forward SOURCE class — declared so the closed gate admits its bucket.
         den.hosts.x86_64-linux.igloo.users.tux = { };
         den.aspects.igloo = {
           includes = [ forwarded ];

@@ -244,14 +244,17 @@ in
     # registers as a declared class (assembly §2.2 declared-classes) and an aspect keying `os = {…}` now
     # CLASSIFIES (its content forced through class-modules) — with NO core `classNames` edit; an unknown
     # key still aborts (three-branch strictness, R9).
+    # `os` is a registered (battery) class → class content, ok. An unknown key whose value is an EMPTY `{ }` is
+    # an empty nested-aspect namespace → ADMITS (Model C §2.1 output-invariant divergence; a scalar unknown key
+    # would still abort at the closed gate).
     test-r2-os-aspect-key-classifies = {
       expr = {
         os = ok (mkR9 "os");
-        unknown = aborts (mkR9 "totallyUnknownKey");
+        unknownAdmits = ok (mkR9 "totallyUnknownKey");
       };
       expected = {
         os = true;
-        unknown = true;
+        unknownAdmits = true;
       };
     };
 
@@ -459,12 +462,13 @@ in
       };
     };
 
-    # ── R9 ────────────────────────────────────────────────────────────────────────────────────────────
-    # an unknown aspect-content key aborts named when its class content is assembled (three-branch
-    # dispatch); a known class key does not — no per-kind strict toggle, no silent drop.
-    test-r9-unknown-key-aborts = {
+    # ── R9 (Model C) ────────────────────────────────────────────────────────────────────────────────────
+    # an unknown aspect-content key whose value is an EMPTY `{ }` is an empty nested-aspect namespace → ADMITS
+    # (§2.1 output-invariant divergence — contributes no content). A SCALAR unknown key still aborts at the
+    # closed gate (covered by compat-nested-aspects); a known class key assembles as content (below).
+    test-r9-unknown-empty-key-admits = {
       expr = aborts (mkR9 "totallyUnknownKey");
-      expected = true;
+      expected = false;
     };
     test-r9-known-key-ok = {
       expr = ok (mkR9 "nixos");

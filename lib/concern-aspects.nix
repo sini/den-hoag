@@ -92,42 +92,25 @@ let
 
   aspectSchema = aspects.mkAspectSchema cnf;
 
-  # §2.2 three-branch key dispatch: an aspect key is a declared facet, a registered output class,
-  # a registered quirk channel, or a definition-time error. (Channels arrive with the quirks
-  # concern, Task 5; `quirkChannels` defaults empty until then.)
-  facets = [
-    "settings"
-    "includes"
-    "neededBy"
-    "meta"
-    "tags"
-    "projects"
-    "name"
-    "description"
-    "key"
-    "artifact" # the §4.1 prebuilt-arm facet — behaviour (a value injection), not class content
-    "id_hash" # gen-aspects' native universal content-address option — a structural facet, not content
-  ];
-  # §2.2 three-branch key dispatch — an aspect key is a declared facet, a registered output class, a
-  # registered quirk channel, or a definition-time error. `class-modules` (attribute 9) reuses this to
-  # route each resolved aspect's content keys: `class` keys collect module content, `channel`/`facet`
-  # keys are handled by their own strata, an unregistered key (a typo — freeform-absorbed by gen-aspects)
-  # aborts here naming the aspect and key.
+  # §2.2 key ROUTING (attribute 9 class-modules reuses this): map an aspect key to its routing bucket by
+  # reading its category from the ONE authority — the schema (`aspectSchema.keyCategory`, the native-structural
+  # + declared class/channel/facet surface). `class` keys collect module content, `channel` keys emit, and
+  # `facet` covers the config-free facets, the native structural options, AND an unregistered key (`keyCategory
+  # null`). NEVER throws — typo protection is the closed gate's job now, not the kernel's: a `null` verdict is
+  # either a typo (already rejected AT the type) or a legit freeform nested-aspect key surviving in content
+  # (the strip is retired), and a throw would abort on the latter (`artifactExclusive` iterates every content
+  # key on every reached aspect). `aspectName` is unused (kept for the call signature).
   classifyKey =
-    aspectName: key:
-    # Structural facets FIRST — `name`/`includes`/`meta`/`tags`/`projects`/`key`/`description`/`id_hash` are
-    # built-in submodule options (`id_hash` is gen-aspects' native universal content-address, no longer a
-    # den-hoag keySemantics entry), NOT `keySemantics` entries; `settings`/`neededBy` ARE keySemantics facet
-    # entries but are listed here too, so the class-modules walk skips them without a keySemantics lookup.
-    if builtins.elem key facets then
-      "facet"
+    _aspectName: key:
+    let
+      cat = aspectSchema.keyCategory key;
+    in
+    if cat == "class" then
+      "class"
+    else if cat == "channel" then
+      "channel"
     else
-      # Category off the single keySemantics source: a registered class → "class", a quirk channel
-      # → "channel"; anything else is an unregistered key (a typo — freeform-absorbed by gen-aspects) → abort.
-      let
-        cat = keySemantics.${key}.category or null;
-      in
-      if cat != null then cat else errors.unknownAspectKey aspectName key;
+      "facet";
 
   # §4.1 THE PREBUILT-ARM EXCLUSIVITY: an aspect declaring `artifact` (the value-mode prebuilt face) must
   # carry NO class content — "its class buckets must be empty; declaring both throws named". A pure decision
@@ -161,6 +144,5 @@ in
     aspectSchema
     classifyKey
     artifactExclusive
-    facets
     ;
 }

@@ -20,6 +20,7 @@ let
     hosts.x86_64-linux.axon = {
       class = "nixos";
     };
+    quirks.ssh-peers = { }; # the channel — declared so the closed gate admits `ssh-peers` as a quirk key.
     aspects.system = {
       nixos = poison; # class key, parametric (den-hoag class `nixos`)
       ssh-peers = [ "axon-ip" ]; # quirk key
@@ -132,6 +133,7 @@ let
         class = "nixos";
         users.alice = { };
       };
+      config.den.quirks.ssh-peers = { }; # the channel — declared so the closed gate admits the quirk key.
       config.den.aspects.system.ssh-peers = [ "axon-ip" ];
       config.den.classes.myclass = { };
     }
@@ -287,10 +289,18 @@ in
       expr = builtins.attrNames compiled.classes;
       expected = [ "myclass" ];
     };
-    # channels register `den.quirks.<name>` (Task 3); this fixture declares no quirk, so it is empty.
-    test-channels-empty = {
+    # channels register `den.quirks.<name>` (Task 3); this fixture declares the `ssh-peers` quirk (required
+    # for the closed gate to admit the `ssh-peers` aspect key), so the channel registers with its default
+    # ordered-list shape.
+    test-channels-has-ssh-peers = {
       expr = compiled.channels;
-      expected = { };
+      expected = {
+        ssh-peers = {
+          adapters = [ ];
+          channel = { };
+          ops = [ ];
+        };
+      };
     };
 
     # ── policy vocabulary (exclude/resolve/for/when) ─────────────────────────────────────────────

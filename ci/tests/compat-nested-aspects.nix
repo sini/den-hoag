@@ -322,8 +322,12 @@ let
 in
 {
   flake.tests.compat-nested-aspects = {
-    # (1) SPLIT: the nested per-user keys are stripped from the compiled parent; the real content stays.
-    test-nested-keys-split-from-parent = {
+    # (1) NESTED PERSIST (Model C): the nested per-user keys are NOT stripped from the compiled parent — they
+    #     persist as typed freeform aspect NODES the closed gate admits (registered separately as `blade/sini`,
+    #     `blade/shuo`, re-reachable via `includes`). The class-modules walk skips them (routes `facet`), so the
+    #     load-bearing invariant — nested content does NOT land at the parent's scope — is
+    #     `test-host-resolves-nested-content-absent`, not this structural-presence assertion.
+    test-nested-keys-persist-as-nodes = {
       expr = {
         sini = splitCompiled.aspects.blade ? sini;
         shuo = splitCompiled.aspects.blade ? shuo;
@@ -331,8 +335,8 @@ in
         includes = splitCompiled.aspects.blade ? includes;
       };
       expected = {
-        sini = false;
-        shuo = false;
+        sini = true;
+        shuo = true;
         nixos = true;
         includes = true;
       };
@@ -353,14 +357,18 @@ in
         hmEmpty = true;
       };
     };
-    # (3) TYPO POSTURE: both non-nested unknown shapes still abort at §2.2 (the split never swallows).
+    # (3) TYPO POSTURE (Model C). A SCALAR undeclared key is a non-attrset leaf → a typo → aborts NAMED at the
+    #     closed gate when the reached aspect's content is forced. An undeclared ATTRSET key is a nested-aspect
+    #     NAMESPACE → ADMITTED; it is registered separately and its own leaves validate only when that nested
+    #     aspect is itself included/resolved (lazy totality). So `typo.foo` (attrset) admits at the parent —
+    #     `foo` would abort only if the `typo` sub-aspect were resolved, which it is not here.
     test-scalar-typo-still-aborts = {
       expr = cmOkAt scalarTypoFleet "host:h1";
       expected = false;
     };
-    test-unrecognized-attrset-typo-still-aborts = {
+    test-unrecognized-attrset-admits-as-nested = {
       expr = cmOkAt attrsTypoFleet "host:h1";
-      expected = false;
+      expected = true;
     };
     # (4) EMITTED IDENTITY — the annotation-less scope-coord FALLBACK (board #58): deterministic name +
     #     id_hash — distinct per cell, stable across invocations, class keys grounded.

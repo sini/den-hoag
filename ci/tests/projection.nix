@@ -315,15 +315,18 @@ in
       };
     };
 
-    # ══ §2.2 TOTALITY over REACHED content (ruling 2026-07-14) ══════════════════════════════════════════
-    # Projection widened what a scope reaches (edges + descendants), so the unregistered-key totality abort
-    # must cover REACHED aspects, not just own-node content — else a typo on an edge-reached aspect would
-    # silently vanish on the drv path (the §5 silent-content-loss failure). `projectReachTotal` mirrors
-    # output-modules.nix's projectClass (the `assertKeysRegistered` force per reached aspect).
+    # ══ §2.2 TOTALITY over REACHED content (Model C) ══════════════════════════════════════════════════════
+    # Projection widened what a scope reaches (edges + descendants), so the content FORCE that fires the closed
+    # gate must cover REACHED aspects, not just own-node content — else a scalar typo on an edge-reached aspect
+    # would silently vanish on the drv path (the §5 silent-content-loss failure). `projectReachTotal` mirrors
+    # output-modules.nix's projectClass (the `assertKeysRegistered` WHNF force per reached aspect). Under Model C
+    # a SCALAR undeclared key is a typo (aborts); an undeclared ATTRSET key is a nested-aspect NAMESPACE that
+    # ADMITS (its leaves validate only when it is itself resolved — lazy totality).
 
-    # (a) a typo key (`nixxos`) on an aspect reached via an OPT-IN EDGE aborts NAMED under projection —
-    #     totality holds for edge-reached content, not just the own node.
-    test-totality-unregistered-key-on-reached-aspect-aborts = {
+    # (a) an undeclared ATTRSET key (`nixxos.tag`) on an aspect reached via an OPT-IN EDGE is a nested-aspect
+    #     namespace → ADMITTED under projection (not an eager typo). The reached content force is still driven
+    #     (a scalar leaf there would abort); the attrset key is a nested aspect, validated only if resolved.
+    test-totality-reached-attrset-key-admits-as-nested = {
       expr =
         let
           graph = {
@@ -331,8 +334,6 @@ in
               resolved = [ (mkNode "host-own" { nixos.tag = "host"; }) ];
               edges = [ (reachEdgeAct "provider" null) ]; # opt-in edge to the provider…
             };
-            # …whose aspect carries an UNREGISTERED content key `nixxos` (a typo — neither facet/class/channel).
-            # `name` is the aspect name classifyKey reports in the abort (real resolved aspects carry it).
             provider.resolved = [
               (mkNode "typo-aspect" {
                 name = "typo-aspect";
@@ -348,8 +349,8 @@ in
             }) true
           );
         in
-        r.success; # MUST be false — the reached typo aborts named at projection.
-      expected = false;
+        r.success; # the reached attrset key admits as a nested namespace.
+      expected = true;
     };
 
     # (b) NON-VACUOUS companion: the SAME edge-reached aspect with a REGISTERED class key (`nixos`) does NOT
@@ -386,31 +387,26 @@ in
       };
     };
 
-    # (c) NAME ROBUSTNESS (Phase-3 hardening): a reached aspect whose `content` lacks a populated `.name`
-    #     (a synthetic/degenerate node) with an UNREGISTERED key must STILL abort NAMED — the
-    #     `assertKeysRegistered` `content.name or "<unnamed>"` fallback keeps the abort the intended
-    #     `errors.unknownAspectKey`-shaped message, never a raw `attribute 'name' missing` throw that would
-    #     mask the real (unregistered-key) fault. Drives the abort path directly on a `.name`-less aspect.
-    test-totality-nameless-aspect-unregistered-key-aborts-named = {
+    # (c) `assertKeysRegistered` drives the content-key WHNF force (firing the closed gate). Under Model C an
+    #     undeclared ATTRSET key (`nixxos.tag`) is a nested-aspect namespace → ADMITS (no eager typo abort); a
+    #     registered class key (`nixos.tag`) forces to its deferredModule wrapper → admits. (A SCALAR leaf would
+    #     abort at the gate; that split is covered by compat-nested-aspects.)
+    test-totality-force-admits-attrset-and-registered = {
       expr =
         let
-          namelessTypo = mkNode "nameless-typo" { nixxos.tag = "boom"; }; # NO `name` key in content.
-          r = builtins.tryEval (builtins.seq (assertKeysRegistered { } namelessTypo) true);
+          namelessAttrset = mkNode "nameless-attrset" { nixxos.tag = "boom"; }; # undeclared attrset → nested.
+          r = builtins.tryEval (builtins.seq (assertKeysRegistered { } namelessAttrset) true);
         in
         {
-          # Aborts (not silently passing) — the fallback name reaches the named-abort branch.
-          aborts = !r.success;
-          # NON-RAW: had it thrown the raw `attribute 'name' missing`, the aspect below (registered key,
-          # still `.name`-less) would ALSO throw — the positive control proves the fallback lets a
-          # registered-key `.name`-less aspect pass, so the abort above is the NAMED unregistered-key path.
-          namelessRegisteredOk =
+          attrsetAdmits = r.success;
+          registeredOk =
             (builtins.tryEval (
               builtins.seq (assertKeysRegistered { } (mkNode "nameless-ok" { nixos.tag = "ok"; })) true
             )).success;
         };
       expected = {
-        aborts = true;
-        namelessRegisteredOk = true;
+        attrsetAdmits = true;
+        registeredOk = true;
       };
     };
   };

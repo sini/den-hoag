@@ -76,8 +76,8 @@ let
 
   # The v1 class-key SPELLING map REVERSED (grounded den-hoag name → v1 SURFACE spelling) — derived from the
   # SAME `v1-class-key-map.nix` single source compile's `groundKeys`/`groundClassName` read forward. The
-  # typed/nav aspect view (`mkCompileAspectsType` below AND the §2.2 raw-totality discriminator `mkRawTotality`)
-  # keys its class channels by this V1 SURFACE spelling — the spelling the corpus AUTHORS its class content as
+  # typed/nav aspect view (`mkCompileAspectsType` below) keys its class channels by this V1 SURFACE spelling —
+  # the spelling the corpus AUTHORS its class content as
   # (`homeManager`, not the grounded kebab `home-manager`). Grounding to the den-hoag kebab class name is a
   # KERNEL-boundary concern, confined to compile (`translateAspect`'s `groundKeys`); keeping it OUT of surface
   # typing is the invariant that makes a class-name ⟂ aspect-name collision impossible on the view: an aspect
@@ -104,212 +104,38 @@ let
       classNames = v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames);
       quirkChannels = quirkChannelNames;
     };
-  # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW v1 aspect tree
-  # through the compile view, yielding a typed tree whose class keys are deferredModules and whose nodes carry
-  # native `.key` (the ONLY identity — compile reads `.key` directly). `evalModuleTree` also rebinds
-  # `_module.args.aspects = config` internally, so a `with aspects; …` include inside the tree resolves
-  # against its typed siblings. Falls back to `{ }` for an aspect-less fleet (mkOption default).
-  # §2.2 TOTALITY under the typed tree (Bug 3). gen-aspects' freeform types ANY undeclared attrset key as a
-  # nested aspect — so a TYPO (`nixxos = { networking… }`, neither facet/class/channel and NOT a legit nested
-  # aspect) is silently absorbed + gains empty class/structural defaults that mis-classify it NESTED at
-  # compile's `isNestedAspectKey` (which then strips it) → the §2.2 abort never fires. FIX: classify over the
-  # RAW value (clean, pre-typing defaults) and splice the raw unregistered key BACK onto the typed node, so it
-  # reaches class-modules `assertKeysRegistered` as a content key and aborts NAMED — LAZILY (only when the
-  # aspect is resolved; a fixture that builds an aspect but never resolves it must not abort — compat-compile-
-  # golden `roundTrip`). A legit nested aspect (raw value carries a recognized sub-key — structural/class/
-  # channel — recursively) is untouched.
-  structuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
   # The v1 class-key SPELLING map (camelCase → grounded class name), the SINGLE source shared with
   # compile.nix's `groundKeys`/`groundClassName`. Here it is REVERSED (`reverseV1ClassKeyMap`, above) to key
   # the nav/compile class channels + the §2.2 discriminator by the v1 SURFACE spelling, so a class-facet key
   # spelled the v1 way (`homeManager`) is recognised as a registered class directly (no per-key grounding —
   # grounding to the kebab kernel name stays confined to compile).
   v1ClassKeyMap = import ./v1-class-key-map.nix;
-  # den-hoag facets absent from v1's structural set (KEEP IN SYNC with concern-aspects.nix `facets`).
-  hoagFacetsSet = prelude.genAttrs [
-    "neededBy"
-    "tags"
-    "projects"
-    "key"
-    "id_hash"
-    "settings"
-  ] (_: true);
-  isStructuralRawKey = k: structuralKeysSet ? ${k} || hoagFacetsSet ? ${k};
-  # `mkRawTotality { declaredClassNames; quirkChannelNames; }` — the RAW §2.2 discriminator: a candidate key
-  # (non-structural/`__`/class/channel) is a LEGIT nested aspect iff its raw value is an attrset carrying a
-  # recognized sub-key (structural/class/channel) OR a deeper candidate that recurses to one (the namespace-
-  # path shape `core.systemd.boot`). Otherwise it is an UNREGISTERED key (v1's `unregisteredClassKeys`).
-  mkRawTotality =
-    {
-      declaredClassNames,
-      quirkChannelNames,
-    }:
-    let
-      # The discriminator's class set is keyed by the V1 SURFACE spelling — SPELLING-CONSISTENT with the
-      # nav/compile channel keySemantics above (both `v1SpelledClassNames (compileClassNamesBase ++ …)`), so a
-      # value carrying the corpus-authored class content key (`homeManager`) is recognized as a class sub-key
-      # here, and a key the view typed as a class channel is never re-classified as a candidate/unregistered
-      # (which would splice raw over the typed class bucket). The grounded kebab `home-manager` is DELIBERATELY
-      # absent — an aspect NAMED `home-manager` is therefore a candidate (a legit nested child, its raw value
-      # carrying `settings`/`nixos`/… recognized sub-keys), matching the nav view that types it freeform.
-      classSet = prelude.genAttrs (v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames)) (
-        _: true
-      );
-      quirkSet = prelude.genAttrs quirkChannelNames (_: true);
-      recognizedSubKey =
-        sk:
-        builtins.substring 0 2 sk != "__"
-        && (isStructuralRawKey sk || quirkSet ? ${sk} || classSet ? ${sk});
-      isCandidate =
-        k:
-        !(isStructuralRawKey k)
-        && !(classSet ? ${k})
-        && !(quirkSet ? ${k})
-        && builtins.substring 0 2 k != "__";
-      looksNested =
-        v:
-        builtins.isAttrs v
-        && builtins.any (sk: recognizedSubKey sk || (isCandidate sk && looksNested v.${sk})) (
-          builtins.attrNames v
-        );
-      isUnregistered = raw: k: isCandidate k && !(builtins.isAttrs raw.${k} && looksNested raw.${k});
-      # a MALFORMED `{ name; fn }` include — an attrset carrying a FN-VALUED unregistered key (not a
-      # structural facet / registered class / `__`-prefixed), bearing NO policy/route/wrapped marker: a
-      # typo'd policy record or a mis-keyed content set. The typed tree would WRAP its `fn` into a valid
-      # nested include (silent inert-fire); we abort LOUD here (over the RAW element, §2.2 self-announce).
-      # CARVE-OUT: the class membership test is over the V1-SURFACE-spelled `classSet`, so a fn-valued key
-      # spelled the v1 way (a v1 `homeManager = { host, … }: …` parametric FACET) IS a registered class and is
-      # NOT malformed — it rides raw + is grounded/wrapped by compile's `wrapGatedFn` exactly like an
-      # attrset-valued `homeManager` facet already does (an attrset facet reaches compile via the raw-splice;
-      # a fn facet must clear this fn-key gate to reach it too). The membership is bare `k` (the classSet is
-      # already v1-spelled — no per-key grounding needed, and the grounding stays confined to compile).
-      # CARVE-OUT (2): a fn-valued key naming a REGISTERED quirk channel (`quirkSet ? ${k}`) is NOT
-      # malformed — a v1 channel body may be a `{ ctx… }: <content>` producer, materialized unconditionally
-      # by v1 and gathered fn-and-all by the downstream channel-gather seam. The lookup mirrors the sibling
-      # `recognizedSubKey`/`isCandidate` predicates (bare `k`, not `groundK` — quirks are not class-grounded)
-      # and compile's own `walkableChild` quirk exemption.
-      malformedFnKeys =
-        inc:
-        builtins.filter (
-          k:
-          builtins.isFunction inc.${k}
-          && !(isStructuralRawKey k)
-          && !(classSet ? ${k})
-          && !(quirkSet ? ${k})
-          && builtins.substring 0 2 k != "__"
-        ) (builtins.attrNames inc);
-      isMalformedFnInclude =
-        inc:
-        builtins.isAttrs inc
-        && !(inc.__isPolicy or false)
-        && !((inc.__denCanTake or null) != null)
-        && !((inc.__fn or null) != null)
-        && !(inc.__isWrappedFn or false)
-        && !(inc.__guard or false)
-        && malformedFnKeys inc != [ ];
-      malformedFnIncludeAbort =
-        inc:
-        throw "den-hoag compat (§2.2): aspect-include `${inc.name or "<unnamed>"}` declares key `${builtins.head (malformedFnKeys inc)}` with a function value — neither a facet, a registered class, nor a quirk channel. A `{ name; fn; }`-shaped include is a MALFORMED policy record (a typo'd `{ __isPolicy; name; fn }`) or a mis-keyed content set; add the `__isPolicy = true;` marker, or move the fn into the `includes` LIST as a bare parametric include `[ (ctx: <content>) ]`.";
-    in
-    {
-      inherit
-        isUnregistered
-        isCandidate
-        isMalformedFnInclude
-        malformedFnIncludeAbort
-        ;
-      # a legit nested-aspect CHILD to recurse into (raw attrset whose value looks nested).
-      isNestedChild = raw: k: isCandidate k && builtins.isAttrs raw.${k} && looksNested raw.${k};
-    };
-  # splice raw unregistered keys + raw policy-record includes back onto the parallel typed node (+ recurse
-  # legit nested children / non-policy includes).
-  restoreUnregistered =
-    tot: typed: raw:
-    if !(builtins.isAttrs typed) || !(builtins.isAttrs raw) then
-      typed
-    else
-      let
-        unregistered = builtins.filter (tot.isUnregistered raw) (builtins.attrNames raw);
-      in
-      builtins.removeAttrs typed unregistered
-      // builtins.listToAttrs (
-        map (k: {
-          name = k;
-          value = raw.${k};
-        }) unregistered
-      )
-      //
-        prelude.optionalAttrs
-          (builtins.isList (typed.includes or null) && builtins.isList (raw.includes or null))
-          {
-            includes = prelude.imap0 (
-              i: tinc:
-              let
-                rinc = if i < builtins.length raw.includes then builtins.elemAt raw.includes i else null;
-              in
-              if rinc == null then
-                tinc
-              else if tot.isMalformedFnInclude rinc then
-                tot.malformedFnIncludeAbort rinc
-              # A policy record / bare parametric fn / `{ __fn; … }` battery record passes through the TYPE
-              # un-mangled (`deferIncludeResolution`), so `tinc == rinc` here: a bare fn is not an attrset →
-              # `else tinc` (identity); an attrset policy/`{ __fn }` record falls to the recurse arm below with
-              # `tinc == rinc` → identity. compile's `normalize` does the registry-aware wrap downstream.
-              else if builtins.isAttrs rinc && builtins.isAttrs tinc then
-                # a STATIC aspect include — recurse so a policy record / bare-fn nested in ITS `.includes`
-                # (the battery shape `include.includes = [ { __isPolicy } ]`, or a named sub-aspect carrying a
-                # parametric include) is spliced raw too.
-                restoreUnregistered tot tinc rinc
-              else
-                tinc
-            ) typed.includes;
-          }
-      // builtins.listToAttrs (
-        map
-          (k: {
-            name = k;
-            value = restoreUnregistered tot (typed.${k} or { }) raw.${k};
-          })
-          (
-            builtins.filter (k: tot.isNestedChild raw k && builtins.isAttrs (typed.${k} or null)) (
-              builtins.attrNames raw
-            )
-          )
-      );
-  # the aspect CONTAINER top entry — keys are aspect NAMES (not content keys), so classify per-ENTRY only.
-  restoreUnregisteredTree =
-    tot: typed: raw:
-    builtins.listToAttrs (
-      map (name: {
-        inherit name;
-        value =
-          if builtins.isAttrs (raw.${name} or null) then
-            restoreUnregistered tot (typed.${name} or { }) raw.${name}
-          else
-            typed.${name};
-      }) (builtins.attrNames raw)
-    );
+  # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW v1 aspect tree
+  # through the compile view, yielding a typed tree whose class keys are deferredModules and whose nodes carry
+  # native `.key` (the ONLY identity — compile reads `.key` directly). The closed gate (`mkCompileAspectsType`'s
+  # `closedKeys`/`recursiveClosed`) is the §2.2 TOTALITY boundary: an undeclared non-attrset leaf throws NAMED
+  # AT THE TYPE, lazily (only when the aspect's content is forced at resolution — a fixture that builds an
+  # aspect but never resolves it must not abort, compat-compile-golden `roundTrip`), while an auto-vivified
+  # namespace node recurses gate-retained. No raw re-validation / splice — the type is the sole validator.
+  # `evalModuleTree` also rebinds `_module.args.aspects = config` internally, so a `with aspects; …` include
+  # inside the tree resolves against its typed siblings. Falls back to `{ }` for an aspect-less fleet.
   typedCompileTree =
-    args@{
+    {
       declaredClassNames,
       quirkChannelNames,
     }:
     rawAspects:
-    let
-      typed =
-        (schema.evalModuleTree {
-          modules = [
-            {
-              options.aspects = schema.mkOption {
-                type = mkCompileAspectsType { inherit declaredClassNames quirkChannelNames; };
-                default = { };
-              };
-              config.aspects = rawAspects;
-            }
-          ];
-        }).config.aspects;
-    in
-    restoreUnregisteredTree (mkRawTotality args) typed rawAspects;
+    (schema.evalModuleTree {
+      modules = [
+        {
+          options.aspects = schema.mkOption {
+            type = mkCompileAspectsType { inherit declaredClassNames quirkChannelNames; };
+            default = { };
+          };
+          config.aspects = rawAspects;
+        }
+      ];
+    }).config.aspects;
 
   # A `raw` option holds any v1 value unmerged (single-def passthrough) — the v1 grammar (parametric
   # aspects, policy records, two-level host maps) is never type-walked or freeform-mangled.

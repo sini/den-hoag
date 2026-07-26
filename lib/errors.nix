@@ -108,12 +108,6 @@ in
     policyName: kind: stratum:
     fail "per-declaration stratum (B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced kind `${kind}` (stratum `${stratum}`), outside the covered {structural, resolution, collection (site-mark pipeOps)}; a `${stratum}`-stratum declaration from a value-conditional policy is a silent partition";
 
-  # §2.2 aspect-key dispatch: an aspect key that is neither a declared facet, a registered
-  # class, nor a registered quirk channel is a definition-time error, naming the aspect + key.
-  unknownAspectKey =
-    aspectName: key:
-    fail "aspect key (§2.2)" "aspect `${aspectName}` declares key `${key}`, which is neither a facet, a registered class, nor a quirk channel";
-
   # §4.1 the prebuilt-arm exclusivity: an aspect declaring `artifact` (the value-mode prebuilt face) may
   # carry no non-empty class content — the prebuilt IS the materialized face, so class buckets alongside it
   # are contradictory. Names the aspect and the offending class key.

@@ -56,6 +56,11 @@ let
       # undeclared leaf throws NAMED — the typed pass is the totality boundary.
       closedKeys = true;
       recursiveClosed = true;
+      # An includes element that is a bare module `{ imports = [ … ]; }` (a class-content deferredModule
+      # collapse — `imports` is the module merge slot, never a valid aspect content key) throws NAMED at the
+      # type: a class-named node mis-included AS an aspect. The type-native guardrail against including class
+      # content AS an aspect (structural, not a value-heuristic).
+      rejectBareModuleInclude = true;
     };
 in
 {

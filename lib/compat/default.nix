@@ -45,11 +45,9 @@ let
   # SAME closed-gated aspect type the compile view uses and, for byte-neutrality, returns the aspect UNCHANGED —
   # the typing is a VALIDATION seq (a typo throws NAMED at the gate), never a shape transform. This is the sole
   # typo boundary for a parametric aspect's RESULT (never run through the compile-time typed tree — it is
-  # materialized at RESOLUTION, `resolved-aspects.nix`). While the raw discriminator (`restoreUnregistered`)
-  # still splices a static aspect's typo past the compile-time gate, this seam does not backstop that path — the
-  # static gate is unmasked once that discriminator is retired and the typed tree carries it directly.
-  # `classNames` are the GROUNDED (kebab) class names `translateAspect`
-  # produced, so a legit `home-manager` class bucket is recognized (not gate-rejected).
+  # materialized at RESOLUTION, `resolved-aspects.nix`); a STATIC aspect's typo is caught directly by the typed
+  # tree's closed gate at compile (`typedCompileTree`). `classNames` are the GROUNDED (kebab) class names
+  # `translateAspect` produced, so a legit `home-manager` class bucket is recognized (not gate-rejected).
   #
   # FORCING GRAIN (laziness-preserving + cycle-free): only the UNDECLARED (freeform) authored keys are forced,
   # each to WHNF, recursing into an authored attrset child (a nested namespace) so a deep typo (`typo.foo = "x"`)
@@ -123,9 +121,13 @@ let
       ;
     inherit (denHoag) declare aspectIdHash;
     # den-hoag's built-in class set (`denHoag.classes` = nixos/darwin/home-manager; k8s-manifests is
-    # compat-provisioned via builtins.nix, arriving through the corpus's `den.classes`) — the
-    # `cnf.classes` `wrapFn` needs to route a v1 bare-fn include's class content (§339 wrap-ground).
-    builtinClasses = builtins.attrNames denHoag.classes;
+    # compat-provisioned via builtins.nix, arriving through the corpus's `den.classes`) PLUS the ambient
+    # legacy-battery classes (`os`/`user`, `legacy.defaults.registeredClasses`). Including the battery classes
+    # UNIFIES compile's class vocabulary (`allClassNames`, hence the parametric-result gate) with the compile
+    # VIEW's (`flake-module` `compileClassNamesBase`, the static typed-tree gate) — else a parametric result
+    # authoring an `os`/`user` bucket type-throws on the parametric gate while the static path admits it. The
+    # names are already grounded (no v1 spelling). Severing `legacy.defaults` drops the module ⇒ `or [ ]`.
+    builtinClasses = builtins.attrNames denHoag.classes ++ (legacy.defaults.registeredClasses or [ ]);
     # THE R2 RESOLVE-FAMILY TAG SET (`den.resolveFamilyNames`) — the SINGLE source shared with
     # flake-module's `resolveFamilyModule`, so the kind-include compilation stamps `__resolveFamily` on a
     # synthetic-keyed include policy whose source ref is a corpus resolve policy (else the pre-pass feed is
@@ -382,16 +384,18 @@ let
   mkFlakeNamespace =
     feat:
     prelude.optionalAttrs feat.namespace {
-      # Thread the origin-aware content-address helper + the aspect-key classifier + the v1 structural keyset:
-      # the factory stamps each namespace-placed aspect with `origin=["<name>"]` (a namespace = a local
-      # origin), classifying its sub-aspect children through `classifyKey` (registered content) and
-      # `structuralKeysSet` (pipeline-internal keys like `provides`) so neither is mistaken for an aspect.
-      # Pure gen — no consumer `lib` edge. `classifyKey` is a reviewed `internal.` sub-seam
+      # Thread the origin-aware content-address helper + the aspect-key CATEGORY reader + the v1 structural
+      # keyset: the factory stamps each namespace-placed aspect with `origin=["<name>"]` (a namespace = a local
+      # origin), telling its sub-aspect children (unregistered — `keyCategory null`) from its registered content
+      # (`keyCategory ≠ null`) and its pipeline-internal keys (`structuralKeysSet`, like `provides`) so neither
+      # is mistaken for an aspect. `keyCategory` is the schema's single-authority classification surface (the
+      # cnf-closed `aspectSchema.keyCategory`), read directly so the sub-aspect test never depends on a throw.
+      # Pure gen — no consumer `lib` edge. `aspectSchema` is a reviewed `internal.` sub-seam
       # (ci/tests/boundary.nix); reached dotted so the boundary scan tracks it.
       namespace = import ./namespace.nix {
         inherit (denHoag) aspectIdHashFor;
         inherit (keyClassification) structuralKeysSet;
-        classifyKey = denHoag.internal.classifyKey;
+        keyCategory = denHoag.internal.aspectSchema.keyCategory;
       };
     };
   flakeNamespace = mkFlakeNamespace defaultFeatures;

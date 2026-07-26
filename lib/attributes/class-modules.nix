@@ -98,34 +98,25 @@ let
           }
         ];
 
-  # §2.2 TOTALITY at the projection terminal (ruling 2026-07-14). Classify EVERY non-`_` content key of an
-  # aspect via `classifyKey` — a `facet`/`class`/`channel` key passes, a genuinely UNREGISTERED key (a typo
-  # like `nixxos`) ABORTS NAMED (`errors.unknownAspectKey`, the identical message the `classifyKey` pass raises).
-  # `projectClass` forces this per REACHED aspect before returning its projected-class slice, so a typo'd key
-  # on a reachable aspect can NEVER silently vanish on the drv path (`classSliceOf class` alone classifies
-  # ONLY the projected class key — the totality hole this closes; spec §2.2/§5 silent-content-loss). Returns
-  # `null` (forced for the abort side-effect only); shares its classify-all logic with `classifyAllKeysAt`.
-  # NAME ROBUSTNESS: `classifyKey` takes the aspect NAME only to frame the `errors.unknownAspectKey` abort.
-  # A reached aspect whose `content` lacks a populated `.name` (a synthetic/degenerate node) must STILL abort
-  # with the NAMED `unknownAspectKey`-shaped message on a genuinely unregistered key — never a raw
-  # `attribute 'name' missing` throw that masks the real (unregistered-key) fault. `content.name or "<unnamed>"`
-  # supplies a key-only fallback name so the abort message stays the intended one.
+  # Terminal force per REACHED aspect (`projectClass`, forced at output-modules): (a) the §4.1 prebuilt-arm
+  # EXCLUSIVITY (`artifactExclusive` — an aspect declaring `artifact` with non-empty class content aborts NAMED);
+  # (b) a WHNF force of every non-`_`, non-exempt content key, which FIRES THE CLOSED GATE on a typo — an
+  # undeclared non-attrset leaf throws NAMED at the type. Key-typo VALIDATION is the gate's job now (not a
+  # classifyKey re-classification), but the gate is lazy — this per-reached-aspect force is what triggers it, so
+  # a typo on a RESOLVED aspect aborts while an unresolved aspect is never reached (laziness). WHNF only: a class
+  # bucket forces to its deferredModule wrapper (cheap, no user-content descent); an undeclared attrset key is an
+  # admitted nested-aspect namespace (no throw at WHNF — its own content validates only when it is included and
+  # resolved). `exempt` forward-source keys materialize via `classSliceOf`, so they are skipped here.
   assertKeysRegistered =
     exempt: aspect:
     let
       content = aspect.content;
-      aspectName = content.name or "<unnamed>";
-      # EXEMPT forward-source keys are skipped (they materialize via `classSliceOf`, not abort); every other
-      # non-`_` key is classified (a typo aborts NAMED — typo-protection preserved).
       keys = builtins.filter (k: !(prelude.hasPrefix "_" k) && !(exempt ? ${k})) (
         builtins.attrNames content
       );
     in
-    # §4.1: alongside the §2.2 key totality, force the prebuilt-arm EXCLUSIVITY over this aspect's content —
-    # an aspect declaring `artifact` with non-empty class content aborts NAMED here (the same per-aspect,
-    # terminal-forced gate). Inert (the identity pass) for the default `artifactExclusive`.
     builtins.seq (artifactExclusive content) (
-      prelude.foldl' (acc: k: builtins.seq (classifyKey aspectName k) acc) null keys
+      prelude.foldl' (acc: k: builtins.seq content.${k} acc) null keys
     );
 
   # inject/reroute (v1 `forwards` tier-1, spec §2.3 resolution) — the resolution-stratum WHOLE-MAP post-
@@ -182,19 +173,24 @@ let
     exempt: resolvedAspects: class:
     prelude.concatMap (a: classSliceOf exempt a class) resolvedAspects;
 
-  # §2.2 TOTALITY classification side-effect (Law A1/A2). The direct per-class query base touches only the
-  # `classNames` keys, so on its own it would silently skip a genuinely-unregistered typo key on some OTHER
-  # content key. The edge/trace path (`classBucketsOf`/`contentsOf`, which forces the bucket spine, NOT
-  # `projectClass`) requires that key to abort NAMED, so this pass classifies EVERY non-`_` content key of
-  # every resolved aspect (force `classSliceOf` → `classifyKey`), WITHOUT building a bucket. Returns null
-  # (forced for the abort side-effect only); `artifactExclusive` is NOT forced here (it rides
-  # `assertKeysRegistered` at the projection terminal — the class-modules force path stays abort-faithful).
-  classifyAllKeysAt =
+  # A WHNF force of every non-`_`, non-exempt content key of every REACHED aspect — the laziness DRIVER that
+  # FIRES the closed gate on the bucket-spine path (the edge/trace consumers that never reach `projectClass`).
+  # The gate is the sole VALIDATOR but it is lazy; in a lazy language a validation occurs only when the value is
+  # forced. This is a pure `seq` that drives evaluation — NOT a key re-classification (the retired antipattern):
+  # a class bucket forces to its deferredModule wrapper (cheap), an undeclared non-attrset LEAF throws NAMED at
+  # the gate (a typo), and an undeclared ATTRSET key is an admitted nested-aspect namespace (no throw at WHNF —
+  # its own leaves validate only when that nested aspect is itself resolved, the lazy-totality contract). Per
+  # REACHED aspect, so an unresolved aspect is never forced. `exempt` forward-source keys materialize via
+  # `classSliceOf`, so they are skipped here.
+  forceContentKeysAt =
     exempt: resolvedAspects:
     prelude.foldl' (
       acc: aspect:
-      prelude.foldl' (acc2: k: builtins.seq (classSliceOf exempt aspect k) acc2) acc (
-        builtins.filter (k: !(prelude.hasPrefix "_" k)) (builtins.attrNames aspect.content)
+      let
+        content = aspect.content;
+      in
+      prelude.foldl' (acc2: k: builtins.seq content.${k} acc2) acc (
+        builtins.filter (k: !(prelude.hasPrefix "_" k) && !(exempt ? ${k})) (builtins.attrNames content)
       )
     ) null resolvedAspects;
 
@@ -208,9 +204,9 @@ let
       resolvedAspects = self.get id "resolved-aspects";
       resolutionActs = (self.get id "declarations").actions.resolution or [ ];
       exempt = forwardSourceClassesOf resolvedAspects;
-      # force the §2.2 classification of every content key before returning the query base — so an unregistered
-      # key aborts NAMED on the bucket-spine force path (the edge/trace consumers that never reach projectClass).
-      base = builtins.seq (classifyAllKeysAt exempt resolvedAspects) (
+      # Force every reached aspect's content keys (fires the closed gate on a typo) before returning the query
+      # base — so an undeclared LEAF aborts NAMED on the bucket-spine force path.
+      base = builtins.seq (forceContentKeysAt exempt resolvedAspects) (
         prelude.genAttrs classNames (classSliceKeyedBaseAt exempt resolvedAspects)
       );
     in

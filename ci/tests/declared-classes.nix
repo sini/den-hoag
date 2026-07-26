@@ -105,11 +105,13 @@ in
       expr = fooEntry != null && (fooEntry.name or null) == "foo";
       expected = true;
     };
-    # the typo-abort still fires on an UNDECLARED key (declared-classes widens the class branch, it does
-    # NOT dissolve the three-branch strictness — R9's no-strictness-escape holds).
-    test-undeclared-key-still-aborts = {
+    # an undeclared ATTRSET key (`bogusUndeclaredKey = { x = 1; }`) is a nested-aspect NAMESPACE under Model C —
+    # ADMITTED, registered separately, its own leaves validated only when it is itself resolved/included. It is
+    # not eagerly a typo (a SCALAR undeclared key still aborts; that lazy-totality split is covered by
+    # compat-nested-aspects). So building the resolved host admits it.
+    test-undeclared-attrset-admits-as-nested = {
       expr = typoAborts;
-      expected = true;
+      expected = false;
     };
     # core built-ins: a fleet declaring no classes sees exactly the three built-in classes (the two
     # OS-system classes nixos + darwin, plus home-manager) — declared classes extend this per-fleet, they do

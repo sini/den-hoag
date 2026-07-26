@@ -166,11 +166,12 @@ in
       expr = c.aspects.plainhm ? home-manager;
       expected = true;
     };
-    # (2b) a NON-class aspect name carrying a class sub-key IS a nested aspect → stripped from its parent
-    #      (the legal nesting path — what an aspect must be named to nest).
-    test-nonclass-named-aspect-strips-as-nested = {
+    # (2b) a NON-class aspect name carrying a class sub-key IS a nested aspect → under Model C it PERSISTS as a
+    #      typed node the closed gate admits (not stripped); the class-modules walk skips it. It is registered
+    #      separately and re-reachable via `includes` — the legal nesting path.
+    test-nonclass-named-aspect-persists-as-nested = {
       expr = c.aspects.nested ? home-manager-shared;
-      expected = false;
+      expected = true;
     };
     # (3) end-to-end: the explicitly-included nested child's nixos half lands at the host terminal…
     test-nested-nixos-half-lands-at-host = {
@@ -203,10 +204,11 @@ in
       };
     };
     # (5) LOUD reservation-include: a class-named aspect (`virtualization.microvm`, `microvm` ∈ classes)
-    #     navigated and included AS an aspect collapses to keyless class content → the include boundary
-    #     fires the loud reservation error (`errors.reservedClassInclude`). The homegrown CI asserter has no
-    #     message-text channel (no `expectedError`), so assert the THROW; the green nested-include siblings
-    #     above prove the guard does NOT fire on a legit non-class nested include (no false-positive).
+    #     navigated and included AS an aspect collapses to a keyless `{ imports = … }` class-content module →
+    #     the closed aspect type REJECTS it (`includesElemType` `rejectBareModuleInclude`, gen-aspects G-c),
+    #     the type-native guardrail. The homegrown CI asserter has no message-text channel (no `expectedError`),
+    #     so assert the THROW; the green nested-include siblings above prove the guard does NOT fire on a legit
+    #     non-class nested include (no false-positive).
     test-reserved-class-named-include-throws-loud = {
       expr = throws redTerm;
       expected = true;
