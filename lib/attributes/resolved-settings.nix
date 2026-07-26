@@ -47,6 +47,7 @@ let
       "__edges"
       "__containment"
       "__coords"
+      "__root"
     ];
 
   # An identity-bearing aspect entry from a resolved aspect's content (id_hash added by the aspect
@@ -101,11 +102,10 @@ let
       # cannot produce its slice — den-hoag PREPENDS it here, after the empty slice, giving the settings fold
       # default < env < host < user (the owner's cascade). Default `{ }` ⇒ no env slice, byte-identical.
       containmentRelations ? { },
-      # Is this node id a CELL? (`build-roots.nix isCell` — the constructor case analysis over the id
-      # shape.) Required, not defaulted: the chain builder below picks the cell branch on it, and a
-      # defaulted `_: false` would silently make every cell read its OWN containment ancestors instead
-      # of its parent root's.
-      isCell,
+      # Is this NODE a CELL? (`build-roots.nix isCellNode` — the constructor TAG test.) Required, not
+      # defaulted: the chain builder below picks the cell branch on it, and a defaulted `_: false`
+      # would silently make every cell read its OWN containment ancestors instead of its parent root's.
+      isCellNode,
       # A single-kind coordinate slice -> the scope node id it names. Owned by the pre-pass that produces
       # the slices (staged-resolution.nix); threaded here so the id convention has one definition rather
       # than a second copy that could drift from the one the parent map is rendered with.
@@ -250,9 +250,10 @@ let
           # its own (`id`). `baseChain` always leads with the empty slice, so [ ∅ ] ++ ancestors ++ tail
           # keeps every product slice in its original relative order (byte-neutral when ancestors = [ ]).
           # A CELL reads its parent root's containment ancestors; a ROOT reads its own. Discriminated by
-          # the constructor test, not by parentage — a root carrying a containment parent still owns its
-          # own ancestor slices, and a `parent == null` spelling would send it to read its parent's.
-          ancSlices = if isCell id then ancestorsOf node.parent else ancestorsOf id;
+          # the constructor tag, not by parentage nor by the id's shape — a root carrying a containment
+          # parent still owns its own ancestor slices, and a multi-attached root's id carries an '@',
+          # so either of those spellings would send such a root to read its parent's instead.
+          ancSlices = if isCellNode node then ancestorsOf node.parent else ancestorsOf id;
           chain = [ (builtins.head baseChain) ] ++ ancSlices ++ (builtins.tail baseChain);
 
           present = self.get id "resolved-aspects";

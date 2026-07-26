@@ -10,10 +10,10 @@
 # `declarations` = the declaration vocabulary DEP (`declare`) — `stratumOf` a declaration to its
 # B2 stratum, `strata` (the stratified-dispatch order), `kindOf`/`kindToStratum`, `importEdgesOf`
 # (distinct from the attribute named `declarations` below, the dispatched policy declarations at a
-# node). `isCell id` = the cell/root discriminator DEP (lib/build-roots.nix) — the constructor case
-# analysis over the id shape, consumed by the resolve-family guard below. It binds with the libs, NOT
-# per fleet: it is a fixed pure predicate `id -> bool` carrying no per-fleet content, so it is the same
-# shape as `declarations`, not as the per-fleet data below. Undefaulted, hence required — a defaulted
+# node). `isCellNode node` = the cell/root discriminator DEP (lib/build-roots.nix) — the constructor
+# TAG test, consumed by the resolve-family guard below. It binds with the libs, NOT per fleet: it is a
+# fixed pure predicate `node -> bool` carrying no per-fleet content, so it is the same shape as
+# `declarations`, not as the per-fleet data below. Undefaulted, hence required — a defaulted
 # `_: false` would call every cell a root and drop the `memberAtCell` law entirely.
 # `fleetChildren self id` = the cell-expansion glue (gen-product enumeration lives in
 # lib/fleet.nix, Law A1). `linkTarget entry` → { kind; nodeId; } | null resolves a `link` target
@@ -26,7 +26,7 @@
   dispatch,
   declarations,
   errors,
-  isCell,
+  isCellNode,
 }:
 {
   policiesRules,
@@ -59,6 +59,7 @@
               "__edges"
               "__containment"
               "__coords"
+              "__root"
               "suppressedPolicies"
             ];
         } self id;
@@ -236,7 +237,7 @@
         # INDEPENDENT roots ONLY. A resolve policy fires in BOTH passes (a policy is `ctx: [decls]`); the
         # main run's structural consumers (attr 5/6) never read member/relate. So a resolve-family emission
         # in the main run has three cases:
-        #   • at a membership-DERIVED node (a fleet cell — `isCell`) → NO legitimate consumer (the
+        #   • at a membership-DERIVED node (a fleet cell — `isCellNode`) → NO legitimate consumer (the
         #     pre-pass only fires at roots): abort LOUD `memberAtCell` (never a silent second partition; A5).
         #   • at a membership-INDEPENDENT root by a FEED policy (in `resolveFamilyNames`) → the pre-pass
         #     already routed the emission; this is the BENIGN double-fire — pass through (R1's verified posture).
@@ -282,11 +283,12 @@
         # structural element at every node, breaking the per-cell laziness the resolution stratum relies on
         # (b2 demand-laziness) — so the guard maps the group instead of filtering it. A non-resolve-family
         # declaration (spawn/link/…) is returned untouched, so the map is result-identity for a native fleet.
-        # "Is this node a CELL?" — asked through the constructor test (`isCell`), never through a
-        # parentage probe. Parentage answers a DIFFERENT question: a scope ROOT may legitimately carry
-        # a containment parent, and probing for one would then classify that root as a cell and abort
-        # its own membership emission at `memberAtCell` below.
-        isMembershipDerived = isCell id;
+        # "Is this node a CELL?" — asked through the constructor tag (`isCellNode`), never through a
+        # parentage probe nor through the id's shape. Both of those answer a DIFFERENT question and
+        # both now get it wrong: a scope ROOT may carry a containment parent, and a multi-attached
+        # root's id carries an '@'. Either spelling would classify such a root as a cell and abort its
+        # own membership emission at `memberAtCell` below.
+        isMembershipDerived = isCellNode (self.node id);
         guardResolveFamily =
           a:
           if declarations.isSuppress a then

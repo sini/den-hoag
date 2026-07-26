@@ -325,7 +325,7 @@ let
     buildRoots
     mintedRootId
     parseParent
-    isCell
+    isCellNode
     ;
 
   # mkDen assembles the four concerns; Tasks 1–11 extend it. Task 1: entity registries
@@ -1313,7 +1313,7 @@ let
           settingsLayers
           dimKinds
           projectors
-          isCell
+          isCellNode
           ;
       };
       # The user's declared productions (guard-forced) BESIDE the framework's settings seed. Right-biased so

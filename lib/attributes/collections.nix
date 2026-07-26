@@ -74,6 +74,7 @@ let
       "__edges"
       "__containment"
       "__coords"
+      "__root"
     ];
 in
 {

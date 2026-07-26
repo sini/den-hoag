@@ -168,6 +168,7 @@ let
           "__edges"
           "__containment"
           "__coords"
+          "__root"
         ];
 
       # Fire the resolve-family rules at ONE root and return its `member` emissions. Only the resolve-family

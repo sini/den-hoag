@@ -52,6 +52,9 @@ let
                 decls = {
                   ${kindName} = entry;
                   __entry = entry;
+                  # The constructor TAG: minted here, so it is present on exactly the nodes this
+                  # module makes and absent on every cell. `isCellNode` reads it — see below.
+                  __root = true;
                 };
               };
             };
@@ -73,25 +76,32 @@ let
     in
     if m == null then null else builtins.head m;
 
-  # Is this id a CELL (a node materialised UNDER a parent), as opposed to a scope ROOT?
+  # Is this NODE a CELL (materialised UNDER a parent), as opposed to a scope ROOT?
   # Exact by case analysis over the two — and only two — node constructors: `buildRoots` above
-  # mints roots as "${kind}:${name}" (no '@'), and the `children` NTA mints cells as
-  # "${leafDim}:${leaf}@${parentNodeId}" (an '@' by construction). gen-scope's walk reaches
-  # nothing else — it descends `children`/`derived-children` only, and `derived-children` is
-  # unbuilt here — so every node is one or the other and the test is total.
-  # This is the honest predicate for "is a cell". A `parent != null` test answers the same
-  # question ONLY while roots are parentless; once a root carries a containment parent the two
-  # diverge, and the parentage test starts calling roots cells.
-  # BOUND: rests on no entity NAME containing '@'. Corpus-unreachable and unguarded; if a fixture
-  # ever authors one, discriminate on the constructor instead (tag the node at mint time) rather
-  # than on the id's shape.
-  isCell = id: parseParent id != null;
+  # stamps `decls.__root` on everything it mints, and the `children` NTA stamps nothing. gen-scope's
+  # walk reaches nothing else — it descends `children`/`derived-children` only, and
+  # `derived-children` is unbuilt here — so every node is one or the other and the test is total.
+  #
+  # It reads the CONSTRUCTOR TAG, not the id's shape, and the difference is now load-bearing rather
+  # than theoretical. An id-shape test ("does it contain '@'") rested on no entity NAME containing
+  # '@' — a bound this module used to record as unreached. Multi-attachment reached it from the other
+  # side: `mintedRootId` puts an '@' in the ids of multiplied ROOTS, so the id shape no longer
+  # separates the two constructors and the shape test would call those roots cells. The tag is
+  # immune — it is written where the node is made, and it says which constructor made it.
+  #
+  # It is also immune to the reserved-key strips: those are projections that READ `node.decls` and
+  # return a new attrset for some context, never writing `decls` back, so no strip can reach the tag.
+  # Stripping `__root` alongside the other machinery keys is hygiene — keeping it out of binding
+  # contexts — not a correctness dependency of this predicate.
+  #
+  # `parseParent` above is unaffected and keeps its own job: recovering a parent id from a cell id.
+  isCellNode = node: !(node.decls.__root or false);
 in
 {
   inherit
     buildRoots
     mintedRootId
     parseParent
-    isCell
+    isCellNode
     ;
 }
