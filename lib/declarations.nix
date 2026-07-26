@@ -25,10 +25,13 @@ let
   # into `pipeOp` declarations.
   # Some kinds ride the mkActions dispatch with the raw `actions.<kind>` constructor (no custom
   # wrapper below), so their contract is stated here at the group site:
-  #   • `spawn`/`spawnShared`/`emit` — LATENT structural constructors: child-node creation
-  #     (`spawn`/`spawnShared`) and wire-entity-into-output (`emit`) are SUBSUMED by `member` fan-out
-  #     (§3c-UNIFIED), so nothing in the assembly consumes these kinds; they remain in the vocabulary
-  #     for surface totality.
+  #   • `spawn`/`spawnShared`/`emit` — child-node creation (`spawn`/`spawnShared`) and
+  #     wire-entity-into-output (`emit`) are SUBSUMED by `member` fan-out (§3c-UNIFIED), so no NODE is
+  #     created from them. They are NOT inert, however: a `spawn` carrying an `instantiate` payload IS
+  #     consumed — the spec is PARKED (childless, no scope node) and `default.nix`'s
+  #     `instantiateContributions` filters `__action == "spawn" && a ? instantiate`, folding the result
+  #     into the output families at the spec's `intoAttr` path. Bare `spawnShared`/`emit` carry no such
+  #     payload and remain vocabulary-only.
   #   • `enrich { key = val }` — a structural enrichment fact; its consumer is the enrichment
   #     fixpoint in concern-policies.nix (A3 single-writer).
   #   • `reroute { from; to }` — a resolution fact moving a class's collected content to another class;
