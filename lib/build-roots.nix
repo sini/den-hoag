@@ -5,12 +5,21 @@
 # so gen-select's default scope adapter can read identity/kind). Non-root instances
 # (cells) enter via the `children` NTA, never here.
 #
+# Root parentage is EDGE-DELIVERED, not inferred: a root is parentless unless the caller
+# names its parent in `parents` (root id -> parent node id), which it derives from the
+# containment edge relation. This module reads no topology of its own — it only applies the
+# map. Absent (`{ }`) ⇒ every root is parentless.
+#
 # nixpkgs-lib-free: gen-prelude only. The only recursion is attrset assembly (A1 wiring).
 { prelude }:
 let
   # roots = a list of root KIND names; every instance of each becomes a flat scope root.
   buildRoots =
-    { registries, roots }:
+    {
+      registries,
+      roots,
+      parents ? { },
+    }:
     builtins.listToAttrs (
       prelude.concatMap (
         kindName:
@@ -25,7 +34,7 @@ let
             value = {
               inherit id;
               type = kindName;
-              parent = null;
+              parent = parents.${id} or null;
               decls = {
                 ${kindName} = entry;
                 __entry = entry;
