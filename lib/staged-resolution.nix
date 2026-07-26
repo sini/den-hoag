@@ -145,6 +145,10 @@ let
       # scalar per kind). The admissible source kind for a containment target of kind K is exactly
       # `kindParent K`, which is what makes the source-kind check total.
       kindParent,
+      # THE attached-root id rule (`build-roots.nix mintedRootId`), threaded rather than re-derived:
+      # this pass keys bindings at the node that will carry them, `buildRoots` mints that node, and
+      # one definition is what keeps the two from drifting.
+      mintedRootId,
     }:
     let
       # The containment-target index spans EVERY registry kind (a containTo target may be a root outside the
@@ -257,9 +261,44 @@ let
       # winner is byte-identical either way. By convention containment sources of a kind-K target are all of
       # kind parent(K) (a scalar parent field), so in practice targets are single-source (the corpus/fixtures)
       # ⇒ no merge at all; the ordering guarantee above is what makes any collision deterministic anyway.
-      containmentBindings = builtins.mapAttrs (
-        _: es: prelude.foldl' (acc: e: acc // e.bindings) { } es
-      ) byTarget;
+      # target -> its attachment ids, deduped, in emission order. A target may receive SEVERAL
+      # emissions from one source (the bucket is per-emission), so it is the distinct rendered
+      # sources that count as attachments.
+      attachmentsOf = nid: prelude.unique (containEdges nid);
+
+      # minted node id -> merged bindings. Keyed by NODE ID, not by target: at N≥2 the target no
+      # longer names a node, and both consumers (`deliverCtxOf` below, and the decls fold at the
+      # call site) index by node id under an `or { }`, so a target-keyed map would miss silently.
+      #
+      # The partition is by (target, SOURCE), which is what retires the cross-source merge: each
+      # minted node carries only the bindings of the source that minted it. Two rules survive it:
+      #   • same-SOURCE multi-emission still merges — the `//` fold is per bucket, unchanged;
+      #   • a bindings-only emission (empty slice, no attachment) goes to ALL of the target's nodes.
+      #     D is entity-level, so dropping it would lose data a single-attachment config keeps, and
+      #     routing it to one node would be last-wins by another name.
+      # Order is the original emission order throughout, so the existing last-wins is preserved.
+      # At N≤1 this is a relabelling of the same partition onto the same bare key — byte-identical.
+      containmentBindings = prelude.foldl' (acc: m: acc // m) { } (
+        builtins.attrValues (
+          builtins.mapAttrs (
+            tid: es:
+            let
+              parents = attachmentsOf tid;
+              foldBindings = sel: prelude.foldl' (acc: e: acc // e.bindings) { } sel;
+              ownedBy = p: builtins.filter (e: e.sourceSlice == { } || ancNodeId e.sourceSlice == p) es;
+            in
+            if parents == [ ] then
+              { ${tid} = foldBindings es; }
+            else
+              builtins.listToAttrs (
+                map (p: {
+                  name = mintedRootId tid parents p;
+                  value = foldBindings (ownedBy p);
+                }) parents
+              )
+          ) byTarget
+        )
+      );
 
       # target -> [ sourceSlice ] (emission order). A parentless-root target's emission has an empty source
       # slice, contributing no ancestor; a bucket of only-empty slices drops out (no ancestor key created).
@@ -278,34 +317,30 @@ let
           builtins.filter (e: e.sourceSlice != { }) (byTarget.${nid} or [ ])
         );
 
-      # target -> its ONE containment parent node id: the scope P edge the containment relation denotes.
-      # Same pre-image as `containmentAncestors` — an empty source slice (a parentless-root target) drops
-      # out there and so contributes no parent here — rendered through the `ancNodeId` convention.
-      # Two guards, both INSIDE this thunk so a fleet that never reads the parent map pays nothing:
-      #   • CYCLE, before any parent is yielded. A cyclic `containTo` topology becomes a cyclic P graph,
-      #     and the inherit/ancestor walks are visited-guarded — so they would TERMINATE, silently
-      #     truncating the chain, where the settings walk aborts loud. Silent truncation is the worse
-      #     failure, so the cycle is raised here (`errors.containmentCycle`). Cost is bounded: id strings.
-      #   • PARTIAL FUNCTION (Neron §2.2) — at most one parent per node. A target may legitimately receive
-      #     SEVERAL emissions from the same source (the bucket is per-emission), so the count that matters
-      #     is of distinct RENDERED parent ids: dedupe first, abort loud only on a genuine second claimant.
-      containmentParents =
+      # target -> the node ids that contain it, deduped. NOT a single parent: scope parentage is a
+      # partial function, so a target claimed by N sources is expressed as N NODES of one parent each
+      # (`buildRoots`), never as one node of N parents. Reading several attachments here is therefore
+      # the normal case, not an error — what would be an error is collapsing them onto one node.
+      # A target whose emissions are all bindings-only contributes no attachment and drops out, the
+      # same filter `containmentAncestors` applies.
+      # CYCLE GUARD, inside this thunk so a fleet that never reads the map pays nothing, and raised
+      # before any attachment is yielded: a cyclic `containTo` topology becomes a cyclic P graph, and
+      # the inherit/ancestor walks are visited-guarded — they would TERMINATE, silently truncating the
+      # chain, where the settings walk aborts loud. Silent truncation is the worse failure. Cost is
+      # bounded: id strings only.
+      containmentAttachments =
         let
           cyclic = graph.cycles {
             edges = containEdges;
             nodes = builtins.attrNames byTarget;
           };
-          parentOf =
-            nid: slices:
-            let
-              ids = prelude.unique (map ancNodeId slices);
-            in
-            if builtins.length ids == 1 then builtins.head ids else errors.multipleContainmentParents nid ids;
         in
         if cyclic != [ ] then
           errors.containmentCycle (builtins.head cyclic)
         else
-          builtins.mapAttrs parentOf containmentAncestors;
+          prelude.filterAttrs (_: parents: parents != [ ]) (
+            builtins.mapAttrs (tid: _: attachmentsOf tid) byTarget
+          );
 
       # The DELIVER ctx: base decls extended by the target's OWN transpose slice (the demand read). Delivered
       # exactly where the root fires, so a consuming resolve policy sees its binding at its firing scope.
@@ -342,7 +377,7 @@ let
         tuples
         containmentBindings
         containmentAncestors
-        containmentParents
+        containmentAttachments
         suppressions
         ;
     };

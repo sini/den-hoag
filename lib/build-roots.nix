@@ -6,41 +6,60 @@
 # (cells) enter via the `children` NTA, never here.
 #
 # Root parentage is EDGE-DELIVERED, not inferred: a root is parentless unless the caller
-# names its parent in `parents` (root id -> parent node id), which it derives from the
-# containment edge relation. This module reads no topology of its own — it only applies the
+# names its attachments in `attachments` (root id -> [ parent node id ]), which it derives from
+# the containment edge relation. This module reads no topology of its own — it only applies the
 # map. Absent (`{ }`) ⇒ every root is parentless.
+#
+# MULTI-ATTACHMENT MULTIPLIES THE NODE, never the parent: scope parentage is a partial function,
+# so an entity claimed by N>1 sources becomes N nodes of one parent each, rather than one node of
+# N parents. That is the mechanism cells already use — an `@`-suffixed id under the parent that
+# minted it. N≤1 keeps the bare id, so the single-attachment path is untouched.
 #
 # nixpkgs-lib-free: gen-prelude only. The only recursion is attrset assembly (A1 wiring).
 { prelude }:
 let
-  # roots = a list of root KIND names; every instance of each becomes a flat scope root.
+  # THE id rule for an attached root, and the only definition of it: the pre-pass calls it to key
+  # bindings at the node that will carry them, `buildRoots` calls it to mint that node, and the two
+  # cannot drift. The two facts it needs are DISTINCT and must stay separate arguments — `parents`
+  # (all of the target's attachments) decides WHETHER the id multiplies, `parent` decides WHICH node
+  # this one is. Collapsing them, e.g. by reading the first of the list, yields one id for all N.
+  mintedRootId =
+    bareId: parents: parent:
+    if builtins.length parents <= 1 then bareId else "${bareId}@${parent}";
+
+  # roots = a list of root KIND names; every instance of each becomes one scope root per attachment
+  # (exactly one when it has none, or one).
   buildRoots =
     {
       registries,
       roots,
-      parents ? { },
+      attachments ? { },
     }:
     builtins.listToAttrs (
       prelude.concatMap (
         kindName:
-        map (
+        prelude.concatMap (
           name:
           let
             entry = registries.${kindName}.${name};
-            id = "${kindName}:${name}";
-          in
-          {
-            name = id;
-            value = {
-              inherit id;
-              type = kindName;
-              parent = parents.${id} or null;
-              decls = {
-                ${kindName} = entry;
-                __entry = entry;
+            bareId = "${kindName}:${name}";
+            parents = attachments.${bareId} or [ ];
+            mk = id: parent: {
+              name = id;
+              value = {
+                inherit id parent;
+                type = kindName;
+                decls = {
+                  ${kindName} = entry;
+                  __entry = entry;
+                };
               };
             };
-          }
+          in
+          if parents == [ ] then
+            [ (mk bareId null) ]
+          else
+            map (p: mk (mintedRootId bareId parents p) p) parents
         ) (builtins.attrNames registries.${kindName})
       ) roots
     );
@@ -69,5 +88,10 @@ let
   isCell = id: parseParent id != null;
 in
 {
-  inherit buildRoots parseParent isCell;
+  inherit
+    buildRoots
+    mintedRootId
+    parseParent
+    isCell
+    ;
 }

@@ -280,14 +280,24 @@ in
       };
     };
 
-    # ── MULTI-SOURCE COLLISION to ONE target is deterministic + byte-faithful to the pre-transpose fold:
-    #    two same-kind sources (zones z1, z2) to rack:r1 merge last-wins in alphabetical (`attrNames`) source
-    #    order, so z2's token wins — identical to the old kind-ordered fold's within-kind alphabetical
-    #    last-wins. Corpus/fixtures are single-source per target (an invariant, stated above), so this path
-    #    is corpus/fixture-zero; it is defined here, not deferred. ──────────────────────────────────────────
-    test-same-kind-collision-last-wins = {
-      expr = (collisionDen.structural.eval.get "rack:r1" "enriched-context").authToken or null;
-      expected = "tok-z2";
+    # ── MULTI-SOURCE to ONE target MULTIPLIES THE NODE, never the parent: two same-kind sources (zones
+    #    z1, z2) claiming rack:r1 mint TWO nodes, `rack:r1@zone:z1` and `rack:r1@zone:z2`, each carrying
+    #    exactly one P edge and only its own source's bindings. The bare `rack:r1` no longer exists as a
+    #    node — that is the point, and `bare = false` pins it. There is no cross-source merge left to be
+    #    deterministic about: the old last-wins was the SYMPTOM of one node holding two parents' data.
+    #    Cannot rot into a false pass — `eval.get` on a vanished node THROWS rather than yielding null,
+    #    so a regression that stops minting fails loudly instead of reading as absent. ──────────────────
+    test-multi-source-multiplies = {
+      expr = {
+        z1 = (collisionDen.structural.eval.get "rack:r1@zone:z1" "enriched-context").authToken or null;
+        z2 = (collisionDen.structural.eval.get "rack:r1@zone:z2" "enriched-context").authToken or null;
+        bare = collisionDen.scopeRoots ? "rack:r1";
+      };
+      expected = {
+        z1 = "tok-z1";
+        z2 = "tok-z2";
+        bare = false;
+      };
     };
 
     # ── MEMBERSHIP ROUTING (Task 4): the rack policy's leaf-dim `member` emission (r1, b1) ROUTES into the

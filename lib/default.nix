@@ -321,7 +321,12 @@ let
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
   runResolve = attributesLib.runResolve;
-  inherit (buildRootsLib) buildRoots parseParent isCell;
+  inherit (buildRootsLib)
+    buildRoots
+    mintedRootId
+    parseParent
+    isCell
+    ;
 
   # mkDen assembles the four concerns; Tasks 1–11 extend it. Task 1: entity registries
   # (gen-schema) + the fleet restricted product (gen-product). Task 2: scope roots +
@@ -996,6 +1001,7 @@ let
         excludeRules = policiesRules.excludeFamily;
         # The schema parent kind of each kind (scalar per kind), for the containment source-kind check.
         kindParent = k: (ent.meta.${k} or { }).parent or null;
+        inherit mintedRootId;
       };
       membershipTuples = ent.config.den.membership ++ prePass.tuples;
 
@@ -1060,6 +1066,11 @@ let
       baseScopeRoots = buildRoots {
         inherit (ent) registries;
         roots = rootScopeKinds;
+        # Root parentage is edge-delivered: the pre-pass's containment attachments become scope P
+        # edges here. A target with several attachments mints one node per attachment, so this is
+        # also where multiplication happens. `prePassScopeRoots` above deliberately stays
+        # attachment-free — it is built BEFORE the pre-pass that derives them.
+        attachments = prePass.containmentAttachments;
       };
       # The main-run root scope nodes: base roots with each target's transpose binding slice folded onto its
       # decls (the enriched-context/decls seam — the corpus's `resolve.to host { accessGroups }` binds into
