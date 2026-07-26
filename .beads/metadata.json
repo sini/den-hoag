@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "den_hoag",
+  "project_id": "07b2c71e-2e9e-48e4-9b19-ddcd83e03975"
+}
