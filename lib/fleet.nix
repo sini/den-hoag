@@ -9,6 +9,11 @@
   errors,
 }:
 let
+  # THE attached-root id rule, taken from the module that owns it rather than re-derived: a pair must
+  # name the node `buildRoots` actually minted, and sharing the rule is what makes that true by
+  # construction instead of by two spellings happening to agree.
+  inherit (import ./build-roots.nix { inherit prelude; }) mintedRootId;
+
   # A registry -> gen-product factor. `key` maps a public coordinate entry to the factor
   # node id (its id_hash); `entryOf` inverts it. Per the gen-product factor contract the
   # node ids ARE the `key` outputs, so nodes/nodeData/entryOf are keyed by id_hash — an
@@ -136,6 +141,11 @@ let
     {
       fleet,
       meta,
+      # Root attachments (bare root id -> [ parent node id ]). A parent coordinate whose entity is
+      # claimed by several sources is several NODES, and the cell exists under each of them, so the
+      # pair set is per parent NODE rather than per parent coordinate. Default `{ }` = nothing
+      # multiplies = one pair per coordinate, the bare id, exactly as before.
+      attachments ? { },
     }:
     prelude.concatMap (
       c:
@@ -148,17 +158,21 @@ let
           let
             childEntry = c.${childDim};
             parentEntry = c.${parentDim};
-            parentId = "${parentDim}:${parentEntry.name}";
+            parentBareId = "${parentDim}:${parentEntry.name}";
+            parents = attachments.${parentBareId} or [ ];
+            # The nodes this parent coordinate actually denotes. `cellChildrenFor` mints the cell under
+            # each of them from the REAL node id, so deriving the pair's `childId` the same way makes the
+            # two agree because they share the rule — not because they were written to match.
+            parentNodeIds =
+              if parents == [ ] then [ parentBareId ] else map (p: mintedRootId parentBareId parents p) parents;
           in
-          [
-            {
-              inherit parentId;
-              parentKind = parentDim;
-              childKind = childDim;
-              childName = childEntry.name;
-              childId = "${childDim}:${childEntry.name}@${parentId}";
-            }
-          ]
+          map (parentId: {
+            inherit parentId;
+            parentKind = parentDim;
+            childKind = childDim;
+            childName = childEntry.name;
+            childId = "${childDim}:${childEntry.name}@${parentId}";
+          }) parentNodeIds
         else
           [ ]
       ) (builtins.attrNames c)
