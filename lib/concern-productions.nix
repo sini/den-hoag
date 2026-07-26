@@ -266,9 +266,13 @@ let
       # a schedule-invisible below-stratum read inside the nta: the framework-authored `spawn` closure is the
       # SOLE `self`-holder and reads exactly `${name}`. The gather → spawn ordering is DEMAND-guaranteed (the
       # spawn forces the gather; the gather is pure + acyclic — it never reads the spawn), NOT schedule-verified:
-      # the nta's hardcoded readsAttrs = [ ] + stratum = "structural" make the gather→spawn edge statically
-      # invisible, so the schedule cannot order it. The full static fix = `resolve.nta` accepting stratum +
-      # readsAttrs (a DEFERRED gen-resolve change); until then the demand-order is the honest residual.
+      # `resolve.nta` hardcodes readsAttrs = [ ] + omits stratum (equation.nix), so the gather→spawn edge is
+      # statically invisible and the schedule cannot order it. THE STATIC FIX NEEDS NO GEN CHANGE: `resolve.attr`
+      # takes `{ kind; readsAttrs; stratum ? null; }` and `stratumOf kind explicit` honors an explicit stratum for
+      # ANY kind, so `attr { kind = "nta"; readsAttrs = [ … ]; stratum = …; compute = spawn; }` is a schedule-
+      # VISIBLE nta today — `kind` is read nowhere in gen-resolve but `schedule.nix`'s `isCircular`. `resolve.nta`
+      # is sugar for the zero-read case, not a ceiling. Until the two-equation shape adopts `attr`, the
+      # demand-order is the honest residual.
       {
         equations = {
           ${name} = attrEquation name prod;
