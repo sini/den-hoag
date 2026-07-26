@@ -44,12 +44,33 @@ in
       };
     };
     # ── COMPILE VIEW: the channel key SURVIVES on the compiled aspect record (classed as channel content,
-    #    not stripped/nested). The compiled aspect carries BOTH its class key (`nixos`) and channel (`firewall`). ──
+    #    not stripped/nested). The compiled aspect carries BOTH its class key (`nixos`) and channel (`firewall`).
+    #    The direct `denCompat.compile` entry now types the aspect tree (the single typed representation), so the
+    #    compiled node materializes every declared option: the structural set (name/description/key/id_hash/
+    #    meta/includes), the config-free facets (neededBy/settings/artifact/tags/projects — `excludes` is dropped
+    #    by translateAspect's droppedAspectKeys), the registered class buckets (nixos/darwin/home-manager + the
+    #    ambient os/user classes), and the fleet channel (firewall). The load-bearing fact is that `firewall`
+    #    (channel) and `nixos` (class) are BOTH present — the channel is not freeform-absorbed/stripped. ──
     test-compile-channel-survives = {
       expr = builtins.sort builtins.lessThan (builtins.attrNames compiled.aspects.svc);
       expected = [
+        "artifact"
+        "darwin"
+        "description"
         "firewall"
+        "home-manager"
+        "id_hash"
+        "includes"
+        "key"
+        "meta"
+        "name"
+        "neededBy"
         "nixos"
+        "os"
+        "projects"
+        "settings"
+        "tags"
+        "user"
       ];
     };
   };

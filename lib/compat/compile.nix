@@ -28,6 +28,12 @@
   # (denHoag.aspectIdHash, routed onto gen-native's `aspects.aspectId`) — the compat aspect-edge sites
   # recompute the SAME id_hash the kernel stamps.
   aspectIdHash,
+  # `mkGateAspect { classNames; quirkChannels }` → `name: aspect: aspect` — the parametric-result gate handle
+  # (§9.5). `grndDispatch`'s content terminals type the DESUGARED parametric result through the closed-gated
+  # aspect type (built for the fleet's GROUNDED class + quirk vocabulary) so a typo in a parametric body throws
+  # NAMED at the gate at resolution, exactly as a static aspect's typo throws at compile — the sole typo
+  # boundary for parametric content. Returns the desugared aspect unchanged (a validation seq, byte-neutral).
+  mkGateAspect,
   # THE RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2, `den.resolveFamilyNames`) — threaded HERE
   # so the KIND-INCLUDE / DEFAULT-INCLUDE policy arms can stamp `__resolveFamily = true` on a compiled
   # include policy whose SOURCE REF's v1 name is in the set. A resolve policy wired via
@@ -317,7 +323,7 @@ let
   # `registry ? ${ref.key}` arm in `normalize`. Both are lazy (functions / an attrset built FROM
   # `normalizeList`); the closure captures them as thunks and forces them only at resolution, acyclically.
   mkNormalize =
-    classNames: quirkNames: divertedPolicyNames: radiatedBareFn: aspectRec: registry:
+    gateAspect: classNames: quirkNames: divertedPolicyNames: radiatedBareFn: aspectRec: registry:
     let
       # The include-path nested-aspect discriminator (board #58) — the SAME cnf grain as translateAspect's
       # registry-side instance; see `groundRec` for why the include path needs its own split.
@@ -498,9 +504,15 @@ let
               else
                 e;
           in
-          groundRec name {
-            includes = map toInclude (builtins.filter (e: e != null) (flattenList result));
-          }
+          # §9.5 parametric-result gate: normalize the constructed include-list aspect to the static pre-gate
+          # shape via `translateAspect` — which subsumes `groundRec`'s grounding + adds the droppedAspectKeys
+          # drop / excludes→meta.drop fold / provides sentinel the parametric path was missing — THEN gate, so
+          # gated-parametric-shape == gated-static-shape and a typo throws NAMED at the gate at resolution.
+          gateAspect name (
+            translateAspect normalizeList isNested name {
+              includes = map toInclude (builtins.filter (e: e != null) (flattenList result));
+            }
+          )
         else if builtins.isFunction result && isForwardFn result then
           # CURRIED-FORWARD recognition (DYNAMIC-each): a coordinate-parametric OUTER layer
           # (`{ host, user }: { class, aspect-chain }: forward { … }`) FIRED to yield an INNER
@@ -515,7 +527,9 @@ let
           # corpus/witness forwarder curries deeper than the `{ coords }: { class, aspect-chain }:` pair).
           grndDispatch name (result (builtins.intersectAttrs (builtins.functionArgs result) forwardCoords))
         else
-          groundRec name result;
+          # §9.5 parametric-result gate (attrset terminal): `result` is already the aspect attrset, so feed it
+          # straight to `translateAspect` (desugar to the static pre-gate shape) THEN gate.
+          gateAspect name (translateAspect normalizeList isNested name result);
       # ── FORWARD-CONTEXT surfacing (§2-iv, u1 close for the `{ class, aspect-chain }` forward shape). ──
       # v1 binds `class = entityCls` + `aspect-chain = [ self ]` onto EVERY aspect-fn ctx (pipeline.nix:39/
       # 211 `defaultHandlers`/`resolve`). den-hoag's enriched-context binds NEITHER (the class-coord gap,
@@ -1262,6 +1276,13 @@ let
   # key routes as CLASS content, not a nested aspect (Fork A). `v1Classes` is fleet-scoped, so this must
   # live in the function body (where the decls are), not at top level.
   allClassNames = builtinClasses ++ builtins.attrNames v1Classes;
+  # The §9.5 aspect-content gate handle for THIS fleet — `translateAspect` self-applies it to its desugared
+  # output so a typo throws NAMED at the closed gate (at resolution, lazily). Built for the GROUNDED class +
+  # quirk vocabulary `translateAspect` produces (a legit `home-manager` bucket is recognized, not rejected).
+  gateAspect = mkGateAspect {
+    classNames = allClassNames;
+    quirkChannels = builtins.attrNames (v1Decls.quirks or { });
+  };
   # A parametric include fn's REQUIRED entity-kind formals — the board #57 `__firesAtKinds` annotation, AND
   # the input `isLateDispatchFn` (the radiate/divert guard) filters for a descendant kind. A DEFAULTED
   # formal (`{ host ? null, … }` → `args.host = true`) is NOT required → excluded, so a defaulted entity
@@ -1290,7 +1311,7 @@ let
   # ONE computation, so they never diverge.
   isLateDispatchFn = fn: builtins.any (k: (ing.schema.${k}.parent or null) != null) (firesAtOf fn);
   normalizeList =
-    mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { }))
+    mkNormalize gateAspect allClassNames (builtins.attrNames (v1Decls.quirks or { }))
       (if aspectIncludeArm then aspectIncludeDivertedNames else { })
       (if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFn ref) else (_: false))
       aspectRec
@@ -1319,7 +1340,7 @@ let
   # being force-radiated. Honours the `lateDispatch` toggle identically (off → never divert).
   normalizeListForKind =
     kind:
-    mkNormalize allClassNames (builtins.attrNames (v1Decls.quirks or { }))
+    mkNormalize gateAspect allClassNames (builtins.attrNames (v1Decls.quirks or { }))
       (if aspectIncludeArm then aspectIncludeDivertedNames else { })
       (
         if lateDispatch then (ref: builtins.isFunction ref && isLateDispatchFnFrom kind ref) else (_: false)

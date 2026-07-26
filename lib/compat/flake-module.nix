@@ -38,11 +38,12 @@
   },
 }:
 let
-  # The shared class + channel keySemantics builder. The NAV VIEW declares the fleet's
-  # quirk vocabulary — the SAME `key-semantics.nix` helper den-hoag core uses — so a `den.quirks` channel key
-  # like `firewall` types as a `raw` channel option instead of falling to freeform / being wrapped as a
-  # nested aspect on the navigation surface a `with den.aspects` reader / a `hasAspect` ref consumes.
-  keySemanticsLib = import ../key-semantics.nix { inherit prelude; };
+  # The closed-gated aspect TREE type builder — the ONE cnf source (facet vocabulary + the three gate flags)
+  # shared with compile.nix's parametric-result `gateAspect`, so the compile view and the gate type through the
+  # SAME closed representation. The NAV VIEW declares the fleet's quirk vocabulary so a `den.quirks` channel key
+  # like `firewall` types as a `raw` channel option instead of falling to freeform / being wrapped as a nested
+  # aspect on the navigation surface a `with den.aspects` reader / a `hasAspect` ref consumes.
+  gatedAspectsType = import ./gated-aspects-type.nix { inherit aspects merge prelude; };
 
   # ── THE TYPED aspect tree — native A-IDENT (the SINGLE typed tree). ────────────────────────
   # gen-aspects (A-IDENT) makes a TYPED aspect node carry its own container-relative identity at merge:
@@ -53,20 +54,9 @@ let
   # AND `compile` read this ONE tree — no raw/typed dual (the dual double-typed a nav-captured include: nav
   # classes-freeform → the class body a NESTED aspect, then compile re-typed it as a deferredModule of that
   # nested aspect → the F1 structural leak). compile consumes the typed node (project class buckets, strip
-  # structural facets, carry the include's native identity). `aspectsViewCnf` is the shared base cnf (the
-  # module-arg surface + empty meta); `mkCompileAspectsType` adds the fleet's keySemantics.
-  aspectsViewCnf = {
-    moduleArgs = {
-      settings = true;
-      aspects = true;
-      lib = true;
-      config = true;
-      options = true;
-      pkgs = true;
-    };
-    metaModules = [ ];
-    collections = { };
-  };
+  # structural facets, carry the include's native identity). `gatedAspectsType.mkClosedAspectsType` builds the
+  # shared base cnf (the module-arg surface + empty meta + the gate flags); `mkCompileAspectsType` supplies the
+  # fleet's class + channel names.
 
   # ── The SINGLE TYPED TREE `compile` consumes. ────────────────────────────────────────────
   # The COMPILE view types class bodies as deferredModule content buckets (`nixos = { imports = [ raw ]; }`
@@ -100,36 +90,20 @@ let
   );
   ungroundClassName = name: reverseV1ClassKeyMap.${name} or name;
   v1SpelledClassNames = names: map ungroundClassName names;
+  # V1 SURFACE spelling (reverse-grounded): a channel matches the spelling the corpus authors its class content
+  # as (`homeManager`), so the grounded kebab `home-manager` is NOT a channel and an aspect NAMED after it is
+  # not shadowed (the collision invariant above). compile grounds the key downstream. The facet vocabulary +
+  # the closed-gate flags come from the shared `gatedAspectsType` cnf (the ONE source compile.nix's parametric
+  # `gateAspect` also types through).
   mkCompileAspectsType =
     {
       declaredClassNames,
       quirkChannelNames,
     }:
-    aspects.aspectsType (
-      aspectsViewCnf
-      // {
-        keySemantics =
-          (keySemanticsLib.mkClassChannelSemantics {
-            # V1 SURFACE spelling (reverse-grounded): a channel matches the spelling the corpus authors its
-            # class content as (`homeManager`), so the grounded kebab `home-manager` is NOT a channel and an
-            # aspect NAMED after it is not shadowed (the collision invariant above). compile grounds the key
-            # downstream.
-            classNames = v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames);
-            quirkChannels = quirkChannelNames;
-          })
-          # Register the config-free facet vocabulary (neededBy/settings/artifact) the aspects concern declares,
-          # from the SAME source — so a `.settings` block on this typed tree is the kernel's `lazyAttrsOf raw`
-          # facet, not a freeform nested-aspect submodule. Without it a `settings.<field> = mkOption {...}` leaf
-          # reflects as an aspectSubmodule and collides with the authored value at merge. `id_hash` is left OUT
-          # (its module injects `config.id_hash` onto every node — a shape change with no view consumer).
-          // (keySemanticsLib.mkFacetSemantics { inherit merge; });
-        # A raw guard closure / `{ __fn; … }` battery record / `{ __isPolicy; … }` policy record in an
-        # aspect's `includes` passes THROUGH the type opaquely (same as the existing `__keyRef` pass-through):
-        # its value never returns aspect content, so functor-wrapping it chokes at compile-side merge. compile's
-        # `normalize` does the registry-aware wrap downstream instead.
-        deferIncludeResolution = true;
-      }
-    );
+    gatedAspectsType.mkClosedAspectsType {
+      classNames = v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames);
+      quirkChannels = quirkChannelNames;
+    };
   # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW v1 aspect tree
   # through the compile view, yielding a typed tree whose class keys are deferredModules and whose nodes carry
   # native `.key` (the ONLY identity — compile reads `.key` directly). `evalModuleTree` also rebinds
@@ -814,5 +788,6 @@ in
     mkDenWith
     desugarLegacy
     compileFull
+    typeAspects
     ;
 }

@@ -228,11 +228,33 @@ in
     };
 
     # ── aspect row (near-identity, class key + quirk key pass through) ───────────────────────────
+    # The direct `denCompat.compile` entry types the aspect tree (the single typed representation), so the
+    # compiled node materializes every declared option: the structural set (name/description/key/id_hash/meta/
+    # includes), the config-free facets (neededBy/settings/artifact/tags/projects — `excludes` is dropped by
+    # translateAspect's droppedAspectKeys), the registered class buckets (nixos/darwin/home-manager + the fleet
+    # `myclass` + the ambient os/user classes), and the fleet channel (ssh-peers). The load-bearing fact is
+    # that `nixos` (class) and `ssh-peers` (channel) both pass through as content.
     test-aspect-keys = {
       expr = builtins.attrNames compiled.aspects.system;
       expected = [
+        "artifact"
+        "darwin"
+        "description"
+        "home-manager"
+        "id_hash"
+        "includes"
+        "key"
+        "meta"
+        "myclass"
+        "name"
+        "neededBy"
         "nixos"
+        "os"
+        "projects"
+        "settings"
         "ssh-peers"
+        "tags"
+        "user"
       ];
     };
     # the quirk key rides raw (a plain list), not mangled into a nested aspect.

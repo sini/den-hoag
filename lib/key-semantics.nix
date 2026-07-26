@@ -87,5 +87,36 @@
             };
           };
       };
+      # Reverse exclusion — a list of aspect refs (or a gen-select selector) pruned from THIS node's
+      # subgraph. A typed `raw` facet: a recognized OPTION on every aspect (incl. parametric results), held
+      # unmerged, so the closed gate admits it without a static-list entry. Compile LOWERS it into `meta.drop`
+      # (recognition ⟂ lowering); the `default = [ ]` folds to a no-op `meta.drop` when unauthored.
+      excludes = {
+        category = "facet";
+        option = merge.mkOption {
+          type = merge.types.raw;
+          default = [ ];
+          description = "Reverse exclusion: aspect refs pruned from this node's subgraph (lowered to meta.drop).";
+        };
+      };
+      # Free-form aspect labels / project tags — opaque behaviour data (a consumer reads `a.tags or [ ]` /
+      # `a.projects or [ ]`), never class content. Typed `raw` facets so the closed gate admits them without a
+      # static list; `default = [ ]` reads identically to the absent key.
+      tags = {
+        category = "facet";
+        option = merge.mkOption {
+          type = merge.types.raw;
+          default = [ ];
+          description = "Aspect labels (opaque; carried, never class content).";
+        };
+      };
+      projects = {
+        category = "facet";
+        option = merge.mkOption {
+          type = merge.types.raw;
+          default = [ ];
+          description = "Aspect project tags (opaque; carried, never class content).";
+        };
+      };
     };
 }

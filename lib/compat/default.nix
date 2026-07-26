@@ -36,12 +36,82 @@ let
       errors
       ;
   };
+  # The closed-gated aspect TREE type builder — the ONE cnf source (facet vocabulary + the three gate flags)
+  # shared with flake-module.nix's compile view, so the compile view and the parametric-result gate type
+  # through the SAME closed representation.
+  gatedAspectsType = import ./gated-aspects-type.nix { inherit aspects merge prelude; };
+  # `mkGateAspect { classNames; quirkChannels }` → `name: aspect: aspect` — the aspect-content gate handle
+  # `translateAspect` self-applies to its DESUGARED output (§9.5). It types the desugared aspect through the
+  # SAME closed-gated aspect type the compile view uses and, for byte-neutrality, returns the aspect UNCHANGED —
+  # the typing is a VALIDATION seq (a typo throws NAMED at the gate), never a shape transform. This is the sole
+  # typo boundary for a parametric aspect's RESULT (never run through the compile-time typed tree — it is
+  # materialized at RESOLUTION, `resolved-aspects.nix`). While the raw discriminator (`restoreUnregistered`)
+  # still splices a static aspect's typo past the compile-time gate, this seam does not backstop that path — the
+  # static gate is unmasked once that discriminator is retired and the typed tree carries it directly.
+  # `classNames` are the GROUNDED (kebab) class names `translateAspect`
+  # produced, so a legit `home-manager` class bucket is recognized (not gate-rejected).
+  #
+  # FORCING GRAIN (laziness-preserving + cycle-free): only the UNDECLARED (freeform) authored keys are forced,
+  # each to WHNF, recursing into an authored attrset child (a nested namespace) so a deep typo (`typo.foo = "x"`)
+  # throws at its leaf while an un-included nested aspect's own content stays lazy. A DECLARED key (class /
+  # channel / facet / structural — `keyCategory ≠ null`) is never gated, so it is SKIPPED: its value is user
+  # content that may carry a module fixpoint (a `settings`/class body reading `config.…`), and forcing it would
+  # both waste work and risk a self-referential loop. A freeform typo key exists on the typed node but its merge
+  # throws when forced; a namespace child recurses gate-retained. `id_hash` and other defaults are never forced
+  # (only authored keys are walked).
+  mkGateAspect =
+    {
+      classNames,
+      quirkChannels,
+    }:
+    let
+      gateType = gatedAspectsType.mkClosedAspectsType { inherit classNames quirkChannels; };
+      keyCategory = gatedAspectsType.mkKeyCategory { inherit classNames quirkChannels; };
+      # Force every UNDECLARED (`keyCategory null`, non-`_`) authored key of `rawNode` through its `typedNode`
+      # counterpart: a freeform typo throws at the closed gate when its typed value is forced; an authored
+      # attrset child recurses (a nested namespace's own deep typo surfaces at its leaf).
+      forceGate =
+        typedNode: rawNode:
+        builtins.foldl' (
+          acc: k:
+          if prelude.hasPrefix "_" k || keyCategory k != null then
+            acc
+          else
+            let
+              tv = typedNode.${k} or null;
+              rv = rawNode.${k};
+            in
+            builtins.seq tv (
+              if builtins.isAttrs rv && builtins.isAttrs tv then builtins.seq (forceGate tv rv) acc else acc
+            )
+        ) null (builtins.attrNames rawNode);
+    in
+    name: aspect:
+    if !(builtins.isAttrs aspect) then
+      aspect
+    else
+      let
+        typed =
+          (schema.evalModuleTree {
+            modules = [
+              {
+                options.aspects = schema.mkOption {
+                  type = gateType;
+                  default = { };
+                };
+                config.aspects.${name} = aspect;
+              }
+            ];
+          }).config.aspects.${name};
+      in
+      builtins.seq (forceGate typed aspect) aspect;
   # The pure compile core (Law C2): v1 declarations → den-hoag concern declarations. `declare` is
   # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets, including the
   # `delivery` intent kind); the gen-edge record is rendered from that intent later, at the firing node.
   # The constant args (shared by every wiring); the two den.features desugar-arm gates
   # (`aspectIncludeArm`/`lateDispatch`) VARY per wiring, so `mkCompile` bakes them per feature record.
   compileBaseArgs = {
+    inherit mkGateAspect;
     inherit
       prelude
       ingest
@@ -95,7 +165,12 @@ let
           }
       )
     );
-  compile = mkCompile defaultFeatures;
+  # The direct `denCompat.compile` export types the aspect tree (the single typed tree) before the raw
+  # compile core, so the direct entry and the `compileFull` bridge path both compile the ONE typed
+  # representation. `mkCompile defaultFeatures` is the RAW core (no typing); the wrap threads `typeAspects`
+  # exactly once here (the bridge path types once inside `compileFull` over its own `mkCompile feat` core —
+  # a separate binding, so no double-type). A direct-entry caller stays 1-arg: `compile v1Decls`.
+  compile = decls: mkCompile defaultFeatures (typeAspects decls);
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
   deliverLib = import ./deliver.nix { inherit prelude errors; };
@@ -348,7 +423,7 @@ let
         inherit feat;
       };
   flakeModuleWiring = mkWiringWith { };
-  inherit (flakeModuleWiring) flakeModuleCore;
+  inherit (flakeModuleWiring) flakeModuleCore typeAspects;
 in
 {
   inherit
