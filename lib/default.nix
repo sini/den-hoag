@@ -1136,22 +1136,26 @@ let
             acc
         ) { } cellFamilies;
 
-      # Resolve a `link` target entry to the scope node whose enriched-context feeds §B3
-      # linked-context. Root-kind targets map to their flat root id `"${kind}:${name}"`; the
-      # index is over the entity registries (not scope nodes), so this stays demand-safe. Cell
-      # targets resolve through the edge stratum in Task 4 (null here).
+      # Resolve a `link` target entry to the scope NODES whose enriched-context feeds §B3
+      # linked-context. Entity -> node is one-to-MANY: a multi-attached root mints one node per
+      # attachment, so this yields a LIST and the id rule is the same `mintedRootId` `buildRoots`
+      # mints with — one owner, so the index cannot name a node that was never built. The index is
+      # over the entity registries (not scope nodes), so this stays demand-safe. Cell targets resolve
+      # through the edge stratum in Task 4 (absent here).
       entryNodeIndex = prelude.foldl' (
         acc: kindName:
         prelude.foldl' (
           acc': name:
           let
             e = ent.registries.${kindName}.${name};
+            bareId = "${kindName}:${name}";
+            parents = prePass.containmentAttachments.${bareId} or [ ];
           in
           acc'
           // {
             ${e.id_hash} = {
               kind = kindName;
-              nodeId = "${kindName}:${name}";
+              nodeIds = if parents == [ ] then [ bareId ] else map (p: mintedRootId bareId parents p) parents;
             };
           }
         ) acc (builtins.attrNames ent.registries.${kindName})

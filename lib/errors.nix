@@ -100,6 +100,17 @@ in
   # left to `builtins.head`'s bare out-of-bounds.
   containmentSliceEmpty = fail "containment source slice (§2.5c)" "the source-slice id rule was asked for the node id of an EMPTY slice, which names no source; an empty slice is a bindings-only emission and carries no attachment, so it must be filtered out before its id is taken";
 
+  # A `link` whose target entity resolves to SEVERAL scope nodes. Linked-context binds one context
+  # per target KIND, so a multi-attached target leaves no defensible choice: the node ids differ only
+  # by which attachment minted them, and silently taking one is last-wins under another name. Abort
+  # instead, naming every candidate — the question "which attachment does the link mean?" has to be
+  # answered where the link is written, not guessed here.
+  linkTargetAmbiguous =
+    policyName: kindName: nodeIds:
+    fail "link target (M7)" "policy `${policyName}` links to a `${kindName}` that resolves to ${toString (builtins.length nodeIds)} scope nodes (${
+      builtins.concatStringsSep ", " (map (n: "`${n}`") nodeIds)
+    }); linked context binds ONE context per kind, so link to a specific attachment instead of the multi-attached entity";
+
   # B1 single-writer enrichment (A3): two enrich policies writing one context key abort at
   # definition time, naming both policies + the key. Fires on a same-pass collision AND a
   # cross-iteration one (the check runs over the converged enrich accumulation).

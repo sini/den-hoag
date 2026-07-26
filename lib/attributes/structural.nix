@@ -16,9 +16,10 @@
 # `declarations`, not as the per-fleet data below. Undefaulted, hence required — a defaulted
 # `_: false` would call every cell a root and drop the `memberAtCell` law entirely.
 # `fleetChildren self id` = the cell-expansion glue (gen-product enumeration lives in
-# lib/fleet.nix, Law A1). `linkTarget entry` → { kind; nodeId; } | null resolves a `link` target
-# to the scope node whose enriched-context feeds §B3 linked-context (root targets in Task 3;
-# defaults to none so the structural stratum runs without link resolution).
+# lib/fleet.nix, Law A1). `linkTarget entry` → { kind; nodeIds; } | null resolves a `link` target
+# to the scope NODES whose enriched-context feeds §B3 linked-context — a LIST, because an entity
+# multi-attached to N sources is N nodes (root targets in Task 3; defaults to none so the structural
+# stratum runs without link resolution).
 {
   prelude,
   scope,
@@ -213,14 +214,23 @@
         # forward-threaded through `combine`, so it never feeds back into the links it reads. The
         # node's own bindings shadow it (`linkedContext // ctx`): a link only ADDS a target's
         # context under a not-yet-present kind name.
+        # A target resolves to a LIST of nodes (an entity multi-attached to N sources is N nodes).
+        # Linked-context binds ONE context per kind, so N>1 has no defensible answer here and aborts
+        # rather than picking — see `errors.linkTargetAmbiguous`. N==1 is the whole of today's surface.
         linkedFrom =
           links:
           prelude.foldl' (
             acc: l:
             let
               t = linkTarget l.target;
+              nodeIds = if t == null then [ ] else t.nodeIds or [ ];
             in
-            if t == null then acc else acc // { ${t.kind} = self.get t.nodeId "enriched-context"; }
+            if nodeIds == [ ] then
+              acc
+            else if builtins.length nodeIds > 1 then
+              errors.linkTargetAmbiguous (l.__policy or "«anonymous»") t.kind nodeIds
+            else
+              acc // { ${t.kind} = self.get (builtins.head nodeIds) "enriched-context"; }
           ) { } (builtins.filter (a: declarations.kindOf a == "link") links);
         result = dispatch.dispatch {
           rules = applicablePolicy;
@@ -337,9 +347,11 @@
   # 6. imports — computed I edges from the dispatched declarations: `link` targets (+ collection
   #    routing, Task 5) via importEdgesOf. `importEdgesOf` yields target ENTRIES; the neron traversal
   #    (gen-scope) walks NODE IDS, so each target is resolved to its scope-node id via `linkTarget`
-  #    (a root-kind target maps to its flat root id; an unresolvable target — e.g. a cell, pending the
-  #    Task 4 edge stratum — drops out). Empty until a policy emits a resolving `link`, keeping the
-  #    neron chain inert for a link-free fixture.
+  #    (a root-kind target maps to its minted root ids; an unresolvable target — e.g. a cell, pending
+  #    the Task 4 edge stratum — drops out). Import edges are a LIST already, so a target resolving to
+  #    several nodes concatenates rather than forcing a choice — unlike linked-context, which binds one
+  #    ctx per kind and must abort. Empty until a policy emits a resolving `link`, keeping the neron
+  #    chain inert for a link-free fixture.
   imports = resolve.attr {
     name = "imports";
     kind = "synthesized";
@@ -347,14 +359,12 @@
     readsAttrs = [ "declarations" ];
     compute =
       self: id:
-      builtins.filter (i: i != null) (
-        map (
-          t:
-          let
-            r = linkTarget t;
-          in
-          if r == null then null else r.nodeId
-        ) (declarations.importEdgesOf (self.get id "declarations"))
-      );
+      prelude.concatMap (
+        t:
+        let
+          r = linkTarget t;
+        in
+        if r == null then [ ] else r.nodeIds or [ ]
+      ) (declarations.importEdgesOf (self.get id "declarations"));
   };
 }
