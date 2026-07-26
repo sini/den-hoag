@@ -73,6 +73,18 @@ in
     nodeId:
     fail "containment cycle (§3c)" "the containment-relation ancestor chain revisits node `${nodeId}` — a cyclic `containTo` topology (A contains B contains A); containment relations must follow the acyclic kind topology";
 
+  # A scope root claimed by two containment parents. gen-scope's P relation is a PARTIAL FUNCTION —
+  # at most one parent per node (Neron §2.2) — so a second claimant cannot be merged, only rejected.
+  # v1 admits multi-attachment by RE-RESOLVING the entity into a second scope (one parent per scope
+  # ID, distinct ctx ⇒ distinct scope), which is a distinct-id shape this rung does not build; until
+  # it does, two parents is an authoring error and aborts LOUD naming the node and both parents,
+  # never silently keeping one. Forced when the contained root's parent is derived.
+  multipleContainmentParents =
+    nodeId: parentIds:
+    fail "multiple containment parents (§3.4)" "node `${nodeId}` is claimed by ${toString (builtins.length parentIds)} containment parents (${
+      builtins.concatStringsSep ", " (map (p: "`${p}`") parentIds)
+    }) — the scope parent relation is a partial function (at most one parent per node); emit one containment member for this target, or give each attachment a distinct node id";
+
   # B1 single-writer enrichment (A3): two enrich policies writing one context key abort at
   # definition time, naming both policies + the key. Fires on a same-pass collision AND a
   # cross-iteration one (the check runs over the converged enrich accumulation).
