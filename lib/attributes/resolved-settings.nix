@@ -106,6 +106,10 @@ let
       # defaulted `_: false` would silently make every cell read its OWN containment ancestors instead
       # of its parent root's.
       isCell,
+      # A single-kind coordinate slice -> the scope node id it names. Owned by the pre-pass that produces
+      # the slices (staged-resolution.nix); threaded here so the id convention has one definition rather
+      # than a second copy that could drift from the one the parent map is rendered with.
+      ancNodeId,
     }:
     let
       # Transitive containment-relation ancestors of a node (least→most specific `fixed` coord-sets). Each
@@ -117,12 +121,7 @@ let
       # aborts NAMED (`errors.containmentCycle`) instead of hanging. Corpus-unreachable (a v1-surface
       # adapter's source coordinate strictly ascends the acyclic schema topology); a native fixture can
       # author it.
-      ancNodeId =
-        slice:
-        let
-          k = builtins.head (builtins.attrNames slice);
-        in
-        "${k}:${slice.${k}.name}";
+      #
       # Containment-edge accessor over the MULTI-VALUED `containmentRelations` map (nid -> [ source
       # slice ]): a node id's upward edges are the ids of its containment-ancestor slices. This is a
       # separate map from the single-parent self-graph P-edge (`node.parent`) — a node may sit under

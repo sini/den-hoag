@@ -62,8 +62,19 @@
   dispatch,
   declare,
   errors,
+  graph,
 }:
 let
+  # A single-kind coordinate slice back to the scope node id it names. THE id convention for a
+  # containment source, owned here beside the transpose that produces those slices — the settings
+  # chain reads it from this module rather than re-deriving it, so `"${kind}:${name}"` has one
+  # definition repo-wide (it must agree with `buildRoots`, which mints roots under the same rule).
+  ancNodeId =
+    slice:
+    let
+      k = builtins.head (builtins.attrNames slice);
+    in
+    "${k}:${slice.${k}.name}";
   # entry.id_hash -> "kind:name" scope-node id, over ALL registry kinds (a `containTo` target denotes an
   # existing ROOT node — possibly a kind we do NOT fire at, e.g. the corpus's `cluster`). The flat root id
   # convention matches buildRoots (`"${kind}:${name}"`). This is the transpose's target-keying index.
@@ -221,6 +232,40 @@ let
         builtins.mapAttrs (_: es: builtins.filter (s: s != { }) (map (e: e.sourceSlice) es)) byTarget
       );
 
+      # Containment-edge accessor over the transpose: a node id -> the ids of the sources that contain it.
+      # LOCAL to this pass and needing no threading — `byTarget` is already in hand here. (The settings walk
+      # keeps its own accessor: it reads `containmentRelations`, a slice map, not these emission records.)
+      containEdges = nid: map (e: ancNodeId e.sourceSlice) (byTarget.${nid} or [ ]);
+
+      # target -> its ONE containment parent node id: the scope P edge the containment relation denotes.
+      # Same pre-image as `containmentAncestors` — an empty source slice (a parentless-root target) drops
+      # out there and so contributes no parent here — rendered through the `ancNodeId` convention.
+      # Two guards, both INSIDE this thunk so a fleet that never reads the parent map pays nothing:
+      #   • CYCLE, before any parent is yielded. A cyclic `containTo` topology becomes a cyclic P graph,
+      #     and the inherit/ancestor walks are visited-guarded — so they would TERMINATE, silently
+      #     truncating the chain, where the settings walk aborts loud. Silent truncation is the worse
+      #     failure, so the cycle is raised here (`errors.containmentCycle`). Cost is bounded: id strings.
+      #   • PARTIAL FUNCTION (Neron §2.2) — at most one parent per node. A target may legitimately receive
+      #     SEVERAL emissions from the same source (the bucket is per-emission), so the count that matters
+      #     is of distinct RENDERED parent ids: dedupe first, abort loud only on a genuine second claimant.
+      containmentParents =
+        let
+          cyclic = graph.cycles {
+            edges = containEdges;
+            nodes = builtins.attrNames byTarget;
+          };
+          parentOf =
+            nid: slices:
+            let
+              ids = prelude.unique (map ancNodeId slices);
+            in
+            if builtins.length ids == 1 then builtins.head ids else errors.multipleContainmentParents nid ids;
+        in
+        if cyclic != [ ] then
+          errors.containmentCycle (builtins.head cyclic)
+        else
+          builtins.mapAttrs parentOf containmentAncestors;
+
       # The DELIVER ctx: base decls extended by the target's OWN transpose slice (the demand read). Delivered
       # exactly where the root fires, so a consuming resolve policy sees its binding at its firing scope.
       deliverCtxOf = id: baseCtxOf id // (containmentBindings.${id} or { });
@@ -256,12 +301,14 @@ let
         tuples
         containmentBindings
         containmentAncestors
+        containmentParents
         suppressions
         ;
     };
 in
 {
   inherit
+    ancNodeId
     rootNodeIndex
     runPrePass
     ;

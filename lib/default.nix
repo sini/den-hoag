@@ -202,6 +202,7 @@ let
       dispatch
       declare
       errors
+      graph
       ;
   };
 
@@ -1293,6 +1294,7 @@ let
         fleet = theFleet;
         allAspects = ent.config.den.aspects;
         containmentRelations = prePass.containmentAncestors;
+        inherit (stagedResolution) ancNodeId;
         inherit
           lin
           settingsLayers
