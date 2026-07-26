@@ -23,6 +23,7 @@
   pipe,
   scopeAdapter,
   errors,
+  aspects,
 }:
 {
   quirkDag,
@@ -30,9 +31,10 @@
   channelNames,
   # The consumer's nixpkgs lib (§2.10 `den.nixpkgs.lib`), inert config DATA threaded from the fleet
   # boundary — null for the pure/nixpkgs-free path (den-hoag's own CI). Injected ONLY into a pipeline-
-  # parametric emit that DEMANDS a `lib` arg (see resolveParametric); a null lib leaves such an emit to
-  # ride unresolved (the named lib ceiling below). Import-purity holds: lib enters as an opaque value a
-  # caller supplies, never imported here (mirrors `den.nixpkgs` threading, lib/default.nix nixpkgsDecl).
+  # parametric emit that DEMANDS a `lib` arg (see resolveParametric); a null lib simply never supplies it,
+  # so such an emit's `lib` gate stays unsatisfied and it drops (no emission). Import-purity holds: lib enters
+  # as an opaque value a caller supplies, never imported here (mirrors `den.nixpkgs` threading, lib/default.nix
+  # nixpkgsDecl).
   consumerLib ? null,
 }:
 let
@@ -102,9 +104,9 @@ in
   #     node's binding surface (host/user/env, not config) resolves AT THE EMITTING NODE against its
   #     enriched-context (`resolveParametric`) — the eager dual of the config-thunk deferral. A list
   #     result SPLITS into several contributions (one producer, ascending `emissionIndex`, the A12 order
-  #     preserved). When the node's context cannot satisfy a required (non-defaulted) arg the raw
-  #     function RIDES UNRESOLVED — the consumer supplies the missing arg (v1's documented ceiling, not
-  #     a throw). v1 twin: assemble-pipes.nix:52-90.
+  #     preserved). When the node's context cannot satisfy a required (non-defaulted) arg the emit's gate
+  #     stays unsatisfied and it contributes NOTHING (gen-aspects `wrapGatedFn`'s inert miss), dissolving
+  #     v1's ride-unresolved ceiling. v1 twin: assemble-pipes.nix:52-90.
   local-collection-data = resolve.attr {
     name = "local-collection-data";
     kind = "synthesized";
@@ -130,34 +132,40 @@ in
         # Resolve a pipeline-parametric emission eagerly against `ctx`, returning a LIST of resolved
         # values (v1 auto-flatten: a list result yields several contributions — the §5 SPLIT below). A
         # non-parametric value (plain data OR a config-thunk) resolves to the singleton `[ v ]`, so its
-        # downstream handling is byte-identical to the pre-slice one-emission path. A required arg (non-
-        # defaulted) absent from `ctx` makes the raw function RIDE UNRESOLVED — the consumer supplies the
-        # missing arg (v1's documented ceiling, NOT a throw). `lib` is a required arg like any other
-        # UNLESS the consumer threaded `den.nixpkgs.lib` (`consumerLib`), in which case it is injected (v1
-        # always injects den's lib; a nixpkgs-free fleet cannot, so a `lib`-demanding emit self-announces
-        # at its consumer — the named lib ceiling). v1 twin: resolveLocalParametric, assemble-pipes.nix:69-90.
+        # downstream handling is byte-identical to the pre-slice one-emission path. The required-formals
+        # gate + `intersectAttrs` arg-shaping route through gen-aspects' N-GATE (`wrapGatedFn`); a required
+        # (non-defaulted) arg absent from `ctx` leaves the gate unsatisfied and the emit contributes nothing
+        # (the inert miss = `[ ]` below), dissolving v1's ride-unresolved ceiling. `lib` is a required arg
+        # like any other UNLESS the consumer threaded `den.nixpkgs.lib` (`consumerLib`), in which case it is
+        # folded into the gate args (v1 always injects den's lib; a nixpkgs-free fleet supplies none, so a
+        # `lib`-demanding emit simply drops). v1 twin: resolveLocalParametric, assemble-pipes.nix:69-90.
         resolveParametric =
           v:
           if !(isPipelineParametric v) then
             [ v ]
           else
             let
-              thunkArgs = fnArgsOf v;
-              injectLib = consumerLib != null;
-              requiredArgs = builtins.filter (k: !(thunkArgs.${k} or false) && !(injectLib && k == "lib")) (
-                builtins.attrNames thunkArgs
-              );
+              # gen-aspects' N-GATE (`wrapGatedFn`) IS the required-formals gate + `intersectAttrs` arg-shaping:
+              # `functionArgs` overrides the emit's real formals (bare fn OR the older functor, `fnArgsOf`); the
+              # applicator fires `onResult (fn (intersectAttrs functionArgs fnArgs))` iff every required (no-default)
+              # formal is present, else returns a RAW `{ }` (inert, WITHOUT `onResult`). `lib` folds into `fnArgs` —
+              # `intersectAttrs` picks it up only when a formal demands it (a null `consumerLib` simply never
+              # supplies it). `onResult` normalizes a satisfied hit to a LIST (a scalar — incl. an emit-nothing
+              # `{ }` — rides as `[ hit ]`, a list SPLITS), so a fired value is ALWAYS a list; a gate MISS is the
+              # only non-list (the raw `{ }` skips `onResult`), unambiguously distinguishing it from a satisfied
+              # `{ }` emit. A miss contributes NOTHING (the gen-native inert drop), dissolving v1's ride-unresolved
+              # ceiling.
+              fired =
+                (aspects.wrapGatedFn {
+                  functionArgs = fnArgsOf v;
+                  onResult = r: if builtins.isList r then r else [ r ];
+                } (applyFnLike v))
+                  (ctx // (if consumerLib != null then { lib = consumerLib; } else { }));
             in
-            if !(builtins.all (k: ctx ? ${k}) requiredArgs) then
-              [ v ]
-            else
-              let
-                ctxArgs = prelude.genAttrs (builtins.filter (k: ctx ? ${k}) (builtins.attrNames thunkArgs)) (
-                  k: ctx.${k}
-                );
-                result = applyFnLike v (ctxArgs // (if injectLib then { lib = consumerLib; } else { }));
-              in
-              if builtins.isList result then result else [ result ];
+            # A satisfied emit is a list (`onResult` made it one — the §5 SPLIT for a list, `[ scalar ]` otherwise,
+            # so a legitimate empty-attrset emit keeps its A12 producer record); only a gate miss (the raw `{ }`,
+            # non-list) drops to `[ ]` — NO EMISSION, before the §5 list-split so it never reaches the imap0.
+            if builtins.isList fired then fired else [ ];
 
         # One annotated contribution record per RESOLVED channel value at this node. A parametric emit
         # resolving to a list yields SEVERAL records — the A12 producer-identity SPLIT (§5): one producer

@@ -10,7 +10,8 @@
 #   (B) the COLLECTION INTEGRATION (native `denHoag.mkDen`, the parametric-emit convention) — with the
 #       enrich binding `environment`, a `{ environment, host, ... }` channel emit (the k3s shape) resolves
 #       to a SET at the emitting node (U9.1 resolveParametric), while an `{ accessGroups, ... }` emit (the
-#       still-unbound key, deferred #49) RIDES RAW (the U9.1 ceiling — my rung binds no accessGroups).
+#       still-unbound key, deferred #49) DROPS inert via the gate miss (no accessGroups bound; the v1
+#       ride-raw is dissolved).
 {
   denHoag,
   denCompat,
@@ -176,8 +177,8 @@ let
                 env = environment;
                 hn = host.name;
               };
-            # a `{ accessGroups, ... }` emit — the key my rung deliberately does NOT bind (deferred #49) →
-            # rides RAW (the U9.1 consumer-responsibility ceiling).
+            # a `{ accessGroups, ... }` emit — the key my rung deliberately does NOT bind (deferred #49), so
+            # its gate misses and it drops inert (no emission — the v1 ride-raw is dissolved).
             groupsish = { accessGroups, ... }: { g = accessGroups; };
           };
           config.den.include = [
@@ -301,10 +302,11 @@ in
       expected = false;
     };
 
-    # ── (B) U9.1 regression: an emit demanding a still-UNBOUND arg (`accessGroups`, deferred #49) RIDES RAW ──
-    test-accessGroups-emit-rides-raw = {
-      expr = builtins.isFunction (builtins.head (valsOf "groupsish"));
-      expected = true;
+    # ── (B) U9.1 regression: an emit demanding a still-UNBOUND arg (`accessGroups`, deferred #49) DROPS ──
+    # the gate is unsatisfied ⇒ the emit contributes nothing (gen-aspects wrapGatedFn inert miss, no ride-raw).
+    test-accessGroups-emit-drops = {
+      expr = valsOf "groupsish";
+      expected = [ ];
     };
   };
 }

@@ -8,9 +8,9 @@
 #   single   — a parametric attrset emit resolves to the record (not a fn) at the emitting host.
 #   many     — a parametric LIST emit SPLITS into N flat contributions (decision §5), emit order kept.
 #   defd     — a defaulted arg (`extra ? 3`) resolves with the default honored.
-#   far      — a required arg absent from the node's context RIDES RAW (the consumer-responsibility ceiling).
+#   far      — a required arg absent from the node's context DROPS (gen-aspects wrapGatedFn inert miss).
 #   cfg      — a config-thunk emit stays DEFERRED (byte-identical path — the deferred marker survives).
-#   libch    — a `lib`-demanding emit rides RAW with no consumer lib, RESOLVES when `den.nixpkgs` is supplied.
+#   libch    — a `lib`-demanding emit DROPS with no consumer lib, RESOLVES when `den.nixpkgs` is supplied.
 {
   denHoag,
   nixpkgs,
@@ -53,6 +53,7 @@ let
         far = { };
         cfg = { };
         libch = { };
+        empt = { };
       };
     }
     (
@@ -82,12 +83,15 @@ let
               e = extra;
               n = host.name;
             };
-          # a required arg the node's context CANNOT satisfy — rides raw (the ceiling).
+          # a required arg the node's context CANNOT satisfy — the gate misses, so it drops inert (no emission).
           far = { nonexistent, ... }: { a = 1; };
           # a config-thunk — stays deferred (config-demanding, resolve-at-producing-scope §27).
           cfg = { config, ... }: [ config.foo ];
           # a `lib`-demanding parametric emit — the corpus hub.nix:31 shape.
           libch = { host, lib, ... }: lib.optionals true [ { n = host.name; } ];
+          # a SATISFIED emit resolving to an empty attrset — the emit-nothing `{ }` that FIRES (distinct
+          # from a gate miss). Guards the sentinel: it must stay ONE contribution (`[ { } ]`), not drop.
+          empt = { host, ... }: { };
         };
         config.den.include = [
           {
@@ -152,10 +156,19 @@ in
       ];
     };
 
-    # ── far: a required arg the ctx cannot satisfy RIDES RAW (the ceiling witness) ──
-    test-missing-arg-rides-raw = {
-      expr = builtins.isFunction (builtins.head (valsOf denPure "far"));
-      expected = true;
+    # ── far: a required arg the ctx cannot satisfy DROPS (gen-aspects wrapGatedFn inert miss) ──
+    # the gate is unsatisfied ⇒ the emit contributes nothing (no ride-raw ceiling — the miss is silent-inert).
+    test-missing-arg-drops = {
+      expr = valsOf denPure "far";
+      expected = [ ];
+    };
+
+    # ── empt: a SATISFIED emit resolving to `{ }` stays ONE contribution ([{}]) — the sentinel guard ──
+    # onResult wraps the satisfied `{ }` as `[ { } ]` (record preserved); ONLY a gate miss (raw `{ }`, no
+    # onResult) drops — so an emit-nothing `{ }` that FIRES is never conflated with a miss.
+    test-empty-attrset-emit-preserved = {
+      expr = valsOf denPure "empt";
+      expected = [ { } ];
     };
 
     # ── cfg: a config-thunk stays DEFERRED (byte-identical path — the marker survives) ──
@@ -164,11 +177,11 @@ in
       expected = [ true ];
     };
 
-    # ── libch: the `lib`-demand ceiling (pure) vs injection (den.nixpkgs) ──
-    # no consumer lib ⇒ `lib` is an unsatisfied required arg ⇒ rides raw (self-announces at the consumer).
-    test-lib-demand-rides-raw-when-pure = {
-      expr = builtins.isFunction (builtins.head (valsOf denPure "libch"));
-      expected = true;
+    # ── libch: the `lib`-demand gate (pure) vs injection (den.nixpkgs) ──
+    # no consumer lib ⇒ `lib` is an unsatisfied required arg ⇒ the gate drops the emit (gen-native inert miss).
+    test-lib-demand-drops-when-pure = {
+      expr = valsOf denPure "libch";
+      expected = [ ];
     };
     # `den.nixpkgs` supplied ⇒ `lib` injected ⇒ resolves (v1 parity: v1 always injects den's lib).
     test-lib-demand-resolves-with-nixpkgs = {

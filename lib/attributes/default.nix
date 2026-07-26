@@ -58,6 +58,7 @@ let
       pipe
       scopeAdapter
       errors
+      aspects
       ;
   };
   resolvedSettings = import ./resolved-settings.nix {
