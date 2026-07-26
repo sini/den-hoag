@@ -221,6 +221,137 @@ let
   hasAspectAt =
     den: id: k:
     builtins.elem k (keysAt den id);
+  # ── source-slice + attachment fixtures ──────────────────────────────────────────────────────────────
+  # (A) SAME-SOURCE multi-emission: ONE zone emits TWO containment members to ONE target. The
+  # per-(target, source) bucketing keeps the `//` union WITHIN a source, so both keys land on the
+  # single node z1 mints. This is the rule that survived the cross-source merge's removal, and
+  # nothing else exercises it.
+  sameSourceTwiceMod =
+    { config, ... }:
+    {
+      config.den.policies.grant-two =
+        { zone, ... }:
+        [
+          (declare.member {
+            coords = {
+              inherit zone;
+              rack = config.den.rack.r1;
+            };
+            bindings.tokenA = "a-${zone.name}";
+            containTo = "rack";
+          })
+          (declare.member {
+            coords = {
+              inherit zone;
+              rack = config.den.rack.r1;
+            };
+            bindings.tokenB = "b-${zone.name}";
+            containTo = "rack";
+          })
+        ];
+    };
+
+  # (B) EMPTY source slice — coords name ONLY the target, so the slice is `{ }`. A legitimate
+  # bindings-only emission: it must NOT abort, must mint NO attachment (the target stays a bare
+  # parentless root), and its bindings must still arrive. Corpus- and fixture-zero otherwise, so
+  # without this fixture the empty arm of the trichotomy ships untested.
+  bindingsOnlyMod =
+    { config, ... }:
+    {
+      config.den.policies.grant-bare =
+        { zone, ... }:
+        builtins.seq zone [
+          (declare.member {
+            coords = {
+              rack = config.den.rack.r1;
+            };
+            bindings.bareToken = "no-attachment";
+            containTo = "rack";
+          })
+        ];
+    };
+
+  # (C) MULTI-COORD source slice: coords name zone AND blade beside the target, so the slice has two
+  # coordinates and denotes no single source. The id rule would silently take the alphabetically
+  # first, so it aborts instead.
+  multiCoordMod =
+    { config, ... }:
+    {
+      config.den.policies.grant-ambiguous =
+        { zone, ... }:
+        [
+          (declare.member {
+            coords = {
+              inherit zone;
+              rack = config.den.rack.r1;
+              blade = config.den.blade.b1;
+            };
+            bindings.t = "x";
+            containTo = "rack";
+          })
+        ];
+    };
+
+  # (D) CROSS-KIND source: the slice is a `blade`, but a `rack`'s schema parent kind is `zone`. The
+  # fixture that used to sit here asserted this shape was topology-UNREACHABLE; it is reachable, and
+  # it is now rejected by name instead of silently rendering a wrong parent.
+  crossKindMod =
+    { config, ... }:
+    {
+      config.den.policies.grant-crosskind =
+        { zone, ... }:
+        builtins.seq zone [
+          (declare.member {
+            coords = {
+              rack = config.den.rack.r1;
+              blade = config.den.blade.b1;
+            };
+            bindings.t = "x";
+            containTo = "rack";
+          })
+        ];
+    };
+
+  # (E) A `link` at a zone targeting the MULTI-ATTACHED rack. Linked context binds one context per
+  # kind, so two candidate nodes have no defensible resolution and it aborts.
+  # ★ THE `configure` IS LOAD-BEARING, NOT DECORATION. `linkedFrom` runs only from the dispatch's
+  # `combine`, which is forced only when a LATER stratum group exists at this node to receive the
+  # combined context. `link` is structural; `configure` is resolution. Without a later-stratum
+  # declaration here the dispatch stops after the structural group, `combine` never runs, the guard
+  # is never evaluated and this test passes while proving nothing. Do not "simplify" it away.
+  linkMultiMod =
+    { config, ... }:
+    {
+      config.den.policies.link-multi =
+        { zone, ... }:
+        builtins.seq zone [ (declare.link { target = config.den.rack.r1; }) ];
+      # A SEPARATE policy, and it has to be: B2 stratum coherence requires every declaration a single
+      # policy emits to classify to ONE stratum, so the later-stratum declaration cannot ride along
+      # with the link. Emitting both from one policy aborts on stratum coherence INSTEAD of on the
+      # link guard — which still turns the assertion below green, for entirely the wrong reason.
+      config.den.policies.force-combine =
+        { zone, ... }:
+        builtins.seq zone [
+          (declare.configure {
+            of = config.den.rack.r1;
+            set = {
+              forcesCombine = true;
+            };
+          })
+        ];
+    };
+
+  sliceDen =
+    mods:
+    (denHoag.mkDen (
+      [
+        schema
+        instances
+      ]
+      ++ mods
+    )).den;
+  forceRoots = den: (builtins.tryEval (builtins.deepSeq den.scopeRoots true)).success;
+
   cellsOf = den: sort (map (c: "${c.blade.name}@${c.rack.name}/${c.zone.name}") den.cells);
 
   # relation binding visible in the MAIN run's rack node ctx (the injected-decls seam → enriched-context).
@@ -298,6 +429,75 @@ in
         z2 = "tok-z2";
         bare = false;
       };
+    };
+
+    # ── the `//` union that SURVIVED the cross-source merge's removal: two emissions from the SAME
+    #    source to one target still merge, because the bucket is per (target, source) and a source may
+    #    legitimately emit more than once. Nothing else in the suite exercises this rule. ──────────────
+    test-same-source-emissions-merge = {
+      expr =
+        let
+          ctx = (sliceDen [ sameSourceTwiceMod ]).structural.eval.get "rack:r1" "enriched-context";
+        in
+        {
+          a = ctx.tokenA or null;
+          b = ctx.tokenB or null;
+        };
+      expected = {
+        a = "a-z1";
+        b = "b-z1";
+      };
+    };
+
+    # ── EMPTY source slice = bindings WITHOUT attachment. The legitimate third arm of the slice
+    #    trichotomy: it must not abort, must mint no parent, and must still deliver its bindings. ──────
+    test-empty-slice-is-bindings-only = {
+      expr =
+        let
+          den = sliceDen [ bindingsOnlyMod ];
+        in
+        {
+          ok = forceRoots den;
+          parent = (den.structural.eval.node "rack:r1").parent;
+          token = (den.structural.eval.get "rack:r1" "enriched-context").bareToken or null;
+        };
+      expected = {
+        ok = true;
+        parent = null;
+        token = "no-attachment";
+      };
+    };
+
+    # ── the two ABORTING arms. A slice naming two coordinates denotes no single source; a slice whose
+    #    kind is not the target kind's schema parent asserts a parent KIND no node shape can express.
+    #    The fixture these replace asserted the second was topology-unreachable — it is not. ───────────
+    test-multi-coord-slice-aborts = {
+      expr = forceRoots (sliceDen [ multiCoordMod ]);
+      expected = false;
+    };
+
+    test-cross-kind-source-aborts = {
+      expr = forceRoots (sliceDen [ crossKindMod ]);
+      expected = false;
+    };
+
+    # ── a `link` to a MULTI-ATTACHED entity aborts rather than picking an attachment. See linkMultiMod
+    #    for why its `configure` is load-bearing: without a later-stratum declaration the guard is never
+    #    reached and this assertion would pass vacuously. ───────────────────────────────────────────────
+    test-link-to-multi-attached-aborts = {
+      expr =
+        let
+          den =
+            (denHoag.mkDen [
+              schema
+              collisionInstances
+              zoneRelateMod
+              linkMultiMod
+            ]).den;
+        in
+        (builtins.tryEval (builtins.deepSeq (den.structural.eval.get "zone:z1" "declarations") true))
+        .success;
+      expected = false;
     };
 
     # ── MEMBERSHIP ROUTING (Task 4): the rack policy's leaf-dim `member` emission (r1, b1) ROUTES into the
