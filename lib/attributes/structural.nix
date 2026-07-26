@@ -284,8 +284,8 @@
         # declaration (spawn/link/…) is returned untouched, so the map is result-identity for a native fleet.
         # "Is this node a CELL?" — asked through the constructor test (`isCell`), never through a
         # parentage probe. Parentage answers a DIFFERENT question: a scope ROOT may legitimately carry
-        # a containment parent, and a `parent != null` spelling would then classify that root as a
-        # cell and abort its own membership emission at `memberAtCell` below.
+        # a containment parent, and probing for one would then classify that root as a cell and abort
+        # its own membership emission at `memberAtCell` below.
         isMembershipDerived = isCell id;
         guardResolveFamily =
           a:
