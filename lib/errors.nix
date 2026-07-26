@@ -73,6 +73,33 @@ in
     nodeId:
     fail "containment cycle (§3c)" "the containment-relation ancestor chain revisits node `${nodeId}` — a cyclic `containTo` topology (A contains B contains A); containment relations must follow the acyclic kind topology";
 
+  # A containment SOURCE slice naming more than one coordinate. The slice is the emitting scope's coords
+  # minus the target (`containmentOf`), and it denotes ONE source node — the id rule reads a single
+  # `kind:name` off it. Two coordinates means two candidate sources and the rule would silently take the
+  # alphabetically-first, so it aborts naming every coordinate it saw. An EMPTY slice is a different,
+  # legitimate case (bindings with no attachment) and is accepted, not routed here.
+  containmentSliceAmbiguous =
+    policyName: targetId: coordNames:
+    fail "containment source slice (§2.5a)" "policy `${policyName}` emitted a `containTo`-marked `member` to target `${targetId}` whose source slice names ${toString (builtins.length coordNames)} coordinates (${
+      builtins.concatStringsSep ", " (map (c: "`${c}`") coordNames)
+    }); a source slice denotes ONE containment source, so it must name exactly one coordinate (or none, for a bindings-only emission)";
+
+  # A containment source whose KIND is not the target kind's schema parent. `parent` is scalar per kind,
+  # so a target of kind K has exactly one admissible source kind, `parent(K)`; a source of any other kind
+  # asserts a second parent KIND, which no node shape can express. `«none»` renders the case where the
+  # target kind is top-level (no parent kind at all) yet an attachment was asserted anyway.
+  containmentKindMismatch =
+    policyName: targetId: expectedKind: actualKind:
+    fail "containment source kind (§2.5b)" "policy `${policyName}` emitted a `containTo`-marked `member` to target `${targetId}` from a source of kind `${actualKind}`, but that target's schema parent kind is ${
+      if expectedKind == null then "«none»" else "`${expectedKind}`"
+    }; a containment source must be an instance of the target kind's parent kind";
+
+  # The source-slice id rule asked for the node id of a slice that names NO coordinate. Empty slices are
+  # legitimate as EMISSIONS (bindings only, no attachment) but they denote no node, so every consumer must
+  # filter them before asking for an id. Reaching here is a caller-contract violation, named rather than
+  # left to `builtins.head`'s bare out-of-bounds.
+  containmentSliceEmpty = fail "containment source slice (§2.5c)" "the source-slice id rule was asked for the node id of an EMPTY slice, which names no source; an empty slice is a bindings-only emission and carries no attachment, so it must be filtered out before its id is taken";
+
   # A scope root claimed by two containment parents. gen-scope's P relation is a PARTIAL FUNCTION —
   # at most one parent per node (Neron §2.2) — so a second claimant cannot be merged, only rejected.
   # v1 admits multi-attachment by RE-RESOLVING the entity into a second scope (one parent per scope

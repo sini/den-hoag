@@ -994,6 +994,8 @@ let
         # collection — v1's policy.exclude constraint registration (pin fx/handlers/dispatch-policies
         # .nix:15-33), rendered as pre-pass suppression sets. Empty for an exclude-free fleet → inert.
         excludeRules = policiesRules.excludeFamily;
+        # The schema parent kind of each kind (scalar per kind), for the containment source-kind check.
+        kindParent = k: (ent.meta.${k} or { }).parent or null;
       };
       membershipTuples = ent.config.den.membership ++ prePass.tuples;
 

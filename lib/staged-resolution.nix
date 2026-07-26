@@ -69,12 +69,22 @@ let
   # containment source, owned here beside the transpose that produces those slices — the settings
   # chain reads it from this module rather than re-deriving it, so `"${kind}:${name}"` has one
   # definition repo-wide (it must agree with `buildRoots`, which mints roots under the same rule).
+  # An EMPTY slice names no source, so it has no id: that case aborts by name rather than falling into
+  # `builtins.head [ ]`'s bare out-of-bounds. Empty is a legitimate EMISSION shape (bindings with no
+  # attachment) — every consumer filters it out before asking for an id, so this arm is unreachable from
+  # the live paths and exists to keep an unnamed throw off the map.
   ancNodeId =
     slice:
     let
-      k = builtins.head (builtins.attrNames slice);
+      ks = builtins.attrNames slice;
     in
-    "${k}:${slice.${k}.name}";
+    if ks == [ ] then
+      errors.containmentSliceEmpty
+    else
+      let
+        k = builtins.head ks;
+      in
+      "${k}:${slice.${k}.name}";
   # entry.id_hash -> "kind:name" scope-node id, over ALL registry kinds (a `containTo` target denotes an
   # existing ROOT node — possibly a kind we do NOT fire at, e.g. the corpus's `cluster`). The flat root id
   # convention matches buildRoots (`"${kind}:${name}"`). This is the transpose's target-keying index.
@@ -131,6 +141,10 @@ let
       # `suppressed-policies` inherited attribute (gen-scope inheritSet) delivers with the v1 semantics.
       # Default `[ ]` → `suppressions = { }` → byte-identical.
       excludeRules ? [ ],
+      # kindName -> its schema PARENT kind name, or null for a top-level kind (`ent.meta.<k>.parent`,
+      # scalar per kind). The admissible source kind for a containment target of kind K is exactly
+      # `kindParent K`, which is what makes the source-kind check total.
+      kindParent,
     }:
     let
       # The containment-target index spans EVERY registry kind (a containTo target may be a root outside the
@@ -192,6 +206,27 @@ let
           containTo = a.containTo;
           targetEntry = a.coords.${containTo} or null;
           tid = if targetEntry == null then null else index.${targetEntry.id_hash} or null;
+          policyName = a.__policy or "«anonymous»";
+          slice = builtins.removeAttrs a.coords [ containTo ];
+          coordNames = builtins.attrNames slice;
+          # The source slice's shape decides an id and (downstream) a scope parent edge, so its trichotomy
+          # is settled HERE, once, where the slice is computed:
+          #   EMPTY       — legitimate: bindings with no attachment (a parentless root target has no
+          #                 firing-scope coordinate). Accepted; it mints no source and no ancestor.
+          #   SINGLE-COORD — the attachment case. Its kind must be the target kind's schema parent, since
+          #                 `parent` is scalar per kind and any other kind asserts a second parent KIND.
+          #   MULTI-COORD  — two candidate sources for one edge; the id rule would silently take the
+          #                 alphabetically-first, so it aborts instead.
+          expectedKind = kindParent containTo;
+          sliceOk =
+            if coordNames == [ ] then
+              true
+            else if builtins.length coordNames > 1 then
+              errors.containmentSliceAmbiguous policyName tid coordNames
+            else if builtins.head coordNames != expectedKind then
+              errors.containmentKindMismatch policyName tid expectedKind (builtins.head coordNames)
+            else
+              true;
         in
         if tid == null then
           errors.containTargetMissing (a.__policy or "«anonymous»") targetEntry
@@ -199,7 +234,7 @@ let
           {
             inherit tid;
             bindings = a.bindings or { };
-            sourceSlice = builtins.removeAttrs a.coords [ containTo ];
+            sourceSlice = builtins.seq sliceOk slice;
           };
 
       # COLLECT — fire every root against its OWN decls; the `containTo`-marked emissions, in root-iteration
@@ -235,7 +270,13 @@ let
       # Containment-edge accessor over the transpose: a node id -> the ids of the sources that contain it.
       # LOCAL to this pass and needing no threading — `byTarget` is already in hand here. (The settings walk
       # keeps its own accessor: it reads `containmentRelations`, a slice map, not these emission records.)
-      containEdges = nid: map (e: ancNodeId e.sourceSlice) (byTarget.${nid} or [ ]);
+      # Empty slices are dropped FIRST: a bindings-only emission names no source, so it contributes no
+      # edge — the same filter `containmentAncestors` applies, and what keeps the id rule off an empty slice.
+      containEdges =
+        nid:
+        map (e: ancNodeId e.sourceSlice) (
+          builtins.filter (e: e.sourceSlice != { }) (byTarget.${nid} or [ ])
+        );
 
       # target -> its ONE containment parent node id: the scope P edge the containment relation denotes.
       # Same pre-image as `containmentAncestors` — an empty source slice (a parentless-root target) drops
