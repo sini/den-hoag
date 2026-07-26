@@ -58,6 +58,74 @@ let
       }
     )
   ];
+  # ── MULTI-ATTACHED parent: the pair set is per parent NODE, not per parent coordinate ──────────────
+  # A rack claimed by two zones is two NODES, and its blade cell exists under each of them. Pairs derived
+  # from the parent COORDINATE emit a single pair naming the bare `rack:r1`, which is not a node at all
+  # once the rack multiplies — a silently wrong id, invisible to a green suite.
+  # This fixture is deliberately the shape `collisionInstances` (ci/tests/staged-resolution.nix) is ONE
+  # `blade` declaration away from. It exists so that margin cannot close unnoticed: the site was safe
+  # there because of what a fixture happened not to declare, which is an accident, not an invariant.
+  multiDen = denHoag.mkDen [
+    {
+      config.den.schema = {
+        zone.parent = null;
+        rack.parent = "zone";
+        blade.parent = "rack";
+      };
+    }
+    {
+      config.den = {
+        zone.z1 = { };
+        zone.z2 = { };
+        rack.r1 = { };
+        blade.b1 = { };
+      };
+    }
+    (
+      { config, ... }:
+      {
+        config.den.contentClass.blade = "nixos";
+        config.den.membership = [
+          {
+            coords = {
+              rack = config.den.rack.r1;
+              blade = config.den.blade.b1;
+            };
+          }
+        ];
+      }
+    )
+    (
+      { config, ... }:
+      {
+        config.den.policies.grant =
+          { zone, ... }:
+          [
+            (denHoag.declare.member {
+              coords = {
+                inherit zone;
+                rack = config.den.rack.r1;
+              };
+              bindings.t = "t";
+              containTo = "rack";
+            })
+          ];
+      }
+    )
+  ];
+  multiNodes = multiDen.den.structural.eval.allNodes;
+  # The attachments the scope-root pivot supplies at mkDen; stated literally here because this suite
+  # exercises `containmentPairs` as a unit, and `multiDen`'s own roots (below) confirm they are the real ones.
+  multiPairs = containmentPairs {
+    inherit (multiDen.den) fleet meta;
+    attachments = {
+      "rack:r1" = [
+        "zone:z1"
+        "zone:z2"
+      ];
+    };
+  };
+
   pairs = containmentPairs {
     fleet = synthFleet.den.fleet;
     meta = synthFleet.den.meta;
@@ -136,6 +204,37 @@ let
 in
 {
   flake.tests.nest-producers = {
+    # ── pairs must name nodes that EXIST. Before the per-parent-node derivation this failed: the single
+    #    pair named the bare `rack:r1`, absent from the tree once the rack multiplied. `allResolve` is the
+    #    invariant; the literal id lists pin the shape so a regression cannot satisfy it vacuously. ────────
+    test-pairs-name-real-nodes = {
+      expr = {
+        roots = builtins.attrNames multiDen.den.scopeRoots;
+        parents = map (p: p.parentId) multiPairs;
+        children = map (p: p.childId) multiPairs;
+        allResolve = builtins.all (
+          p: (multiNodes ? ${p.parentId}) && (multiNodes ? ${p.childId})
+        ) multiPairs;
+      };
+      expected = {
+        roots = [
+          "rack:r1@zone:z1"
+          "rack:r1@zone:z2"
+          "zone:z1"
+          "zone:z2"
+        ];
+        parents = [
+          "rack:r1@zone:z1"
+          "rack:r1@zone:z2"
+        ];
+        children = [
+          "blade:b1@rack:r1@zone:z1"
+          "blade:b1@rack:r1@zone:z2"
+        ];
+        allResolve = true;
+      };
+    };
+
     # ── the thin containment accessor (fleet.nix) ──
     # every cell contributes one (immediate parent → child) pair per coordinate dim carrying a parent dim
     # present in the cell; the corpus's scope-root dims (env) contribute none. The 2-cell fleet ⇒ 2 pairs.
