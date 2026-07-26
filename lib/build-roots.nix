@@ -44,7 +44,21 @@ let
       m = builtins.match "[^@]*@(.*)" id;
     in
     if m == null then null else builtins.head m;
+
+  # Is this id a CELL (a node materialised UNDER a parent), as opposed to a scope ROOT?
+  # Exact by case analysis over the two — and only two — node constructors: `buildRoots` above
+  # mints roots as "${kind}:${name}" (no '@'), and the `children` NTA mints cells as
+  # "${leafDim}:${leaf}@${parentNodeId}" (an '@' by construction). gen-scope's walk reaches
+  # nothing else — it descends `children`/`derived-children` only, and `derived-children` is
+  # unbuilt here — so every node is one or the other and the test is total.
+  # This is the honest predicate for "is a cell". A `parent != null` test answers the same
+  # question ONLY while roots are parentless; once a root carries a containment parent the two
+  # diverge, and the parentage test starts calling roots cells.
+  # BOUND: rests on no entity NAME containing '@'. Corpus-unreachable and unguarded; if a fixture
+  # ever authors one, discriminate on the constructor instead (tag the node at mint time) rather
+  # than on the id's shape.
+  isCell = id: parseParent id != null;
 in
 {
-  inherit buildRoots parseParent;
+  inherit buildRoots parseParent isCell;
 }
