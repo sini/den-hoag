@@ -512,3 +512,80 @@ compilation bug the harness caught). The P6 gate (Task 9) will assert the live d
   user cells' content onto the host's `users.users.<name>` + the user-driven host settings, so root/wheel gain SSH
   auth, `programs.zsh.enable` turns true, and the initrd SSH keys populate — then the toplevel assertions clear and
   the drvPath materializes for the oracle diff. Gates for THIS rung: CI 795/795, parity 71/71.
+
+## Node multiplication for multi-attached roots — topology arc
+
+Rows a future reader cannot reconstruct from `git log`. Where a commit or bead already carries the
+detail, this cites it rather than restating it. Arc commits: `84fc117`, `986562a`, `11a8269`,
+`4b74cd8`, `49fbaa2`, `989fabe`, `0b2a63a`; working record on bead `den-hoag-9xo.19`.
+
+**1. `lib/fleet.nix` containment pairs — fixed, and NOT where it was thought to be.** Pairs derived
+`parentId` from the parent COORDINATE, which names a node only while that coordinate's entity has at
+most one attachment; a multi-attached parent is several nodes and the bare id is none of them. Fixed
+at `989fabe` (per parent NODE, via the shared `mintedRootId`). **The characterisation matters more
+than the fix:** this was first reported — by me — as "gated-reachable on the main cell path", and
+that is wrong. `containmentPairs` and `nestProducer` are never CALLED in `lib/` (the sole call is
+`ci/tests/nest-producers.nix:61`; the only `lib/` occurrence of a call shape is a comment at
+`lib/default.nix:2666`). They are suite-facing surface exported through `internal`. The defect was
+real but confined to a test helper, never on the shipped materialization path — and that correction
+arrived only after the fix had been ordered ahead of other work on the inflated reading.
+**It escaped its own test suite by one declaration, not by any invariant:** `collisionInstances`
+declares no `blade`, so the multiplied rack never acquired a cell, so pairs were never built for it.
+The schema has `blade.parent = "rack"`. A permanent fixture (`0b2a63a`) now declares that shape so
+the margin cannot close unnoticed.
+
+**2. `lib/fleet.nix` `__containment` — unreachable IN THIS SCHEMA SHAPE, measured, NOT an invariant.**
+`__containment` maps over the sliced cell's coordinates, and because the slice has already dropped the
+parent dim it never names the cell's own P-parent — only coordinate roots that are not P-parents. For
+one of those to dangle it must multiply, i.e. be a containment target with two or more sources.
+Measured on a three-dim product with a multiplied parent and real cells: no entry failed to resolve
+against the node set. **The limit is stated deliberately:** a schema with four or more levels could
+carry a middle dim that is simultaneously a non-parent coordinate root and a multi-source containment
+target, and that WOULD dangle. This row says "unreachable in this schema shape, measured" and not
+"cannot happen", because three unreachability claims in this arc have already been disproved (see row
+3) and a fourth asserted one would be worth less than an open question. No guard was added: an abort
+on an unreachable path cannot be armed, and an unarmable guard is the vacuous-witness problem row 6
+describes.
+
+**3. The design's safety argument for rows 1 and 2 was FALSE, and both failed for one shared reason.**
+Both were recorded as tolerating multiplication because "product dims are cell families, not
+containment targets". A kind can be BOTH: in `ci/tests/topology-join.nix`, `host` is the parent dim of
+`user` cells AND the target of the env→host containment. The filter that bars a containment EMISSION
+from creating a tuple dim does not stop a kind from being a tuple dim via static membership while also
+being a containment target. This is the same false-unreachability shape as the fixture assertion that
+cross-kind containment was topology-unreachable (disproved when the source-kind check was added,
+`84fc117`) and the claim before it. **The generalisation worth keeping: an unreachability claim needs
+the same positive control as a green test.**
+
+**4. Census method — use the corrected predicate.** The site sweep for bare node-id construction must
+be `grep -rn ':\${' lib/ --include='*.nix'`. The obvious predicate — matching `"${x}:${y}"` with a
+`[^}]*` body — CANNOT span a nested interpolation, so it silently misses every id built as
+`${a}:${b.${c}.d}`, which is how `lib/fleet.nix` builds three of them. That miss was in the census
+that had just criticised a hand-compiled list for the same class of blindness. **Run any corrected
+predicate against a known-positive instance before trusting either its hit list or its count.**
+
+**5. The corpus arm of the census is VACUOUS, and it expires at rung 2.** All four census shapes came
+back "none" for the corpus by a structural argument, not a measurement: the environment registry is
+empty, so the env→host policy never fires, so the corpus emits no containment at all. That argument is
+load-bearing on the kind-discovery defect remaining unfixed. **Rung 2 fixes it** — environments
+register, the policy fires, and the corpus emits containment for the first time, at which point every
+shape becomes live and must be RE-MEASURED rather than re-argued. Two specifics: the source-kind check
+runs against the corpus for the first time then (source slice `{ environment = … }`, target kind
+`host`; expected to pass, but that is a prediction), and multi-source stays bounded at one because
+`host.environment` is scalar — so rung 2 lights up the slice validators WITHOUT lighting up node
+multiplication. **No gated path reaches the real corpus** (`lib/compat/parity/oracle.nix:527-529`: the
+full fleet run is dev-time, "the one arm that cannot run purely in den-hoag's own CI"), so the
+re-measurement needs a dev-time harness. Standing falsifier: if any host's toplevel drvPath moves,
+the structural argument is wrong — classify, do not re-baseline.
+
+**6. The link-ambiguity fixture needs two non-obvious properties, and both look like cleanups.** The
+abort it witnesses lives in `linkedFrom`, which runs only from the dispatch's `combine` — and that is
+forced only when a LATER stratum group exists at the node. So the fixture must (a) carry a
+resolution-stratum declaration beside the structural `link`, or the guard is never evaluated and the
+test passes having proved nothing; and (b) emit it from a DIFFERENT policy, because B2 stratum
+coherence requires one stratum per policy and emitting both from one aborts on coherence INSTEAD of on
+the guard — which also turns the assertion green, for the wrong reason. **(b) was shipped wrong first
+and caught only by a control that checked the test depended on the RIGHT thing:** pointing the fixture
+at a single-attachment target and requiring it to go red. A control that merely removes a dependency
+and watches the test fail would have passed both times. Both properties are recorded at the fixture
+itself, since that is where someone about to simplify it will be reading.
