@@ -39,6 +39,9 @@ let
       declarations
       errors
       ;
+    # The cell/root discriminator, bound with the libs rather than per fleet — a fixed pure predicate
+    # over the id shape, so it has no per-fleet content to thread. See structural.nix's header.
+    inherit (import ../build-roots.nix { inherit prelude; }) isCell;
   };
   resolvedAspects = import ./resolved-aspects.nix {
     inherit

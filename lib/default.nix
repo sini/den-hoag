@@ -320,7 +320,7 @@ let
   graphEscape = import ./graph-escape.nix { inherit edge; };
   structuralAttributes = attributesLib.structural;
   runResolve = attributesLib.runResolve;
-  inherit (buildRootsLib) buildRoots parseParent;
+  inherit (buildRootsLib) buildRoots parseParent isCell;
 
   # mkDen assembles the four concerns; Tasks 1–11 extend it. Task 1: entity registries
   # (gen-schema) + the fleet restricted product (gen-product). Task 2: scope roots +
@@ -1298,6 +1298,7 @@ let
           settingsLayers
           dimKinds
           projectors
+          isCell
           ;
       };
       # The user's declared productions (guard-forced) BESIDE the framework's settings seed. Right-biased so

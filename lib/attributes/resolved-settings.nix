@@ -101,6 +101,11 @@ let
       # cannot produce its slice — den-hoag PREPENDS it here, after the empty slice, giving the settings fold
       # default < env < host < user (the owner's cascade). Default `{ }` ⇒ no env slice, byte-identical.
       containmentRelations ? { },
+      # Is this node id a CELL? (`build-roots.nix isCell` — the constructor case analysis over the id
+      # shape.) Required, not defaulted: the chain builder below picks the cell branch on it, and a
+      # defaulted `_: false` would silently make every cell read its OWN containment ancestors instead
+      # of its parent root's.
+      isCell,
     }:
     let
       # Transitive containment-relation ancestors of a node (least→most specific `fixed` coord-sets). Each
@@ -245,7 +250,10 @@ let
           # owner's cascade). A cell inherits its parent root's ancestors (`node.parent`); a root reads
           # its own (`id`). `baseChain` always leads with the empty slice, so [ ∅ ] ++ ancestors ++ tail
           # keeps every product slice in its original relative order (byte-neutral when ancestors = [ ]).
-          ancSlices = if node.parent == null then ancestorsOf id else ancestorsOf node.parent;
+          # A CELL reads its parent root's containment ancestors; a ROOT reads its own. Discriminated by
+          # the constructor test, not by parentage — a root carrying a containment parent still owns its
+          # own ancestor slices, and a `parent == null` spelling would send it to read its parent's.
+          ancSlices = if isCell id then ancestorsOf node.parent else ancestorsOf id;
           chain = [ (builtins.head baseChain) ] ++ ancSlices ++ (builtins.tail baseChain);
 
           present = self.get id "resolved-aspects";
