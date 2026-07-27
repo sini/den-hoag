@@ -145,6 +145,10 @@ let
       # scalar per kind). The admissible source kind for a containment target of kind K is exactly
       # `kindParent K`, which is what makes the source-kind check total.
       kindParent,
+      # NATIVE ATTACHMENT (route 2, `den.attach`): kind -> { ref; unless }. A kind with a row here attaches
+      # its instances to the parent instance its `ref` field names, with no policy. Default `{ }` ⇒ no
+      # synthetic emissions ⇒ byte-identical to the policy-only fleet.
+      nativeAttach ? { },
       # THE attached-root id rule (`build-roots.nix mintedRootId`), threaded rather than re-derived:
       # this pass keys bindings at the node that will carry them, `buildRoots` mints that node, and
       # one definition is what keeps the two from drifting.
@@ -244,10 +248,68 @@ let
 
       # COLLECT — fire every root against its OWN decls; the `containTo`-marked emissions, in root-iteration
       # (`attrNames`, alphabetical) then per-root emission order. This flat list is the transpose pre-image.
-      containmentEmissions = prelude.concatMap (
-        id:
-        map containmentOf (builtins.filter isContainment (fireAt scopeRoots.${id}.type id (baseCtxOf id)))
-      ) ids;
+      # ── NATIVE ATTACHMENT (route 2) ────────────────────────────────────────────────────────────────
+      # Synthetic containment emissions derived from `den.attach`, in the SAME record shape a policy
+      # emission lowers to (`{ tid; bindings; sourceSlice }`). They are concatenated into
+      # `containmentEmissions` — UPSTREAM of `byTarget` — deliberately: `byTarget` is the pre-image of all
+      # five products this pass returns (bindings, ancestors, edges, attachments, and the cycle guard over
+      # them), so one emission reaches every one of them. Injecting further down, at the caller's
+      # `attachments` map, would supply the parent edge while leaving the ancestor slice and the ctx/decls
+      # fold without the fact — an attachment whose inheritance silently does not exist.
+      #
+      # ADDITIVE, not a replacement: a fleet that also attaches by policy emits the same fact twice, and
+      # `attachmentsOf` (below) dedups the rendered ids, so the target keeps ONE attachment and its bare
+      # node id. `containmentAncestors` does NOT dedup, so a doubly-emitted fact yields a repeated ancestor
+      # slice there — harmless for the ancestor WALK (gen-graph visits first-occurrence) but the reason the
+      # settings chain is measured rather than assumed.
+      #
+      # `bindings = { }`: a native attachment asserts containment only. Policy attachments that also bind
+      # context (the corpus's `accessGroups`) keep doing so through their own emission.
+      nativeEmissions = prelude.concatMap (
+        kindName:
+        let
+          row = nativeAttach.${kindName};
+          parentKind = kindParent kindName;
+          instances = registries.${kindName} or { };
+        in
+        # A kind with no declared parent has nothing to attach TO — the row is inert rather than an error,
+        # so a fleet may declare attachment for a kind whose parentage is supplied elsewhere.
+        if parentKind == null then
+          [ ]
+        else
+          prelude.concatMap (
+            name:
+            let
+              entry = instances.${name};
+              # THE OPT-OUT, a VALUE test: absent field ⇒ attaches (absence is not opt-out), present and
+              # empty ⇒ withheld. Same shape the placement gate runs, so one declaration governs both.
+              optedOut = row.unless != null && (entry ? ${row.unless}) && entry.${row.unless} == [ ];
+              refValue = entry.${row.ref} or null;
+              parentEntry = (registries.${parentKind} or { }).${toString refValue} or null;
+            in
+            if optedOut || refValue == null then
+              [ ]
+            else if parentEntry == null then
+              errors.attachRefUnresolved kindName name row.ref parentKind refValue
+            else
+              [
+                {
+                  tid = index.${entry.id_hash} or "${kindName}:${name}";
+                  bindings = { };
+                  sourceSlice = {
+                    ${parentKind} = parentEntry;
+                  };
+                }
+              ]
+          ) (builtins.attrNames instances)
+      ) (builtins.attrNames nativeAttach);
+
+      containmentEmissions =
+        prelude.concatMap (
+          id:
+          map containmentOf (builtins.filter isContainment (fireAt scopeRoots.${id}.type id (baseCtxOf id)))
+        ) ids
+        ++ nativeEmissions;
 
       # TRANSPOSE by TARGET node id — `prelude.groupBy` buckets order-preserving (the kernel groupBy idiom,
       # fleet.nix / edges.nix). The transpose is order-independent AS A MAP: no parent-before-child phase

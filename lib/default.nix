@@ -727,6 +727,42 @@ let
         };
       };
 
+      # den.attach — NATIVE ATTACHMENT (route 2). A kind whose schema declares `parent = "<K>"` states the
+      # parent KIND but not the parent INSTANCE; this surface says how to find the instance, so a fleet
+      # attaches without writing a policy. Declared HERE rather than as fields on `den.schema.<kind>`
+      # because gen-schema's `mkSchemaOption` keeps a fixed key set and silently drops unknown ones —
+      # measured: `parentRef`/`attachIf` written on a kind do not survive into the processed kind value.
+      # Attachment resolution is den's concern, not gen-schema's kind schema, so it lives on den's surface.
+      #
+      #   ref     the entity FIELD naming its parent instance (corpus: a host's `environment`).
+      #   unless  an OPT-OUT field: the entity does not attach when that field is present and EMPTY. The
+      #           test is on the VALUE, not on presence — the same `entry ? f -> entry.f != [ ]` shape the
+      #           placement gate runs — so a kind that never declares the field is unaffected. Absence of
+      #           `unless` means nothing withholds attachment.
+      #
+      # ABSENCE OF A `den.attach.<kind>` ROW MEANS THE KIND DOES NOT NATIVELY ATTACH — a fleet whose
+      # parentage comes from policies is byte-unchanged. Within a row, absence of `unless` means ATTACH,
+      # which is the only default that leaves a fleet declaring no opt-out working.
+      attachDecl = {
+        options.den.attach = merge.mkOption {
+          type = merge.types.attrsOf (
+            merge.types.submodule {
+              options.ref = merge.mkOption {
+                type = merge.types.str;
+                description = "entity field naming this kind's parent instance";
+              };
+              options.unless = merge.mkOption {
+                type = merge.types.nullOr merge.types.str;
+                default = null;
+                description = "opt-out field: no attachment when this field is present and empty";
+              };
+            }
+          );
+          default = { };
+          description = "Native attachment (route 2): kind -> how to resolve its declared parent kind to an instance.";
+        };
+      };
+
       # den.axes — the user-declarable materialization axes (§4.4): `<name> = { values = [ <string> ]; }`, the
       # finite domains a family's `params` fans over. `system` is framework-reserved (its domain is den.systems);
       # a user `den.axes.system` aborts NAMED at the axis registry.
@@ -982,6 +1018,7 @@ let
           kindsDecl
           outputsDecl
           systemsDecl
+          attachDecl
           axesDecl
           systemViewsDecl
           overridesDecl
@@ -1065,6 +1102,9 @@ let
         # only these keeps the pre-pass from running an arbitrary co-firing policy body at a root (which
         # could hit an uncatchable missing-attribute read). Empty for a resolve-free fleet → pre-pass inert.
         resolveRules = policiesRules.resolveFamily;
+        # NATIVE ATTACHMENT (route 2) — the `den.attach` rows, verbatim. A fleet declaring none passes
+        # `{ }` and the pre-pass emits nothing synthetic, so its five products are byte-identical.
+        nativeAttach = ent.config.den.attach;
         # The EXCLUDE-FAMILY feed (#72, candidate A): dispatched at the same roots/ctx for `suppress`
         # collection — v1's policy.exclude constraint registration (pin fx/handlers/dispatch-policies
         # .nix:15-33), rendered as pre-pass suppression sets. Empty for an exclude-free fleet → inert.

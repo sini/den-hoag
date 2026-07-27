@@ -105,6 +105,13 @@ in
   # by which attachment minted them, and silently taking one is last-wins under another name. Abort
   # instead, naming every candidate — the question "which attachment does the link mean?" has to be
   # answered where the link is written, not guessed here.
+  # Native attachment (den.attach): the entity names a parent instance that no registry holds. A typo,
+  # not an intent — so it ABORTS NAMED rather than silently failing to attach. Silent non-attachment is
+  # the failure class this arc keeps finding (a registry that never reaches the fleet, with no error).
+  attachRefUnresolved =
+    kindName: name: refField: parentKind: refValue:
+    fail "native attachment" "`${kindName}:${name}` names its ${parentKind} parent as `${refField} = \"${toString refValue}\"`, but no `${parentKind}` instance by that name is registered; a parent reference that resolves to nothing is a typo rather than an opt-out — to declare no attachment, use the kind's `unless` field";
+
   linkTargetAmbiguous =
     policyName: kindName: nodeIds:
     fail "link target (M7)" "policy `${policyName}` links to a `${kindName}` that resolves to ${toString (builtins.length nodeIds)} scope nodes (${
