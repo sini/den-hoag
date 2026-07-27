@@ -2517,11 +2517,11 @@
         "gen-types": "gen-types_7"
       },
       "locked": {
-        "lastModified": 1784137650,
-        "narHash": "sha256-36AoxrGOpWPv0EnpZFHMn/ANa8JcopE2r0oBpRX47X0=",
+        "lastModified": 1785127132,
+        "narHash": "sha256-EXJ8kWaXA3NwoidNp4a2YSDbyquhOlOwy6E9ZJ5lvVA=",
         "owner": "sini",
         "repo": "gen-schema",
-        "rev": "017062cdc40cb6f29acb50a403cd59c8de2539dc",
+        "rev": "af3dbe9816ad0267dd9b3f8c5bb1a9ec339971e6",
         "type": "github"
       },
       "original": {

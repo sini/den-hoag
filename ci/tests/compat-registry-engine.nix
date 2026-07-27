@@ -32,12 +32,14 @@ let
   schema = denHoag.internal.schema;
 
   # A kind authored the way a CONSUMER authors one — its own nixpkgs `lib` — carrying three fields
-  # that leave the identity set for three DIFFERENT reasons, so no one exclusion can stand in for
+  # whose identity membership is decided by three DIFFERENT rules, so no one case can stand in for
   # another:
-  #   slots    nixpkgs `int`  → IN.  `int`/`bool` are named identically by both engines.
-  #   region   nixpkgs `str`  → OUT under this gen-schema pin, and this is the divergence: nixpkgs
-  #                            names a string `str`, gen-types names it `string`, and the reflection
-  #                            matches names. Kept nixpkgs-typed deliberately; gen-typing it would
+  #   slots    nixpkgs `int`  → IN.  `int`/`bool` are named identically by both type systems.
+  #   region   nixpkgs `str`  → IN, and this is the case that has to be pinned: reflection dispatches
+  #                            on the option's type NAME, and nixpkgs names a string `str` where
+  #                            gen-types names it `string`. A reflection accepting only the gen-types
+  #                            spelling drops it silently, and instances differing only in it collapse
+  #                            to one id_hash. Kept nixpkgs-typed deliberately — gen-typing it would
   #                            make the fixture pass by ceasing to model how a consumer writes kinds.
   #   sopsTag  nixpkgs `str`, `internal` → OUT by FLAG. Its value is a string, so a VALUE-reflecting
   #                            recompute over-includes it — the miss the option-level twin exists to
@@ -194,10 +196,11 @@ in
     test-identity-reflection-agrees-with-the-stamp = {
       expr = {
         recomputeMatchesStamp = schema.identityHashForKind zoneReg.kindValue z1 == z1.id_hash;
-        # The stamp's CONTENTS, not merely that the two agree — `slots` in, `region` and `sopsTag`
-        # out. Pinning the content-address is what makes a drift visible: if a gen-schema bump gives
-        # `mkIdentityModule` the nixpkgs spelling, `region` enters the stamp, this pin goes red, and
-        # `recomputeMatchesStamp` goes red beside it because the twin's own list did not move.
+        # The stamp's CONTENTS, not merely that the two agree — `slots` and `region` in, `sopsTag`
+        # out. Equality alone is satisfied when both reflections degenerate TOGETHER: two that select
+        # nothing agree perfectly while every instance collapses to a name-only hash, which is the
+        # failure this guard exists to catch reappearing through the guard itself. Pinning what was
+        # actually hashed is what separates agreement from shared blindness.
         stamped = z1.id_hash;
         # a VALUE-reflecting recompute over-includes both strings and therefore MISSES — the reason
         # the marker reads the kind's declared surface rather than the instance's fields.
@@ -205,7 +208,7 @@ in
       };
       expected = {
         recomputeMatchesStamp = true;
-        stamped = builtins.hashString "sha256" "zone|name=z1|slots=7";
+        stamped = builtins.hashString "sha256" "zone|name=z1|region=west|slots=7";
         valueReflectionMisses = true;
       };
     };

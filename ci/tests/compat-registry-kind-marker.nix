@@ -130,20 +130,21 @@ let
 in
 {
   flake.tests.compat-registry-kind-marker = {
-    # (a) THE IDENTITY SET, read off the stamp gen-schema actually wrote: `slots` + the injected
-    # `name`, EXCLUDING the internal `sopsTag` (identity-flag exclusion) and `id_hash` itself. `region`
-    # is excluded too but for a DIFFERENT reason — the `str`/`string` type-name divergence — so the two
-    # exclusions are pinned apart rather than one standing in for the other.
+    # (a) THE IDENTITY SET, read off the stamp gen-schema actually wrote: `slots` + `region` + the
+    # injected `name`, EXCLUDING the internal `sopsTag` (the identity-FLAG exclusion) and `id_hash`
+    # itself. `region` is a nixpkgs-`str` field and it must be IN — a reflection that accepts only
+    # gen-types' `string` spelling drops it, and two instances differing only in it then collapse to
+    # one id_hash. The two rules are pinned apart: `sopsTag` leaves by flag, `region` stays by name.
     test-identity-excludes-internal-primitive = {
       expr = {
         stamped = z1inst.id_hash;
-        overSlotsAndName = builtins.hashString "sha256" "zone|name=z1|slots=3";
-        withSopsTag = builtins.hashString "sha256" "zone|name=z1|slots=3|sopsTag=computed-west";
+        overSlotsRegionAndName = builtins.hashString "sha256" "zone|name=z1|region=west|slots=3";
+        withSopsTag = builtins.hashString "sha256" "zone|name=z1|region=west|slots=3|sopsTag=computed-west";
       };
       expected = {
-        stamped = builtins.hashString "sha256" "zone|name=z1|slots=3";
-        overSlotsAndName = builtins.hashString "sha256" "zone|name=z1|slots=3";
-        withSopsTag = builtins.hashString "sha256" "zone|name=z1|slots=3|sopsTag=computed-west";
+        stamped = builtins.hashString "sha256" "zone|name=z1|region=west|slots=3";
+        overSlotsRegionAndName = builtins.hashString "sha256" "zone|name=z1|region=west|slots=3";
+        withSopsTag = builtins.hashString "sha256" "zone|name=z1|region=west|slots=3|sopsTag=computed-west";
       };
     };
     # (b) THE MARKER DIVERGENCE: the value-reflecting `identityHashFor` MISSES (it hashes `sopsTag`,
