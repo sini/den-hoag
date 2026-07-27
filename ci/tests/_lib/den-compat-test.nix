@@ -102,8 +102,20 @@ let
   # registry shape the consumer never declares. The kind carries `domain` because gen-schema's strict arm
   # needs a declared surface to check against: a kind with NO declared option reports the INSTANCE name as
   # the undeclared key (`STRICT MODE: "prod" is not declared on environment`).
-  envKind = registry.kindValueOf "environment" {
+  # ── AND THE KINDS ARE DECLARED THROUGH `den.schema`, which is what makes the bridge's own namespace→kind
+  # discovery run at all. Read off `registry.kindValueOf` (a side eval) the kind is invisible to
+  # `config.den.schema.__rawSchema`, so the bridge's candidate set contained only option-LESS kinds, its
+  # marker resolved `{ }` for every scaffold fleet, and no fixture downstream of here exercised the
+  # discovery the consumer depends on. Declared here the way the corpus declares it — the raw kind into
+  # `den.schema.<kind>`, the registry over the PROCESSED `config.den.schema.<kind>`.
+  #
+  # TWO registries, not one, and with more than one instance between them: the map is folded per registry
+  # key, so a fleet carrying a single key cannot distinguish a per-key fold from one that answers once and
+  # reuses it. `groups` is a second kind whose option set is disjoint from `environment`'s, so the
+  # cross-kind probe reads fields the instance lacks in both directions on every scaffold fleet.
+  envKindDecl = {
     isEntity = true;
+    parent = null;
     imports = [
       (_: {
         options.domain = lib.mkOption {
@@ -113,11 +125,50 @@ let
       })
     ];
   };
+  groupKindDecl = {
+    isEntity = true;
+    parent = null;
+    imports = [
+      (_: {
+        options.description = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+        };
+        options.gid = lib.mkOption {
+          type = lib.types.nullOr lib.types.int;
+          default = null;
+        };
+      })
+    ];
+  };
   envSeedModule =
-    { lib, ... }:
+    { config, lib, ... }:
     {
-      options.den.environments = registry.mkInstanceRegistry envKind { };
+      options.den.environments = registry.mkInstanceRegistry config.den.schema.environment { };
+      # `groups` also carries the corpus's DERIVED-PRIMITIVE shape (`nix-config schema/cluster.nix:97`): a
+      # registry `derive` overlaying a string onto every instance after the module eval, declared
+      # `internal` in the registry's own `extraModules` so it is absent from the kind value and from the
+      # identity stamp while present on the instance. That is the one shape the value-reflecting discovery
+      # cannot resolve, so it is what keeps the option-level marker load-bearing on this path rather than
+      # merely running on it.
+      options.den.groups = registry.mkInstanceRegistry config.den.schema.group {
+        derive = insts: lib.mapAttrs (n: _: { derivedTag = "tag-${n}"; }) insts;
+        extraModules = [
+          (_: {
+            options.derivedTag = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              readOnly = true;
+              internal = true;
+            };
+          })
+        ];
+      };
+      config.den.schema.environment = envKindDecl;
+      config.den.schema.group = groupKindDecl;
       config.den.environments.prod = lib.mkDefault { };
+      config.den.groups.wheel = lib.mkDefault { description = "wheel"; };
+      config.den.groups.users = lib.mkDefault { description = "users"; };
     };
 
   denTest =
