@@ -651,7 +651,7 @@ in
     # is `{ }` — so that spelling would go VACUOUS rather than flip, and a collect-both fix would satisfy
     # it by accident. The peel is total (a bare fn peels to a one-element list), so this shape reads BOTH
     # states and the flip is a change of values, never of form.
-    test-aspects-fnfn-collision-lastwins-ceiling = {
+    test-aspects-fnfn-collision-collects-both = {
       expr =
         let
           arms = peelArms fnFnCfg.den.aspects.col.nixos;
@@ -660,11 +660,16 @@ in
           armCount = builtins.length arms;
           armFormals = map (a: builtins.attrNames (builtins.functionArgs a)) arms;
         };
-      # CURRENT CEILING: one arm survives — the LAST def — and only its formals remain. Under collect-both
-      # this becomes armCount = 2 with [ [ "firewall" ] [ "age-secrets" ] ], in declaration order.
+      # COLLECT-BOTH: both arms survive, each keeping its OWN formals, in declaration order. The ceiling
+      # this pin held is lifted — the trigger its note named fired, and this is the flip it existed to
+      # announce. Each arm's formals are its own because the peel yields the arms themselves, and gen-bind
+      # wraps each one individually rather than reading formals off the collected value.
       expected = {
-        armCount = 1;
-        armFormals = [ [ "age-secrets" ] ];
+        armCount = 2;
+        armFormals = [
+          [ "firewall" ]
+          [ "age-secrets" ]
+        ];
       };
     };
     # END-TO-END CROSSED (the corpus fail shape): the bare-arg collector's binding flows through the REAL

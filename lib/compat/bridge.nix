@@ -40,6 +40,12 @@
   mkCrossNixos,
   schema,
   denLib,
+  # Only the deferredModule PEEL is taken from `module-shape.nix` here, and the peel is prelude-free —
+  # `prelude` is needed solely by that module's `isEmptyDeferredModule`, which this file does not use.
+  # Defaulted so the suite's direct bridge constructions (nine of them) need no change; the real prelude
+  # is supplied on the production path from flake.nix. If a future edit reaches for
+  # `isEmptyDeferredModule` here, a null prelude fails LOUD at that call rather than degrading quietly.
+  prelude ? null,
   # `passThrough` (default true) — the belt/suspenders toggle for the opaque option pass-through SEAM
   # (see `passThroughSeam` in the schema apply). true = the BELT is active (raw option decls ride through
   # to the corpus's own gen-schema); false = SEVERED (the processed kind-values flow, same-contract once
@@ -61,6 +67,11 @@ let
   # the `options.default` and `options.aspects` declared-option instances: colliding ATTRSETS recurse,
   # colliding LISTS concatenate, everything else (scalars AND fns — never merged, never wrapped) keeps
   # last-def-wins.
+  # The deferredModule peel, taken from the module that owns it rather than re-spelled here, so this fold
+  # and every other consumer of the wrap cannot drift apart.
+  inherit (import ../module-shape.nix { inherit prelude; }) unwrapDeferredModule;
+  peelContent = unwrapDeferredModule;
+
   v1DeepMerge =
     a: b:
     a
@@ -72,6 +83,21 @@ let
         v1DeepMerge a.${bk} bv
       else if builtins.isList a.${bk} && builtins.isList bv then
         a.${bk} ++ bv
+      else if builtins.isFunction a.${bk} && builtins.isFunction bv then
+        # Both sides are class-key content functions: COLLECT them instead of dropping one. Normalising
+        # each side through the peel first is what makes this correct for any number of definitions — the
+        # peel is total (a bare function peels to a one-element list) and recursive (an already-collected
+        # carrier peels to its leaves), so the accumulator is re-normalised on every fold step and there is
+        # no "already a carrier" case to handle separately. Writing `[ a.${bk} bv ]` directly would nest
+        # instead, which reads the same through the peel but leaves the shape dependent on fold order.
+        #
+        # THE GUARD IS `&&`, AND THAT IS DELIBERATE — it is NARROWER than the predicate a census of this
+        # branch uses, which must be `||` to SEE every collision shape. This branch must ACT on only one.
+        # With `||`, a function colliding with a content-bearing module would keep the function and gut the
+        # module: the peel returns only `concatMap … m.imports`, so content keys sitting beside `imports`
+        # are dropped. That is worse than the loss being fixed here, so those collisions keep their existing
+        # last-definition-wins behaviour. Do not widen this to match the census predicate.
+        { imports = peelContent a.${bk} ++ peelContent bv; }
       else
         bv
     ) b;

@@ -103,6 +103,7 @@
       # lib/compat/bridge.nix for the two-eval type-crossing resolution + the D7 instantiation grain notes.
       bridge = import ./lib/compat/bridge.nix {
         inherit compat mkCrossNixos;
+        prelude = inputs.gen-prelude.lib;
         schema = inputs.gen-schema.lib;
         # the migration lib surface, spliced onto the consumer's `den` arg at `den.lib` (R1). Lazy let: it
         # is defined below and carries no reference back to the bridge, so the forward use is cycle-free.
