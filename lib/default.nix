@@ -375,6 +375,29 @@ let
         a // b;
   familyMerge = familyMergeAt [ ];
 
+  # `placementNamesNode entityName intoAttr` — the SLICE/TARGET COHERENCE predicate for a parked spawn.
+  #
+  # A spawn slices `classSubtreeAt` at the node its spec is PARKED at, then places the result at the
+  # spec's `intoAttr`. Those two must refer to the SAME entity: if a spec parked at A slices A but targets
+  # a member of B, it publishes one node's content under another node's name. That artifact is wrong
+  # independently of whether anything else also contributes to B — when the slice happens to be empty it
+  # merely looks like a missing output, which is the mild presentation of the same defect, not a
+  # different one.
+  #
+  # The test is LAST-SEGMENT identity, not one-to-one placement, and the difference matters: a spec may
+  # legitimately fan a single entity's content across an axis (a per-cluster manifest family keyed
+  # `<family>.<system>.<cluster>` emits several placements for ONE cluster). Every such placement still
+  # ENDS in the entity's own name, so last-segment identity admits the fan-out while still rejecting a
+  # cross-entity target. A one-to-one rule would have failed that shape; a family-name rule would have
+  # missed the entities living in other families entirely.
+  #
+  # `entityName` is read through the same `__entry` accessor the family fold uses to derive member names,
+  # so the two cannot disagree about what an entity is called. An empty `intoAttr` places verbatim and
+  # names no member, so there is nothing to disagree with.
+  placementNamesNode =
+    entityName: intoAttr:
+    intoAttr == [ ] || builtins.elemAt intoAttr (builtins.length intoAttr - 1) == entityName;
+
   # mkDen assembles the four concerns; Tasks 1–11 extend it. Task 1: entity registries
   # (gen-schema) + the fleet restricted product (gen-product). Task 2: scope roots +
   # structural stratum (attributes 1–6) over gen-resolve/gen-scope.
@@ -2369,13 +2392,30 @@ let
           instantiateContributions = prelude.concatMap (
             nodeId:
             map
-              (action: {
-                at = action.instantiate.intoAttr;
-                mode = "value";
-                value = action.instantiate.instantiate {
-                  modules = output.classSubtreeAt nodeId action.instantiate.class;
-                };
-              })
+              (
+                action:
+                let
+                  entry = (structural.eval.node nodeId).decls.__entry or null;
+                  nodeEntity = if entry != null then entry.name else nodeId;
+                in
+                {
+                  at = action.instantiate.intoAttr;
+                  mode = "value";
+                  # The coherence check fires WHEN THIS MEMBER IS DEMANDED, not when the contribution
+                  # record is built. Placement is still enumerable, so one incoherent spec makes ITS OWN
+                  # member fail loudly instead of taking down the enumeration of families that have
+                  # nothing to do with it. (Contrast the duplicate-member guard, which reads only key
+                  # sets and so is eager for free — here the verdict is per-contribution, and an eager
+                  # abort would convert a local defect into a fleet-wide one.)
+                  value =
+                    if placementNamesNode nodeEntity action.instantiate.intoAttr then
+                      action.instantiate.instantiate {
+                        modules = output.classSubtreeAt nodeId action.instantiate.class;
+                      }
+                    else
+                      throw "den: incoherent spawn placement — the spec parked at '${nodeId}' slices that node's own '${toString action.instantiate.class}' content but places it at '${builtins.concatStringsSep "." action.instantiate.intoAttr}', which names a different entity than '${nodeEntity}'. A spawn publishes the content of the node it is parked at, so its placement must name that node's entity (a fan-out across an axis is fine — every placement must still END in the entity's own name). Emitting one node's content under another node's name yields a wrong artifact even when the slice is empty, which is the case that merely looks like a missing output.";
+                }
+              )
               (
                 builtins.filter (a: a.__action == "spawn" && a ? instantiate) (
                   (structural.eval.get nodeId "declarations").actions.structural or [ ]
@@ -2644,6 +2684,7 @@ in
       # the family-product fold's depth-bounded merge — exposed so the suite can arm its duplicate-member
       # abort directly, rather than only through a fleet that happens to produce one.
       familyMerge
+      placementNamesNode
       ;
     # gen-flake's flake-parts crossing (`terminals.mkFlakeTerminal { inputs; self; modules; systems ? [] }` →
     # the transposed `config.flake`), for the suite's real-flake-parts witnesses to hand an aggregate render's
