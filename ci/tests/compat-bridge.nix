@@ -324,6 +324,13 @@ let
   # CEILING pin (fork A): fn-vs-fn at ONE class key is LAST-DEF-WINS (v1 collects BOTH via
   # `__contentValues`, types.nix:421 — adopt collect-both only when a real 2-module same-key class def
   # appears in the corpus). This test pins the current semantics so any change announces here.
+  # ★ THE TRIGGER HAS FIRED. `virtualization.microvm-host` is declared across two files with both arms
+  # functions, which is exactly the "real 2-module same-key class def" the note deferred on — so the
+  # decision this pin scheduled is now live, and the pin is what announces it rather than a bug report.
+  # den-hoag's OWN deferredModule peel, imported from source rather than re-spelled, so this pin cannot
+  # drift from the helper the collect-both fix will use. The peel itself is prelude-free — only
+  # `isEmptyDeferredModule` needs `prelude`, and it is never forced here.
+  peelArms = (import "${denHoagSrc}/lib/module-shape.nix" { prelude = null; }).unwrapDeferredModule;
   fnFnCfg = evalBridgeConfig {
     imports = [
       { den.aspects.col.nixos = { firewall, ... }: firewall; }
@@ -637,10 +644,27 @@ in
     };
     # CEILING pin (fork A): fn-vs-fn at one class key = LAST-DEF-WINS, formals of the LAST def preserved.
     # v1 collects BOTH (`__contentValues`, types.nix:421) — flipping this test = adopting collect-both.
+    #
+    # SHAPE: asserted through the deferredModule PEEL, not `builtins.functionArgs` of the merged value.
+    # The old spelling read the last def's formals, which is only meaningful while the merge yields a bare
+    # lambda: once both arms are collected the merged value is a carrier, and `functionArgs` of an attrset
+    # is `{ }` — so that spelling would go VACUOUS rather than flip, and a collect-both fix would satisfy
+    # it by accident. The peel is total (a bare fn peels to a one-element list), so this shape reads BOTH
+    # states and the flip is a change of values, never of form.
     test-aspects-fnfn-collision-lastwins-ceiling = {
-      expr = builtins.functionArgs fnFnCfg.den.aspects.col.nixos;
+      expr =
+        let
+          arms = peelArms fnFnCfg.den.aspects.col.nixos;
+        in
+        {
+          armCount = builtins.length arms;
+          armFormals = map (a: builtins.attrNames (builtins.functionArgs a)) arms;
+        };
+      # CURRENT CEILING: one arm survives — the LAST def — and only its formals remain. Under collect-both
+      # this becomes armCount = 2 with [ [ "firewall" ] [ "age-secrets" ] ], in declaration order.
       expected = {
-        age-secrets = false;
+        armCount = 1;
+        armFormals = [ [ "age-secrets" ] ];
       };
     };
     # END-TO-END CROSSED (the corpus fail shape): the bare-arg collector's binding flows through the REAL
