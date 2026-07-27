@@ -117,6 +117,33 @@ let
   # A known module for the rev pin: one declared option, so an implemented `getSubOptions` reports
   # exactly `[ "y" ]` and the stub reports `[ ]`.
   probeModule = mkOption: types: { options.y = mkOption { type = types.str; }; };
+
+  # The consumer-authoring case whose identity turns on the `str` spelling and NOTHING else: one
+  # nixpkgs-`str` field, no `internal` one. Its id_hash covers `region`, so it is the regression guard
+  # on the reflection agreeing across engines — if a gen-schema bump ever drops the nixpkgs spelling
+  # again, this kind's instances collapse and both discovery paths stop finding them.
+  plainKind = {
+    isEntity = true;
+    parent = null;
+    imports = [
+      (_: {
+        options.region = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+        };
+      })
+    ];
+  };
+  plainReg = registry.mkRegistry {
+    kindName = "rack";
+    kind = plainKind;
+    namespace = "rackFarm";
+    instances.r1.region = "west";
+  };
+  plainIngest = denCompat.ingest.ingest {
+    schema.rack = plainKind;
+    rackFarm = plainReg.instances;
+  };
 in
 {
   flake.tests.compat-registry-engine = {
@@ -212,7 +239,36 @@ in
         valueReflectionMisses = true;
       };
     };
-    # (c′) THE WRONG-KIND CONTROL, and it is what makes (c) mean anything. A recompute that always
+    # (c″) A NIXPKGS-`str` IDENTITY FIELD RESOLVES ON BOTH DISCOVERY PATHS. The option-reflecting
+    # marker the bridge computes and the value-reflecting discovery `ingest` falls back to must BOTH
+    # find this namespace, and the carried id_hash must cover `region` — that is what makes the two
+    # agree. Pinned together because a reflection that drops the nixpkgs spelling breaks all three at
+    # once, and any one of them alone could be read as an unrelated fault.
+    test-nixpkgs-str-identity-resolves-on-both-paths = {
+      expr = {
+        carried = plainReg.instances.r1.id_hash;
+        overNameAndRegion = builtins.hashString "sha256" "rack|name=r1|region=west";
+        bridgeMarker = denCompat.registry.registryKindOf {
+          instances = plainReg.instances;
+          candidateKinds = [
+            "rack"
+            "host"
+          ];
+          kindValues.rack = plainReg.kindValue;
+          inherit (schema) identityHashForKind;
+        };
+        ingestKey = plainIngest.instanceKeyMap.rack or null;
+        ingestInstances = builtins.attrNames (plainIngest.instances.rack or { });
+      };
+      expected = {
+        carried = builtins.hashString "sha256" "rack|name=r1|region=west";
+        overNameAndRegion = builtins.hashString "sha256" "rack|name=r1|region=west";
+        bridgeMarker = "rack";
+        ingestKey = "rackFarm";
+        ingestInstances = [ "r1" ];
+      };
+    };
+    # (c‴) THE WRONG-KIND CONTROL, and it is what makes the pins above mean anything. A recompute that always
     # matched would satisfy (c) and would classify every namespace as every kind. The same instance
     # against a kind value carrying a different `kind` must MISS, so the marker's discrimination is
     # pinned rather than its success.

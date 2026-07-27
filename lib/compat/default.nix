@@ -34,6 +34,7 @@ let
       prelude
       schema
       errors
+      registry
       ;
   };
   # The closed-gated aspect TREE type builder — the ONE cnf source (facet vocabulary + the three gate flags)

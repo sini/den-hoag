@@ -20,6 +20,7 @@
   prelude,
   schema,
   errors,
+  registry,
 }:
 let
   # den-hoag's identity conventions: the shim routes a reference through den-hoag's OWN preimage helpers
@@ -324,6 +325,75 @@ let
     && v != { }
     && builtins.all (e: builtins.isAttrs e && e ? id_hash) (builtins.attrValues v);
 
+  # The fixed concern surface — every `den.*` key that is NOT a consumer-chosen instance-registry
+  # namespace. ONE copy, read by both the discovery inside `ingest` and the marker below.
+  concernKeys = [
+    "hosts"
+    "homes"
+    "schema"
+    "aspects"
+    "policies"
+    "classes"
+    "include"
+    "quirks"
+    "contentClass"
+    "default"
+  ];
+  # Candidate registry namespaces: `den.*` keys outside the fixed concern surface holding an instance
+  # registry (`_`-prefixed keys are den-internal, never a user surface).
+  candidateRegistryKeysOf =
+    v1Decls:
+    builtins.filter (
+      k:
+      (builtins.substring 0 1 k != "_")
+      && !(builtins.elem k concernKeys)
+      && isInstanceRegistry (v1Decls.${k} or null)
+    ) (builtins.attrNames v1Decls);
+
+  # `registryKindsOf v1Decls` — the OPTION-reflecting namespace→kind marker for the mkDen-DIRECT path,
+  # the twin of what the bridge computes and threads as `_registryKinds`.
+  #
+  # WHY IT EXISTS. The value-reflecting marker below (`instanceMatchesKind`) reflects an instance's
+  # PRESENT fields, so a kind carrying a derived/internal primitive over-includes it, the recompute
+  # misses, and the namespace resolves to NO kind — its registry silently reaches the fleet EMPTY. The
+  # bridge already avoids that by reflecting the DECLARED surface, which honours `internal`/`identity`.
+  # Without this, discovery is correct on the COMPAT surface and wrong on the KERNEL one: a native
+  # consumer that never touches the bridge gets the silent drop, a v1-compat consumer does not.
+  #
+  # WHY IT IS ACYCLIC. It reads the RAW v1 declarations only — `v1Decls.schema` and the instance
+  # namespaces — never `schemaDecls`, whose stamp-field options depend on `instanceKeyMap` and would
+  # close a loop through discovery. That is the same rule the `customKinds` derivation states.
+  #
+  # The kind values are DERIVED by gen-schema's own `mkSchemaOption`, never hand-shaped: the consumer's
+  # raw declarations carry its option modules, and processing them is what turns those into the
+  # `{ kind; options; }` value `identityHashForKind` reflects. `buildSchema`'s stripped kind values
+  # cannot serve here — they keep only `parent`, so option-level reflection would hash `name` alone.
+  registryKindsOf =
+    v1Decls:
+    let
+      rawSchema = v1Decls.schema or { };
+      processed =
+        (schema.evalModuleTree {
+          modules = [
+            { options.den.schema = schema.mkSchemaOption { }; }
+            { config.den.schema = rawSchema; }
+          ];
+        }).config.den.schema;
+      kindNames = builtins.filter (k: builtins.substring 0 1 k != "_") (builtins.attrNames rawSchema);
+      kindValues = prelude.genAttrs kindNames (k: processed.${k});
+      candidateKinds = builtins.filter (k: k != "host" && k != "user") kindNames;
+    in
+    prelude.filterAttrs (_: v: v != null) (
+      prelude.genAttrs (candidateRegistryKeysOf v1Decls) (
+        ns:
+        registry.registryKindOf {
+          instances = v1Decls.${ns};
+          inherit candidateKinds kindValues;
+          inherit (schema) identityHashForKind;
+        }
+      )
+    );
+
   # `resolveClass classRegistry policy name` — a class-name STRING → its registration entry; the string
   # does NOT survive (C6). An unknown name aborts named (the deliver-adjacent §2.3 error, reused for the
   # class row here). Curried so `compile` hands `deliver` (Task 2) a registry-closed resolver.
@@ -448,26 +518,7 @@ let
       # DO hold option-bearing kind-values.
       instanceMatchesKind =
         kind: inst: (inst.id_hash or null) != null && schema.identityHashFor kind inst == inst.id_hash;
-      # Candidate registry namespaces: `den.*` keys outside the fixed concern surface holding an instance
-      # registry (`_`-prefixed keys are den-internal, never a user surface).
-      concernKeys = [
-        "hosts"
-        "homes"
-        "schema"
-        "aspects"
-        "policies"
-        "classes"
-        "include"
-        "quirks"
-        "contentClass"
-        "default"
-      ];
-      candidateRegistryKeys = builtins.filter (
-        k:
-        (builtins.substring 0 1 k != "_")
-        && !(builtins.elem k concernKeys)
-        && isInstanceRegistry (v1Decls.${k} or null)
-      ) (builtins.attrNames v1Decls);
+      candidateRegistryKeys = candidateRegistryKeysOf v1Decls;
 
       # Derived from the v1-DECLARED kind names (identical set: `schemaDecls` only adds the host/user
       # built-ins), NOT from `schemaDecls` — schemaDecls now declares the stamp-field options, which
@@ -478,7 +529,7 @@ let
       # resolves a namespace the value-reflecting `identityHashFor` below MISSES (a derived/internal
       # primitive over-includes — cluster.sopsAgeRecipient). Absent on mkDen-direct fixtures (no bridge),
       # where the value-reflecting discovery rules — byte-identical to before.
-      registryKinds = v1Decls._registryKinds or { };
+      registryKinds = registryKindsOf v1Decls // (v1Decls._registryKinds or { });
       # kind → the registry namespace whose instances match it. The bridge's option-reflecting marker
       # WINS (robust against derived/internal primitives); else the value-reflecting id_hash marker; a
       # kind with neither falls back to its own name (`den.<kind>`, the pre-M1.5 singular convention) so
@@ -745,6 +796,8 @@ in
     buildRegistries
     buildMembership
     isInstanceRegistry
+    candidateRegistryKeysOf
+    registryKindsOf
     resolveClass
     aspectEntry
     classEntry

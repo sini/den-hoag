@@ -45,29 +45,30 @@ let
   #   sopsTag  the corpus `cluster.sopsAgeRecipient` twin: a derived/internal primitive whose VALUE is
   #            a string, so a value-reflecting recompute over-includes it while the carried id_hash —
   #            which `mkIdentityModule` stamped honouring `internal` — does not.
+  zoneKind = {
+    isEntity = true;
+    parent = null;
+    imports = [
+      (_: {
+        options.slots = lib.mkOption {
+          type = lib.types.int;
+          default = 0;
+        };
+        options.region = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+        };
+        options.sopsTag = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          internal = true;
+        };
+      })
+    ];
+  };
   zoneReg = registry.mkRegistry {
     kindName = "zone";
-    kind = {
-      isEntity = true;
-      parent = null;
-      imports = [
-        (_: {
-          options.slots = lib.mkOption {
-            type = lib.types.int;
-            default = 0;
-          };
-          options.region = lib.mkOption {
-            type = lib.types.str;
-            default = "";
-          };
-          options.sopsTag = lib.mkOption {
-            type = lib.types.str;
-            default = "";
-            internal = true;
-          };
-        })
-      ];
-    };
+    kind = zoneKind;
     namespace = "zones";
     instances.z1 = {
       slots = 3;
@@ -113,10 +114,27 @@ let
       }
     ]).den;
 
-  # End-to-end WITHOUT the marker map: ingest falls back to the VALUE-reflecting id_hash discovery,
-  # which MISSES (sopsTag over-includes) → `zones` maps to no kind → `registries.zone` stays EMPTY (the
-  # pre-fix behavior). `zones` rides `_declaredKeys` so strict surface-totality still passes.
-  withoutMarker =
+  # End-to-end on the mkDen-DIRECT path, with NO bridge and NO marker map — the kernel surface. ingest
+  # computes the option-reflecting marker itself from the consumer's own raw kind declaration, so the
+  # namespace resolves and the registry reaches the fleet. The value-reflecting fallback alone cannot:
+  # `sopsTag`'s value is a string, so it over-includes and misses the carried id_hash.
+  directPath =
+    (denCompat.mkDen [
+      {
+        config.den = {
+          schema.zone = zoneKind;
+          zones = zoneReg.instances;
+          _entityStamps.zones = zoneStamps;
+          _declaredKeys = [ "zones" ];
+        };
+      }
+    ]).den;
+
+  # The same direct path with the kind declared WITHOUT its options — only `parent`, the shape
+  # `buildSchema` keeps. Option-level reflection then has nothing to reflect and hashes `name` alone,
+  # so the namespace resolves to no kind and the registry stays EMPTY. This is the honest limit of the
+  # marker, and it is what the old `_registryKinds`-less arm was really pinning.
+  directPathOptionLess =
     (denCompat.mkDen [
       {
         config.den = {
@@ -180,9 +198,31 @@ in
         rootType = "zone";
       };
     };
-    # (c′) the value-reflecting fallback ALONE (no marker map) leaves the registry EMPTY — the gap.
-    test-registry-empty-without-marker = {
-      expr = builtins.attrNames (withoutMarker.registries.zone or { });
+    # (c′) THE KERNEL PATH. No bridge, no marker map: ingest derives the marker from the consumer's own
+    # raw kind declaration through gen-schema's `mkSchemaOption`, so a kind carrying a derived/internal
+    # primitive reaches the fleet here too. This pin REPLACES one asserting the registry stayed EMPTY —
+    # that pinned a GAP, not a design: discovery worked on the compat surface and silently dropped the
+    # registry on the kernel one, which is the inversion den-hoag exists to remove.
+    test-direct-path-resolves-without-bridge-marker = {
+      expr = {
+        names = builtins.attrNames (directPath.registries.zone or { });
+        region = (directPath.registries.zone.z1 or { }).region or null;
+        sopsTag = (directPath.registries.zone.z1 or { }).sopsTag or null;
+        rootType = (directPath.scopeRoots."zone:z1" or { }).type or null;
+      };
+      expected = {
+        names = [ "z1" ];
+        region = "west";
+        sopsTag = "computed-west";
+        rootType = "zone";
+      };
+    };
+    # (c″) THE LIMIT, pinned so (c′) cannot be read as "the marker always resolves": a kind declared
+    # with no options gives option-level reflection nothing to reflect, so the namespace matches no
+    # kind and the registry is empty. Without this, (c′) is satisfiable by a marker that answers
+    # every namespace.
+    test-direct-path-option-less-kind-stays-empty = {
+      expr = builtins.attrNames (directPathOptionLess.registries.zone or { });
       expected = [ ];
     };
     # (d) GENERICITY: `registryKindOf` resolves by the id_hash marker over the DISCOVERED candidate set
