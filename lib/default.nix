@@ -2398,6 +2398,38 @@ let
               { imports = c.raw; }
             else
               c.value;
+          # THE CLASS TERMINAL OWNS THE MEMBERS IT CONTRIBUTES (§4.4 face law). One per-entity instantiation
+          # declaration can reach this fold by TWO routes: the class terminal, which evaluates it WITH the
+          # terminal's own injections (the per-entity platform module and the node's containment content);
+          # and this parked-spawn arm, which recovers the same declaration and evaluates it again WITHOUT
+          # them. The spawn slices `classSubtreeAt` at the node the
+          # spec is PARKED AT, so when that node is the ATTACHING one (an environment attaching a host) the
+          # slice is the environment's own subtree while the placement carries the host's name — one node's
+          # content under another node's name. On this corpus that slice is empty, so the artifact presents as
+          # a missing platform rather than as wrong content; an environment with its own class content would
+          # instead have shipped that content AS the host. The mild presentation is luck, not a bound.
+          #
+          # So the arm does NOT emit into a member the terminal already contributes — it is not emitted and
+          # later dropped, which would restore precedence-by-ordering (whichever contribution the fold appends
+          # last winning) and would need the duplicate-member guard to stay quiet about a case it should catch.
+          #
+          # The test is STRUCTURAL — set membership on the terminal's own `[ family, member ]` placements —
+          # never a family NAME. The arm's design is that family/key/evaluator/class are DATA on the spec, so a
+          # name branch would reintroduce the per-tool code that design excludes; and the duplicates are not
+          # confined to one family (nixos, darwin AND droid entities all declare `instantiate`), so a
+          # family-named test would fix some and silently leave others. Members the terminal does NOT
+          # contribute keep their spawn: a family with no receiver row has no terminal contribution at all
+          # (a nix-on-droid host is that shape — the spawn is its ONLY producer), as do the per-host
+          # `colmenaModules` captures and the per-cluster manifest families.
+          terminalOwned = builtins.listToAttrs (
+            map (c: {
+              name = builtins.concatStringsSep "." c.at;
+              value = true;
+            }) contributions
+          );
+          unownedInstantiateContributions = builtins.filter (
+            c: !(terminalOwned ? ${builtins.concatStringsSep "." c.at})
+          ) instantiateContributions;
         in
         # GUARD: with no opt-ins AND no collector contributions the built-in fold is the corpus path. The guard
         # gates BOTH: a collectors-but-no-opt-ins fleet must take the all-arms branch, else its collector
@@ -2407,11 +2439,11 @@ let
         # branches stay byte-identical to their pre-arm form.
         if optIns == [ ] && collectorContributions == [ ] then
           prelude.foldl' (acc: c: familyMerge acc (edge.setAttrByPath c.at c.value)) emptyFamilies (
-            contributions ++ instantiateContributions
+            contributions ++ unownedInstantiateContributions
           )
         else
           prelude.foldl' (acc: c: familyMerge acc (edge.setAttrByPath c.at (placedValue c))) emptyFamilies (
-            contributions ++ optInContributions ++ collectorContributions ++ instantiateContributions
+            contributions ++ optInContributions ++ collectorContributions ++ unownedInstantiateContributions
           );
 
       # The built-in aliases (§4.4): each is the corresponding family projected off the root product
