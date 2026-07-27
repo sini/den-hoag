@@ -1,5 +1,5 @@
-# NON-HOST REGISTRY INGEST (user-delivery R3) — the OPTION-reflecting kind marker (registry.nix
-# `registryKindOf`/`identityKeysOf`) that lets a consumer-declared registry whose instances carry a
+# NON-HOST REGISTRY INGEST (user-delivery R3) — the OPTION-reflecting kind marker
+# (registry.nix `registryKindOf`) that lets a consumer-declared registry whose instances carry a
 # DERIVED/INTERNAL primitive reach the fleet as ROOT entities.
 #
 # THE GAP this closes (ground-truth: nix-config @ b0b20769, `den.clusters.axon`): ingest's custom-kind
@@ -9,17 +9,21 @@
 # string, `internal`) makes the recompute MISS the carried id_hash (which `mkIdentityModule` stamped
 # EXCLUDING the internal field). The namespace then matched NO kind → `customInstances`/
 # `registries.<kind>` stayed EMPTY → no env/cluster ROOT NODES → the staged env phase never ran. The
-# DECLARED option surface carries what the value cannot (`internal`/`identity` flags); the
-# OPTION-reflecting marker reflects the SAME primitive set `mkIdentityModule` hashed, so it resolves the
-# namespace the value-reflecting marker misses. Computed at the bridge (option surface), it rides to
-# ingest as `_registryKinds` and re-keys the passthrough stamps + builds the custom-kind registries.
+# kind's DECLARED surface carries what the value cannot (`internal`/`identity` flags), and gen-schema
+# reflects that surface itself in `identityHashForKind` — the same reflection `mkIdentityModule` runs
+# when it stamps. Recomputing through gen-schema's own export is what makes the marker resolve the
+# namespace the value-reflecting one misses, and it is why the recompute cannot disagree with the
+# stamp. Computed at the bridge, it rides to ingest as `_registryKinds` and re-keys the passthrough
+# stamps + builds the custom-kind registries.
 #
-# The `zone` kind reproduces the shape: `region` (a normal identity primitive) + `sopsTag` (a bare
-# primitive marked `internal` — the sopsAgeRecipient twin, isolating the identity-FLAG exclusion). The
-# suite pins: (a) `identityKeysOf` EXCLUDES the internal primitive; (b) the value-reflecting marker
-# MISSES while `registryKindOf` HITS; (c) end-to-end the marker-keyed registry reaches the fleet as a
-# root entity (name + `sha256("zone|name=<n>")` id_hash + the stamped fields), where the value-marker
-# fallback alone leaves it empty; (d) genericity — a kind name the shim never spells.
+# The `zone` kind reproduces the shape through a REAL `mkInstanceRegistry`, so the id_hash under test
+# is the one gen-schema stamped rather than one the fixture wrote for itself: `slots` (an identity
+# primitive) + `sopsTag` (marked `internal` — the sopsAgeRecipient twin, isolating the identity-FLAG
+# exclusion) + `region` (a nixpkgs-`str` field, excluded for the unrelated type-name reason, so the
+# two exclusions cannot stand in for one another). The suite pins: (a) the STAMP excludes the internal
+# primitive; (b) the value-reflecting marker MISSES while `registryKindOf` HITS; (c) end-to-end the
+# marker-keyed registry reaches the fleet as a root entity, where the value-marker fallback alone
+# leaves it empty; (d) genericity — a kind name the shim never spells.
 {
   lib,
   denCompat,
@@ -28,76 +32,72 @@
 }:
 let
   schema = denHoag.internal.schema;
-  # The carried id_hash `mkIdentityModule` stamps: over the IDENTITY primitives (region + the injected
-  # name), NEVER the internal `sopsTag`. `identityHashFor` over a name/region-only record reflects
-  # exactly those two primitives — the same content-address the option-reflecting marker must reproduce.
-  idFor = name: region: schema.identityHashFor "zone" { inherit name region; };
+  registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
 
-  # The consumer-declared registry — a PURE nixpkgs submodule (the shape a `mkInstanceRegistry` option
-  # presents to the bridge's `getSubOptions`): `region` (identity) + `sopsTag` (internal, materialized
-  # to a string, so `identityHashFor` over-includes it while `mkIdentityModule`/the carried hash do not).
-  zoneModule =
-    {
-      name,
-      config,
-      ...
-    }:
-    {
-      options.name = lib.mkOption {
-        type = lib.types.str;
-        default = name;
-      };
-      options.id_hash = lib.mkOption {
-        type = lib.types.str;
-        default = idFor name config.region;
-      };
-      options.region = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-      };
-      options.sopsTag = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        internal = true;
-      };
+  # The consumer-declared registry, built by gen-schema's OWN `mkInstanceRegistry` — the construction
+  # the corpus writes. The kind's options are authored with the consumer's nixpkgs `lib`, because that
+  # is how a consumer authors them; only the registry around them is gen-schema's.
+  #   slots    an identity primitive (`int` — the one spelling both engines share)
+  #   region   a `str` field, which under this gen-schema pin is NOT an identity key: the reflection
+  #            matches type NAMES and nixpkgs spells a string `str` where gen-types spells it
+  #            `string`. Kept nixpkgs-typed on purpose — gen-typing it would make this fixture pass by
+  #            ceasing to model the consumer.
+  #   sopsTag  the corpus `cluster.sopsAgeRecipient` twin: a derived/internal primitive whose VALUE is
+  #            a string, so a value-reflecting recompute over-includes it while the carried id_hash —
+  #            which `mkIdentityModule` stamped honouring `internal` — does not.
+  zoneReg = registry.mkRegistry {
+    kindName = "zone";
+    kind = {
+      isEntity = true;
+      parent = null;
+      imports = [
+        (_: {
+          options.slots = lib.mkOption {
+            type = lib.types.int;
+            default = 0;
+          };
+          options.region = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+          };
+          options.sopsTag = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            internal = true;
+          };
+        })
+      ];
     };
-  ev = lib.evalModules {
-    modules = [
-      {
-        options.den.zones = lib.mkOption {
-          default = { };
-          type = lib.types.attrsOf (lib.types.submoduleWith { modules = [ zoneModule ]; });
-        };
-      }
-      {
-        den.zones.z1 = {
-          region = "west";
-          sopsTag = "computed-west";
-        };
-      }
-    ];
+    namespace = "zones";
+    instances.z1 = {
+      slots = 3;
+      region = "west";
+      sopsTag = "computed-west";
+    };
   };
-  z1inst = ev.config.den.zones.z1;
+  z1inst = zoneReg.instances.z1;
 
-  # The instance option surface the bridge reads (`subOptionsOf` → `type.getSubOptions`).
-  zoneOpts = ev.options.den.zones.type.getSubOptions [
-    "den"
-    "zones"
-  ];
+  # The instance option surface the bridge reads (`subOptionsOf` → `type.getSubOptions`) — here it is
+  # a gen-merge type's, as it is in the consumer.
+  zoneOpts = zoneReg.subOptions;
   zoneTree = denCompat.registry.stampTreeOf zoneOpts;
-  zoneStamps = builtins.mapAttrs (_: e: denCompat.registry.stampOf zoneTree e) ev.config.den.zones;
+  zoneStamps = builtins.mapAttrs (_: e: denCompat.registry.stampOf zoneTree e) zoneReg.instances;
 
-  # The robust marker (option-reflecting) — the bridge computes exactly this per consumer namespace.
-  markerKind = denCompat.registry.registryKindOf {
-    opts = zoneOpts;
-    instances = ev.config.den.zones;
-    candidateKinds = [
-      "zone"
-      "host"
-      "user"
-    ];
-    inherit (schema) hashIdentity;
-  };
+  # The robust marker (option-reflecting) — the bridge computes exactly this per consumer namespace,
+  # recomputing through gen-schema's own `identityHashForKind` over the processed KIND VALUE.
+  markerOver =
+    candidateKinds:
+    denCompat.registry.registryKindOf {
+      inherit candidateKinds;
+      instances = zoneReg.instances;
+      kindValues.zone = zoneReg.kindValue;
+      inherit (schema) identityHashForKind;
+    };
+  markerKind = markerOver [
+    "zone"
+    "host"
+    "user"
+  ];
 
   # End-to-end WITH the bridge marker map (`_registryKinds`): the namespace re-keys to kind `zone` and
   # the registry reaches the fleet as a ROOT entity (parentless kind → a root scope kind).
@@ -106,7 +106,7 @@ let
       {
         config.den = {
           schema.zone.parent = null;
-          zones = ev.config.den.zones;
+          zones = zoneReg.instances;
           _entityStamps.zones = zoneStamps;
           _registryKinds.zones = "zone";
         };
@@ -121,7 +121,7 @@ let
       {
         config.den = {
           schema.zone.parent = null;
-          zones = ev.config.den.zones;
+          zones = zoneReg.instances;
           _entityStamps.zones = zoneStamps;
           _declaredKeys = [ "zones" ];
         };
@@ -130,14 +130,21 @@ let
 in
 {
   flake.tests.compat-registry-kind-marker = {
-    # (a) `identityKeysOf` reflects the primitive IDENTITY set `mkIdentityModule` hashes: `region` + the
-    # injected `name`, EXCLUDING the internal `sopsTag` (identity-flag exclusion) and `id_hash` itself.
-    test-identity-keys-exclude-internal = {
-      expr = denCompat.registry.identityKeysOf zoneOpts;
-      expected = [
-        "name"
-        "region"
-      ];
+    # (a) THE IDENTITY SET, read off the stamp gen-schema actually wrote: `slots` + the injected
+    # `name`, EXCLUDING the internal `sopsTag` (identity-flag exclusion) and `id_hash` itself. `region`
+    # is excluded too but for a DIFFERENT reason — the `str`/`string` type-name divergence — so the two
+    # exclusions are pinned apart rather than one standing in for the other.
+    test-identity-excludes-internal-primitive = {
+      expr = {
+        stamped = z1inst.id_hash;
+        overSlotsAndName = builtins.hashString "sha256" "zone|name=z1|slots=3";
+        withSopsTag = builtins.hashString "sha256" "zone|name=z1|slots=3|sopsTag=computed-west";
+      };
+      expected = {
+        stamped = builtins.hashString "sha256" "zone|name=z1|slots=3";
+        overSlotsAndName = builtins.hashString "sha256" "zone|name=z1|slots=3";
+        withSopsTag = builtins.hashString "sha256" "zone|name=z1|slots=3|sopsTag=computed-west";
+      };
     };
     # (b) THE MARKER DIVERGENCE: the value-reflecting `identityHashFor` MISSES (it hashes `sopsTag`,
     # which the carried id_hash excludes), while the option-reflecting `registryKindOf` HITS kind `zone`.
@@ -180,16 +187,11 @@ in
     # (d) GENERICITY: `registryKindOf` resolves by the id_hash marker over the DISCOVERED candidate set
     # — kind `zone` at namespace `zones`, a name the shim never spells, never a pluralization heuristic.
     test-genericity-marker-by-hash = {
-      expr = denCompat.registry.registryKindOf {
-        opts = zoneOpts;
-        instances = ev.config.den.zones;
-        candidateKinds = [
-          "widget"
-          "zone"
-          "gadget"
-        ];
-        inherit (schema) hashIdentity;
-      };
+      expr = markerOver [
+        "widget"
+        "zone"
+        "gadget"
+      ];
       expected = "zone";
     };
   };

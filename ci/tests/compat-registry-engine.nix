@@ -22,6 +22,7 @@
 #       passes against the exact regression it guards.
 {
   lib,
+  denCompat,
   denHoag,
   ...
 }:
@@ -29,6 +30,49 @@ let
   registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
   merge = denHoag.internal.merge;
   schema = denHoag.internal.schema;
+
+  # A kind authored the way a CONSUMER authors one — its own nixpkgs `lib` — carrying three fields
+  # that leave the identity set for three DIFFERENT reasons, so no one exclusion can stand in for
+  # another:
+  #   slots    nixpkgs `int`  → IN.  `int`/`bool` are named identically by both engines.
+  #   region   nixpkgs `str`  → OUT under this gen-schema pin, and this is the divergence: nixpkgs
+  #                            names a string `str`, gen-types names it `string`, and the reflection
+  #                            matches names. Kept nixpkgs-typed deliberately; gen-typing it would
+  #                            make the fixture pass by ceasing to model how a consumer writes kinds.
+  #   sopsTag  nixpkgs `str`, `internal` → OUT by FLAG. Its value is a string, so a VALUE-reflecting
+  #                            recompute over-includes it — the miss the option-level twin exists to
+  #                            avoid.
+  zoneReg = registry.mkRegistry {
+    kindName = "zone";
+    kind = {
+      isEntity = true;
+      parent = null;
+      imports = [
+        (_: {
+          options.slots = lib.mkOption {
+            type = lib.types.int;
+            default = 0;
+          };
+          options.region = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+          };
+          options.sopsTag = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            internal = true;
+          };
+        })
+      ];
+    };
+    namespace = "zones";
+    instances.z1 = {
+      slots = 7;
+      region = "west";
+      sopsTag = "computed-west";
+    };
+  };
+  z1 = zoneReg.instances.z1;
 
   widgetReg = registry.mkRegistry {
     kindName = "widget";
@@ -138,6 +182,73 @@ in
         internalMerge = [ "y" ];
         schemaTypes = [ "y" ];
         throughAttrsOf = [ "y" ];
+      };
+    };
+    # (c) THE REFLECTION DRIFT GUARD. gen-schema stamps `id_hash` from `mkIdentityModule`'s reflection
+    # and exposes `identityHashForKind` as its option-level twin, and the twin's own comment says it
+    # "can drift from neither". They are two SEPARATE hardcoded primitive-type-name lists, and they
+    # have been unequal at other revs — so the claim is enforced here rather than trusted. This is the
+    # property `registryKindOf` now rests on: recompute must equal the stamp, on a kind whose fields
+    # are authored with nixpkgs types. If a gen-schema bump moves one list without the other, this
+    # goes red and names the reason instead of silently reintroducing a marker miss.
+    test-identity-reflection-agrees-with-the-stamp = {
+      expr = {
+        recomputeMatchesStamp = schema.identityHashForKind zoneReg.kindValue z1 == z1.id_hash;
+        # The stamp's CONTENTS, not merely that the two agree — `slots` in, `region` and `sopsTag`
+        # out. Pinning the content-address is what makes a drift visible: if a gen-schema bump gives
+        # `mkIdentityModule` the nixpkgs spelling, `region` enters the stamp, this pin goes red, and
+        # `recomputeMatchesStamp` goes red beside it because the twin's own list did not move.
+        stamped = z1.id_hash;
+        # a VALUE-reflecting recompute over-includes both strings and therefore MISSES — the reason
+        # the marker reads the kind's declared surface rather than the instance's fields.
+        valueReflectionMisses = schema.identityHashFor "zone" z1 != z1.id_hash;
+      };
+      expected = {
+        recomputeMatchesStamp = true;
+        stamped = builtins.hashString "sha256" "zone|name=z1|slots=7";
+        valueReflectionMisses = true;
+      };
+    };
+    # (c′) THE WRONG-KIND CONTROL, and it is what makes (c) mean anything. A recompute that always
+    # matched would satisfy (c) and would classify every namespace as every kind. The same instance
+    # against a kind value carrying a different `kind` must MISS, so the marker's discrimination is
+    # pinned rather than its success.
+    test-marker-rejects-a-wrong-kind = {
+      expr = {
+        rightKind = denCompat.registry.registryKindOf {
+          instances = zoneReg.instances;
+          candidateKinds = [
+            "widget"
+            "zone"
+            "gadget"
+          ];
+          kindValues.zone = zoneReg.kindValue;
+          inherit (schema) identityHashForKind;
+        };
+        # the true kind is absent from the candidate set ⇒ no candidate can reproduce the hash
+        wrongCandidatesOnly = denCompat.registry.registryKindOf {
+          instances = zoneReg.instances;
+          candidateKinds = [
+            "widget"
+            "gadget"
+          ];
+          kindValues.widget = zoneReg.kindValue // {
+            kind = "widget";
+          };
+          inherit (schema) identityHashForKind;
+        };
+        # an empty namespace has no instance to reflect
+        emptyNamespace = denCompat.registry.registryKindOf {
+          instances = { };
+          candidateKinds = [ "zone" ];
+          kindValues.zone = zoneReg.kindValue;
+          inherit (schema) identityHashForKind;
+        };
+      };
+      expected = {
+        rightKind = "zone";
+        wrongCandidatesOnly = null;
+        emptyNamespace = null;
       };
     };
   };

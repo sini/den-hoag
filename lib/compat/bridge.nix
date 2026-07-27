@@ -316,10 +316,12 @@ let
     lib.genAttrs consumerRegistryKeys (
       k:
       compat.registry.registryKindOf {
-        opts = subOptionsOf k;
         instances = config.den.${k};
         candidateKinds = customKindNames;
-        inherit (schema) hashIdentity;
+        # the PROCESSED kind values the candidate names index — the same surface the consumer's own
+        # `mkInstanceRegistry` was handed, so the recompute reflects what the stamp reflected.
+        kindValues = lib.genAttrs customKindNames (n: config.den.schema.${n});
+        inherit (schema) identityHashForKind;
       }
     )
   );
