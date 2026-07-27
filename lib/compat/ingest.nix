@@ -383,16 +383,12 @@ let
       kindValues = prelude.genAttrs kindNames (k: processed.${k});
       candidateKinds = builtins.filter (k: k != "host" && k != "user") kindNames;
     in
-    prelude.filterAttrs (_: v: v != null) (
-      prelude.genAttrs (candidateRegistryKeysOf v1Decls) (
-        ns:
-        registry.registryKindOf {
-          instances = v1Decls.${ns};
-          inherit candidateKinds kindValues;
-          inherit (schema) identityHashForKind;
-        }
-      )
-    );
+    registry.registryKindsFor {
+      registryKeys = candidateRegistryKeysOf v1Decls;
+      instancesOf = ns: v1Decls.${ns};
+      inherit candidateKinds kindValues;
+      inherit (schema) identityHashForKind;
+    };
 
   # `resolveClass classRegistry policy name` — a class-name STRING → its registration entry; the string
   # does NOT survive (C6). An unknown name aborts named (the deliver-adjacent §2.3 error, reused for the

@@ -381,6 +381,38 @@ let
       in
       if hits == [ ] then null else builtins.head hits;
 
+  # `registryKindsFor { registryKeys; instancesOf; candidateKinds; kindValues; identityHashForKind; }` —
+  # the whole namespace→kind MAP, one entry per registry key, unresolved keys dropped. The two producers
+  # of this map (the bridge's flake-parts option surface and ingest's raw-declaration surface) derive
+  # their inputs differently and must not derive the FOLD differently: two spellings of one fold is the
+  # shape that has drifted apart before in this codebase, and a fold written per-key is one careless
+  # hoist away from answering with a single kind for every namespace — invisible to any fleet carrying
+  # only one registry, which is every fleet but the consumer's.
+  #
+  # THE INVARIANT THIS EXISTS TO MAKE CHECKABLE IN ONE PLACE: kind resolution is a BIJECTION over the
+  # registry keys. Each key resolves to the kind its OWN instances were stamped by, independently of
+  # every other key — so the map's values are pairwise distinct, and no key's answer can be reused for
+  # another. `instancesOf` is taken as a function rather than an attrset because the two call sites read
+  # their instances off different surfaces (`config.den.<k>` vs `v1Decls.<k>`).
+  registryKindsFor =
+    {
+      registryKeys,
+      instancesOf,
+      candidateKinds,
+      kindValues,
+      identityHashForKind,
+    }:
+    builtins.foldl' (
+      acc: k:
+      let
+        kind = registryKindOf {
+          instances = instancesOf k;
+          inherit candidateKinds kindValues identityHashForKind;
+        };
+      in
+      if kind == null then acc else acc // { ${k} = kind; }
+    ) { } registryKeys;
+
   # The host registry's declared option surface, probe-eval'd ONCE per fleet (no authored config;
   # only `.options` is walked — option defaults and config are never forced). Feeds `stampTreeOf`:
   # the shim OWNS this registry's declaration, so its option records come from the same modules that
@@ -497,6 +529,7 @@ in
     rawStampTreeOf
     stampOf
     registryKindOf
+    registryKindsFor
     hostInstanceOptions
     flattenRegistry
     mkHostsOption

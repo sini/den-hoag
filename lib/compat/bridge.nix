@@ -312,19 +312,18 @@ let
   customKindNames = builtins.filter (k: k != "host" && k != "user") (
     builtins.attrNames (config.den.schema.__rawSchema or { })
   );
-  registryKinds = lib.filterAttrs (_: v: v != null) (
-    lib.genAttrs consumerRegistryKeys (
-      k:
-      compat.registry.registryKindOf {
-        instances = config.den.${k};
-        candidateKinds = customKindNames;
-        # the PROCESSED kind values the candidate names index — the same surface the consumer's own
-        # `mkInstanceRegistry` was handed, so the recompute reflects what the stamp reflected.
-        kindValues = lib.genAttrs customKindNames (n: config.den.schema.${n});
-        inherit (schema) identityHashForKind;
-      }
-    )
-  );
+  # The map is folded by `registry.registryKindsFor`, shared with the mkDen-direct twin
+  # (`ingest.registryKindsOf`) — the two paths derive their INPUTS from different surfaces and must not
+  # derive the fold twice. The kind values are the PROCESSED ones the candidate names index — the same
+  # surface the consumer's own `mkInstanceRegistry` was handed, so the recompute reflects what the stamp
+  # reflected.
+  registryKinds = compat.registry.registryKindsFor {
+    registryKeys = consumerRegistryKeys;
+    instancesOf = k: config.den.${k};
+    candidateKinds = customKindNames;
+    kindValues = lib.genAttrs customKindNames (n: config.den.schema.${n});
+    inherit (schema) identityHashForKind;
+  };
   # The value-less stratum probe (concern-policies) produces every corpus policy against a sentinel entity
   # that lacks real field values. A corpus policy PREDICATE reading a bare `host.settings.<…>` attrpath
   # (nixpkgs-overlays' un-`or`'d `.core.users.home-manager.useGlobalPkgs`) then throws `attribute 'settings'
