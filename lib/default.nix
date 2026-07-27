@@ -2172,6 +2172,28 @@ let
               value = { };
             }) families
           );
+          entryOf = memberId: (structural.eval.node memberId).decls.__entry or null;
+          # `intoAttr` — the entity's DECLARED flake attr path for its named result. An entity that
+          # exists only INSIDE another one (a microvm guest delivered into its host, and any future
+          # embedded shape) declares the empty path to say it has no standalone output; the class-derived
+          # default (`[ "<family>" <name> ]`) is non-empty, so every ordinary entity is unaffected.
+          #
+          # The gate belongs HERE, on the placement, and nowhere else. A host materialises by REGISTRY
+          # ENUMERATION → scope root → class terminal, never by activation, so nothing upstream of this
+          # fold ever asks whether the entity wanted a named result — it is emitted because it EXISTS.
+          # Gating the build instead would be wrong twice over: the artifact is still needed (the
+          # embedding entity delivers it), and `intoAttr` says nothing about whether to build, only about
+          # where the result LANDS. An empty path has nowhere to land.
+          #
+          # Read off the entity's own entry, never a name list: the opt-out is a declaration, and a fix
+          # keyed on which entities happen to use it today would not survive the next one. An entity
+          # whose kind does not declare `intoAttr` at all is unaffected — absence is not opt-out.
+          emitsNamedResult =
+            memberId:
+            let
+              entry = entryOf memberId;
+            in
+            entry == null || !(entry ? intoAttr) || entry.intoAttr != [ ];
           # one value-mode contribution per (family, member): the built artifact nested into the root through
           # the resolved family row. The contribution's `at` is `[ <family> <entityName> ]` (the family row's
           # placement); `value` is the built artifact (carried verbatim — the value arm never forces it).
@@ -2189,7 +2211,7 @@ let
             map (
               memberId:
               let
-                entry = (structural.eval.node memberId).decls.__entry or null;
+                entry = entryOf memberId;
                 entityName = if entry != null then entry.name else memberId;
               in
               nestLib.executeNest {
@@ -2207,7 +2229,7 @@ let
                   name = entityName;
                 };
               }
-            ) (builtins.attrNames (output.systems.${class} or { }))
+            ) (builtins.filter emitsNamedResult (builtins.attrNames (output.systems.${class} or { })))
           ) families;
           # ── the opt-in family mount (§4.4/§7): each opted-in entity BUILT through its family's render
           # (ARTIFACT-mode executeNest — the render evaluator is the sole forcing boundary), keyed by entity
