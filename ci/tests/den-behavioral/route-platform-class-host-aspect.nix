@@ -21,6 +21,7 @@
 # homeLinux/homeDarwin → homeManager per host platform; gpg's pinentry
 # moved into homeLinux and vanished from every generation.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -31,6 +32,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

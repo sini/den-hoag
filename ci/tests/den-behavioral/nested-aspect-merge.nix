@@ -3,6 +3,7 @@
 # scaffold; the `den.*` declarations + the assertion are BYTE-IDENTICAL to v1. Concern: `include` (nested
 # aspect keys with multiple definitions should merge — collect all class modules — not last-win overwrite).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

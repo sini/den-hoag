@@ -21,6 +21,7 @@
   ...
 }:
 let
+  registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
   mkCrossNixos =
     npkgs:
     (import "${denHoagSrc}/lib/output/terminal.nix" {
@@ -125,21 +126,31 @@ let
   rawRack = ev.config.den.schema.__rawSchema.rack or { };
   widgetKv = ev.config.den.schema.widget;
   widgetKvSevered = evSevered.config.den.schema.widget;
-  # Mount the kind-value as a module exactly as the corpus's gen-schema mkInstanceType does (imports = [ kv ]),
-  # in a NIXPKGS evalModules — the option-crossing that threw `deprecationMessage missing` before.
-  widgetMounted = lib.evalModules { modules = [ widgetKv ]; };
+  # Mount a kind-value the way the corpus mounts it — as an INSTANCE of gen-schema's own
+  # `mkInstanceRegistry` over that kind value, declared inside a nixpkgs evalModules. This is the
+  # option-crossing that threw `deprecationMessage missing`: the kind's raw nixpkgs option enters a
+  # gen-merge submodule (`mkInstanceType`) which is itself mounted in nixpkgs' module system.
+  mounted =
+    kindValue: defs:
+    let
+      reg = registry.mkRegistry {
+        inherit kindValue;
+        namespace = "instances";
+        instances.i = defs;
+      };
+    in
+    {
+      config = reg.instances.i;
+      options = reg.subOptions;
+    };
+  widgetMounted = mounted widgetKv { };
 
   # ── u8 path 1: METHODS re-injection through the belt ────────────────────────────────────────────────
   greeterKv = ev.config.den.schema.greeter;
-  # Mount the greeter instance (NIXPKGS evalModules, as the corpus's mkInstanceType does): the re-injected
-  # methods module must cross the strict eval and compute `greet` from the instance's OWN `who` field.
-  greeterMounted = lib.evalModules { modules = [ greeterKv ]; };
-  greeterMountedOverride = lib.evalModules {
-    modules = [
-      greeterKv
-      { who = "moon"; }
-    ];
-  };
+  # Mount the greeter instance the corpus's way (a `mkInstanceRegistry` entry): the re-injected methods
+  # module must cross the strict instance eval and compute `greet` from the instance's OWN `who` field.
+  greeterMounted = mounted greeterKv { };
+  greeterMountedOverride = mounted greeterKv { who = "moon"; };
   # NO-METHODS byte-identity: widget declares no methods ⇒ its `__functor` imports = `rawImportsOf` ALONE
   # (no methods module appended); greeter declares one method ⇒ exactly ONE extra import (the methods module).
   widgetFunctorImports = (widgetKv.__functor null null).imports;
@@ -147,15 +158,7 @@ let
   # readOnly posture: a method option is readOnly, so a consumer def colliding with the method name is
   # REJECTED by the module system (two definitions of a read-only option).
   greeterCollision = builtins.tryEval (
-    let
-      e = lib.evalModules {
-        modules = [
-          greeterKv
-          { greet = _: "override"; }
-        ];
-      };
-    in
-    builtins.seq (e.config.greet) true
+    builtins.seq (mounted greeterKv { greet = _: "override"; }).config.greet true
   );
 in
 {

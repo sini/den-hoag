@@ -13,6 +13,7 @@
 # `working` pair). Both must pass: an include on host X delivers the aspect to X
 # even when a sibling Y excludes it.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -23,6 +24,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

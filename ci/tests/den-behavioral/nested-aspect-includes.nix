@@ -6,6 +6,7 @@
 # the v1 source (its own header cites a placeholder `issues/XXX`), so the deadbug-origin suffix
 # (migration rule 2) uses the source file's own basename: `-regression-nested-aspect-includes`.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -16,6 +17,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

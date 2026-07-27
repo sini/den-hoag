@@ -3,6 +3,7 @@
 # `den.*` declarations + the assertion are BYTE-IDENTICAL to v1. Concern: `aspects-core` (bare-fleet
 # `den.aspects` default shape).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

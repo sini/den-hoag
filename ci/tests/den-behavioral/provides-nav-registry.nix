@@ -11,6 +11,7 @@
 # `==` throws on functions — the shared-handle claim (D4) is witnessed via the comparable `mutual-provider`
 # member (aliasMutualEq) plus both aliases carrying `forward`.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -21,6 +22,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

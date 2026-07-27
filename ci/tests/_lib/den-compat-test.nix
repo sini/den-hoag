@@ -33,6 +33,7 @@
 #     no option). ENVIRONMENTAL, not a path bug — a test forcing them throws in-CI. Left lazy so a
 #     nixos-only test never trips them.
 {
+  denHoag,
   denHoagFlakeModule,
   flakeParts,
   homeManagerModule,
@@ -41,6 +42,7 @@
 }:
 let
   lib = nixpkgsLib;
+  registry = import ./instance-registry.nix { inherit denHoag lib; };
 
   # den v1 denTest defaults (nix/denTest.nix:107-111) + `den.nixpkgs` so the bridge crosses to a REAL NixOS
   # system (its `crossNixos` fold, ship-gate M1) instead of the nixpkgs-free `collect`. `mkDefault` keeps
@@ -92,13 +94,29 @@ let
   # (so compile's surface-totality accepts `den.environments` — an undeclared key is rejected) and seeds an
   # empty `prod` env. The enrich then binds `environment = {}` at hosts, inert for a nixos-only witness; a
   # migrated test may add its own environments (they merge over this).
+  #
+  # The declaration goes through gen-schema's OWN `mkInstanceRegistry`, as the corpus writes it
+  # (`options.den.environments = schemaLib.mkInstanceRegistry den.schema.environment`). A hand-rolled
+  # `lazyAttrsOf anything` here has an EMPTY `getSubOptions` — the very surface the bridge reads to classify
+  # a consumer-declared registry — so every fixture downstream of this scaffold would be modelling a
+  # registry shape the consumer never declares. The kind carries `domain` because gen-schema's strict arm
+  # needs a declared surface to check against: a kind with NO declared option reports the INSTANCE name as
+  # the undeclared key (`STRICT MODE: "prod" is not declared on environment`).
+  envKind = registry.kindValueOf "environment" {
+    isEntity = true;
+    imports = [
+      (_: {
+        options.domain = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+        };
+      })
+    ];
+  };
   envSeedModule =
     { lib, ... }:
     {
-      options.den.environments = lib.mkOption {
-        type = lib.types.lazyAttrsOf lib.types.anything;
-        default = { };
-      };
+      options.den.environments = registry.mkInstanceRegistry envKind { };
       config.den.environments.prod = lib.mkDefault { };
     };
 

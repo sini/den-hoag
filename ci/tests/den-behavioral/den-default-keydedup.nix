@@ -11,6 +11,7 @@
 # so the fleet declares `den.schema.user.parent = "host"` explicitly (a root user would not fold into the
 # host's assembly and no double would arise).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -21,6 +22,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

@@ -4,6 +4,7 @@
 # aspect's OWN `includes` list is itself parametric — the nested include binds `{ user, ... }` just like
 # the outer one binds `{ host, ... }`).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -14,6 +15,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

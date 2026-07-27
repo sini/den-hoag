@@ -5,6 +5,7 @@
 # spliced by the scaffold). Concern: `aspects-core` (a bare-function aspect merged with a static-attrset
 # aspect at the same key). Test key suffixed `-regression-408` per the deadbug-origin convention.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -15,6 +16,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

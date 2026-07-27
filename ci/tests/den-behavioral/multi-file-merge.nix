@@ -11,6 +11,7 @@
 # the v1 `aspectsType` semantics these deadbugs pin. All-ATTRSET merges (no fn-vs-attrset collision), so they
 # also exercise the scaffold's intersectAttrs partial-matching on the attrset `expr`/`expected`.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -21,6 +22,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

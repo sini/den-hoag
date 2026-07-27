@@ -13,12 +13,14 @@
 #       still-unbound key, deferred #49) DROPS inert via the gate miss (no accessGroups bound; the v1
 #       ride-raw is dissolved).
 {
+  lib,
   denHoag,
   denCompat,
   denHoagSrc,
   ...
 }:
 let
+  registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
   I = denHoag.internal;
   inherit (I)
     structural
@@ -31,21 +33,33 @@ let
     declare = denHoag.declare;
   };
 
-  # Synthetic registries in the shape the bridge ingests: `config.den.environments` (name-stamped entities,
-  # v1 mkInstanceRegistry) + `config.den.secretsConfig` (a declared non-kind namespace).
-  prodEnv = {
-    id_hash = "env-prod";
-    name = "prod";
-    domain = "example.test";
+  # The registries the bridge ingests: `config.den.environments`, built by gen-schema's OWN
+  # `mkInstanceRegistry` exactly as a consumer declares it, so the entries carry the identity module's
+  # `name`/`id_hash` rather than hand-written stand-ins and the enrich binds what the corpus binds.
+  # `config.den.secretsConfig` beside it is a declared NON-kind namespace and stays a plain attrset —
+  # there is no kind to build a registry from, and inventing one would model something the corpus lacks.
+  envReg = registry.mkRegistry {
+    kindName = "environment";
+    kind = {
+      isEntity = true;
+      parent = null;
+      imports = [
+        (_: {
+          options.domain = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+          };
+        })
+      ];
+    };
+    namespace = "environments";
+    instances = {
+      prod.domain = "example.test";
+      dev = { };
+    };
   };
-  devEnv = {
-    id_hash = "env-dev";
-    name = "dev";
-  };
-  envs = {
-    prod = prodEnv;
-    dev = devEnv;
-  };
+  envs = envReg.instances;
+  prodEnv = envs.prod;
   secretsConfig = {
     masterIdentities = [ "/pub/master.pub" ];
   };

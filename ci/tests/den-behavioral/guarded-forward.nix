@@ -4,6 +4,7 @@
 # a bool guard `{ options }: options ? impermanence` (option-existence, delivers nothing when absent) and a
 # fn guard `{ config }: _: lib.mkIf …` (item-applied, config-reading). All STATIC-each.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -14,6 +15,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

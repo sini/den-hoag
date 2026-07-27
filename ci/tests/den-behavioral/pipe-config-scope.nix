@@ -3,6 +3,7 @@
 # scaffold; the `den.*` declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `pipe`
 # (producer-class resolution for the DEFERRED `__configThunk` path — `den.lib.policy.pipe` is forwarded).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

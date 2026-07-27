@@ -17,6 +17,7 @@
 # `path` was read — so content landed at the class root instead of nesting.
 # Fixed by accepting `intoPath` as the public alias for `path`.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -27,6 +28,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

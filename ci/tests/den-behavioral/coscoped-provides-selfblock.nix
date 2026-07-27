@@ -10,6 +10,7 @@
 # distinguishes an `_onlyCless` key (held solely by `__contentless` stub nodes) and lets the co-scoped
 # carrier past the seen-guard exactly once, dropping the spent stub before the first-wins dedup ⇒ `"x"`.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -20,6 +21,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

@@ -4,6 +4,7 @@
 # with `adaptArgs`+`path` and no source modules — the `ensureEntry` placeholder must be an attrset, not a
 # function).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -14,6 +15,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

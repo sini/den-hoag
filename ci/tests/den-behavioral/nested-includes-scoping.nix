@@ -7,6 +7,7 @@
 # deadbug-origin suffix (migration rule 2) uses the source file's own basename:
 # `-regression-nested-includes-scoping`.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -17,6 +18,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

@@ -5,6 +5,7 @@
 # ALL FOUR cases empirically diverge/block on den-hoag; none currently executable. Left in place,
 # commented, per the parking rule (never altered to route around the gap).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -15,6 +16,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

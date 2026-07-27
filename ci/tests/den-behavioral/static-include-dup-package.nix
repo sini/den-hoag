@@ -3,6 +3,7 @@
 # scaffold; the `den.*` declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `include` (static
 # vs bare-function includes at default/host/user scope, package-valued options — forwarded public surface).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

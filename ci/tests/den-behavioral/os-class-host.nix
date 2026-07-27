@@ -5,6 +5,7 @@
 # `os.networking.hostName` forwards through the os-class battery to the host's REAL nixos config (crossed
 # via the scaffold's crossNixos terminal — `igloo = result.nixosConfigurations.igloo.config`).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -15,6 +16,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

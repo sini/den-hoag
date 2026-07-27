@@ -6,34 +6,80 @@
 # discovered instances (not the singular fallback) are ingested; and that strict surface-totality still
 # aborts a genuine typo (R9).
 #
-# FORMULA CANARY: the fixture stamps `id_hash` with the DOCUMENTED formula (`rackHash`, computed inline);
-# the ingest's discovery recomputes it through OUR gen-schema's `identityHashFor`. If our gen-schema's
-# derivation ever drifted from the documented `<kind>|<sorted primitive field=value>`, the two would
-# mismatch → `rackFarm` matches no kind → `test-discovery-nonpluralized` FAILS in-repo (loud, before any
-# corpus run). The corpus side is re-proven by every ship-gate probe (discovery working on real
-# corpus-gen-schema instances proves that pin agrees with ours today).
-{ lib, denCompat, ... }:
+# FORMULA CANARY: the registry's `id_hash` is stamped by gen-schema's own `mkIdentityModule`; the ingest's
+# discovery recomputes it through `identityHashFor`, and the suite pins BOTH against the DOCUMENTED formula
+# literal (`rackHash`). If either derivation ever drifted from `<kind>|<sorted primitive field=value>`, the
+# stamp and the literal diverge → `rackFarm` matches no kind → `test-discovery-nonpluralized` FAILS in-repo
+# (loud, before any corpus run). The corpus side is re-proven by every ship-gate probe (discovery working on
+# real corpus-gen-schema instances proves that pin agrees with ours today).
+{
+  lib,
+  denCompat,
+  denHoag,
+  ...
+}:
 let
+  registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
   throws = e: !(builtins.tryEval (builtins.deepSeq e true)).success;
-  # A `rack` kind whose instances live at the CHOSEN key `rackFarm` (not `racks`, not `rack`). `rackHash` is
-  # the FORMULA CANARY: the PINNED id_hash literal gen-schema's `identityHashFor "rack" { name="r1"; slots=12; }`
-  # must reproduce (the documented `<kind>|<sorted primitive field=value>` content-address). The discovery
-  # (ingest → `schema.identityHashFor`) matches against it, so if OUR gen-schema's derivation ever drifts from
-  # this literal, `test-discovery-nonpluralized` FAILS in-repo — before any corpus run. Regenerate with
+  # A `rack` kind whose instances live at the CHOSEN key `rackFarm` (not `racks`, not `rack`). The kind's
+  # own options are nixpkgs-typed because that is how a consumer authors them (`den.schema.<kind>.imports`
+  # carrying its own `lib.mkOption`); the REGISTRY around them is gen-schema's.
+  rackKind = {
+    isEntity = true;
+    parent = null;
+    imports = [
+      (_: {
+        options.slots = lib.mkOption {
+          type = lib.types.int;
+          default = 0;
+        };
+      })
+    ];
+  };
+  # `rackHash` is the FORMULA CANARY: the PINNED id_hash literal the documented
+  # `<kind>|<sorted primitive field=value>` content-address produces for this instance. gen-schema's
+  # `mkIdentityModule` stamps the registry entry and `identityHashFor` recomputes it at discovery — both
+  # are pinned against this literal below. Regenerate with
   # `nix eval --expr 'builtins.hashString "sha256" "rack|name=r1|slots=12"'` if the fixture's fields change.
   rackHash = "f25f73d7b74fa093bfe797d8fa7393952699b3fd60d76af714940a7612a62906";
+  # The registry the consumer declares — gen-schema's `mkInstanceRegistry`, so the instances carry the
+  # identity module's own stamp rather than a hand-written `id_hash`, and the discovery marker reads a
+  # surface gen-schema produced.
+  rackReg = registry.mkRegistry {
+    kindName = "rack";
+    kind = rackKind;
+    namespace = "rackFarm";
+    instances.r1.slots = 12;
+  };
   fixture = {
-    schema.rack.parent = null;
-    rackFarm.r1 = {
-      name = "r1";
-      slots = 12;
-      id_hash = rackHash;
-    };
+    schema.rack = rackKind;
+    rackFarm = rackReg.instances;
   };
   ing = denCompat.ingest.ingest fixture;
 in
 {
   flake.tests.compat-custom-kind = {
+    # THE CANARY, both halves: gen-schema's `mkIdentityModule` STAMPED the registry entry with the
+    # documented content-address, and the instance's declared surface is the one `mkInstanceType` builds
+    # (the injected `name`/`id_hash`/`_identity` beside the kind's own `slots`) — contents pinned, not
+    # membership, so a surface that lost a field cannot pass.
+    test-identity-stamped-by-gen-schema = {
+      expr = {
+        stamped = rackReg.instances.r1.id_hash;
+        documented = builtins.hashString "sha256" "rack|name=r1|slots=12";
+        surface = builtins.attrNames rackReg.subOptions;
+      };
+      expected = {
+        stamped = rackHash;
+        documented = rackHash;
+        surface = [
+          "_identity"
+          "id_hash"
+          "name"
+          "slots"
+        ];
+      };
+    };
     # MARKER discovery: kind `rack` resolves to the arbitrary key `rackFarm` (name-agnostic — proving the
     # discovery is by id_hash, not by a `rack` → `racks`/`rackFarm` name heuristic).
     test-discovery-nonpluralized = {
@@ -61,7 +107,7 @@ in
     test-totality-aborts-typo = {
       expr = throws (
         denCompat.compile {
-          schema.rack.parent = null;
+          schema.rack = rackKind;
           hots.box1 = { };
         }
       );
@@ -73,7 +119,7 @@ in
     test-totality-accepts-reserved-keys = {
       expr = throws (
         denCompat.compile {
-          schema.rack.parent = null;
+          schema.rack = rackKind;
           reservedKeys = [ "settings" ];
         }
       );

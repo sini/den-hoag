@@ -3,6 +3,7 @@
 # declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `pipe` (`pipe.expose` — upward scope
 # flow from child to parent — `den.lib.policy.pipe` is forwarded).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

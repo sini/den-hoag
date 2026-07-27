@@ -3,6 +3,7 @@
 # declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `policy` (den.policies + policy.include
 # as a den.default.includes target; coexistence with a plain den.default include).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

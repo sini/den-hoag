@@ -3,6 +3,7 @@
 # declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `route` (`policy.route` — Tier 1 class
 # delivery — forwarded public-api).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

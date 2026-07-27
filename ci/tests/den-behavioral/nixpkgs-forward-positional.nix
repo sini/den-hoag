@@ -7,6 +7,7 @@
 # `den.aspects.tux.provides.igloo` overlay→pkgs reroute) never witnessed together in den-hoag. Concern:
 # `den.provides.forward` (positional-ctx include + mutual-provider include, overlay→pkgs reroute).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -17,6 +18,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

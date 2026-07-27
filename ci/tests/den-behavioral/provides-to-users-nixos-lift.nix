@@ -10,6 +10,7 @@
 # evicts the content carrier ⇒ the content delivers. Contrast `provides-to-users-fn-facet.nix` (content on a
 # SEPARATELY-keyed included aspect — a shape that already greened, never hit this collision).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -20,6 +21,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

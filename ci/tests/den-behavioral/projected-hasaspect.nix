@@ -5,6 +5,7 @@
 # den-hoag's `hasAspect` is UNIFIED: provides fold into the node, and there is no registry-side `.hasAspect`
 # accessor by design (v1's two-resolve registry/in-context split is deliberately not reproduced).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -15,6 +16,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

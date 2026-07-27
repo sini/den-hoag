@@ -3,6 +3,7 @@
 # variant). Migrated by copy + arg-rename onto the `_lib/den-compat-test.nix` scaffold. Concern:
 # `nested-aspects` (a parametric parent aspect unconditionally includes its own `provides.sub`).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

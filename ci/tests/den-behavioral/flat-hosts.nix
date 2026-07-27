@@ -3,6 +3,7 @@
 # `den.*` declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `aspects-core` (den.hosts
 # flat/by-name addressing — the bridge's `flattenHosts` two-level fold, ci/tests/compat-flat-host.nix).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

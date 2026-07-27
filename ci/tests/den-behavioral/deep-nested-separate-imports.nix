@@ -4,6 +4,7 @@
 # (a nested `den.aspects` path split across a module `imports` entry and a plain top-level def — a shallow
 # `//` would clobber one side; v1's `aspectContentType` deep-merge keeps both).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -14,6 +15,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

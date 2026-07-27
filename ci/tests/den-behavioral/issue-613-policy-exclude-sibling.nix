@@ -10,6 +10,7 @@
 # (entity-scoped + schema-broadcast), so the fleet-wide leak is gone while
 # schema-tier (den.schema.KIND.excludes) excludes still broadcast.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -20,6 +21,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

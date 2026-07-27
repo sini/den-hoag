@@ -3,6 +3,7 @@
 # scaffold. Concern: `delivery` (a `schema.hm-host` include's `homeManager`/`nixos` class keys must route
 # to the host + its users).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

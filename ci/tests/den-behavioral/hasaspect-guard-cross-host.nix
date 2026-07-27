@@ -4,6 +4,7 @@
 # BYTE-IDENTICAL to v1. Concern: `hasAspect` (host.hasAspect membership must not leak across sibling
 # hosts / must see inherited den.default membership).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -14,6 +15,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

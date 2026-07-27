@@ -4,6 +4,7 @@
 # Concern: `den.provides.forward` (`each = ["nixos" "homeManager"]` forwarder + `den._.mutual-provider`
 # inert include).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -14,6 +15,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

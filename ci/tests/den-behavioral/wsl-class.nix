@@ -7,6 +7,7 @@
 # R-REWRITE (mechanical, per migration rule 3): v1 `den.provides.primary-user` → `den.batteries.primary-user`
 # (den-hoag exposes ported battery content at `config.den.batteries.<name>`).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -17,6 +18,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

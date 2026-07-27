@@ -26,6 +26,7 @@
   ...
 }:
 let
+  registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
   bridge = import "${denHoagSrc}/lib/compat/bridge.nix" {
     compat = denCompat;
     mkCrossNixos = _: throw "compat-cluster-entity: mkCrossNixos unused";
@@ -92,36 +93,16 @@ let
               );
         };
       }
-      # The CONSUMER-DECLARED instance registry (corpus schema/cluster.nix:97 `options.den.clusters =
-      # schemaLib.mkInstanceRegistry den.schema.cluster` — here the same construction spelled out: the
-      # emitted kind-value functor as the instance module + the identity module gen-schema injects).
+      # The CONSUMER-DECLARED instance registry — gen-schema's OWN `mkInstanceRegistry` over the
+      # bridge-processed kind value, the construction the corpus writes verbatim
+      # (`options.den.clusters = schemaLib.mkInstanceRegistry den.schema.cluster`). It is declared
+      # inside this nixpkgs `evalModules` because that is where the consumer declares it; the option's
+      # type is gen-merge's, so `getSubOptions` below walks the surface the bridge really reads, and
+      # `name`/`id_hash`/`_identity` come from `mkInstanceType`'s injections rather than a hand-stamp.
       (
         { config, ... }:
         {
-          options.den.clusters = lib.mkOption {
-            default = { };
-            type = lib.types.attrsOf (
-              lib.types.submoduleWith {
-                shorthandOnlyDefinesConfig = true;
-                modules = [
-                  config.den.schema.cluster
-                  (
-                    { name, ... }:
-                    {
-                      options.name = lib.mkOption {
-                        type = lib.types.str;
-                        default = name;
-                      };
-                      options.id_hash = lib.mkOption {
-                        type = lib.types.str;
-                        default = idFor name;
-                      };
-                    }
-                  )
-                ];
-              }
-            );
-          };
+          options.den.clusters = registry.mkInstanceRegistry config.den.schema.cluster { };
         }
       )
       {

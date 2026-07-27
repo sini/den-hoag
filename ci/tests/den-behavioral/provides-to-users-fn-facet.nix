@@ -9,6 +9,7 @@
 # the lift itself. The `hasAspect` variant (a fn facet whose body reads `host.hasAspect`) stays parked in
 # `hasaspect-host-provides-to-users.nix` on a SEPARATE bridge-refKey blocker.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -19,6 +20,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

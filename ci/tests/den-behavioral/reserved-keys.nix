@@ -3,6 +3,7 @@
 # `den.*` declarations + the assertion are BYTE-IDENTICAL to v1. Concern: `schema` (den.reservedKeys marks
 # an extra aspect key as structural metadata, skipped by class/nested/pipe dispatch).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

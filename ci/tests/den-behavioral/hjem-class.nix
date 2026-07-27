@@ -5,6 +5,7 @@
 # import gated on a hjem-class user, and the `hjem-user-detect` content forward) is provisioned in
 # lib/compat/builtins.nix.
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -15,6 +16,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs

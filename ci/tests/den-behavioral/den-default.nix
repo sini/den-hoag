@@ -3,6 +3,7 @@
 # `den.*` declarations + the assertions are BYTE-IDENTICAL to v1. Concern: `defaults` (den.default
 # fleet-wide includes, plain / host-fn / user-fn forms).
 {
+  denHoag,
   denHoagFlakeModule,
   homeManagerModule,
   genInputs,
@@ -13,6 +14,7 @@
 let
   denTest = import ../_lib/den-compat-test.nix {
     inherit
+      denHoag
       denHoagFlakeModule
       homeManagerModule
       nixpkgs
