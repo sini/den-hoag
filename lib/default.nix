@@ -328,6 +328,53 @@ let
     isCellNode
     ;
 
+  # `familyMergeAt path a b` — the family-product fold's merge (§4.4 face law), bounded to the TWO
+  # levels that law defines: FAMILIES at depth 0, MEMBERS at depth 1. A member's value is a built
+  # artifact and is NEVER descended.
+  #
+  # The bound is load-bearing, not tidiness. A built configuration is itself an attrset, so an
+  # `isAttrs a && isAttrs b` recursion guard cannot tell a family SUBTREE from a built ARTIFACT — with
+  # it, two contributions to one member merge attribute-by-attribute, forcing both configurations'
+  # internals outside their terminal and letting scalars from whichever side lands second win. That is a
+  # silent wrong answer, and it is invisible precisely because the merged result still typechecks.
+  #
+  # Two contributions to one `[ family, member ]` is a DEFECT, so it ABORTS NAMED rather than resolving:
+  # the face law emits one entry per member keyed by entity name (unique per class), and multi-attachment
+  # multiplies the NODE — a doubly-attached entity becomes two distinct member names (`x@a`, `x@b`), never
+  # two contributions to one name. So no legitimate shape reaches the duplicate branch, and a shape that
+  # does is upstream of this fold. The abort names the full path so the upstream producer is identifiable
+  # without a bisect.
+  familyMergeAt =
+    path: a: b:
+    if path == [ ] then
+      # FAMILY level — the ONLY recursion: two contributions to the same family merge their MEMBER SETS.
+      # A non-attrset family value cannot arise from the face law's placement, so it keeps the prior
+      # last-def-wins rather than inventing an abort for an unreachable shape.
+      a
+      // builtins.mapAttrs (
+        k: bv:
+        if (a ? ${k}) && builtins.isAttrs a.${k} && builtins.isAttrs bv then
+          familyMergeAt [ k ] a.${k} bv
+        else
+          bv
+      ) b
+    else
+      # MEMBER level — the recursion STOPS here, so a member's built artifact is never descended.
+      # Detection reads only the KEY SETS, so it is EAGER (it fires when the family subtree is demanded,
+      # not only if someone later forces the duplicated member) while still forcing no artifact. A lazy
+      # check placed inside the value lambda would abort only on read, which is exactly the silent-until-
+      # used shape this guard exists to remove.
+      let
+        duplicates = builtins.filter (k: a ? ${k}) (builtins.attrNames b);
+      in
+      if duplicates != [ ] then
+        throw "den: duplicate member contribution at '${
+          builtins.concatStringsSep "." (path ++ [ (builtins.head duplicates) ])
+        }'. The family face law emits ONE entry per member (keyed by entity name, unique per class), so two contributions to a single member is a defect UPSTREAM of the output fold — not a merge to resolve here. Multi-attachment multiplies the node into distinct member names, so it is not this shape."
+      else
+        a // b;
+  familyMerge = familyMergeAt [ ];
+
   # mkDen assembles the four concerns; Tasks 1–11 extend it. Task 1: entity registries
   # (gen-schema) + the fleet restricted product (gen-product). Task 2: scope roots +
   # structural stratum (attributes 1–6) over gen-resolve/gen-scope.
@@ -2084,18 +2131,11 @@ let
       # member re-key (scope-node id → entity name) and the last-wins family collapse (listToAttrs semantics)
       # are the face laws — an empty face for a memberless family, one entry per member keyed by entity name.
       #
-      # the fold's `place` primitive is `edge.setAttrByPath` (the []⇒verbatim lazy attr-wrap).
-      # recursively merge two plain attrset trees (the per-member contributions fold into one family subtree,
-      # families into the root product). A leaf (a built artifact — never an attrset with a colliding key path)
-      # rides as-is; two subtrees at the same family key merge. Member names are `attrNames output.systems.
-      # <class>` — unique per class — so no two contributions target the same `[ family, member ]` leaf.
-      familyMerge =
-        a: b:
-        a
-        // builtins.mapAttrs (
-          k: bv:
-          if (a ? ${k}) && builtins.isAttrs a.${k} && builtins.isAttrs bv then familyMerge a.${k} bv else bv
-        ) b;
+      # the fold's `place` primitive is `edge.setAttrByPath` (the []⇒verbatim lazy attr-wrap). The merge
+      # itself is the depth-bounded `familyMergeAt` (top of this file): families merge their member sets,
+      # a member's built artifact is never descended, and a duplicate member ABORTS NAMED. The uniqueness
+      # this fold used to ASSUME — "no two contributions target the same `[ family, member ]` leaf" — is
+      # now CHECKED there rather than asserted in a comment.
       familyOutputs =
         let
           families = builtins.attrNames builtinFams.classOf;
@@ -2569,6 +2609,9 @@ in
       parseParent
       runResolve
       scopeAdapter
+      # the family-product fold's depth-bounded merge — exposed so the suite can arm its duplicate-member
+      # abort directly, rather than only through a fleet that happens to produce one.
+      familyMerge
       ;
     # gen-flake's flake-parts crossing (`terminals.mkFlakeTerminal { inputs; self; modules; systems ? [] }` →
     # the transposed `config.flake`), for the suite's real-flake-parts witnesses to hand an aggregate render's
