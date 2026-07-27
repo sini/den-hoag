@@ -334,6 +334,16 @@ let
   # value-reflecting discovery). `tryEval` guards a forcing throw in a primitive value; the equality
   # gate keeps a false match at sha256-collision odds.
   #
+  # THE PROBE MUST BE TOTAL, and `tryEval` cannot make it so. This is a CROSS-KIND probe: every
+  # candidate kind is tried against an instance that mostly belongs to some OTHER kind, so the
+  # reflection routinely reads fields the instance does not have. A missing attribute is not a `throw`
+  # — `tryEval` does not catch it — so an untotalised probe ABORTS on the first candidate whose kind
+  # declares a field this instance lacks, taking down discovery for every namespace. The instance is
+  # therefore widened with a `null` for each option the candidate kind declares before the recompute
+  # runs; a field the instance lacks then hashes as `null` and the candidate simply does not match,
+  # which is the right answer for "this is not that kind". The widening reads only `kindValue.options`
+  # — the declared surface — so it does not re-derive which of them are identity keys.
+  #
   # WHY THE KIND VALUE AND NOT THE OPTION SURFACE. Reflecting the surface here meant re-deriving which
   # options are identity keys, which meant enumerating the primitive TYPE NAMES — and the two engines
   # spell one of them differently (nixpkgs `str`, gen-types `string`; `int`/`bool` agree). Accepting
@@ -359,11 +369,14 @@ let
       let
         first = builtins.head entries;
         carried = first.id_hash or null;
+        # the instance widened to total over a candidate kind's declared options (see above)
+        probeFor = kindValue: builtins.mapAttrs (_: _: null) (kindValue.options or { }) // first;
         hits = builtins.filter (
           k:
           carried != null
           && kindValues ? ${k}
-          && (builtins.tryEval (identityHashForKind kindValues.${k} first == carried)).value or false
+          && (builtins.tryEval (identityHashForKind kindValues.${k} (probeFor kindValues.${k}) == carried))
+            .value or false
         ) candidateKinds;
       in
       if hits == [ ] then null else builtins.head hits;

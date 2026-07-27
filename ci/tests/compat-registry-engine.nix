@@ -268,7 +268,39 @@ in
         ingestInstances = [ "r1" ];
       };
     };
-    # (c‴) THE WRONG-KIND CONTROL, and it is what makes the pins above mean anything. A recompute that always
+    # (c⁗) THE CROSS-KIND PROBE MUST BE TOTAL. Discovery tries every candidate kind against an instance
+    # that mostly belongs to another one, so the recompute routinely reads fields the instance lacks —
+    # and a missing attribute is NOT a `throw`, so `tryEval` does not catch it. An untotalised probe
+    # therefore aborts the whole evaluation on the first candidate declaring a field this instance does
+    # not have, rather than simply not matching. Here `environment` declares `domain`, which a `rack`
+    # instance has no reason to carry.
+    test-cross-kind-probe-does-not-abort-on-a-foreign-field = {
+      expr = denCompat.registry.registryKindOf {
+        instances = plainReg.instances;
+        candidateKinds = [
+          "environment"
+          "rack"
+        ];
+        kindValues = {
+          environment = registry.kindValueOf "environment" {
+            isEntity = true;
+            parent = null;
+            imports = [
+              (_: {
+                options.domain = lib.mkOption {
+                  type = lib.types.str;
+                  default = "";
+                };
+              })
+            ];
+          };
+          rack = plainReg.kindValue;
+        };
+        inherit (schema) identityHashForKind;
+      };
+      expected = "rack";
+    };
+    # (c⁵) THE WRONG-KIND CONTROL, and it is what makes the pins above mean anything. A recompute that always
     # matched would satisfy (c) and would classify every namespace as every kind. The same instance
     # against a kind value carrying a different `kind` must MISS, so the marker's discrimination is
     # pinned rather than its success.
