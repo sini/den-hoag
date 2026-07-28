@@ -34,6 +34,56 @@
   fleetChildren,
   linkTarget ? (_: null),
 }:
+let
+  # THE SUPPORTEDNESS COMPARISON (attribute 2 below). The law asks whether the state the enrichment
+  # fixpoint reached and the context it publishes AGREE. Nix's `==` cannot answer that for a closure:
+  # two functions built by the same expression at two different dispatches are distinct values and
+  # compare unequal, so `==` reports a disagreement it never observed — and `d.enrich`'s value carries
+  # no type constraint, so a deferred module, or any value containing one, is expressible. `==` is
+  # SOUND for agreement (a `true` is conclusive) and INCOMPLETE for disagreement, so it decides first
+  # and a comparison-total projection decides only what it cannot.
+  #
+  # `project` maps ANY Nix value into a tagged union on which `==` is total:
+  #   function       -> its FORMALS alone (`builtins.functionArgs` — total over lambdas, primops and
+  #                     partial applications, `{ }` where there are no formals). Below its formals a
+  #                     Nix closure exposes nothing.
+  #   derivation     -> its `outPath`, the same rule `==` itself applies to a derivation attrset.
+  #   list / attrset -> projected elementwise, so the comparable FIELDS of a value that merely
+  #                     CONTAINS a function are still compared.
+  #   anything else  -> itself; `==` is already total on int, float, string, path, bool and null.
+  # The tag is a single-key wrapper, so no value can forge another's projection: a user attrset
+  # `{ fn = …; }` projects to `{ attrs = { fn = …; }; }`, never to `{ fn = …; }`.
+  #
+  # ★ THE LIMIT OF THE LAW. `project` identifies all functions sharing a formals set, so two lambdas
+  # in the same position AGREE unless their formals differ. A policy that re-derives a DIFFERENT
+  # lambda of the same shape at the converged context is NOT judged, and an unsupported fact can ride
+  # into the published context inside a closure. That is the whole of the weakening — every value Nix
+  # can compare is still compared exactly, and none is excused for its neighbours. The alternative,
+  # reading `==`'s `false` as a disagreement, is a FALSE report rather than a conservative one: a
+  # function re-derived identically is not an unsupported fact, and the equality, not the value, was
+  # the wrong instrument.
+  #
+  # COST: `agree` tries `==` first, so a comparable value costs exactly what a `==`-only law cost it,
+  # and `project` runs only where `==` already answered `false` — one traversal per side, O(size of the
+  # forced value), on values that a `==`-only law was about to abort over. Nix's identity shortcut is
+  # NOT available to `agree`: it applies to an attrset's MEMBERS, not to the operands of `==` itself.
+  # The law keeps it by never handing `agree` a key both contexts inherit unchanged — see `touchedKeys`
+  # below, without which every comparison would re-force the node record each context carries.
+  project =
+    v:
+    if builtins.isFunction v then
+      { fn = builtins.functionArgs v; }
+    else if builtins.isList v then
+      { list = map project v; }
+    else if builtins.isAttrs v then
+      if v.type or null == "derivation" && v ? outPath then
+        { drv = v.outPath; }
+      else
+        { attrs = prelude.mapAttrs (_: project) v; }
+    else
+      { atom = v; };
+  agree = a: b: a == b || project a == project b;
+in
 {
   # 1. inherited-context — entity bindings flow down P edges. The gen-scope parent walk
   #    collects each ancestor's decls (nearest first); the local `//` fold merges them
@@ -97,8 +147,8 @@
   #    LOOP, and no per-policy `fired` tracking is needed, because the loop's result is not
   #    assumed idempotent — it is CHECKED: a guard reading an ABSENCE is not keyset-monotone and
   #    can leave the published delta disagreeing with the state the loop reached, and the
-  #    supportedness law below (`published == converged`) rejects exactly that fleet, naming the
-  #    key and the policy, instead of restating the monotonicity premise unenforced.
+  #    supportedness law below rejects exactly that fleet, naming the key and the policy, instead
+  #    of restating the monotonicity premise unenforced.
   #    The circular value is the converged context (a plain attrset), never an accumulator
   #    record. B1 single-writer is ONE post-convergence dispatch: at the converged context
   #    every satisfiable guard fires, so two policies writing one key both surface — whether
@@ -158,17 +208,38 @@
         # (`inherited-context // enrichments.added`, below); `converged` is the state the loop
         # reached. The law is I = T_P(I) — model-hood and supportedness at once.
         published = base // added;
-        supported = published == converged;
-        # DIAGNOSIS — error path only. Never forced while `supported` holds.
-        # `dropped`: produced during iteration, not re-produced at convergence (a guard read an
-        # ABSENCE). `drifted`: re-produced with a different value (the keyset stabilised before
-        # the values did).
-        dropped = builtins.filter (k: !(published ? ${k})) (builtins.attrNames converged);
-        drifted = builtins.filter (k: converged ? ${k} && converged.${k} != published.${k}) (
-          builtins.attrNames added
+        # The law is decided PER KEY, and each way the two can disagree is its own named arm — so the
+        # guard and the message it raises are one computation and cannot judge more than they name.
+        #   `dropped`  — in the state, absent from the published context: produced during iteration
+        #                and not re-produced at convergence, so the published context would drop a
+        #                fact the state carries (a guard read an ABSENCE).
+        #   `unclosed` — derived at the converged context, absent from the state: a rule firing only
+        #                at the returned iterate, so the state is not closed under T_P.
+        #   `drifted`  — carried by both, disagreeing under `agree`: the keyset stabilised before the
+        #                values did.
+        # ONLY THE TOUCHED KEYS ARE COMPARED BY VALUE — what the converged dispatch wrote, plus what
+        # the iteration introduced. Every other key holds `base`'s own value on BOTH sides: the SAME
+        # value, not merely an equal one, since `//` carries a binding through by identity. One
+        # attrset `==` settles all of them at once (`untouchedAgree`), because Nix's identity shortcut
+        # applies to an attrset's MEMBERS — comparing them one at a time would instead descend into
+        # the node record every context carries, forcing bindings no policy ever read. The one shape
+        # this leaves for `untouchedAgree` to catch is an inherited key overwritten during iteration
+        # and not re-written at convergence; it widens the scan to name that key rather than deciding
+        # anything itself, so `agree` remains the sole judge.
+        touchedKeys = builtins.attrNames (
+          added // builtins.removeAttrs converged (builtins.attrNames base)
         );
+        untouchedAgree =
+          builtins.removeAttrs published touchedKeys == builtins.removeAttrs converged touchedKeys;
+        dropped = builtins.filter (k: !(published ? ${k})) (builtins.attrNames converged);
+        unclosed = builtins.filter (k: !(converged ? ${k})) (builtins.attrNames published);
+        drifted = builtins.filter (
+          k: published ? ${k} && converged ? ${k} && !(agree published.${k} converged.${k})
+        ) (if untouchedAgree then touchedKeys else builtins.attrNames published);
+        supported = dropped == [ ] && unclosed == [ ] && drifted == [ ];
         # key -> FIRST producing policy, by re-running the iteration with an owner accumulator.
-        # Same complexity as the fixpoint itself, paid only when aborting.
+        # ERROR PATH ONLY — never forced while `supported` holds. Same complexity as the fixpoint
+        # itself, paid only when aborting.
         provenance =
           let
             step =
@@ -213,7 +284,14 @@
         if supported then
           { inherit added owners; }
         else
-          errors.unsupportedEnrichment id dropped drifted (k: provenance.${k} or "<unknown>")
+          # Attribution falls back from `provenance` to `owners`: `provenance` re-runs the ITERATION,
+          # so it cannot see a key that was only ever derived at the converged context — precisely the
+          # `unclosed` arm's keys, and any key the final dispatch writes over an inherited binding.
+          # `owners` is that dispatch's key -> policy map and is already forced above, so every key
+          # either arm can name has a writer.
+          errors.unsupportedEnrichment id dropped unclosed drifted (
+            k: provenance.${k} or (owners.${k} or "<unknown>")
+          )
       );
   };
 

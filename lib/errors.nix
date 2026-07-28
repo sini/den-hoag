@@ -13,15 +13,18 @@ let
       (e.name or e.id_hash or (builtins.toJSON e))
     else
       toString e;
-  # A key list rendered as `key` (written by `policy`), behind its own clause label. An EMPTY
-  # list renders as NOTHING AT ALL, so a message carrying only one of two key classes does not
-  # trail an empty clause for the other.
+  # A key list rendered as `key` (written by `policy`), behind its own clause label and followed by
+  # the remedy that THAT clause implies. An EMPTY list renders as NOTHING AT ALL — neither label nor
+  # remedy — so a message carrying one key class neither trails an empty clause for another nor
+  # asserts a diagnosis that class does not witness.
   renderKeys =
-    label: keys: whoWrote:
+    label: remedy: keys: whoWrote:
     if keys == [ ] then
       ""
     else
-      label + builtins.concatStringsSep ", " (map (k: "`${k}` (written by `${whoWrote k}`)") keys);
+      label
+      + builtins.concatStringsSep ", " (map (k: "`${k}` (written by `${whoWrote k}`)") keys)
+      + remedy;
   renderScope =
     coords:
     if coords == null || coords == { } then
@@ -140,14 +143,28 @@ in
   # immediate-consequence operator, printed p. 100). When it is not, some key is in the model
   # with nothing justifying it — the configuration ABW's "Stratified Programs" (Definition 3,
   # p. 96) exists to exclude — so the fleet is rejected, naming the keys and their policies.
+  # THREE ARMS, EACH CARRYING ITS OWN REMEDY. A negative read is what `dropped` and only `dropped`
+  # witnesses, so that diagnosis rides that clause: a fleet whose values merely drifted, or whose
+  # rule fired late, is told what its own shape implies and is never sent hunting for a negative
+  # edge it did not write.
   unsupportedEnrichment =
-    scopeId: dropped: drifted: whoWrote:
+    scopeId: dropped: unclosed: drifted: whoWrote:
     fail "context supportedness (ABW p.95)" "at scope `${scopeId}` the enrichment fixpoint and the published context disagree${
-      renderKeys " — produced during iteration but not re-produced at the converged context: " dropped
+      renderKeys " — produced during iteration but not re-produced at the converged context: "
+        " (a policy whose guard reads the ABSENCE of a context key another policy writes forms a cycle through a negative edge, which has no supported model — remove the negative read or split the policies onto separate keys)"
+        dropped
         whoWrote
     }${
-      renderKeys " — re-produced at the converged context with a different value: " drifted whoWrote
-    }; a policy whose guard reads the ABSENCE of a context key another policy writes forms a cycle through a negative edge, which has no supported model — remove the negative read or split the policies onto separate keys";
+      renderKeys " — derived at the converged context but absent from the state the fixpoint reached: "
+        " (a policy whose guard branches on a VALUE that settles last fires only at the converged context, contributing a fact the fixpoint never carried — gate it on a key's PRESENCE instead)"
+        unclosed
+        whoWrote
+    }${
+      renderKeys " — re-produced at the converged context with a different value: "
+        " (the keyset stabilised before the values did — a policy is deriving its value from a key whose own value is still moving; break the value dependency or seed the key with its final value)"
+        drifted
+        whoWrote
+    }";
 
   # B2 stratum coherence: a policy whose declarations do not all classify to one STRATUM
   # aborts. Each declaration's stratum is derived from its KIND via the vocabulary's
