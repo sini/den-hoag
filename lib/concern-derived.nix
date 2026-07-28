@@ -123,8 +123,9 @@ let
           or (throw "den.derived: no such derived '${name}' — not a name declared in den.derived (§5)");
       # the stratum-gate (§2.3, the projectCtx throw-on-read pattern): node.rel exposes ONLY relation kinds whose
       # stratum sits STRICTLY BELOW the derive's own — reading a kind tagged stratum ≥ the derive's stratum is
-      # REPLACED with a NAMED throw (enforcement-by-construction, never introspection: the derive cannot read a
-      # fact at or above its own layer). `strataScope.ceilingGate` holds the `>= ceilingIdx` arithmetic; the gate
+      # REPLACED with a NAMED throw. The gate withholds the VALUE, not the OBSERVATION: a derive body can wrap
+      # the read in `builtins.tryEval` and recover a boolean, so out-of-scope stays distinguishable from absent
+      # (the SOUND direction for L4). `strataScope.ceilingGate` holds the `>= ceilingIdx` arithmetic; the gate
       # wraps `node.rel` ONLY — `node.id` is a sibling of `rel` (a plain string, never gated), so it always passes.
       deriveStratum = spec.stratum;
       deriveStratumIdx = indexOf strataOrder deriveStratum;
