@@ -93,9 +93,12 @@
   # 2. enrichments — the REAL cross-enrichment fixpoint (r2 §B1), as INERT DATA. The enrich
   #    rules are RE-DISPATCHED on the CONVERGING context each iteration (gen-scope.circular
   #    over one gen-dispatch.dispatch pass), so a policy whose guard needs a key another
-  #    policy set only fires once that key has entered the context. keyset-eq is sound and no
-  #    per-policy `fired` tracking is needed: single-writer (below) + keyset-monotone guards
-  #    make a key's value fixed once it appears, so a refire at a grown context is idempotent.
+  #    policy set only fires once that key has entered the context. keyset-eq is sound for the
+  #    LOOP, and no per-policy `fired` tracking is needed, because the loop's result is not
+  #    assumed idempotent — it is CHECKED: a guard reading an ABSENCE is not keyset-monotone and
+  #    can leave the published delta disagreeing with the state the loop reached, and the
+  #    supportedness law below (`published == converged`) rejects exactly that fleet, naming the
+  #    key and the policy, instead of restating the monotonicity premise unenforced.
   #    The circular value is the converged context (a plain attrset), never an accumulator
   #    record. B1 single-writer is ONE post-convergence dispatch: at the converged context
   #    every satisfiable guard fires, so two policies writing one key both surface — whether
@@ -147,6 +150,54 @@
             id;
         finalActs = enrichAt converged;
         added = delta finalActs;
+        # SUPPORTEDNESS — Apt, Blair & Walker (1988), "Towards a Theory of Declarative
+        # Knowledge": supportedness (printed p. 95) and Theorem 7 (printed p. 111). A minimal
+        # supported model is a FIXED POINT of the immediate-consequence operator (printed
+        # p. 100), so this attribute must PUBLISH THE STATE IT REACHED rather than a
+        # re-derivation of it. `published` is what attribute 3 hands downstream
+        # (`inherited-context // enrichments.added`, below); `converged` is the state the loop
+        # reached. The law is I = T_P(I) — model-hood and supportedness at once.
+        published = base // added;
+        supported = published == converged;
+        # DIAGNOSIS — error path only. Never forced while `supported` holds.
+        # `dropped`: produced during iteration, not re-produced at convergence (a guard read an
+        # ABSENCE). `drifted`: re-produced with a different value (the keyset stabilised before
+        # the values did).
+        dropped = builtins.filter (k: !(published ? ${k})) (builtins.attrNames converged);
+        drifted = builtins.filter (k: converged ? ${k} && converged.${k} != published.${k}) (
+          builtins.attrNames added
+        );
+        # key -> FIRST producing policy, by re-running the iteration with an owner accumulator.
+        # Same complexity as the fixpoint itself, paid only when aborting.
+        provenance =
+          let
+            step =
+              acc:
+              let
+                acts = enrichAt acc.ctx;
+              in
+              {
+                ctx = acc.ctx // delta acts;
+                own = prelude.foldl' (
+                  o: e: if o ? ${e.key} then o else o // { ${e.key} = e.__policy; }
+                ) acc.own acts;
+              };
+            go =
+              n: acc:
+              let
+                nxt = step acc;
+              in
+              if n >= 100 then
+                acc
+              else if builtins.attrNames nxt.ctx == builtins.attrNames acc.ctx then
+                nxt
+              else
+                go (n + 1) nxt;
+          in
+          (go 0 {
+            ctx = base;
+            own = { };
+          }).own;
         # single-writer: fold key -> policy, aborting (naming both policies + the key) on a
         # second writer of any key.
         owners = prelude.foldl' (
@@ -157,7 +208,13 @@
             acc // { ${e.key} = e.__policy; }
         ) { } finalActs;
       in
-      builtins.seq owners { inherit added owners; };
+      # `owners` is forced FIRST, so the existing B1 single-writer collision keeps precedence.
+      builtins.seq owners (
+        if supported then
+          { inherit added owners; }
+        else
+          errors.unsupportedEnrichment id dropped drifted (k: provenance.${k} or "<unknown>")
+      );
   };
 
   # 3. enriched-context — inherited bindings extended with the converged enrichment delta.

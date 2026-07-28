@@ -13,6 +13,15 @@ let
       (e.name or e.id_hash or (builtins.toJSON e))
     else
       toString e;
+  # A key list rendered as `key` (written by `policy`), behind its own clause label. An EMPTY
+  # list renders as NOTHING AT ALL, so a message carrying only one of two key classes does not
+  # trail an empty clause for the other.
+  renderKeys =
+    label: keys: whoWrote:
+    if keys == [ ] then
+      ""
+    else
+      label + builtins.concatStringsSep ", " (map (k: "`${k}` (written by `${whoWrote k}`)") keys);
   renderScope =
     coords:
     if coords == null || coords == { } then
@@ -124,6 +133,21 @@ in
   singleWriter =
     key: ownerA: ownerB:
     fail "single-writer enrichment (B1)" "enrich key `${key}` is written by two policies (`${ownerA}` and `${ownerB}`); a key may be enriched by exactly one policy";
+
+  # Context supportedness — Apt, Blair & Walker (1988), "Towards a Theory of Declarative
+  # Knowledge": supportedness (printed p. 95), Theorem 7 (printed p. 111). The enrichment
+  # fixpoint's published delta must be the state the loop reached (a fixed point of the
+  # immediate-consequence operator, printed p. 100). When it is not, some key is in the model
+  # with nothing justifying it — the configuration ABW's "Stratified Programs" (Definition 3,
+  # p. 96) exists to exclude — so the fleet is rejected, naming the keys and their policies.
+  unsupportedEnrichment =
+    scopeId: dropped: drifted: whoWrote:
+    fail "context supportedness (ABW p.95)" "at scope `${scopeId}` the enrichment fixpoint and the published context disagree${
+      renderKeys " — produced during iteration but not re-produced at the converged context: " dropped
+        whoWrote
+    }${
+      renderKeys " — re-produced at the converged context with a different value: " drifted whoWrote
+    }; a policy whose guard reads the ABSENCE of a context key another policy writes forms a cycle through a negative edge, which has no supported model — remove the negative read or split the policies onto separate keys";
 
   # B2 stratum coherence: a policy whose declarations do not all classify to one STRATUM
   # aborts. Each declaration's stratum is derived from its KIND via the vocabulary's
