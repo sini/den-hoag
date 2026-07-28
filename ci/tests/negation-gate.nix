@@ -1,6 +1,6 @@
 # The NEGATION-GATE suite (§5/§2.3, L4). A `den.derived` may declare `negates = [ <relKind> ]` — the list of
 # relation kinds it reads under NEGATION (the precursor Phase-5's `exclude`/lockdown consumes). Negation is
-# NON-MONOTONE, so it is disciplined by two soundness laws (Apt–Blair–Walker stratified negation, §2.3):
+# NON-MONOTONE, so it is disciplined by two soundness laws (§2.3, after Apt–Blair–Walker stratified negation):
 #   (a) THROWING-GATE ROUTING — a negated predicate must be read through the THROWING gate (node.rel, which
 #       throws on out-of-scope), NEVER the silent-empty node.query (an out-of-scope follow yields []). A negation
 #       over a silently-empty predicate cannot distinguish "absent" from "out-of-scope" — unsound. Structurally:

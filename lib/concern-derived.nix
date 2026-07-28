@@ -52,7 +52,8 @@ let
           # Structurally: a `negates` entry must be a relation KIND (a node.rel key). A non-relation predicate —
           # e.g. an inverse LABEL, query-reachable via swapped edges but NOT a node.rel key — is reachable ONLY via
           # the silent route, and a negation over a silently-empty predicate cannot distinguish "absent" from
-          # "out-of-scope" (unsound, Apt–Blair–Walker §2.3). So a non-relation `negates` entry is rejected.
+          # "out-of-scope" (unsound — §2.3, after Apt–Blair–Walker stratified negation). So a non-relation
+          # `negates` entry is rejected.
           negatesUnroutable = builtins.filter (r: !(builtins.elem r relationNames)) negates;
           # (L4 (b) strictly-above) a negation reads a COMPLETE predicate, so the derive must sit STRICTLY ABOVE
           # every producer of each negated relation (reading it before it is fully produced is non-monotone). The

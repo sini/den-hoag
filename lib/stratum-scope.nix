@@ -1,5 +1,7 @@
 # stratum-scope — the capability-scope arithmetic over a stratified relation graph (spec §2.3). A reader at
-# stratum n may only see facts at strata STRICTLY BELOW n (Apt–Blair–Walker stratified-negation discipline):
+# stratum n may only see facts at strata STRICTLY BELOW n — den-hoag's capability ceiling, carried over
+# positive reads as well as negated ones. (Under Apt–Blair–Walker stratification the strictly-below rule binds
+# NEGATIVE dependencies only; same-stratum positive reads are permitted there.) Two primitives split it:
 # `edgesBelowStratum` is the SILENT filter (an out-of-scope edge is absent, the exploratory-query mode) and
 # `ceilingGate` is the LOUD projection (reading an out-of-scope relation is REPLACED with a NAMED throw, the
 # capability-by-construction mode). Both read a relation's stratum via `relationStratumOf`, total over BOTH a
@@ -82,9 +84,12 @@ let
     ) relationEdges;
 
   # ceilingGate — the STRATUM-GATE over a per-kind relation record (§2.3, the LOUD projection / the projectCtx
-  # throw-on-read pattern): a kind whose stratum sits at or above `ceilingIdx` is REPLACED with a NAMED throw
-  # (enforcement-by-construction, never introspection — the reader cannot read a fact at or above its own
-  # layer). `{ name; stratum }` name the reader for the message; a kind carrying no stratum passes untouched.
+  # throw-on-read pattern): a kind whose stratum sits at or above `ceilingIdx` is REPLACED with a NAMED throw.
+  # The gate withholds the VALUE, not the OBSERVATION: no out-of-scope fact reaches the reader, but a reader
+  # may wrap the read in `builtins.tryEval` inside its own body and recover a boolean saying the read was out
+  # of scope. That is the SOUND direction — distinguishing out-of-scope from absent is exactly what a negation
+  # needs (L4) — so what the gate claims is value-withholding, not unobservability.
+  # `{ name; stratum }` name the reader for the message; a kind carrying no stratum passes untouched.
   # The message is the derive-facet locus (its sole consumer today); the arithmetic is the shared primitive.
   ceilingGate =
     {
