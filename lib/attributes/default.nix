@@ -79,6 +79,7 @@ let
     inherit
       prelude
       resolve
+      graph
       ;
   };
   outputModules = import ./output-modules.nix {
@@ -182,12 +183,13 @@ in
         ;
     })
     // {
-      # Only the EQUATION records `class-modules` (+ its keyed twin `class-modules-keyed`, consumed by
-      # `classSubtreeAt`'s cross-scope shared-aspect dedup) enter the map — `classSliceOf` (the factored
-      # per-aspect extraction, exported alongside) is a bare function threaded to `mkOutputModules` (below).
+      # Only the EQUATION records `class-seeds` (the per-(node, channel) content query, consumed by
+      # `classSubtreeAt`'s cross-scope shared-aspect dedup) and `content-key-totality` (its §2.2
+      # classification driver) enter the map — `classSliceOf` (the factored per-aspect extraction, exported
+      # alongside) is a bare function threaded to `mkOutputModules` (below).
       inherit (classModules { inherit classNames classifyKey; })
-        class-modules
-        class-modules-keyed
+        class-seeds
+        content-key-totality
         ;
     }
     // {
@@ -247,9 +249,9 @@ in
   # structural equations over hand-built roots/rules).
   inherit structural;
 
-  # The raw class-modules producer builder (`{ classNames; classifyKey; … }` → the class-modules /
-  # class-modules-keyed equation records + the `classSliceKeyedAt` query atom), for the class-bucket-query
-  # suite's direct per-node class-slice + chained-reroute + inject scenarios.
+  # The raw class-content producer builder (`{ classNames; classifyKey; … }` → the `class-seeds` /
+  # `content-key-totality` equation records), for the class-bucket-query and class-relocation suites'
+  # direct per-node class-slice + relocation scenarios.
   classModulesBuilder = classModules;
 
   runResolve =

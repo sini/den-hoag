@@ -15,7 +15,7 @@
 let
   bucketAt =
     den: id: cls:
-    (den.structural.eval.get id "class-modules").${cls} or [ ];
+    map (e: e.module) ((den.structural.eval.get id "class-seeds").${cls} or [ ]);
   keysAt = den: id: map (n: n.key) (den.structural.eval.get id "resolved-aspects");
   hasKeyAt =
     den: id: k:

@@ -150,9 +150,10 @@ let
   # class content movement is the EXPLICIT deliver/inject edge, never the default fold. NO-EFFECT-RUNTIME: one
   # producing-class read (the node's contentClass) — never a module body (deferred content stays A17-lazy).
   isClassName = cn: classesByName ? ${cn};
-  # The KEYED class buckets (`{ <class> = [ { module; sharedFoldKey } ]; }`) — `classSubtreeAt` reads THIS
-  # (not the bare public `class-modules`) so it can collapse a genuinely-shared host+user aspect cross-scope.
-  classModulesKeyedAt = id: result.get id "class-modules-keyed";
+  # The per-(node, channel) class-content query (`{ <class> = [ { module; sharedFoldKey } ]; }`) —
+  # `classSubtreeSeeds` reads the SEED records, not bare modules, so it can collapse a genuinely-shared
+  # host+user aspect cross-scope.
+  classSeedsAt = id: result.get id "class-seeds";
   inherit (prelude) dedupByKey;
 
   # ── #63 within-class subtree fold (design note §8, the #62c twin for class content) ─────────────────
@@ -173,31 +174,28 @@ let
   # ISOLATION-MARK CEILING (§8 risk 2, the #62c twin's ceiling): the walk is BLIND — a future KIND marked
   # `isolated` would need this gather to honor the isolation boundary v1's isolation-aware fold stops at
   # (none is marked in this corpus; the same ceiling `scope.descendants`'s #62c consumer carries).
-  # A17: `class-modules` is a deferredModule list carried UNFORCED; `descendants` is the lazy id spine —
-  # this walks the bucket SPINE (list appends), never a module body. FORCING HONESTY: the gather DOES newly
-  # force each descendant's `class-modules` ATTRIBUTE — i.e. the §2.2 key CLASSIFICATION of every content
-  # key on the descendant's resolved aspects (the mechanism that surfaced the ledger-u14 `wsl` abort: cells
-  # whose class-modules were previously never read now classify at the host's assembly) — while the module
-  # BODIES inside each bucket stay unforced (the A17 claim above is about bodies, and stays true). IDENTITY:
-  # a cell-less / descendant-less node ⇒ `[ id ]` ⇒ `(classModulesKeyedAt id).${class}` exactly (the 820 baseline
-  # is the proof — unchanged).
+  # A17: a seed's `module` is a deferredModule carried UNFORCED; `descendants` is the lazy id spine —
+  # this walks the seed SPINE (list appends), never a module body. FORCING HONESTY: the gather DOES newly
+  # force each descendant's `class-seeds` ATTRIBUTE, which demands `content-key-totality` — i.e. the §2.2 key
+  # CLASSIFICATION of every content key on the descendant's resolved aspects (the mechanism that surfaced the
+  # ledger-u14 `wsl` abort: cells whose class content was previously never read now classify at the host's
+  # assembly) — while the module BODIES inside each seed stay unforced (the A17 claim above is about bodies,
+  # and stays true). IDENTITY: a cell-less / descendant-less node ⇒ `[ id ]` ⇒ `(classSeedsAt id).${ch}`
+  # exactly (the 820 baseline is the proof — unchanged).
   # CROSS-SCOPE SHARED-ASPECT DEDUP (v1 `wrapPerScope` `dedupByKey`, resolve.nix:43-66 @ pin 11866c16 — the
-  # `classSubtreeAt` twin of the reach dedup, resolved-aspects.nix). The keyed subtree buckets are gathered
+  # `classSubtreeAt` twin of the reach dedup, resolved-aspects.nix). The keyed subtree seeds are gathered
   # own-first ++ descendants, then a genuinely-shared host+user aspect (same `sharedFoldKey` at the host AND
   # its cell — a `den.default` module) collapses first-occurrence-wins to the host's copy; a `null` key (a
   # node-local inject/reroute, a static-anon or non-entity-ctx aspect) is never deduped (v1 anon rule); and
   # genuinely per-cell content (distinct `user`/guest `id_hash` ⇒ distinct key) is kept — so the output-fold
   # (`contentsOf`/`classBucketsOf`/the default-fold edge) and the `projectClass` anchor stay byte-consistent
   # with the deduped terminal. Map back to the bare `.module` list the readers expect.
-  classSubtreeAt =
-    id: class:
-    map (e: e.module) (
-      dedupByKey (e: e.sharedFoldKey or null) (
-        prelude.concatMap (nid: (classModulesKeyedAt nid).${class} or [ ]) (
-          [ id ] ++ scope.descendants result id
-        )
-      )
+  classSubtreeSeeds =
+    id: ch:
+    dedupByKey (e: e.sharedFoldKey or null) (
+      prelude.concatMap (nid: (classSeedsAt nid).${ch} or [ ]) ([ id ] ++ scope.descendants result id)
     );
+  classSubtreeAt = id: ch: map (e: e.module) (classSubtreeSeeds id ch);
 
   producingClassOf =
     id:
@@ -214,9 +212,9 @@ let
       [ ]
     else
       # Fire the default fold for the producing class UNCONDITIONALLY (bare-channel hosts fold too), but STILL
-      # force the node's class-modules classification — the §2.2 side-effect that aborts a typo'd content key
+      # force the node's content-key classification — the §2.2 side-effect that aborts a typo'd content key
       # on a reached aspect (`assertKeysRegistered`/`classifyKey`), which the pre-empty-drop emptiness test
-      # used to trigger. `seq` forces the bucket spine (classification) without gating the fold on its result.
+      # used to trigger. `seq` forces the seed spine (classification) without gating the fold on its result.
       builtins.seq (classSubtreeAt id cn) [ cn ];
 
   # Delivery declarations (an external consumer's `deliver`/`route`/`provide`, `declare.delivery`) dispatched at a

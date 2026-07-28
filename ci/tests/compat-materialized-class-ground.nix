@@ -16,7 +16,7 @@
 # is a registry key) RESOLVES to the one canonical grounded record; inline content grounds in place; the emit
 # discriminator keys on `.key`/`.name` structure. These witnesses drive the two arms a materialized default
 # reaches through — a static include (registered-reference resolution) and a navigated `policy.include` emit —
-# and force the class-modules bucket (which runs `classifyKey`). A future gen-aspects id_hash/materialization
+# and force `content-key-totality` (which runs `classifyKey`). A future gen-aspects id_hash/materialization
 # change that re-coupled control flow to id_hash would re-throw §2.2 / drop content here. Sibling
 # `compat-named-aspect-ref` guards the third arm (`resolveAspectRef`, a nested nav ref in
 # `schema.<kind>.includes`).
@@ -24,12 +24,15 @@
 let
   bucketAt =
     den: id: cls:
-    (den.structural.eval.get id "class-modules").${cls} or [ ];
-  # Forcing the class-modules bucket is what runs `classifyKey` over the node's materialized defaults — the
-  # abort site. `tryEval`+`deepSeq` so a §2.2 throw surfaces as `false` rather than an eval crash.
+    map (e: e.module) ((den.structural.eval.get id "class-seeds").${cls} or [ ]);
+  # Forcing `content-key-totality` is what runs `classifyKey` over the node's materialized defaults — the
+  # abort site. That attribute IS the §2.2 classification driver (`class-seeds` demands it), so this forces
+  # the gate directly rather than through a content read. `tryEval` so a §2.2 throw surfaces as `false`
+  # rather than an eval crash.
   bucketOkAt =
     den: id:
-    (builtins.tryEval (builtins.deepSeq (den.structural.eval.get id "class-modules") true)).success;
+    (builtins.tryEval (builtins.deepSeq (den.structural.eval.get id "content-key-totality") true))
+    .success;
   mk = fx: denCompat.mkDen [ fx ];
 
   # ── (1) STATIC INCLUDE (compile.nix `normalize` include arm). A static-attrset aspect (`collector`, a class

@@ -148,9 +148,9 @@ in
       };
     };
 
-    # ── CLASS-MODULES materialize — the app aspect's `nixos` content folds into the blade cell's bucket ─
+    # ── CLASS CONTENT materializes — the app aspect's `nixos` content lands at the blade cell's `nixos` ─
     test-class-modules-materialize = {
-      expr = builtins.length ((eval.get bladeCell "class-modules").nixos or [ ]) >= 1;
+      expr = builtins.length ((eval.get bladeCell "class-seeds").nixos or [ ]) >= 1;
       expected = true;
     };
 

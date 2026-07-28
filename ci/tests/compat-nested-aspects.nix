@@ -31,12 +31,15 @@
 let
   bucketAt =
     den: id: cls:
-    (den.structural.eval.get id "class-modules").${cls} or [ ];
+    map (e: e.module) ((den.structural.eval.get id "class-seeds").${cls} or [ ]);
   keysAt = den: id: map (n: n.key) (den.structural.eval.get id "resolved-aspects");
   raOkAt = den: id: (builtins.tryEval (builtins.deepSeq (keysAt den id) true)).success;
+  # the §2.2 CLASSIFICATION driver, forced directly: `content-key-totality` is what runs the three-branch
+  # dispatch over every resolved aspect's content keys, so a typo aborts here rather than at a content read.
   cmOkAt =
     den: id:
-    (builtins.tryEval (builtins.deepSeq (den.structural.eval.get id "class-modules") true)).success;
+    (builtins.tryEval (builtins.deepSeq (den.structural.eval.get id "content-key-totality") true))
+    .success;
 
   # ── (1) the SPLIT at compile level: blade carries real content AND two nested per-user sub-aspects. ──
   bladeDecl = {

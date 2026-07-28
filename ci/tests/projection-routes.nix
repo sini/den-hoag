@@ -70,6 +70,7 @@ let
     import "${denHoagSrc}/lib/attributes/class-modules.nix"
       {
         inherit prelude resolve;
+        graph = denHoag.internal.genGraph;
       }
       {
         classNames = [ ];

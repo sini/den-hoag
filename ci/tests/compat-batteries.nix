@@ -26,10 +26,10 @@ let
   keysAt = den: id: map (n: n.key) (den.structural.eval.get id "resolved-aspects");
   bucketAt =
     den: id: cls:
-    (den.structural.eval.get id "class-modules").${cls} or [ ];
+    map (e: e.module) ((den.structural.eval.get id "class-seeds").${cls} or [ ]);
   hasBucket =
     den: id: cls:
-    (den.structural.eval.get id "class-modules") ? ${cls};
+    (den.structural.eval.get id "class-seeds") ? ${cls};
   # Force a node's resolved-aspects (invokes every wrapped include at this scope) — `true` iff no throw.
   raOkAt = den: id: (builtins.tryEval (builtins.deepSeq (keysAt den id) true)).success;
 

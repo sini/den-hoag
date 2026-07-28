@@ -43,15 +43,15 @@ let
     )
   ];
   fooDen = fooFleet.den;
-  # class-modules at h1: the resolved aspect `a`'s `foo` content folds into the `foo` bucket.
-  fooBucket = (fooDen.structural.eval.get "host:h1" "class-modules").foo or [ ];
+  # class content at h1: the resolved aspect `a`'s `foo` content lands at the `foo` channel coordinate.
+  fooBucket = map (e: e.module) ((fooDen.structural.eval.get "host:h1" "class-seeds").foo or [ ]);
 
   # A declared class is a real registered class: it carries a class ENTRY (identity law) in the fleet's
   # class-tag vocabulary, alongside the built-ins.
   fooEntry = fooDen.classes.foo or null;
 
   # The TYPO guard MUST still fire: an UNDECLARED aspect key aborts named when its content is classified
-  # (reading class-modules forces the three-branch dispatch over `a`'s keys).
+  # (`content-key-totality` is the §2.2 driver — forcing it runs the three-branch dispatch over `a`'s keys).
   typoAborts =
     !(builtins.tryEval (
       let
@@ -80,7 +80,7 @@ let
           )
         ];
       in
-      builtins.deepSeq (f.den.structural.eval.get "host:h1" "class-modules") true
+      builtins.deepSeq (f.den.structural.eval.get "host:h1" "content-key-totality") true
     )).success;
 
   # Built-in classNames stay exactly the core classes (declared classes extend PER-FLEET, never the core

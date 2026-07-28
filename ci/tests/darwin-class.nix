@@ -62,8 +62,8 @@ let
   fleet = denHoag.mkDen fleetModules;
   den = fleet.den;
   eval = den.structural.eval;
-  darwinBucket = (eval.get "machine:mac1" "class-modules").darwin or [ ];
-  nixosBucket = (eval.get "server:box1" "class-modules").nixos or [ ];
+  darwinBucket = map (e: e.module) ((eval.get "machine:mac1" "class-seeds").darwin or [ ]);
+  nixosBucket = map (e: e.module) ((eval.get "server:box1" "class-seeds").nixos or [ ]);
 
   # crossDarwin PATH via a FAKE nix-darwin flake — proves the darwin class routes through gen-flake's
   # generic `mkSystemTerminal` with `darwin.lib.darwinSystem` as the evaluator, WITHOUT real nix-darwin

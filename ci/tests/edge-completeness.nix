@@ -211,7 +211,7 @@ let
         ];
     };
   denInject = (denHoag.mkDen (baseOf true ++ [ injectMod ])).den;
-  injectedNixos = builtins.length (denInject.structural.eval.get axonId "class-modules").nixos;
+  injectedNixos = builtins.length (denInject.structural.eval.get axonId "class-seeds").nixos;
 
   # force a member's deferred channel thunk at a terminal that supplies the PRODUCING class's config
   # (nixpkgs evalModules = the same module system gen-flake's terminal crosses into).

@@ -25,7 +25,7 @@ let
   keysAt = den: id: map (n: n.key) (den.structural.eval.get id "resolved-aspects");
   bucketAt =
     den: id: cls:
-    (den.structural.eval.get id "class-modules").${cls} or [ ];
+    map (e: e.module) ((den.structural.eval.get id "class-seeds").${cls} or [ ]);
   mk = fx: denCompat.mkDen [ fx ];
 
   # F1 — entity → SINGLE nested-path leaf (the always-worked baseline; provider identity now).

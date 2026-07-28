@@ -28,8 +28,8 @@ let
   mod = tag: {
     imports = [ { inherit tag; } ];
   };
-  # the class → [ tag ] projection of a bare `class-modules` value.
-  bareTags = v: builtins.mapAttrs (_: ms: map (m: (builtins.head m.imports).tag) ms) v;
+  # the channel → [ tag ] projection of a `class-seeds` value.
+  bareTags = v: builtins.mapAttrs (_: ss: map (e: (builtins.head e.module.imports).tag) ss) v;
 
   # two resolved-aspect nodes: aspect `aspA` carries class-A content, aspect `aspD` carries class-D content.
   resolvedAspects = [
@@ -48,17 +48,25 @@ let
       sharedFoldKey = null;
     }
   ];
-  # synthetic resolver: `resolved-aspects` = the two nodes; `declarations.actions.resolution` = `acts`.
-  mkSelf = acts: {
-    get =
-      _id: attr:
-      if attr == "resolved-aspects" then
-        resolvedAspects
-      else if attr == "declarations" then
-        { actions.resolution = acts; }
-      else
-        throw "class-bucket-query: unexpected attr ${attr}";
-  };
+  # synthetic resolver: `resolved-aspects` = the two nodes; `declarations.actions.resolution` = `acts`;
+  # `content-key-totality` = the real §2.2 classification driver over those same nodes.
+  mkSelf =
+    acts:
+    let
+      self = {
+        get =
+          id: attr:
+          if attr == "resolved-aspects" then
+            resolvedAspects
+          else if attr == "declarations" then
+            { actions.resolution = acts; }
+          else if attr == "content-key-totality" then
+            cm.content-key-totality.compute self id
+          else
+            throw "class-bucket-query: unexpected attr ${attr}";
+      };
+    in
+    self;
   selfPlain = mkSelf [ ];
   selfReroute = mkSelf [
     {
@@ -81,7 +89,7 @@ let
   ];
 
   cm = cmb { inherit classNames classifyKey; };
-  bare = self: cm.class-modules.compute self "n";
+  bare = self: cm.class-seeds.compute self "n";
 in
 {
   flake.tests.class-bucket-query = {
