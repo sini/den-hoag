@@ -58,6 +58,48 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 <!-- END BEADS INTEGRATION -->
 
 
+## Working Mode — read this before acting
+
+Standing owner directives. They outrank convenience, precedent, and effort estimates.
+
+**The decision bar, every role:** decisions align against **proper theory**. NOT v1-compat convenience.
+NEVER least effort. **Everything must be defensible as a theory-based expression.** A design justified by
+"v1 did it this way" or "this is the smaller change" fails the bar regardless of whether it works.
+
+**Spec before development — always.** Write the spec and file the bead *before* touching code, including for
+one-line changes to a gen library, and including when a probe already proves the mechanism works. "Small and
+measured green" is not an exemption; skipping this cost a public revert on `github:sini/gen-schema`.
+
+### If you are the ORCHESTRATOR (driving the session)
+
+- **Orchestrate, do not implement.** Run the work through independent **fresh-context** agents — scouts,
+  research assistants, reviewers, authors. A reviewer that inherits the author's framing is not independent.
+- **Beads must hold a graph of VALIDATED CORRECT work.** An unshipped finding does **not** become a bead — it
+  becomes a review candidate, and enters the graph only after adversarial architecture-alignment review
+  against pure-gen criteria **and** the academic result the design claims. Rejections are recorded *with their
+  reason*; a rejected design that leaves no trace gets re-proposed.
+- `arch-validated` is a **positive** label. Absence means not-yet-validated — labelling the unvalidated ones
+  instead fails open, and silence must never read as success.
+- **Bead bodies are self-contained.** Markdown does not survive compaction; the graph does. A task may
+  explicitly request a **user-guided design spike** rather than resolving an owner-level question alone.
+
+### If you are a SUBAGENT (dispatched for a specific task)
+
+- Your dispatch prompt is your specification. Stay inside it.
+- **Do not create or modify beads.** Findings return to the orchestrator for the review gate.
+- **Do not fix what you are auditing.** An audit that edits as it goes cannot report what it found.
+- Report coverage honestly. A partial result reported as partial is useful; reported as complete it is worse
+  than nothing.
+- An **absence** claim needs a positive control on the same predicate in the same run. Several false "clean"
+  results in this project came from predicates that could not have matched.
+
+### Architecture invariant currently under audit
+
+The den-hoag **kernel must be a pure graph representation** before the full backwards-compat layer
+materializes. `ci/tests/boundary.nix` guards the kernel⟂compat line **lexically only** (token scan, import
+direction, seam enumeration) — it cannot observe representation, so a v1-shaped state accumulator wearing
+gen-native naming passes every guard. Live arc: `bd show den-hoag-4kh`.
+
 ## Build & Test
 
 _Add your build and test commands here_
