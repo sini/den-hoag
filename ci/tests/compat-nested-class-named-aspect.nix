@@ -90,20 +90,28 @@ let
               homeManager.tag = "hm-${user.name}";
             };
           schema.user.includes = [ "acct" ];
-          policies.hm-forward =
-            { user, host, ... }:
-            [
-              (route {
-                fromClass = "home-manager";
-                intoClass = host.class;
-                intoPath = [
-                  "home-manager"
-                  "users"
-                  user.name
-                ];
-                __extra.appendToParent = true;
-              })
-            ];
+          # Registered here and named in no `includes` list (this fixture's includes name ASPECTS), so an
+          # undeclared selection derives `[ ]` from the schema and the policy is absent from every node's rule
+          # list. Declared unconstrained: this suite's subject is not selection.
+          policies.hm-forward = {
+            __isPolicy = true;
+            emits = [ "delivery" ];
+            selects = null;
+            fn =
+              { user, host, ... }:
+              [
+                (route {
+                  fromClass = "home-manager";
+                  intoClass = host.class;
+                  intoPath = [
+                    "home-manager"
+                    "users"
+                    user.name
+                  ];
+                  __extra.appendToParent = true;
+                })
+              ];
+          };
         };
       }
     )

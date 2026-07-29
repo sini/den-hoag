@@ -179,20 +179,30 @@ let
       config.den.quirks.dst = { };
       config.den.aspects.seed.src = [ "hello" ];
       config.den.schema.host.includes = [ "seed" ];
-      config.den.policies.route1 = _ctx: [
-        (deliver {
-          from = "src";
-          to = "dst";
-        })
-      ];
-      config.den.policies.p = _ctx: [
-        (provide {
-          class = "dst";
-          module = {
-            m = 1;
-          };
-        })
-      ];
+      config.den.policies.route1 = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "delivery" ];
+        fn = _ctx: [
+          (deliver {
+            from = "src";
+            to = "dst";
+          })
+        ];
+      };
+      config.den.policies.p = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "delivery" ];
+        fn = _ctx: [
+          (provide {
+            class = "dst";
+            module = {
+              m = 1;
+            };
+          })
+        ];
+      };
     }
   ];
   e2eTrace = e2e.den.graph.trace "host:axon";
@@ -229,15 +239,20 @@ let
       config.den.hosts.x86_64-linux.axon.class = "nixos";
       config.den.aspects.base.nixos.networking.hostName = "axon";
       config.den.schema.host.includes = [ "base" ];
-      config.den.policies.ga = _ctx: [
-        (deliver {
-          from = "nixos";
-          to = "nixos";
-          at = [ "p" ];
-          adaptArgs = a: a // { extra = 1; };
-          guard = _: true;
-        })
-      ];
+      config.den.policies.ga = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "delivery" ];
+        fn = _ctx: [
+          (deliver {
+            from = "nixos";
+            to = "nixos";
+            at = [ "p" ];
+            adaptArgs = a: a // { extra = 1; };
+            guard = _: true;
+          })
+        ];
+      };
     }
   ];
   gaMaterializes =

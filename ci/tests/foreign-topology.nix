@@ -89,9 +89,12 @@ let
     { config, ... }:
     {
       config.den.aspects.rackTag = { };
-      config.den.policies.tag-rack =
-        { rack, ... }:
-        [ (denHoag.declare.edge config.den.aspects.rackTag) ];
+      config.den.policies.tag-rack = {
+        emits = [ "edge" ];
+        fn =
+          { rack, ... }:
+          [ (denHoag.declare.edge config.den.aspects.rackTag) ];
+      };
     };
 
   base = [

@@ -68,21 +68,37 @@ let
   H = den.registries.host.axon;
   U = den.registries.user.alice;
 
-  # (a) a policy mixing resolution (edge) + structural (member) aborts at compile-time probe.
-  mixed = compilePolicies {
-    bad = _ctx: [
-      (declare.edge H)
-      (declare.member {
-        user = U;
-        host = H;
-      })
-    ];
+  # (a) A4 declaration-stratum separation. The policy DECLARES a codomain spanning two strata
+  # (`edge` is resolution, `member` is structural), which is refused AT REGISTRATION — one rule, one
+  # stratum is gen-dispatch's core invariant, discharged through `deriveGroup` for every rule.
+  mixedPolicies = {
+    bad = {
+      emits = [
+        "edge"
+        "member"
+      ];
+      fn = _ctx: [
+        (declare.edge H)
+        (declare.member {
+          user = U;
+          host = H;
+        })
+      ];
+    };
   };
+  # The validator as a VALUE: `null` when clean, else the FIRST named message. Asserting its TEXT is the
+  # whole reason it returns rather than throws — Nix cannot recover a throw's text from a caught eval.
+  mixedMessage = I.policyMessage mixedPolicies;
 
   # (b) a policy guarded on a channel-named arg. It reaches the `policy` feed (its edge is a
   # resolution declaration) but fires only when its guard key is a ctx key — which a channel
   # name never is.
-  chan = compilePolicies { needsChan = { someChannel }: [ (declare.edge H) ]; };
+  chan = compilePolicies {
+    needsChan = {
+      emits = [ "edge" ];
+      fn = { someChannel }: [ (declare.edge H) ];
+    };
+  };
   firedAt =
     ctx:
     (dispatch.dispatch {
@@ -102,7 +118,10 @@ let
     name = "poison";
   };
   poisonMod = {
-    config.den.policies.poison = _ctx: [ (declare.edge poisonEntry) ];
+    config.den.policies.poison = {
+      emits = [ "edge" ];
+      fn = _ctx: [ (declare.edge poisonEntry) ];
+    };
   };
   denP = (denHoag.mkDen (fx.base ++ [ poisonMod ])).den;
   getP = denP.structural.eval.get;
@@ -116,18 +135,27 @@ let
     { config, ... }:
     {
       config.den.policies = {
-        linkEnv = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
-        captureEnv =
-          { env, ... }:
-          [
-            (declare.configure {
-              of = config.den.host.axon;
-              set = {
-                seen = env;
-              };
-            })
-          ];
-        structSeesEnv = { env, ... }: [ (declare.emit { marker = "struct-saw-env"; }) ];
+        linkEnv = {
+          emits = [ "link" ];
+          fn = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
+        };
+        captureEnv = {
+          emits = [ "configure" ];
+          fn =
+            { env, ... }:
+            [
+              (declare.configure {
+                of = config.den.host.axon;
+                set = {
+                  seen = env;
+                };
+              })
+            ];
+        };
+        structSeesEnv = {
+          emits = [ "emit" ];
+          fn = { env, ... }: [ (declare.emit { marker = "struct-saw-env"; }) ];
+        };
       };
     };
   denB3 = (denHoag.mkDen (fx.base ++ [ b3Mod ])).den;
@@ -145,23 +173,32 @@ let
     { config, ... }:
     {
       config.den.policies = {
-        seedEnv = _ctx: [
-          (declare.enrich {
-            key = "env";
-            value = "OWN";
-          })
-        ];
-        linkEnv = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
-        captureEnv =
-          { env, ... }:
-          [
-            (declare.configure {
-              of = config.den.host.axon;
-              set = {
-                seen = env;
-              };
+        seedEnv = {
+          emits = [ "enrich" ];
+          fn = _ctx: [
+            (declare.enrich {
+              key = "env";
+              value = "OWN";
             })
           ];
+        };
+        linkEnv = {
+          emits = [ "link" ];
+          fn = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
+        };
+        captureEnv = {
+          emits = [ "configure" ];
+          fn =
+            { env, ... }:
+            [
+              (declare.configure {
+                of = config.den.host.axon;
+                set = {
+                  seen = env;
+                };
+              })
+            ];
+        };
       };
     };
   denShadow = (denHoag.mkDen (fx.base ++ [ shadowMod ])).den;
@@ -195,10 +232,35 @@ in
       expected = false;
     };
 
-    # (a) — A4 declaration-stratum separation: a two-stratum policy aborts (naming edge + member).
+    # (a) — A4 declaration-stratum separation. The predicate DISCRIMINATES on the rejection's identity:
+    # a bare `tryEval …success == false` goes green for ANY abort, including ones from three migrations
+    # hence, so it would keep reporting green while testing something else entirely. Asserting the named
+    # message pins THIS law, and asserting the compile aborts too pins that the message is not merely
+    # advisory.
     test-mixed-stratum-aborts = {
-      expr = (builtins.tryEval (builtins.length mixed.policy)).success;
-      expected = false;
+      expr = {
+        named = builtins.match ".*emits kinds spanning strata.*" mixedMessage != null;
+        namesBothStrata =
+          builtins.match ".*resolution.*" mixedMessage != null
+          && builtins.match ".*structural.*" mixedMessage != null;
+        compileAborts = (builtins.tryEval (builtins.length (compilePolicies mixedPolicies).policy)).success;
+      };
+      expected = {
+        named = true;
+        namesBothStrata = true;
+        compileAborts = false;
+      };
+    };
+    # The validator's negative control, in the SAME run: a single-stratum codomain is clean, so the
+    # message above discriminates on CONTENT rather than on any policy being present.
+    test-single-stratum-message-clean = {
+      expr = I.policyMessage {
+        fine = {
+          emits = [ "edge" ];
+          fn = _ctx: [ (declare.edge H) ];
+        };
+      };
+      expected = null;
     };
 
     # (b) — a channel-named guard is never satisfied (no ctx key), so the policy never fires…

@@ -98,18 +98,21 @@ let
     (
       { config, ... }:
       {
-        config.den.policies.grant =
-          { zone, ... }:
-          [
-            (denHoag.declare.member {
-              coords = {
-                inherit zone;
-                rack = config.den.rack.r1;
-              };
-              bindings.t = "t";
-              containTo = "rack";
-            })
-          ];
+        config.den.policies.grant = {
+          emits = [ "member" ];
+          fn =
+            { zone, ... }:
+            [
+              (denHoag.declare.member {
+                coords = {
+                  inherit zone;
+                  rack = config.den.rack.r1;
+                };
+                bindings.t = "t";
+                containTo = "rack";
+              })
+            ];
+        };
       }
     )
   ];

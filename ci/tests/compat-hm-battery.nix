@@ -77,17 +77,28 @@ let
             homeManager.tag = "hm-${user.name}";
           };
         den.schema.user.includes = [ "acct" ];
-        den.policies.env-users =
-          { host, ... }:
-          [
-            (R.to "user" {
-              user = {
-                name = "tux";
-                userName = "tux";
-                inherit classes;
-              };
-            })
-          ];
+        # ★ THE CORPUS'S OWN SELECTION, modelled rather than approximated. `env-users` is wired in
+        # nix-config as `den.schema.host.includes = [ den.policies.env-users ]`, so its real selection is
+        # `[ "host" ]`. `selects = null` would assert something STRICTLY WEAKER and false — unconstrained
+        # by node kind — which with a `{ host, ... }` gate leaves the rule eligible at descendant CELLS,
+        # where its resolve-family `member` meets `errors.memberAtCell` ("no legitimate consumer: abort
+        # LOUD"). Latent here only because nothing forces that path yet.
+        den.policies.env-users = {
+          __isPolicy = true;
+          selects = [ "host" ];
+          emits = [ "member" ];
+          fn =
+            { host, ... }:
+            [
+              (R.to "user" {
+                user = {
+                  name = "tux";
+                  userName = "tux";
+                  inherit classes;
+                };
+              })
+            ];
+        };
       }
     ];
   resolved = mkResolved [ "homeManager" ];

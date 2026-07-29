@@ -5,6 +5,11 @@
 { denHoag, ... }:
 let
   I = denHoag.internal;
+  # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
+  # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
+  # index's total fallback and computes the real selection — the fixture exercises the shipped predicate
+  # rather than a hand-rolled stand-in of it.
+  idxFeed = I.indexPolicyFeed [ ];
   inherit (I)
     structural
     runResolve
@@ -27,7 +32,10 @@ let
   noChildren = _self: _id: { };
 
   # an enrich declaration is inert data: { key; value; __policy; }.
-  enrichRule =
+  # `selects = null` — unconstrained: the rule fires wherever its gate admits. Stamped onto the built
+  # rule because `dispatch.mkRule`'s argument set is closed; the kernel's own compile sets the same field.
+  enrichRule = args: enrichRule' args // { selects = null; };
+  enrichRule' =
     {
       identity,
       condition,
@@ -49,9 +57,9 @@ let
     runResolve {
       inherit roots parseParent;
       equations = structural {
-        policiesRules = {
-          enrich = enrichRules;
-          policy = [ ];
+        policiesIndex = {
+          enrich = idxFeed enrichRules;
+          policy = idxFeed [ ];
         };
         fleetChildren = noChildren;
       };
@@ -121,9 +129,9 @@ let
   # the structural equation surface uses grounded, graph-primitive names.
   eqNames = builtins.sort (a: b: a < b) (
     builtins.attrNames (structural {
-      policiesRules = {
-        enrich = [ ];
-        policy = [ ];
+      policiesIndex = {
+        enrich = idxFeed [ ];
+        policy = idxFeed [ ];
       };
       fleetChildren = noChildren;
     })

@@ -471,7 +471,7 @@ let
         options.den.policies = merge.mkOption {
           type = merge.types.lazyAttrsOf merge.types.raw;
           default = { };
-          description = "Relationship policies: `<name> = ctx: [ declarations ]` (r2 §B).";
+          description = "Relationship policies: `<name> = { emits = [ <declaration-kind> ]; fn = ctx: [ declarations ]; selects ? null; gate ? <fn formals>; ops ? [ ]; }` (r2 §B). `emits` is the REQUIRED declaration codomain, checked at every firing; `selects` is the 3-valued dispatch selection (`null` = unconstrained, `[ ]` = selects nothing, `[ k ... ]` = fires at nodes of those kinds).";
         };
       };
 
@@ -932,60 +932,6 @@ let
         };
       };
 
-      # den.probeSentinelFields — the CONFIGURABLE probe sentinel (B2). concern-policies reads a policy's
-      # stratum by producing it against a value-less sentinel entry (`{ id_hash; name }`). A consumer whose
-      # policy bodies read a coord FIELD on that entry (a corpus fact the consumer knows) supplies the
-      # extra fields here as TYPE-CORRECT NON-MATCHING sentinels, so the body takes its value-conditional
-      # FALSE branch (→ expansion) instead of hard-failing. Native default `{ }` = the universal sentinel,
-      # byte-identical. Core stays field-agnostic; the field NAMES live consumer-side (composition-first).
-      probeSentinelDecl = {
-        options.den.probeSentinelFields = merge.mkOption {
-          type = merge.types.raw;
-          default = { };
-          description = "extra fields merged onto concern-policies' value-less probe sentinel (beyond `{ id_hash; name }`) so a policy body reading a coord field gets a type-correct non-matching sentinel, not a hard-fail (B2). Native default `{ }`.";
-        };
-      };
-
-      # den.resolveFamilyNames — the resolve-family TAG SET (R2 REQUIREMENT 2, the corpus-facts-as-config
-      # precedent alongside `probeSentinelFields`). concern-policies stamps `__resolveFamily = true` on each
-      # named compiled policy, so the STAGED ROOT-RESOLUTION pre-pass dispatches it — the DECLARED tag a
-      # value-conditional resolve policy needs (its value-less probe emits no member/relate, so it cannot be
-      # DETECTED). A v1 corpus authors `resolve.to` policies without the den-hoag tag on the value, so the
-      # shim supplies the corpus resolve-emitting names (its `resolveFamilyModule`). A NAMED
-      # policy that emits member/relate at a root but is OMITTED here is caught LOUD by the untagged guard
-      # (attributes/structural.nix `resolveFamilyUntagged`). Native default `[ ]` — a native fleet's
-      # resolve-family policies are DETECTED (probe emits), never tagged.
-      resolveFamilyNamesDecl = {
-        options.den.resolveFamilyNames = merge.mkOption {
-          type = merge.types.raw;
-          default = [ ];
-          description = "policy names concern-policies stamps `__resolveFamily = true` on, so the staged pre-pass dispatches them (R2). The declared tag a value-conditional resolve policy needs. Native default `[ ]`.";
-        };
-      };
-      # den.excludeFamilyNames (#72, candidate A) — the resolveFamilyNames twin for `suppress` emitters:
-      # policy names whose rules join the staged pre-pass's EXCLUDE-FAMILY feed (a value-conditional
-      # excluder probes empty, so the declared tag is its only path). Native default `[ ]`.
-      excludeFamilyNamesDecl = {
-        options.den.excludeFamilyNames = merge.mkOption {
-          type = merge.types.raw;
-          default = [ ];
-          description = "policy names concern-policies stamps `__excludeFamily = true` on, so the staged pre-pass dispatches them for suppression collection (#72). Native default `[ ]`.";
-        };
-      };
-      # den.producesByName (declared-stratum) — the resolveFamilyNames twin as a `name → [declare-kind]`
-      # MAP: the VALUE-CONDITIONAL policies whose DECLARED produced-kind family lets `dispatch.deriveGroup`
-      # stamp the rule's group at DEFINITION time, so concern-policies compiles ONE declared rule per policy
-      # instead of the blind per-stratum fan (the fire-and-observe holdover). A value-less probe emits
-      # nothing, so the kinds cannot be DETECTED — the shim DECLARES them (its `producesModule`). An
-      # unmapped value-conditional policy degrades to the proven `mkExpanded` fan. Native default `{ }`.
-      producesByNameDecl = {
-        options.den.producesByName = merge.mkOption {
-          type = merge.types.raw;
-          default = { };
-          description = "map `name → [declare-kind]` naming value-conditional policies whose declared produced-kind family lets deriveGroup stamp the dispatch group at definition time (declared-stratum), retiring the blind per-stratum fan. Native default `{ }`.";
-        };
-      };
-
       # The collector NAMES probe (§4.7) — the gate for the framework `collector` kind: a fleet declaring no
       # `den.collectors` gets no collector kind (`metaAugment { hasCollectors = false } == { }`, corpus-inert).
       discoveredCollectors = collectorsLib.discoverCollectors userModules;
@@ -1030,10 +976,6 @@ let
           enrichBindingsDecl
           enrichContextDecl
           channelGatherDecl
-          probeSentinelDecl
-          resolveFamilyNamesDecl
-          excludeFamilyNamesDecl
-          producesByNameDecl
           # The `den.collectors` DECLARATION option (§4.7, always present, the classesDecl posture — inert
           # default `{ }`). The collector schema kind + the `den.collector` registry bridge ride separately,
           # GATED on collectors present, so a corpus fleet gets neither the kind nor the registry.
@@ -1097,18 +1039,18 @@ let
       prePass = stagedResolution.runPrePass {
         scopeRoots = prePassScopeRoots;
         inherit (ent) registries;
-        # The resolve-family feed (concern-policies) — the structural-group rules that CAN emit
-        # member/relate (single-group probe DETECTED, or the `__resolveFamily` tag DECLARED). Dispatching
-        # only these keeps the pre-pass from running an arbitrary co-firing policy body at a root (which
-        # could hit an uncatchable missing-attribute read). Empty for a resolve-free fleet → pre-pass inert.
-        resolveRules = policiesRules.resolveFamily;
+        # The resolve-family feed (concern-policies) — the structural-group rules whose DECLARED codomain
+        # contains `member` — already selected by node kind. Dispatching only these keeps the pre-pass from
+        # running an arbitrary co-firing policy body at a root (which could hit an uncatchable
+        # missing-attribute read). Empty for a resolve-free fleet → pre-pass inert.
+        resolveIndex = indexFeed policiesRules.resolveFamily;
         # NATIVE ATTACHMENT (route 2) — the `den.attach` rows, verbatim. A fleet declaring none passes
         # `{ }` and the pre-pass emits nothing synthetic, so its five products are byte-identical.
         nativeAttach = ent.config.den.attach;
         # The EXCLUDE-FAMILY feed (#72, candidate A): dispatched at the same roots/ctx for `suppress`
         # collection — v1's policy.exclude constraint registration (pin fx/handlers/dispatch-policies
         # .nix:15-33), rendered as pre-pass suppression sets. Empty for an exclude-free fleet → inert.
-        excludeRules = policiesRules.excludeFamily;
+        excludeIndex = indexFeed policiesRules.excludeFamily;
         # The schema parent kind of each kind (scalar per kind), for the containment source-kind check.
         kindParent = k: (ent.meta.${k} or { }).parent or null;
         inherit mintedRootId;
@@ -1442,21 +1384,25 @@ let
         conversions = ent.config.den.conversions or { };
       };
 
-      # Compile the relationships concern (den.policies) into the enrich / policy rule feeds.
-      # The fixture carries no policies, so both feeds are empty and the fleet builds as before.
-      # `probeSentinelFields` (native default `{ }`) configures the value-less stratum probe's sentinel;
-      # `resolveFamilyNames` (native default `[ ]`, R2) stamps the resolve-family tag on the named policies.
-      policiesRules =
-        concernPolicies.compileWithStrata
-          {
-            order = compiledStrata;
-            ctxKeyStrata = { };
-          }
-          ent.config.den.probeSentinelFields
-          ent.config.den.resolveFamilyNames
-          ent.config.den.excludeFamilyNames
-          ent.config.den.producesByName
-          ent.config.den.policies;
+      # Compile the relationships concern (den.policies) into its rule feeds. Every fact the compile
+      # schedules on is DECLARED on the policy record, so the compiler needs no corpus knobs: a fleet
+      # carrying no policies yields empty feeds and builds as before.
+      policiesRules = concernPolicies.compileWithStrata {
+        order = compiledStrata;
+        ctxKeyStrata = { };
+      } ent.config.den.policies;
+
+      # THE SELECTION, built ONCE PER FLEET, one index per feed (`concernPolicies.indexByKind`). Each is a
+      # function `kind -> [rule]` filtering on the rule's declared `selects`, preserving the feed's own
+      # order — dispatch order determines emission order and therefore merge order. The kind list is the
+      # discovered schema's own kinds; it memoises the common case, and the index stays total for any kind
+      # outside it, so an incomplete list costs a recomputation rather than a silent drop.
+      policyKindNames = builtins.attrNames denMeta;
+      indexFeed = concernPolicies.indexByKind policyKindNames;
+      policiesIndex = {
+        enrich = indexFeed policiesRules.enrich;
+        policy = indexFeed policiesRules.policy;
+      };
 
       # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
       # plus the den-managed demand channel (§B) AND the collection-stratum pipe operators threaded
@@ -1812,7 +1758,7 @@ let
       };
 
       equations = attributesLib.equations {
-        inherit policiesRules fleetChildren linkTarget;
+        inherit policiesIndex fleetChildren linkTarget;
         allAspects = ent.config.den.aspects;
         directIncludes = ent.config.den.include;
         # The post-inheritance resolution-ctx enrichment hook (native default = identity, byte-identical).
@@ -2755,15 +2701,15 @@ in
     mkFlakeTerminal = flake.terminals.mkFlakeTerminal or null;
     structural = structuralAttributes;
     compilePolicies = concernPolicies.compile;
-    # The probe-sentinel convenience (`compilePoliciesWith sentinelFields policies`) keeps its 2-arg shape —
-    # the resolve-family / produced-kind knobs default to `[ ]` / `{ }` here (they are fleet-level
-    # `den.{resolveFamilyNames,producesByName}` options, not a unit-suite concern). `compileWith` is the
-    # full 5-arg form default.nix threads.
-    compilePoliciesWith = sentinelFields: concernPolicies.compileWith sentinelFields [ ] [ ] { };
     # The strata-aware compiler (spec §5): compile with an explicit stratum order + stratum→ctx-key map,
     # so the capability-scoped ctx projection is exercisable from the suite (the seeded config = the
-    # byte-identical no-op the fleet path uses). `compilePoliciesWithStrata { order; ctxKeyStrata } sentinel rf ef`.
+    # byte-identical no-op the fleet path uses). `compilePoliciesWithStrata { order; ctxKeyStrata } policies`.
     compilePoliciesWithStrata = concernPolicies.compileWithStrata;
+    # The definition-time validator as a VALUE (`null` = clean, else the first named message), so the
+    # suite asserts each named registration contract on its TEXT — `tryEval` cannot capture a throw's.
+    policyMessage = concernPolicies.policyMessage;
+    # The kind selection over a compiled feed (`indexByKind kinds feed` → `kind -> [rule]`).
+    indexPolicyFeed = concernPolicies.indexByKind;
     # The edge-kind registry compile (§2.2) + the framework pre-registration, for the suite's
     # registration/validation scenarios. `compileEdges { kinds; strataOrder; disciplines ? {} }` (the
     # `disciplines` arm is the compiled disciplines table the closure gate reads); `edgeKinds` = the

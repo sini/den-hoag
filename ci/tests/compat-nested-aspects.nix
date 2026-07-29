@@ -227,6 +227,12 @@ let
   autoInclude = {
     __isPolicy = true;
     name = "user-aspect-auto-include";
+    # DECLARED because the body is VALUE-conditional: it emits only where `rawAspects` has a key matching
+    # this host/user pair, so at a sentinel whose names are `«sentinel»` it emits nothing. An undeclared
+    # codomain would recover EMPTY and the policy would compile to no rule at all — silently, with the
+    # symptom appearing as missing cell content rather than as a missing policy. The emission is an aspect
+    # `include`, which translates to an `edge`.
+    emits = [ "edge" ];
     fn =
       { host, user, ... }:
       if rawAspects ? ${host.name} && rawAspects.${host.name} ? ${user.name} then
@@ -270,7 +276,7 @@ let
     id: builtins.filter (k: builtins.substring 0 10 k == "<emitted>@") (keysAt autoFleet id);
 
   # ── PARAMETRIC-INCLUDE LATE-DISPATCH — a BARE-FN aspect-include whose required formals name a
-  #    DESCENDANT kind late-dispatches to the descendant cell (board #57 `__firesAtKinds`). ──
+  #    DESCENDANT kind late-dispatches to the descendant cell (board #57 `selects`). ──
   # (A) genuine late-dispatch: a `{ host, user }` bare fn on the host self-aspect `blade` (R5-attached at
   #     host:blade). The `user` formal is a DESCENDANT kind (absent at the host), so the fn radiates as a
   #     synthetic aspect + edge policy confined to `[ host user ]` — firing at blade's USER CELL, NOT the host.
@@ -458,7 +464,7 @@ in
     # (7) A `{ host, user }` BARE-FN include on the host self-aspect RADIATES (a synthetic edge policy +
     #     aspect are compiled) and fires at the USER CELL (its `user` formal is satisfiable there), landing
     #     `home-manager.lateMarker` in the cell's home-manager bucket, and does NOT fire at the host
-    #     (`__firesAtKinds = [ host user ]` ∧ the `{host,user}` `__condition` — the host lacks the `user`
+    #     (`selects = [ host user ]` ∧ the `{host,user}` `gate` — the host lacks the `user`
     #     coord). This is board #57 confinement applied to a bare-fn aspect-include.
     test-barefn-latedispatch-fires-at-cell-not-host = {
       expr = {

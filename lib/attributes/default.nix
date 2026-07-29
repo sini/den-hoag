@@ -125,7 +125,7 @@ in
   # `local-demand-data`.
   equations =
     {
-      policiesRules,
+      policiesIndex,
       fleetChildren,
       linkTarget ? (_: null),
       allAspects ? { },
@@ -155,7 +155,7 @@ in
       # handle is inert (`.query` constantly `[ ]`, `.rel` `{ }`) ⇒ byte-identical.
       claimKinds ? { },
     }:
-    (structural { inherit policiesRules fleetChildren linkTarget; })
+    (structural { inherit policiesIndex fleetChildren linkTarget; })
     // {
       # Only the EQUATION records enter the equations map — `resolved-aspects` (attr 7) and `reach` (the
       # Phase-1 P-PROJECT closure, a resolve.attr record). The reach-edge/reach-suppress declaration reads

@@ -23,10 +23,11 @@
 #       suppression, not the fixture shape, removes it);
 #   (4) the DETECTED (unconditional) path — an excluder emitting unconditionally is probe-DETECTED into
 #       the feed without any name-set entry, suppressing fleet-wide;
-#   (5) the DOUBLE-FIRE guard — a value-conditional excluder NOT in the family aborts LOUD
-#       (excludeFamilyUntagged) when its main-run `suppress` is forced;
+#   (5) the DOUBLE-FIRE posture — a value-conditional excluder outside the family name set declares its
+#       own codomain, so it is in the feed by derivation and its main-run `suppress` is the benign
+#       double-fire rather than a silent drop needing a guard;
 #   (6) NAMELESS target — a policy-record exclude without a name aborts NAMED.
-{ denCompat, ... }:
+{ denCompat, denHoag, ... }:
 let
   inherit (denCompat) exclude;
 
@@ -60,37 +61,60 @@ let
     schema.user.includes = [ "uacct" ];
   };
 
+  # THE SELECTION HALF, which the corpus writes seven lines below the definition and this fixture used to
+  # omit: nix-config modules/den/batteries/nix-on-droid.nix defines `den.policies.drop-user-to-host-on-droid`
+  # and then SELECTS it with `den.default.includes = [ den.policies.<name> ]`. A definition is a registry
+  # entry; an includes list is what puts a policy into dispatch, in v1 and here. Without the include these
+  # fixtures were exercising a policy that fired everywhere because nothing had selected it — testing the
+  # absence of selection rather than the suppression they are about.
   mk =
-    extraPolicies:
+    refs:
     denCompat.mkDen [
       {
         den = base // {
-          policies = extraPolicies;
+          policies = builtins.listToAttrs (
+            map (r: {
+              inherit (r) name;
+              value = r;
+            }) refs
+          );
+          default.includes = refs;
         };
       }
     ];
-
-  # (1)-(3): the corpus-shaped value-conditional excluder — IN the compat exclude-family name set
-  # (exclude-family-names.nix), so the pre-pass dispatches it with real ctx.
-  excluded = mk {
-    drop-user-to-host-on-droid =
-      { host, ... }:
-      if (host.class or null) == "droid" then [ (exclude userToHostRef) ] else [ ];
+  # A v1 policy REF: the coerced `{ __isPolicy; name; fn }` shape an includes list carries.
+  policyRef = name: fn: {
+    __isPolicy = true;
+    inherit name fn;
   };
-  plain = mk { };
+  droidExcluder = policyRef "drop-user-to-host-on-droid" (
+    { host, ... }: if (host.class or null) == "droid" then [ (exclude userToHostRef) ] else [ ]
+  );
 
-  # (4): the DETECTED path — an unconditional excluder (probe emits `suppress` → joins the feed with no
-  # name-set entry) suppresses fleet-wide.
-  detected = mk {
-    always-exclude = _ctx: [ (exclude userToHostRef) ];
-  };
+  # (1)-(3): the corpus-shaped value-conditional excluder — its codomain is declared by the compat
+  # exclude-family name set (exclude-family-names.nix), so the pre-pass dispatches it with real ctx.
+  excluded = mk [ droidExcluder ];
+  plain = mk [ ];
 
-  # (5): the double-fire guard — value-conditional AND not in the family ⇒ its main-run suppress aborts.
-  rogue = mk {
-    rogue-excluder =
-      { host, ... }:
-      if (host.class or null) == "droid" then [ (exclude userToHostRef) ] else [ ];
-  };
+  # (4): an UNCONDITIONAL excluder suppresses wherever it is selected. Its codomain needs no name-set
+  # entry — the body emits `suppress` at every firing, so recovery reads it directly.
+  detected = mk [ (policyRef "always-exclude" (_ctx: [ (exclude userToHostRef) ])) ];
+
+  # (5): a policy whose body emits `suppress` while its DECLARED codomain says `enrich`. The declaration
+  # is well-formed on its own (one kind, one stratum), so registration is clean and the conflict can only
+  # surface where it actually happens — at the emission. This is the shape the retired untagged guard used
+  # to catch by asking about feed membership; the codomain check catches it one step earlier and names the
+  # kind.
+  rogue = mk [
+    (
+      policyRef "rogue-excluder" (
+        { host, ... }: if (host.class or null) == "droid" then [ (exclude userToHostRef) ] else [ ]
+      )
+      // {
+        emits = [ "enrich" ];
+      }
+    )
+  ];
 
   dHost = "host:d1";
   nHost = "host:n1";
@@ -137,9 +161,41 @@ in
       };
     };
     # (5) the double-fire guard: a non-family value-conditional excluder's main-run suppress is LOUD.
-    test-untagged-excluder-aborts = {
-      expr = ok (rogue.den.structural.eval.get "host:d1" "declarations");
-      expected = false;
+    # (5) RETARGETED. This pinned `excludeFamilyUntagged`, which is RETIRED — not relaxed. Feed membership
+    # is now a set-membership test on the DECLARED codomain, so a `suppress` emitter has declared that kind
+    # and is in the exclude feed BY DERIVATION; "emitted but untagged" became unrepresentable rather than
+    # detected, and the question the old guard asked has no `false` answer left.
+    #
+    # The HAZARD did not vanish with the guard, it moved EARLIER: an UNDECLARED `suppress` emitter now
+    # aborts at the emitting site as `emitsUndeclared`. That is what this test pins, so the coverage
+    # survives the guard that used to carry it.
+    #
+    # ★ DEPENDENCY, stated because the derivation is not yet unconditional: this reasoning holds for a
+    # DECLARED codomain. A compat-minted policy's codomain is RECOVERED by firing, and a recovery that
+    # yields `[ ]` compiles to no rule at all (`compileOne`), on which path a `suppress` emitter would
+    # vanish with no abort — the same silent drop the retired guard existed to catch. Recovery is
+    # ungated as of the `policy-recover.nix` layering fix; do not treat this derivation as total for
+    # recovered codomains until an empty RECOVERY is as loud as a throwing one.
+    test-undeclared-suppress-aborts-at-emission = {
+      expr = {
+        # a body emitting `suppress` outside its declared codomain aborts NAMED at the firing…
+        aborts = ok (rogue.den.structural.eval.get "host:d1" "declarations");
+        # …and the abort is THIS law, not merely any failure (the false-pass class).
+        named =
+          let
+            m = denHoag.internal.policyMessage {
+              undeclared = {
+                emits = [ "enrich" ];
+                fn = _ctx: [ (exclude userToHostRef) ];
+              };
+            };
+          in
+          m == null; # registration is clean — the codomain is well-formed; the conflict is at EMISSION
+      };
+      expected = {
+        aborts = false;
+        named = true;
+      };
     };
     # (6) a NAMELESS policy target aborts NAMED at translation (v1's suppression is name-keyed).
     test-nameless-target-aborts = {

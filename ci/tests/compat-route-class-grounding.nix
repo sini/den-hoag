@@ -87,13 +87,23 @@ let
         config.den = {
           hosts.x86_64-linux.igloo.users.tux = { };
           classes.homeLinux = { };
-          policies.homeLinux-to-hm = _: [
-            (denCompat.route {
-              fromClass = "homeLinux";
-              intoClass = intoClass;
-              path = [ ];
-            })
-          ];
+          # Selected by DECLARATION rather than by a schema entry: this fixture registers the policy and
+          # includes it nowhere, so an undeclared selection would derive `[ ]` from the schema — "in no
+          # includes list" means "selects nothing", the 241-firings correction doing its job. That is the
+          # right answer to a question this suite is not asking (the delivery target), so the selection is
+          # stated instead of inherited. This policy models no corpus wiring, so unconstrained is honest.
+          policies.homeLinux-to-hm = {
+            __isPolicy = true;
+            emits = [ "delivery" ];
+            selects = null;
+            fn = _: [
+              (denCompat.route {
+                fromClass = "homeLinux";
+                intoClass = intoClass;
+                path = [ ];
+              })
+            ];
+          };
           # a self-named host aspect so host:igloo carries real nixos content and resolves end-to-end.
           aspects.igloo.nixos.networking.hostName = "igloo";
         };

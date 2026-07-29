@@ -22,6 +22,10 @@
   # on the typed nav surface, not freeform-absorbed as a nested aspect).
   merge,
   compile,
+  # The compile core still awaiting its recovery sentinel (`sentinelFields: decls -> compiled`), plus the
+  # static sentinel fields it merges the fleet's deep `settings` submodule onto.
+  compileWithSentinel,
+  staticSentinel,
   ingest,
   hasAspect,
   gather,
@@ -494,7 +498,23 @@ let
   # `compileFull` — apply the legacy desugars (v1→v1, over the RAW tree), THEN type the aspect tree (the
   # single typed tree), then compile + append R5 self-includes. Typing AFTER desugar keeps the raw `provides`/
   # kind-include grammar readable by the desugars while giving compile the typed class buckets + native `.key`.
-  compileFull = v1: addSelfIncludes (compile (typeAspects (desugarLegacy v1)));
+  # The recovery sentinel for ONE fleet: the static corpus coord fields (probe-sentinel.nix) plus the
+  # bridge-threaded deep `settings` submodule, materialized at its own defaults so an un-`or`'d
+  # `host.settings.<…>` read reaches a genuine non-matching value instead of an uncatchable
+  # attribute-missing. LAZY — `? settings` / `inherit` never force the submodule, so a fleet with no
+  # settings-reading policy never materializes it. On the mkDen-DIRECT path (no bridge) the reserved key is
+  # absent and the field is omitted, which is the documented, self-announcing ceiling.
+  # `probeSentinel` off ⇒ NO sentinel fields ⇒ a body reading a coord field fails LOUDLY at the recovery.
+  sentinelFor =
+    rawDen:
+    prelude.optionalAttrs features.probeSentinel (
+      staticSentinel
+      // prelude.optionalAttrs (rawDen ? _probeSentinelFields && rawDen._probeSentinelFields ? settings) {
+        inherit (rawDen._probeSentinelFields) settings;
+      }
+    );
+  compileFull =
+    v1: addSelfIncludes (compileWithSentinel (sentinelFor v1) (typeAspects (desugarLegacy v1)));
   # `den.interpret` — the gen-edge source-interpreter seam (item 7): the legacy forwards module's
   # `synthesize`/`rewalk` composers, threaded into den-hoag's single `materialize` via the shipped raw
   # option (lib/default.nix `interpretDecl`, output-modules.nix `interpret ? { }`) WITHOUT editing
@@ -512,53 +532,6 @@ let
   # (the hostname battery `${host.class}.networking.hostName = host.hostName`, an unconditional read whose
   # fake value is discarded after the probe, like `host-modules-capture`). The FIELDS ARE
   # A v1-CORPUS FACT, so they live HERE (the compat layer), not in field-agnostic core: the shim supplies
-  # TYPE-CORRECT NON-MATCHING string sentinels ("«probe»"), so each value-conditional body takes its FALSE
-  # branch → EXPANSION (the conservative branch, correct at real nodes), and an unconditional body (`host-
-  # modules-capture` → instantiate) emits its fixed stratum with the fake value DISCARDED after the probe.
-  # CEILING: a corpus policy reading an un-enriched field still hard-fails LOUDLY (self-announcing → add it).
-  # A DEEP field (`settings`) needs a submodule-tree sentinel, not a string. The bridge threads the
-  # all-defaults settingsType submodule (materialized at its DEFAULTS, so `.core.users.home-manager.
-  # useGlobalPkgs = false`) as the reserved `_probeSentinelFields.settings` (bridge.nix), and this module
-  # merges it onto the string sentinels above — so nixpkgs-overlays' un-`or`'d `host.settings.<…>`
-  # predicate read reaches a genuine non-matching `false` at the probe (→ FALSE branch → expansion, never
-  # a fire) instead of the uncatchable `attribute 'settings' missing`. LAZY: `? settings` / `inherit` never
-  # force the submodule, so a settings-policy-free fleet never materializes it (byte-neutral). On the
-  # mkDen-DIRECT path (no bridge) `_probeSentinelFields` is absent → the field is omitted → a direct fixture
-  # reading bare `host.settings` in a policy still self-announces LOUDLY (the documented CEILING, unchanged).
-  probeSentinelModule = rawDen: {
-    config.den.probeSentinelFields = {
-      class = "«probe»";
-      system = "«probe»";
-      hostName = "«probe»";
-    }
-    // prelude.optionalAttrs (rawDen ? _probeSentinelFields && rawDen._probeSentinelFields ? settings) {
-      inherit (rawDen._probeSentinelFields) settings;
-    };
-  };
-  # THE CORPUS RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2) — the SAME corpus-facts-as-config
-  # precedent as `probeSentinelModule`. The names + census live in `resolve-family-names.nix` (the SINGLE
-  # source), imported ALSO by default.nix → compile.nix so the kind-include compilation can stamp
-  # `__resolveFamily` on a SYNTHETIC-keyed include policy whose SOURCE REF's v1 name is in this set (the
-  # `name ∈ resolveFamilyNames` match here only catches a resolve policy authored DIRECTLY under the KEY —
-  # a kind-include's key is synthetic). THE OMISSION CATCH: a resolve-emitting policy omitted from the set
-  # that fires a `member` at a root aborts LOUD (the R2 `resolveFamilyUntagged` guard).
-  resolveFamilyModule = {
-    config.den.resolveFamilyNames = import ./resolve-family-names.nix;
-  };
-  # The #72 exclude-family twin (`den.excludeFamilyNames`, single source exclude-family-names.nix): a
-  # value-conditional corpus excluder (drop-user-to-host-on-droid) probes empty, so the declared tag is
-  # its only path to the staged pre-pass's exclude feed; omission aborts LOUD (excludeFamilyUntagged).
-  excludeFamilyModule = {
-    config.den.excludeFamilyNames = import ./exclude-family-names.nix;
-  };
-  # The declared-stratum produced-kind map (`den.producesByName`, single source produces-by-name.nix): the
-  # value-conditional corpus policies whose declared produced-kind family lets `dispatch.deriveGroup` stamp
-  # the group at definition time — ONE declared rule per policy instead of the blind per-stratum fan.
-  # A policy authored directly under `den.policies.<name>` matches by attr key; a kind-include-wired one
-  # (synthetic key) is caught by compile's `producesStamp`. Native default `{ }` (undeclared → the fan).
-  producesModule = {
-    config.den.producesByName = import ./produces-by-name.nix;
-  };
   # `mkDenWith userModules { nixosTerminal ? collect; hoagModules ? [] }` — build the shim fleet with the
   # nixos terminal SEAM (the parity harness / a real ship supplies `crossNixos` for real NixOS systems) and
   # optional extra native den-hoag modules. `mkDen` = this at the default (collect, no extra modules) — the
@@ -579,23 +552,10 @@ let
         (mkFleetModuleWith (compileFull rawDen) nixosTerminal)
         interpretModule
       ]
-      # `probeSentinel` off ⇒ OMIT probeSentinelModule ⇒ `den.probeSentinelFields` unset ⇒ the kernel `{ }`
-      # identity default stands (a policy reading a bare coord field at the value-less probe then hard-fails
-      # LOUDLY — the documented CEILING, not a silent mis-resolve).
-      ++ (if features.probeSentinel then [ (probeSentinelModule rawDen) ] else [ ])
-      # `familyStamps` off ⇒ OMIT both seam modules (ATOMIC with the mkCompile name-set collapse — default.nix
-      # mkCompile) ⇒ `den.{resolveFamilyNames,excludeFamilyNames}` unset ⇒ the kernel `[ ]` defaults stand
-      # (a resolve/exclude policy firing a member/suppress at a root then aborts NAMED — the untagged guards).
-      ++ (
-        if features.familyStamps then
-          [
-            resolveFamilyModule
-            excludeFamilyModule
-            producesModule
-          ]
-        else
-          [ ]
-      )
+      # The four corpus-fact knobs are no longer fleet OPTIONS: each said which declaration kinds a policy
+      # can produce, or how to fire it to find out, and both are now the shim's own inputs to the codomain
+      # it DECLARES on each compiled record (`sentinelFor` above, compile.nix `declaredEmitsOf`). Their
+      # feature gates ride those inputs instead of a module list, so the kernel gains no policy knob.
       ++ hoagModules
     );
   mkDen = userModules: mkDenWith userModules { };

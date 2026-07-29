@@ -1,54 +1,53 @@
-# Compile `den.policies.<name>` into gen-dispatch rules, partitioned into the two feeds the
-# structural stratum consumes: `enrich` (attr 2's keyset-ascent fixpoint, B1) and `policy` (attr 4's
-# one-shot stratified rule evaluation, B2). A policy value is either a bare `ctx: [decl]` FUNCTION —
-# whose `functionArgs` ARE the presence gate (fires only where every destructured ctx key is present;
-# a channel-named arg, never a ctx key, therefore never fires) — or a rule RECORD `{ __condition; fn }`
-# whose gate is DECLARED explicitly (a `functionArgs`-shaped coord set) over a bare-ctx body. The
-# record form is the general policy vocabulary for programmatically-generated policies that cannot
-# shape their formals — a generated policy declares its gate as data (den-hoag greenfield D7). `fn`
-# is a `ctx: [decl]` body either way; the produce is wrapped to stamp the owning policy (`__policy`).
+# Compile `den.policies.<name>` into gen-dispatch rules, partitioned into the two feeds the structural
+# stratum consumes: `enrich` (attr 2's keyset-ascent fixpoint, B1) and `policy` (attr 4's one-shot
+# stratified rule evaluation, B2), plus the two staged pre-pass feeds and the fleet compose seed.
 #
-# STRATUM (B2). A rule fires in exactly ONE stratum — gen-dispatch runs each rule only in its group's
-# phase and validates that its declarations all classify to that group. Two ways to learn the stratum:
-# DECLARED (a value-conditional policy named in `producesByName` carries its produced-kind family as
-# DATA, and `dispatch.deriveGroup declare.stratumOfKind` classifies it + stamps `group` at DEFINITION
-# time — no fire) or PROBED (a single-group policy's stratum is read by firing produce on a sentinel
-# context, which ALSO seeds the compose data below). The declared path is the gen-dispatch declared-stratum
-# vocabulary (declared.nix), the analog of gen-resolve's per-equation `stratum`; the probe path is the
-# fire-and-observe fallback (undeclared value-conditional policies + every single-group policy, whose fire
-# is required for compose-seeding regardless). The probe fills only the REQUIRED coords (a `functionArgs` `false`): a DEFAULTED
-# coord (`true`) is OMITTED, so the body's own default applies — a default is the AUTHOR's declared
-# probe-safe value, so clobbering it with a sentinel entry is a probe defect, not a policy signal (e.g. a
-# `{ accessGroups ? [], … }` body doing `elem g accessGroups` would see a `{ id_hash; name }` SET and throw
-# "expected a list but found a set", which tryEval does NOT catch). The probe is FORMAL-PRESERVING for the
-# required gate (a record's bare-ctx body sees its required coords) and tryEval-GUARDED: a body doing
-# value-work against the sentinel that reaches a `throw`/`assert` (e.g. a constructor's identity-law abort)
-# is caught and treated IDENTICALLY to an empty probe — both route to the per-declaration EXPANSION path.
-# HONEST LIMIT: `tryEval` cannot catch a non-recoverable eval error (missing attribute, head-of-empty), so a
-# body that field-accesses/iterates a REQUIRED sentinel coord bare still fails the probe HARD — loudly,
-# pointing at the probe (the documented pre-record failure mode). A value-conditional body reaches its
-# coords via `or` defaults / defaulted formals (the corpus idiom), which yields the clean empty-probe path.
+# A policy value is a RECORD. It DECLARES the facts the kernel schedules on rather than having them
+# recovered by firing its body against a fabricated context:
 #
-# VALUE-CONDITIONAL (the empty-probe path). When the probe observes no emission the stratum cannot be
-# read by firing — the policy's emission is gated on a ctx VALUE, so it emits nothing at the value-less
-# sentinel. TWO renderings: a DECLARED policy (`producesByName`) takes the declared-stratum path
-# (`mkDeclaredSlices`) — deriveGroup stamps the group from the declared kinds, so ONE rule keyed by the
-# bare name is built (a single-group corpus policy) instead of guessing. An UNDECLARED value-conditional
-# policy takes the EXPANSION fallback (`mkExpanded`): rather than guess ONE stratum (the silent-partition
-# sin), the policy is expanded into one
-# sub-rule per COVERED stratum {structural, resolution, collection}: each fires at the SAME gated nodes
-# and keeps only its-stratum declarations, so every declaration is produced in ITS stratum's phase with
-# that phase's context — the one-rule/one-stratum law holds PER SUB-RULE while the policy's declarations
-# self-route by kind (B2's readers pull `actions.<stratum>` by kind, independent of the producing
-# rule). Expansion is the CONSERVATIVE branch: a policy misclassified INTO it still fires correctly at
-# real coord values; misclassifying a value-conditional policy OUT of it (as a fixed single stratum)
-# would mis-place its declarations. Two conservation limits abort LOUD (`errors.expansion*`): an
-# enrich-kind declaration (enrich-feed selection is a probe-time B1 commitment a value-less policy
-# cannot make) and a DERIVED/route pipeOp (a channel-shaping DAG or delivery route seeds the ONE fleet
-# gen-pipe compose BEFORE eval, from ctx-independent bodies). But a pure SITE-MARK pipeOp on a bare
-# channel ref is NOT a compose commitment — site marks are per-node emission wiring fired WHERE the
-# policy fires (v1 register-pipe-effect.nix:15 scopedPipeEffects), so it is per-node DATA and rides the
-# `#collection` sub-rule (`declare.isSiteMarkData`), seeding no compose op.
+#   { emits :: [Kind]; fn :: ctx -> [Decl]; selects ? null; gate ? functionArgs fn; ops ? [ ]; }
+#
+# EMITS is the declaration CODOMAIN — the closed set of declaration-kind tags the body may produce
+# (declarations.nix `groups`). It is REQUIRED, and it is CHECKED at every firing, so it is a CONTRACT
+# rather than an annotation: the declaration cannot drift from the body. Five facts the kernel used to
+# obtain by execution are set-membership tests on it — the dispatch group (`declare.stratumOfKind` is
+# TOTAL on the kind vocabulary), the produced-kind family, resolve-family membership, exclude-family
+# membership, and enrich-only-ness. `emits = [ ]` is legal, means "emits nothing", and compiles to NO
+# rule: an emitter of nothing is not a rule.
+#
+# SELECTS is the 3-VALUED dispatch selection, because absence has two DIFFERENT meanings and one value
+# cannot carry both: `null` = unconstrained (dynamic attachment — fires wherever the gate admits),
+# `[ ]` = selects nothing (in no node's rule list at all), `[ k ... ]` = fires at nodes of those OWN
+# kinds (k = 0: the node itself, not descendants inheriting the coordinate). Neither absence is spelled
+# by omission. The default is `null`, so a record supplying only `emits` + `fn` keeps a bare closure's
+# dispatch reach exactly.
+#
+# GATE defaults to the body's `functionArgs` — the presence gate (a rule fires only where every
+# destructured ctx key is present; a channel-named arg, never a ctx key, therefore never fires). It is
+# NOT derived from `emits`: what a policy produces and where its ctx admits it are different questions.
+#
+# OPS carries the FLEET-WIDE gen-pipe compose commitments as DATA. A derived-channel DAG or a delivery
+# route seeds the ONE fleet compose BEFORE the eval and is ctx-INDEPENDENT by contract, so extracting it
+# by firing a body was recovering a constant. Only per-node SITE MARKS are emitted from `fn`
+# (`declare.isSiteMarkData` — site marks are per-node emission wiring, v1 register-pipe-effect.nix:15
+# `scopedPipeEffects`); the two directions are checked at opposite ends.
+#
+# STRATUM (B2) is DERIVED, never declared. A rule fires in exactly ONE stratum, and `declare.stratumOfKind`
+# is a total function from the kind tag, so declaring a stratum beside `emits` would create a second source
+# for a derivable fact. A codomain spanning STRATA is rejected at registration: one rule, one stratum is
+# gen-dispatch's core invariant (`dispatch.deriveGroup` aborts on a declared family spanning groups, and
+# every rule here is discharged through it), so the surface refuses it at its own boundary rather than
+# letting it throw deep inside a dispatch. The remedy is to author one policy per stratum — named, rather
+# than synthesized behind a `#<stratum>` suffix.
+#
+# THE LEVEL CONDITION, stated correctly because den-hoag has negated reads (Apt, Blair & Walker 1988,
+# `Towards a Theory of Declarative Knowledge`, Stratified Programs Definition 3, p. 96). A stratification
+# assigns levels so that, for a clause whose head is in P_i, a relation occurring POSITIVELY in the body is
+# defined within ⋃_{j ≤ i} P_j — the SAME stratum is permitted, which is what makes intra-stratum recursion
+# legal — while a relation occurring NEGATIVELY must be defined within ⋃_{j < i} P_j, STRICTLY below. The
+# paper's own gloss: "each stratum defines new relations in terms of itself only positively and in terms of
+# the relations from the previous strata, possibly negatively." The condition is asymmetric, and reading it
+# as "a body may not read at or above its own head" forbids what the paper permits.
 {
   prelude,
   dispatch,
@@ -56,53 +55,102 @@
   errors,
 }:
 let
-  # `compileWith sentinelFields resolveFamilyNames excludeFamilyNames producesByName policies` — compile
-  # with a CONFIGURABLE probe sentinel AND the corpus-facts-as-config knobs (the SAME composition-first
-  # precedent — core stays FIELD/NAME-agnostic; the CONSUMER supplies what it knows about its own bodies):
-  #   • `sentinelFields` merges onto the universal `{ id_hash; name }` probe stand-in, so a caller that KNOWS
-  #     a policy body reads a coord FIELD on the sentinel supplies a TYPE-CORRECT NON-MATCHING value for it —
-  #     the body takes its value-conditional FALSE branch (→ expansion) instead of hard-failing.
-  #   • `resolveFamilyNames` (R2 REQUIREMENT 2) STAMPS `__resolveFamily = true` on the named compiled
-  #     policies — the DECLARED tag a VALUE-CONDITIONAL resolve policy needs (its value-less probe emits no
-  #     member/relate, so it cannot be DETECTED). A v1 corpus authors `resolve.to` policies WITHOUT the
-  #     den-hoag tag on the value, so the shim flake-module supplies the corpus resolve-emitting names here.
-  #     A name NOT supplied that DOES emit member/relate at a root is caught LOUD by the R2 untagged guard
-  #     (attributes/structural.nix attr 4 `resolveFamilyUntagged`) — the omission catch, never a silent drop.
-  # `compile` = the defaults `{ }` / `[ ]` / `{ }`, byte-identical for every native caller.
-  # `excludeFamilyNames` (#72, candidate A — the resolveFamilyNames twin): names whose compiled rules
-  # join the EXCLUDE-FAMILY feed the staged pre-pass dispatches for `suppress` collection; a
-  # value-conditional excluder (the corpus's droid-gated route exclude) probes empty, so the DECLARED
-  # tag is its only path. An omitted name that DOES emit `suppress` in the main run is caught LOUD
-  # (attributes/structural.nix `excludeFamilyUntagged`).
-  #   • `producesByName` (declared-stratum, the resolveFamilyNames twin) — a `name → [declare-kind]` map
-  #     naming the VALUE-CONDITIONAL policies whose DECLARED produced-kind family lets
-  #     `dispatch.deriveGroup` stamp the rule's `group` at DEFINITION time, so ONE declared rule is built
-  #     instead of the blind per-stratum fan (the fire-and-observe holdover). A value-less probe emits
-  #     nothing, so the produced kinds cannot be DETECTED — the consumer DECLARES them as data. An omitted
-  #     value-conditional policy degrades to the proven `mkExpanded` fan (`declaredKinds == null`), never a
-  #     crash. Single-group (probe-EMITTING) policies are NOT mapped — their `produces` is probe-derived.
   # The SEEDED strata config (§B2): the compiled stratum order with the stratum→ctx-key-groups map EMPTY
   # above the structural stratum. Rule ctx today is entity BINDINGS — inherited/enriched/linked context
   # (structural.nix attributes 1–3), ALL structural — so no ctx key belongs to a stratum above structural
-  # and the projection below is a NO-OP for every shipped rule (the full suite is the byte proof). The
-  # order threads from `den.strata` (declarations.compileStrata) via `compileWithStrata`; a caller that
-  # inserts a stratum and tags a ctx key to it gets the capability projection by construction.
+  # and the projection below is a NO-OP for every shipped rule. The order threads from `den.strata`
+  # (declarations.compileStrata) via `compileWithStrata`; a caller that inserts a stratum and tags a ctx
+  # key to it gets the capability projection by construction.
   seededStrataCfg = {
     order = declare.strata;
     ctxKeyStrata = { };
   };
 
-  # `compileWithStrata { order; ctxKeyStrata } …` — the strata-aware compiler. `compileWith` is this with
-  # the seeded config, so every existing caller is byte-identical (empty map ⇒ identity projection).
+  # A policy value's declared parts. `emits` and `fn` are REQUIRED (validated by `policyMessage` before
+  # any rule is built); the rest carry their documented defaults, and each default is the exact semantics
+  # the corresponding omission had before it was a field.
+  emitsOf = v: v.emits;
+  fnOf = v: v.fn;
+  selectsOf = v: v.selects or null;
+  gateOf = v: v.gate or (builtins.functionArgs v.fn);
+  opsOf = v: v.ops or [ ];
+  # The group a policy's declared codomain classifies to. `declare.stratumOfKind` is TOTAL on the closed
+  # kind vocabulary, so the stratum is DERIVED and never declared twice (a second source can disagree with
+  # the first). An empty codomain classifies to no group and compiles to no rule (see `compileOne`).
+  groupsOf = emits: prelude.unique (map declare.stratumOfKind emits);
+
+  # policyMessage — the DEFINITION-TIME validator as a VALUE (`null` = clean, else the FIRST named
+  # message), so every named contract here is CI-testable: Nix cannot recover a throw's TEXT from a caught
+  # evaluation, so a validator that returns its message is the only form a test can assert on.
+  # The guard chain is ORDERED — shape first, then vocabulary, then the ops law — so a later guard never
+  # reads a field an earlier one has not validated. Rejection is AT REGISTRATION, an explicit boundary,
+  # not a throw deep inside a dispatch (the `den.productions` posture, concern-productions.nix:18,82-149).
+  policyMessage =
+    policies:
+    let
+      knownKind = k: declare.kindToStratum ? ${k};
+      checkOne =
+        name: v:
+        let
+          emits = v.emits or null;
+          unknown = builtins.filter (k: !(knownKind k)) (if builtins.isList emits then emits else [ ]);
+          ops = v.ops or [ ];
+          siteMarkOps = builtins.filter declare.isSiteMarkData ops;
+        in
+        if !(builtins.isAttrs v) then
+          "den.policies: `${name}` is not a record - a policy value is `{ emits; fn; selects ? null; gate ? <formals>; ops ? [ ]; }`. A bare `ctx: [ declarations ]` closure cannot carry the emitted-kind family the kernel schedules on, and recovering it by firing the body against a fabricated context is what this surface replaces"
+        else if !(v ? emits) then
+          "den.policies: `${name}` declares no `emits` - the declaration codomain is REQUIRED. `emits = [ ]` (produces nothing, compiles to no rule) is a legal value; an omitted `emits` is not, because silence must not be read as a permission to discover it by execution"
+        else if !(builtins.isList emits) then
+          "den.policies: `${name}`.emits must be a LIST of declaration-kind tags, got ${builtins.typeOf emits}"
+        else if !(v ? fn) || !(builtins.isFunction v.fn) then
+          "den.policies: `${name}` declares no function-valued `fn` - the body is `ctx: [ declarations ]`"
+        else if !(selectsOf v == null || builtins.isList (selectsOf v)) then
+          "den.policies: `${name}`.selects must be `null` (unconstrained), `[ ]` (selects nothing) or a list of kind names; those are three DIFFERENT selections and an omitted field means the first"
+        else if unknown != [ ] then
+          "den.policies: `${name}` emits unknown declaration kind `${builtins.head unknown}` - the vocabulary is the registered declaration kinds (declarations.nix `groups`)"
+        else if builtins.length (groupsOf emits) > 1 then
+          "den.policies: `${name}` emits kinds spanning strata ${builtins.concatStringsSep ", " (groupsOf emits)} - a rule's declarations classify to ONE stratum. This is gen-dispatch's core invariant, not only den-hoag's: `dispatch.deriveGroup` (gen-dispatch `mkActions`, the declared-stratum vocabulary) aborts on a declared kind family spanning groups, and `compileOne` discharges every rule through it. Split it into one policy per stratum; the split is authored and named rather than synthesized"
+        else if siteMarkOps != [ ] then
+          "den.policies: `${name}`.ops carries a SITE-MARK-only pipeOp - site marks are per-node emission data fired WHERE the policy fires, so they belong in the body's emission, not in the fleet-wide compose seed. `ops` carries only ctx-independent commitments (a derived-channel DAG or a delivery route)"
+        else
+          null;
+      offenders = builtins.filter (m: m != null) (prelude.mapAttrsToList checkOne policies);
+    in
+    if offenders == [ ] then null else builtins.head offenders;
+
+  # THE SELECTION, once per feed: one filtered list per SCHEMA kind, each preserving the feed's OWN ORDER.
+  # Dispatch order determines emission order and therefore merge order, so a bucket-concatenation index
+  # (`byKind ++ anyKind`) would perturb output; filtering the original list once per kind preserves it
+  # exactly. A rule with `selects = [ ]` lands in NO bucket — it is not filtered out at a node, it is
+  # ABSENT FROM EVERY NODE'S RULE LIST, so the shape is unrepresentable rather than corrected. A rule with
+  # `selects = null` is in every bucket. `kinds` is opaque data supplied by the caller — the kernel learns
+  # no kind NAMES.
+  #
+  # The result is a FUNCTION, not an attrset, and that is deliberate: a table lookup with an `or [ ]`
+  # fallback would answer "no rules" for a kind absent from `kinds`, silently dropping every unconstrained
+  # rule at that node — the failure mode this whole design exists to remove, reintroduced at the read. The
+  # fallback recomputes the same filter instead, so the selection is TOTAL over node kinds by construction
+  # and `kinds` is a memoisation hint rather than a correctness precondition.
+  indexByKind =
+    kinds: feed:
+    let
+      at = k: builtins.filter (r: r.selects == null || builtins.elem k r.selects) feed;
+      table = prelude.genAttrs kinds at;
+    in
+    k: table.${k} or (at k);
+
+  # `compileWithStrata { order; ctxKeyStrata } policies` — the strata-aware compiler. `compileWith` is
+  # this with the seeded config (an empty ctx-key map ⇒ identity projection).
   compileWith = compileWithStrata seededStrataCfg;
   compileWithStrata =
-    strataCfg: sentinelFields: resolveFamilyNames: excludeFamilyNames: producesByName: policies:
+    strataCfg: policies:
     let
       # Capability-scoped ctx (A9 stratification-by-construction, spec §5): a rule declared at stratum
       # `ruleStratum` may read ONLY ctx facts of a STRICTLY LOWER stratum. A ctx key whose declared
       # stratum is ≥ the rule's is REPLACED with a NAMED THROW (not omitted — a replaced key aborts
-      # CATCHABLY when read, diagnosing better than an attribute-missing read that escapes tryEval). The
-      # seeded map is empty above structural, so this is an identity map for every shipped rule.
+      # CATCHABLY when read, diagnosing better than an attribute-missing read). The seeded map is empty
+      # above structural, so this is an identity map for every shipped rule.
       stratumIndex = prelude.foldl' (acc: i: acc // { ${builtins.elemAt strataCfg.order i} = i; }) { } (
         builtins.genList (i: i) (builtins.length strataCfg.order)
       );
@@ -131,316 +179,104 @@ let
           else
             v
         ) ctx;
-      # A universal entry stand-in: passes requireEntry (has id_hash) so probing a policy that forwards ctx
-      # entries into constructors succeeds without touching any real registry. `sentinelFields` enriches it
-      # with caller-supplied coord fields. CEILING: a field must be TYPE-CORRECT NON-MATCHING — a string
-      # field gets a string sentinel ("«probe»"), an attrset-typed field an empty-attrset sentinel, etc.
-      # (a string where an attrset is expected would just move the crash); and a policy reading an
-      # UN-ENRICHED field still hard-fails LOUDLY (self-announcing → extend the set).
-      probeEntry = {
-        id_hash = "«probe»";
-        name = "«probe»";
-      }
-      // sentinelFields;
-
-      # A policy value's gate + body. A record `{ __condition; fn }` declares its gate (a coord set in
-      # the `functionArgs` shape); a bare function's gate is its `functionArgs`.
-      isRecord = v: builtins.isAttrs v && v ? __condition;
-      conditionOf = v: if isRecord v then v.__condition else builtins.functionArgs v;
-      fnOf = v: if isRecord v && v ? fn then v.fn else v;
-
-      # The A4 stratum-check + owning-policy stamp (the single-group produce — byte-identical to the
-      # pre-expansion path: one policy, one stratum, checked).
-      # The capability projection over a rule's base produce: the FINAL (dispatch) produce reads its ctx
-      # through `projectCtx stratum`, so a ≥-stratum ctx fact throws named when the body reads it. The
-      # PROBE keeps the RAW base produce (stratum-detection runs on the sentinel ctx, pre-projection).
+      # The FINAL (dispatch) produce reads its ctx through `projectCtx stratum`, so a ≥-stratum ctx fact
+      # throws named when the body reads it.
       projectedBase =
         stratum: baseProduce: id: ctx:
         baseProduce id (projectCtx stratum ctx);
-      checkedProduce =
-        name: baseProduce: id: ctx:
-        map (a: a // { __policy = name; }) (declare.checkStratum name (baseProduce id ctx));
-      # The stamp-only produce (no single-stratum check — an expansion body may span strata, each
-      # declaration self-routing by kind through the per-stratum filter below).
-      stampProduce =
-        name: baseProduce: id: ctx:
-        map (a: a // { __policy = name; }) (baseProduce id ctx);
 
-      # The value-less stratum probe: fill the DECLARED gate coords with a sentinel and deep-force the
-      # produce, catching a sentinel-value throw as an empty probe (both → expansion).
-      probeOf =
-        condition: produce:
+      # THE CONFORMANCE LAW: every declaration the body returns has its kind in the declared codomain, or
+      # the run aborts NAMED at the emitting site. This is what makes `emits` a contract — a mis-declared
+      # codomain is caught LOUD rather than mis-routing the rule silently. It SUBSUMES
+      # `declare.checkStratum` (a conforming emission cannot span strata, because `emits` does not) and the
+      # retired resolve-/exclude-family untagged guards (a `member`/`suppress` emitter has DECLARED it, so
+      # it is in the feed by derivation and "emitted but untagged" is unrepresentable). The `pipeOp` arm is
+      # the body end of the compose-commitment boundary whose other end is `policyMessage`'s ops law. One
+      # attrset membership test per emitted declaration, on a list already being materialised.
+      conformingProduce =
+        name: emits: baseProduce: id: ctx:
         let
-          # Sentinel-fill ONLY the REQUIRED gate coords (`functionArgs` `false`). A DEFAULTED coord (`true`,
-          # e.g. env-users' `accessGroups ? []`) is OMITTED so the body's declared default applies, instead of
-          # a `{ id_hash; name }` sentinel entry that a list-op would choke on ("expected a list but found a
-          # set" — uncatchable by tryEval). A default is the author's probe-safe value; filling only required
-          # coords is a strict probe-quality improvement with no trade-off.
-          requiredCoords = builtins.filter (n: !condition.${n}) (builtins.attrNames condition);
-          probeCtx = prelude.genAttrs requiredCoords (_: probeEntry);
-          try = builtins.tryEval (
-            let
-              a = produce "«probe»" probeCtx;
-            in
-            builtins.deepSeq a a
-          );
-        in
-        if try.success then try.value else [ ];
-
-      coveredStrata = [
-        "structural"
-        "resolution"
-        "collection"
-      ];
-      # Per-declaration conservation guard (loud). An expansion policy may only produce covered-stratum
-      # declarations. Enrich (B1 keyset-ascent feed) is seeded at the probe, which a value-conditional
-      # policy never reaches — so it is a silent partition and aborts. The collection stratum is COVERED
-      # only for a pure SITE-MARK pipeOp (`declare.isSiteMarkData`): site marks are per-node emission
-      # DATA (fired where the policy fires — v1 register-pipe-effect.nix:15 scopedPipeEffects), NOT a
-      # compose commitment, so they pass through. A DERIVED/route pipeOp is a genuine probe-time compose
-      # commitment (the ONE fleet gen-pipe DAG, seeded before eval) a value-less policy cannot make → it
-      # STILL aborts (posture retained for the genuine operator).
-      assertCovered =
-        name: a:
-        let
-          s = declare.stratumOf a;
-        in
-        if s == "collection" then
-          (if declare.isSiteMarkData a then a else errors.expansionPipeOp name)
-        else if s == "structural" && declare.kindOf a == "enrich" then
-          errors.expansionEnrich name
-        else if !(builtins.elem s coveredStrata) then
-          errors.expansionUncovered name (declare.kindOf a) s
-        else
-          a;
-
-      # A single-group rule (the probe emitted → its stratum is observed directly). The FINAL produce
-      # projects its ctx at the observed group, so a ≥-stratum ctx fact is capability-scoped out. The
-      # `produces` field (the DECLARED produced-kind family, gen-dispatch declared-stratum vocabulary) is
-      # the probe-EXTRACTED kinds — a FREE by-product of the compose-seed fire this rule already runs. It
-      # is non-null, so `dispatch` HONORS the declaration and SKIPS its per-dispatch fire-and-classify
-      # VALIDATION (the runtime win: dispatch trusts `group` instead of re-classifying every pass, exactly
-      # as gen-resolve trusts an equation's `stratum`). Grounded: for a single-group policy the probe fires
-      # at the sentinel, so the extracted kinds ARE what the body emits at a real ctx of the same shape.
-      mkSingle =
-        name: condition: base: probeActs:
-        let
-          group = declare.stratumOf (builtins.head probeActs);
-        in
-        {
-          inherit (base) nac priority overrides;
-          inherit condition group;
-          produces = prelude.unique (map declare.kindOf probeActs);
-          produce = checkedProduce name (projectedBase group base.produce);
-          identity = name;
-          __isEnrich = prelude.all (
-            a: declare.stratumOf a == "structural" && declare.kindOf a == "enrich"
-          ) probeActs;
-          __pipeOps = builtins.filter (a: (a.__action or null) == "pipeOp") probeActs;
-        };
-
-      # ONE value-conditional sub-rule at stratum `s`: keep only its-stratum declarations, guard each
-      # through `assertCovered` (the conservation law — enrich / derived-route pipeOp abort, site-mark
-      # pipeOp rides), and project ctx at `s`. The `__policy` stamp carries the ORIGINAL name
-      # (attribution); a value-conditional policy makes NO compose commitment, so `__pipeOps = [ ]` and
-      # `__isEnrich = false` on every slice, and no compiled policy declares overrides. The caller owns
-      # `identity` (a `#<stratum>` suffix for the undeclared fan; the bare `name` for a single-group
-      # DECLARED slice) and `produces` (null for the fan — dispatch classifies as before; the declared
-      # produced-kind family for a declared slice — dispatch honors it, no fire-and-classify).
-      mkSlice =
-        {
-          name,
-          condition,
-          base,
-          s,
-          identity,
-          produces,
-        }:
-        {
-          inherit (base) nac priority overrides;
-          inherit condition identity produces;
-          group = s;
-          produce =
-            let
-              produce = stampProduce name (projectedBase s base.produce);
-            in
-            id: ctx: builtins.filter (a: declare.stratumOf a == s) (map (assertCovered name) (produce id ctx));
-          __isEnrich = false;
-          __pipeOps = [ ];
-        };
-
-      # THE UNDECLARED FALLBACK (`produces == null`): the pre-declared blind fan — one sub-rule per
-      # COVERED stratum {structural, resolution, collection}, since the value-less probe cannot read the
-      # stratum up front. `produces = null` leaves each sub-rule on dispatch's fire-and-classify path, so
-      # this is BYTE-IDENTICAL to the pre-declared behavior (additive, mirroring gen-dispatch's own
-      # undeclared-rule design). Retained for a value-conditional policy carrying NO declared produced-kind
-      # family (the corpus never takes this path — its five value-conditional policies are declared via
-      # `producesByName`; only synthetic bare-fn fixtures reach here).
-      mkExpanded =
-        name: condition: base:
-        map (
-          s:
-          mkSlice {
-            inherit
-              name
-              condition
-              base
-              s
-              ;
-            identity = "${name}#${s}";
-            produces = null;
-          }
-        ) coveredStrata;
-
-      # THE DECLARED-STRATUM PATH (`produces != null`): the value-conditional policy carries a DECLARED
-      # produced-kind family, so `dispatch.deriveGroup declare.stratumOfKind` classifies it and STAMPS the
-      # rule's `group` at DEFINITION time — no fire-and-observe. This REPLACES the blind fan for a declared
-      # policy. The declared kinds partition into `groups` (a single group for every corpus policy — no
-      # corpus policy's declared kinds span strata); the corpus case is ONE rule keyed by the bare `name` (no
-      # `#stratum` suffix), the whole declared family as `produces`, produce projected at that group. A
-      # FUTURE multi-group policy (no corpus case) emits one slice per group, `produces` filtered to that
-      # group's kinds, `assertCovered` retained per slice — the mission's declared-slice generalisation,
-      # NOT the 3-way blind fan. `deriveGroup` runs UNIFORMLY (discharges single-group-per-rule per the
-      # gen-dispatch contract, aborting NAMED if a declared family spans groups).
-      mkDeclaredSlices =
-        name: condition: base: declaredKinds:
-        let
-          groups = prelude.unique (map declare.stratumOfKind declaredKinds);
-          single = builtins.length groups == 1;
+          admitted = prelude.genAttrs emits (_: true);
         in
         map (
-          g:
-          dispatch.deriveGroup declare.stratumOfKind (mkSlice {
-            inherit name condition base;
-            s = g;
-            identity = if single then name else "${name}#${g}";
-            produces = builtins.filter (k: declare.stratumOfKind k == g) declaredKinds;
-          })
-        ) groups;
+          a:
+          let
+            k = declare.kindOf a;
+          in
+          if !(admitted ? ${k}) then
+            errors.emitsUndeclared name k emits
+          else if k == "pipeOp" && !(declare.isSiteMarkData a) then
+            errors.opsInBody name
+          else
+            a // { __policy = name; }
+        ) (baseProduce id ctx);
 
-      # `__firesAtKinds` (LAW, name-agnostic): a rule may DECLARE the node-kinds it fires at — a list of
-      # kind names. The stratum dispatch PRE-FILTERS a rule out at a node whose kind is absent from the list
-      # (a rule WITHOUT the annotation fires at every node). It is threaded from the policy VALUE onto EVERY
-      # compiled rule (the single-group rule OR each expansion sub-rule) and SURVIVES `strip` below, so the
-      # structural-stratum reader can consult it. The core stamps nothing itself — a caller (e.g. an
-      # include-arm compiler) supplies the kinds; this only carries the annotation through the compile.
-      # `__resolveFamily` (LAW, design note 2026-07-11 §3(ii)): the STAGED ROOT-RESOLUTION pre-pass is the
-      # SOLE consumer of resolve-family declarations {member, relate}, so it must dispatch ONLY policies
-      # that can emit them — dispatching an arbitrary co-firing policy body at a root risks an UNCATCHABLE
-      # eval error (a missing-attribute read of a field absent from the root ctx; `tryEval` cannot catch
-      # it). A rule is resolve-family iff (a) its VALUE-LESS probe already EMITTED a member/relate (a
-      # single-group resolve policy — DETECTED), or (b) the emitting adapter DECLARES it via
-      # `__resolveFamily = true` (the honest keyset principle — a VALUE-CONDITIONAL resolve policy, whose
-      # probe is empty, cannot be detected, so intent is declared). Only the STRUCTURAL sub-rule of an
-      # expansion carries it (member/relate are structural). A native/corpus fleet with NO resolve policy
-      # tags NONE → the pre-pass feed is empty → inert, byte-identical.
-      mkRules =
+      # ONE policy compiles to ONE rule. No probe, no sentinel, no fabricated context, no per-stratum fan:
+      # `group` is stamped from the DECLARED codomain at definition time, and `produces` IS that codomain,
+      # so gen-dispatch honours it and skips its per-dispatch fire-and-classify validation. A policy
+      # declaring an EMPTY codomain compiles to NO rule. The capability projection over ctx (A9) is
+      # unchanged; it now reads a declared group instead of an observed one.
+      compileOne =
         name: v:
         let
-          fn = fnOf v;
-          condition = conditionOf v;
-          base = dispatch.fromFunction fn;
-          # Probe WITHOUT the single-stratum check (stamp only): a genuine mixed-stratum policy must
-          # abort below, never be swallowed by the probe's tryEval as an empty result.
-          probeActs = probeOf condition (stampProduce name base.produce);
-          firesAt = prelude.optionalAttrs (v ? __firesAtKinds) { inherit (v) __firesAtKinds; };
-          # DECLARED resolve-family (R2): the policy value's own `__resolveFamily` tag OR the caller-supplied
-          # `resolveFamilyNames` set (the shim's corpus tag set — a v1 body carries no den-hoag tag). Either
-          # marks a value-conditional resolve policy the pre-pass must dispatch (member/relate cannot be probed).
-          explicitRF = (v.__resolveFamily or false) || builtins.elem name resolveFamilyNames;
-          # DECLARED exclude-family (#72) — the R2 pattern's twin for `suppress` emitters.
-          explicitEF = (v.__excludeFamily or false) || builtins.elem name excludeFamilyNames;
-          # The DECLARED produced-kind family (gen-dispatch declared-stratum): the policy value's own
-          # `__produces` (a compile-stamped kind-include policy — its synthetic key never matches the map)
-          # OR the caller-supplied `producesByName` set keyed by the v1 name (a policy authored directly
-          # under `den.policies.<name>`). `null` ⇒ undeclared ⇒ the value-conditional fan fallback.
-          declaredKinds = v.__produces or (producesByName.${name} or null);
-          expanded = probeActs == [ ];
-          baseRules =
-            if !expanded then
-              # Non-empty probe → single-group. `checkStratum` enforces the one-stratum law on the observed
-              # emission (B2); it runs OUTSIDE the probe's tryEval, so a mixed-stratum policy aborts loud
-              # rather than silently expanding. `deriveGroup` runs UNIFORMLY (gen-dispatch contract): the
-              # probe-derived `produces` classifies to the observed `group`, or aborts NAMED on disagreement.
-              builtins.seq (declare.checkStratum name probeActs) [
-                (dispatch.deriveGroup declare.stratumOfKind (mkSingle name condition base probeActs))
-              ]
-            else if declaredKinds != null then
-              # Value-conditional WITH a declared produced-kind family → the declared-stratum path (group
-              # stamped at definition time by deriveGroup), replacing the blind fan.
-              mkDeclaredSlices name condition base declaredKinds
-            else
-              # Value-conditional WITHOUT a declaration → the pre-declared blind fan (byte-identical).
-              mkExpanded name condition base;
-          # DETECTED (single-group probe emitted a member/relate) OR DECLARED (the value-conditional tag);
-          # for an expansion policy only the structural sub-rule bears it (member/relate are structural).
-          rfOf =
-            r:
-            if expanded then
-              explicitRF && r.group == "structural"
-            else
-              explicitRF || prelude.any declare.isResolveFamily probeActs;
-          # DETECTED (probe emitted a suppress) OR DECLARED — the exclude-family twin (`suppress` is a
-          # structural kind, so an expansion policy's structural sub-rule bears the tag).
-          efOf =
-            r:
-            if expanded then
-              explicitEF && r.group == "structural"
-            else
-              explicitEF || prelude.any declare.isSuppress probeActs;
+          emits = emitsOf v;
+          base = dispatch.fromFunction (fnOf v);
+          groups = groupsOf emits;
         in
-        map (
-          r:
-          r
-          // firesAt
-          // {
-            __resolveFamily = rfOf r;
-            __excludeFamily = efOf r;
-          }
-        ) baseRules;
+        if emits == [ ] then
+          [ ]
+        else
+          [
+            (dispatch.deriveGroup declare.stratumOfKind {
+              inherit (base) nac priority overrides;
+              condition = gateOf v;
+              group = builtins.head groups;
+              produces = emits;
+              selects = selectsOf v;
+              ops = opsOf v;
+              identity = name;
+              produce = conformingProduce name emits (projectedBase (builtins.head groups) base.produce);
+            })
+          ];
 
-      rules = prelude.concatMap (name: mkRules name policies.${name}) (builtins.attrNames policies);
-      strip =
-        r:
-        removeAttrs r [
-          "__isEnrich"
-          "__pipeOps"
-          "__resolveFamily"
-          "__excludeFamily"
-        ];
+      # Registration rejection is forced BEFORE any rule exists, so a malformed surface is refused at its
+      # own boundary rather than at whichever consumer first forces a rule.
+      registration = policyMessage policies;
+      rules =
+        if registration != null then
+          errors.policyRegistration registration
+        else
+          prelude.concatMap (name: compileOne name policies.${name}) (builtins.attrNames policies);
+
+      # Every feed is a set-membership test on the DECLARED codomain. The name-keyed knobs that supplied
+      # these by hand (`den.resolveFamilyNames`, `den.excludeFamilyNames`, `den.producesByName`) have no
+      # remaining job, and neither does a strip list: there are no `__`-carriers to remove, because the
+      # facts they carried are fields.
+      emitsAny = r: ks: builtins.any (k: builtins.elem k ks) r.produces;
     in
     {
-      enrich = map strip (builtins.filter (r: r.__isEnrich) rules);
-      policy = map strip (builtins.filter (r: !r.__isEnrich) rules);
+      enrich = builtins.filter (r: r.produces == [ "enrich" ]) rules;
+      policy = builtins.filter (r: r.produces != [ "enrich" ]) rules;
       # The STAGED ROOT-RESOLUTION pre-pass feed (design note 2026-07-11 §3(ii)): the structural-group
-      # rules that can emit resolve-family {member, relate} — detected (single-group probe) or declared
-      # (`__resolveFamily` tag, value-conditional). The pre-pass (lib/staged-resolution.nix) dispatches
-      # ONLY these at roots, so an arbitrary co-firing policy body is never run there. Empty for a fleet
-      # with no resolve policies (the corpus at R1) → the pre-pass is inert, the fleet byte-identical.
-      resolveFamily = map strip (
-        builtins.filter (r: (r.__resolveFamily or false) && r.group == "structural") rules
-      );
-      # The EXCLUDE-FAMILY feed (#72, candidate A): the structural-group rules that can emit `suppress`
-      # — detected (probe) or declared (`__excludeFamily` / `den.excludeFamilyNames`). The staged
+      # rules that can emit resolve-family {member}. The pre-pass dispatches ONLY these at roots, so an
+      # arbitrary co-firing policy body is never run there. Empty for a fleet with no resolve policies.
+      resolveFamily = builtins.filter (
+        r: r.group == "structural" && emitsAny r declare.resolveFamilyKinds
+      ) rules;
+      # The EXCLUDE-FAMILY feed (#72): the structural-group rules that can emit `suppress`. The staged
       # pre-pass dispatches ONLY these for suppression collection; empty for an exclude-free fleet.
-      excludeFamily = map strip (
-        builtins.filter (r: (r.__excludeFamily or false) && r.group == "structural") rules
-      );
-      # The fleet-wide pipe operator declarations (collection stratum) — den-hoag threads their
-      # `derived` channels + routes into the ONE gen-pipe compose (default.nix `policyOps`). Only
-      # single-group (probe-emitting) policies contribute (their `__pipeOps`): the derived-op DAG + the
-      # delivery routes are ctx-INDEPENDENT compose commitments seeded before eval. An expansion
-      # (value-conditional) policy contributes NOTHING here — `__pipeOps = [ ]` on every sub-rule. A
-      # DERIVED/route pipeOp from such a policy aborts (`errors.expansionPipeOp`, ctx-independence
-      # contract); a pure SITE-MARK pipeOp is per-node emission data (allowed through the `#collection`
-      # sub-rule) and correctly seeds no compose op.
-      pipeOps = prelude.concatMap (r: r.__pipeOps) rules;
+      excludeFamily = builtins.filter (r: r.group == "structural" && emitsAny r [ "suppress" ]) rules;
+      # The fleet-wide compose commitments, DECLARED. No firing, no probe: a ctx-independent commitment
+      # read from a body by firing it was recovering a constant the record can simply carry.
+      pipeOps = prelude.concatMap (r: r.ops) rules;
     };
 in
 {
-  # Default sentinel (the universal `{ id_hash; name }`) + no resolve-family tags — byte-identical to the
-  # pre-configurable behavior for every existing caller (native fleets, the unit suites driving
-  # `internal.compilePolicies`); a native fleet's resolve-family policies are DETECTED, not tagged.
-  compile = compileWith { } [ ] [ ] { };
-  inherit compileWith compileWithStrata;
+  compile = compileWith;
+  inherit
+    compileWith
+    compileWithStrata
+    indexByKind
+    policyMessage
+    ;
 }

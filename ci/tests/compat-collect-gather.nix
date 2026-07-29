@@ -66,17 +66,35 @@ let
       # `mesh`… split across the two hosts so both arms are exercised on ONE fleet:
       #   h-collect fires at every host-bearing node ({ host, … }) — the mark lands at hosts AND cells
       #   (cells gather nothing on `mesh`: their siblings are cells, kind-gated out).
-      den.policies.collect-mesh =
-        { host, ... }:
-        [
-          (P.from "mesh" [ (P.collect ({ host, ... }: true)) ])
-        ];
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+      # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+      # its job, and the right answer to a question this suite is not asking.
+      den.policies.collect-mesh = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "pipeOp" ];
+        fn =
+          { host, ... }:
+          [
+            (P.from "mesh" [ (P.collect ({ host, ... }: true)) ])
+          ];
+      };
       # cell-collect (same-host siblings) + cell-collectAll (fleet) on `umesh`.
-      den.policies.collect-umesh =
-        { user, ... }:
-        [
-          (P.from "umesh" [ (P.collect ({ user, ... }: true)) ])
-        ];
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+      # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+      # its job, and the right answer to a question this suite is not asking.
+      den.policies.collect-umesh = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "pipeOp" ];
+        fn =
+          { user, ... }:
+          [
+            (P.from "umesh" [ (P.collect ({ user, ... }: true)) ])
+          ];
+      };
     }
   ];
 
@@ -110,19 +128,37 @@ let
           umesh = [ "umesh-${user.name}" ];
         };
       den.schema.user.includes = [ "cemit" ];
-      den.policies.collect-umesh-all =
-        { user, ... }:
-        [
-          (P.from "umesh" [ (P.collectAll ({ user, ... }: true)) ])
-        ];
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+      # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+      # its job, and the right answer to a question this suite is not asking.
+      den.policies.collect-umesh-all = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "pipeOp" ];
+        fn =
+          { user, ... }:
+          [
+            (P.from "umesh" [ (P.collectAll ({ user, ... }: true)) ])
+          ];
+      };
       # host-side collectAll on `mesh` — the entity-gate NEGATIVE: only CELLS emit mesh here, and the
       # `{ host, … }: true` predicate must reject every one of them (own kind `user`), so the host's
       # mesh binding stays EMPTY even fleet-wide.
-      den.policies.collect-mesh-all =
-        { host, ... }:
-        [
-          (P.from "mesh" [ (P.collectAll ({ host, ... }: true)) ])
-        ];
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+      # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+      # its job, and the right answer to a question this suite is not asking.
+      den.policies.collect-mesh-all = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "pipeOp" ];
+        fn =
+          { host, ... }:
+          [
+            (P.from "mesh" [ (P.collectAll ({ host, ... }: true)) ])
+          ];
+      };
     }
   ];
 
@@ -143,11 +179,20 @@ let
         "hemit"
         "femit"
       ];
-      den.policies.collect-mesh =
-        { host, ... }:
-        [
-          (P.from "mesh" [ (P.collect ({ host, ... }: true)) ])
-        ];
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+      # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+      # its job, and the right answer to a question this suite is not asking.
+      den.policies.collect-mesh = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "pipeOp" ];
+        fn =
+          { host, ... }:
+          [
+            (P.from "mesh" [ (P.collect ({ host, ... }: true)) ])
+          ];
+      };
     }
   ];
 

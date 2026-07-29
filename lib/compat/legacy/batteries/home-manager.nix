@@ -106,12 +106,28 @@ rec {
       ];
   };
 
+  # ★ THE SELECTION MUST BE DECLARED HERE, AND THIS IS THE PATH THAT RUNS. `hm-user-detect` is registered
+  # TWICE (the dual-registration pattern noted above): once by `builtins.nix` and once by this desugar.
+  # `mkDen` → `mkDenWith` → `compileFull` evaluates `flakeModuleCore ++ [ bindLegacyEnv ] ++ userModules`,
+  # and `builtinsModule` is in none of those — it is a separate export a consumer wires — so a fixture
+  # driven through `mkDen` gets THIS registration, and the `//` below puts it last, clobbering any copy
+  # declared on the other path.
+  #
+  # THE GENERAL RULE FOR BATTERIES, so it is not rediscovered per battery: a battery that exports a
+  # `routeInclude` (os-user, os-class) has its route folded into `den.aspects.defaults.includes`, so it
+  # arrives as an `__aspectInclude__*` arm WITH an include path and its selection is derived correctly —
+  # it needs no `selects`. A battery that exports NO `routeInclude` and instead registers a policy through
+  # its `desugar` (this one) reaches dispatch only as a bare `den.policies.<name>`, which is in no
+  # `includes` list, so an UNDECLARED selection derives `[ ]` and the route is absent from every node.
+  # No `routeInclude` ⇒ declare `selects`.
   desugar =
     v1:
     v1
     // {
       policies = (v1.policies or { }) // {
-        hm-user-detect = hmUserDetect;
+        hm-user-detect = hmUserDetect // {
+          selects = null;
+        };
       };
     };
 }

@@ -73,20 +73,28 @@ let
         // (
           if withForward then
             {
-              policies.hm-forward =
-                { user, host, ... }:
-                [
-                  (route {
-                    fromClass = "home-manager";
-                    intoClass = host.class;
-                    intoPath = [
-                      "home-manager"
-                      "users"
-                      user.name
-                    ];
-                    __extra.appendToParent = true;
-                  })
-                ];
+              # `hm-forward` is registered here and included nowhere, so an undeclared selection derives `[ ]` from
+              # the schema and the route is absent from every node's rule list. Declared unconstrained because this
+              # fixture's subject is ancestor-ordering of delivery members, not selection.
+              policies.hm-forward = {
+                __isPolicy = true;
+                emits = [ "delivery" ];
+                selects = null;
+                fn =
+                  { user, host, ... }:
+                  [
+                    (route {
+                      fromClass = "home-manager";
+                      intoClass = host.class;
+                      intoPath = [
+                        "home-manager"
+                        "users"
+                        user.name
+                      ];
+                      __extra.appendToParent = true;
+                    })
+                  ];
+              };
             }
           else
             { }
@@ -123,20 +131,29 @@ let
             homeManager.tag = "hm-${user.name}";
           };
         den.schema.user.includes = with den.aspects; [ acct ];
-        den.policies.hm-forward =
-          { user, host, ... }:
-          [
-            (route {
-              fromClass = "home-manager";
-              intoClass = host.class;
-              intoPath = [
-                "home-manager"
-                "users"
-                user.name
-              ];
-              __extra.appendToParent = true;
-            })
-          ];
+        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+        # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+        # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+        # its job, and the right answer to a question this suite is not asking.
+        den.policies.hm-forward = {
+          __isPolicy = true;
+          selects = null;
+          emits = [ "delivery" ];
+          fn =
+            { user, host, ... }:
+            [
+              (route {
+                fromClass = "home-manager";
+                intoClass = host.class;
+                intoPath = [
+                  "home-manager"
+                  "users"
+                  user.name
+                ];
+                __extra.appendToParent = true;
+              })
+            ];
+        };
       }
     )
   ];
@@ -168,20 +185,28 @@ let
           "dup"
           "acct"
         ];
-        policies.hm-forward =
-          { user, host, ... }:
-          [
-            (route {
-              fromClass = "home-manager";
-              intoClass = host.class;
-              intoPath = [
-                "home-manager"
-                "users"
-                user.name
-              ];
-              __extra.appendToParent = true;
-            })
-          ];
+        # `hm-forward` is registered here and included nowhere, so an undeclared selection derives `[ ]` from
+        # the schema and the route is absent from every node's rule list. Declared unconstrained because this
+        # fixture's subject is ancestor-ordering of delivery members, not selection.
+        policies.hm-forward = {
+          __isPolicy = true;
+          emits = [ "delivery" ];
+          selects = null;
+          fn =
+            { user, host, ... }:
+            [
+              (route {
+                fromClass = "home-manager";
+                intoClass = host.class;
+                intoPath = [
+                  "home-manager"
+                  "users"
+                  user.name
+                ];
+                __extra.appendToParent = true;
+              })
+            ];
+        };
       };
     }
   ];

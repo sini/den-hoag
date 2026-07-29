@@ -8,6 +8,11 @@
 { denHoag, denCompat, ... }:
 let
   I = denHoag.internal;
+  # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
+  # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
+  # index's total fallback and computes the real selection — the fixture exercises the shipped predicate
+  # rather than a hand-rolled stand-in of it.
+  idxFeed = I.indexPolicyFeed [ ];
   inherit (I)
     structural
     runResolve
@@ -31,7 +36,17 @@ let
   # The stub through concern-policies → gen-dispatch rules (the value-less probe tryEval-catches the throw →
   # expansion, so it compiles to a policy sub-rule gated on `{ system = false; }`), driven through the REAL
   # structural `declarations` dispatch (attr 4) over a hand-built root — exactly the corpus firing path.
-  stubRules = I.compilePolicies { systemToFlakeParts = compiledStub; };
+  # `selects = null` (unconstrained) is stated here because THIS test is about the KERNEL firing path —
+  # that the stub's refusal reaches a real dispatch and throws where a `system` coord binds, i.e. that it
+  # is gated-inert for class-A by DEMAND rather than by dispatch. Compat's own mint would give it
+  # `selects = [ ]` (the fixture's v1 decl set puts it in no `includes` list, and a registered-but-
+  # unincluded policy selecting nothing is the defect this design removes) — correct there, and beside the
+  # point here, so the selection is declared rather than inherited from a compile this test is not driving.
+  stubRules = I.compilePolicies {
+    systemToFlakeParts = compiledStub // {
+      selects = null;
+    };
+  };
   ent = k: {
     id_hash = k;
     name = k;
@@ -41,8 +56,9 @@ let
     runResolve {
       inherit roots parseParent;
       equations = structural {
-        policiesRules = {
-          inherit (stubRules) enrich policy;
+        policiesIndex = {
+          enrich = idxFeed stubRules.enrich;
+          policy = idxFeed stubRules.policy;
         };
         fleetChildren = _self: _id: { };
       };
@@ -117,13 +133,13 @@ in
 
     # Named throwing stub (flake-output built-in): exists (compiles, no probe-time hard fail — the throw is
     # tryEval-caught into expansion), and its compiled gate IS v1's OWN destructuring `{ system, ... }` →
-    # `functionArgs` → `__condition = { system = false; }` (flake-parts.nix:9-10 / flake.nix:53-54,67-68 @
+    # `functionArgs` → `gate = { system = false; }` (flake-parts.nix:9-10 / flake.nix:53-54,67-68 @
     # pin 11866c16). This is the FIX: the fleet-wide compiled rule (compile.nix `compiledPolicies`) now
     # carries v1's gate, not the empty `_ctx:` condition that fired at every node.
     test-output-stub-condition-is-v1-system-gate = {
       expr = {
         exists = compiledStub ? fn;
-        condition = compiledStub.__condition;
+        condition = compiledStub.gate;
       };
       expected = {
         exists = true;

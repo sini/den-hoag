@@ -196,4 +196,26 @@ in
   batteriesForwardUnsupported =
     aspect:
     fail "batteries.forward (not implemented — corpus-zero census)" "aspect `${aspect}` carries `meta.__forward` (a `den.batteries.forward` manifestation); the shim does not implement the forward-battery NTA path — PIN.md Open-Question-2 records zero corpus consumers. Migrate the forward to a native den-hoag class + `deliver` (the tier-1 path legacy/forwards.nix takes), or, if a corpus consumer appears, build the Tier-2 derived-children NTA in legacy/forwards.nix and re-open Open Question 2";
+
+  # THE CODOMAIN RECOVERY FAILURES (policy-recover.nix). A v1 bare closure carries no declaration
+  # codomain, so the shim recovers one by firing it once at a value-less sentinel. Both failure modes are
+  # the SHIM's, never the kernel's, and both are LOUD: the recovery never reports an error as an empty
+  # emission, because "threw" and "emitted nothing" are different facts and collapsing them is the defect
+  # the declared codomain removes.
+  policyCodomainUnrecoverable =
+    name:
+    fail "policy codomain recovery" "could not determine the declaration codomain of v1 policy `${name}`: firing it against a value-less sentinel context raised an error, which is a RECOVERY FAILURE and NOT evidence that the policy emits nothing. Declare the kinds it produces (compat/produces-by-name.nix `${name} = [ <kind> ]`) so the shim never fires it; a body reading a coord FIELD absent from the sentinel is the usual cause (compat/probe-sentinel.nix)";
+  policyCodomainUndeclared =
+    name:
+    fail "policy codomain" "v1 policy `${name}` declares no codomain and codomain recovery is OFF (`den.features.policyRecovery = false`). Flag-off is strictly more strict: declare the kinds it produces (compat/produces-by-name.nix `${name} = [ <kind> ]`)";
+
+  # `den.schema.<K>.excludes` whose target policy attaches at a STRICT DESCENDANT of K. v1 registers an
+  # exclude with `scope = "subtree"`, so it suppresses the policy at K and at every node beneath K — but
+  # only beneath THAT K instance. A flat per-kind selection can only remove the policy at a KIND, which
+  # would suppress it under every instance of K's ancestor chain, not just this one: strictly more than
+  # the config asked for. den-hoag refuses rather than over-suppress. The same-kind case IS honoured,
+  # because there the two extents coincide exactly.
+  excludeSubtreeUnrepresentable =
+    kind: policyName: attachKind:
+    fail "schema exclude scope" "`den.schema.${kind}.excludes` names policy `${policyName}`, which attaches at kind `${attachKind}` — a strict DESCENDANT of `${kind}` under the containment schema. A v1 exclude is SUBTREE-scoped (it suppresses the policy beneath the excluding `${kind}` instance only), and den-hoag currently represents selection per KIND, which cannot say `beneath this instance`. Honouring it flatly would suppress `${policyName}` at every `${attachKind}` in the fleet, which is more than the declaration asks for, so it is refused instead of silently over-applied. The same-kind case (`${policyName}` attaching at `${kind}`) IS supported";
 }

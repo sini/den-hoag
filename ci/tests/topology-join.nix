@@ -58,35 +58,41 @@ let
   envToHost =
     { config, ... }:
     {
-      config.den.policies.env-to-host =
-        { env, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit env;
-              host = config.den.host.axon;
-            };
-            bindings.grant = "g-${env.name}";
-            containTo = "host";
-          })
-        ];
+      config.den.policies.env-to-host = {
+        emits = [ "member" ];
+        fn =
+          { env, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit env;
+                host = config.den.host.axon;
+              };
+              bindings.grant = "g-${env.name}";
+              containTo = "host";
+            })
+          ];
+      };
     };
   # env→cluster CONTAINMENT tuple — the SIBLING branch: cluster is a registry-backed root, so this is a
   # containment relation (env→cluster), NEVER a cell. It must NOT cross-join the user family.
   envToCluster =
     { config, ... }:
     {
-      config.den.policies.env-to-cluster =
-        { env, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit env;
-              cluster = config.den.cluster.k3s;
-            };
-            containTo = "cluster";
-          })
-        ];
+      config.den.policies.env-to-cluster = {
+        emits = [ "member" ];
+        fn =
+          { env, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit env;
+                cluster = config.den.cluster.k3s;
+              };
+              containTo = "cluster";
+            })
+          ];
+      };
     };
 
   # The `app` aspect (settings-only) included DIRECTLY at the user cell's entity, so it is present there.
@@ -144,14 +150,14 @@ let
   # host→env BACK-EDGE — the mutual-containTo CYCLE half (paired with envToHost: env contains host
   # contains env). A native fixture CAN author this (the compat arm cannot — its source coordinate
   # strictly ascends the acyclic schema topology); the chain walk must abort NAMED
-  # (errors.containmentCycle), never hang. Record-form + `__firesAtKinds = ["host"]` keeps it off the
+  # (errors.containmentCycle), never hang. Record-form + `selects = ["host"]` keeps it off the
   # user cell (which inherits the `host` coord); detected via the unconditional probe (no tag needed).
   hostToEnvBack =
     { config, ... }:
     {
       config.den.policies.host-to-env = {
-        __condition.host = false;
-        __firesAtKinds = [ "host" ];
+        gate.host = false;
+        selects = [ "host" ];
         fn = ctx: [
           (declare.member {
             coords = {

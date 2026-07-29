@@ -48,23 +48,12 @@ in
     policyName: scopeId:
     fail "member discipline (A5)" "policy `${policyName}` emitted `member` at membership-derived scope `${scopeId}`; member is accepted only at membership-independent nodes";
 
-  # UNTAGGED resolve-family emission (design note 2026-07-11 §3(ii), slice R2 REQUIREMENT 1). A `member`
-  # produced in the MAIN run at a membership-INDEPENDENT root by a policy that is NOT in the resolve-family
-  # feed — so the STAGED ROOT-RESOLUTION pre-pass never dispatched it and never consumed the emission, and
-  # the main run's structural consumers (attr 5/6) never read `member` at a root either. That is the R1
-  # reviewer's SILENT-DROP edge: the tuple would simply vanish. Convert it to LOUD. (A feed policy
-  # double-firing benignly at a root is ALLOWED — the pre-pass consumed its emission; only an UNTAGGED,
-  # unconsumed one aborts.) Names the policy + the scope. Raised in attributes/structural.nix attr 4.
-  # UNTAGGED suppress emission (#72, the exclude family — the R2 untagged-guard twin). A `suppress`
-  # produced in the MAIN run by a policy NOT in the staged pre-pass's exclude-family feed was never
-  # dispatched there — the suppression would silently drop (a policy v1 excludes would keep firing).
-  excludeFamilyUntagged =
-    policyName: scopeId:
-    fail "exclude-family discipline (#72)" "policy `${policyName}` emitted a `suppress` declaration at scope `${scopeId}` in the main run, but it is NOT in the staged pre-pass's exclude-family feed — so the pre-pass never collected the suppression (a silent drop: the excluded policy would keep firing). Declare `__excludeFamily = true` on the policy (or add its name to the shim's `den.excludeFamilyNames`)";
-
-  resolveFamilyUntagged =
-    policyName: scopeId:
-    fail "resolve-family discipline (R2)" "policy `${policyName}` emitted a resolve-family declaration (`member`) at membership-independent root `${scopeId}` in the main run, but it is NOT in the staged pre-pass's resolve-family feed — so the pre-pass never routed the emission (a silent drop). Declare `__resolveFamily = true` on the policy (or add its name to the shim's `den.resolveFamilyNames`) so the pre-pass consumes its member";
+  # The resolve-family and exclude-family UNTAGGED guards are RETIRED. They existed because feed
+  # membership was DETECTED by firing (a value-conditional emitter probes empty, so it could not be
+  # detected) and an undetected emitter's declaration silently vanished. Feed membership is now a
+  # set-membership test on the policy's DECLARED codomain (`emits`), and the codomain is CHECKED at every
+  # firing (`emitsUndeclared`), so a `member`/`suppress` emitter is in its feed by derivation and
+  # "emitted but untagged" is unrepresentable rather than detected.
 
   # Containment-tuple target (design note 2026-07-11 §3c-UNIFIED): a `containTo`-marked `member` whose
   # target coordinate resolves to NO existing root scope node. A containment tuple carries ctx bindings +
@@ -175,24 +164,35 @@ in
     policyName: kindA: stratumA: kindB: stratumB:
     fail "declaration stratum (B2)" "policy `${policyName}` produced declarations of kind `${kindA}` (stratum `${stratumA}`) and kind `${kindB}` (stratum `${stratumB}`); a policy's declarations must all classify to a single stratum";
 
-  # B2 per-declaration-stratum conservation. A policy whose value-less probe emitted nothing (its
-  # emission is gated on a context VALUE, not just coordinate presence) has its stratum derived
-  # PER DECLARATION at dispatch — expanded into one sub-rule per COVERED stratum {structural,
-  # resolution, collection}. Enrich-feed selection (B1 keyset-ascent, attr 2) and fleet pipeOp
-  # compose-seeding (the ONE gen-pipe DAG's DERIVED-op chains + delivery routes, seeded before eval)
-  # are PROBE-TIME commitments a value-less policy cannot make: a dispatch-time enrich- or DERIVED/route
-  # pipeOp-kind declaration from it would silently never reach its feed. So both abort LOUD — never a
-  # silent partition. A pure SITE-MARK pipeOp (bare channel ref, no deriving/routes) is per-node
-  # emission DATA, NOT a compose op, so it is ALLOWED through the collection sub-rule (see isSiteMarkData).
-  expansionEnrich =
+  # THE CODOMAIN CONTRACT. A policy DECLARES the declaration kinds its body may produce (`emits`), and
+  # every firing checks each emitted declaration against it. The declaration therefore cannot drift from
+  # the body: a mis-declared codomain aborts LOUD at the emitting site instead of mis-routing the rule
+  # silently. Names the policy, the offending kind and the declared codomain.
+  emitsUndeclared =
+    policyName: kind: emits:
+    fail "declaration codomain" "policy `${policyName}` produced a `${kind}` declaration, which is not in its declared `emits` = [ ${builtins.concatStringsSep " " emits} ]. The codomain is a CONTRACT checked at every firing, not an annotation: either add `${kind}` to `emits` or stop producing it";
+
+  # The compose-commitment boundary (declarations.nix `isSiteMarkData`). A DERIVED-channel DAG or a
+  # delivery route seeds the ONE fleet gen-pipe compose BEFORE the eval, so it is declared as data in
+  # `ops`; only per-node SITE MARKS are emitted from a body.
+  #
+  # ★ THE OTHER END OF THIS BOUNDARY IS NOT BUILT, AND CANNOT BE BUILT AS SPECIFIED. `ops` is specified as
+  # a STATIC field, which requires the commitment to be ctx-INDEPENDENT — and it is not. Measured on
+  # nix-config `modules/den/policies/pipes.nix:136-149` (`broadcast-syncthing-hub-shares`, wired at
+  # `den.schema.user.includes`): its `pipe.transform` has `role = "derive"`, so it is ops-eligible, and its
+  # function closes over `user.name` — the ops observed at two different users DIFFER. A record field
+  # cannot hold a per-node value, so no design that makes `ops` a static field can work, and the fleet
+  # compose seed's construction is wrong UPSTREAM of this shim rather than merely unwired here.
+  # Until that is redesigned, a body carrying a derived/route pipeOp aborts HERE rather than being
+  # silently dropped from a seed that never received it. Do not work around this in the shim.
+  opsInBody =
     policyName:
-    fail "per-declaration stratum (B1/B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced an `enrich` declaration at dispatch; enrich-feed selection is a probe-time commitment (attr 2 keyset-ascent), so a value-conditional policy cannot contribute enrichment — author it as an explicit enrich policy whose probe emits its enrich keys";
-  expansionPipeOp =
-    policyName:
-    fail "per-declaration stratum (collection)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced a `pipeOp` declaration carrying a DERIVED operator (a channel-shaping DAG) or a delivery route at dispatch; those seed the ONE fleet gen-pipe compose DAG BEFORE the eval from ctx-INDEPENDENT bodies, so a value-conditional policy — which emits nothing at the seeding probe — cannot contribute one. (A pure SITE-MARK pipeOp on a bare channel ref is per-node emission data, fired where the policy fires, and IS allowed through expansion.)";
-  expansionUncovered =
-    policyName: kind: stratum:
-    fail "per-declaration stratum (B2)" "policy `${policyName}` (value-less probe → per-declaration stratum) produced kind `${kind}` (stratum `${stratum}`), outside the covered {structural, resolution, collection (site-mark pipeOps)}; a `${stratum}`-stratum declaration from a value-conditional policy is a silent partition";
+    fail "compose commitment" "policy `${policyName}` produced a `pipeOp` declaration carrying a derived-channel DAG or a delivery route from its BODY. Those seed the ONE fleet gen-pipe compose before the eval and are ctx-independent by contract, so they are declared as data in `ops`; only per-node SITE MARKS are emitted from the body";
+
+  # Registration rejection, at an explicit boundary rather than as a throw deep inside a dispatch. The
+  # message is produced as a VALUE by `policyMessage` (Nix's `tryEval` cannot capture a throw's text, so a
+  # validator that returns its message is the only CI-testable form) and raised here.
+  policyRegistration = msg: fail "policy registration" msg;
 
   # §4.1 the prebuilt-arm exclusivity: an aspect declaring `artifact` (the value-mode prebuilt face) may
   # carry no non-empty class content — the prebuilt IS the materialized face, so class buckets alongside it

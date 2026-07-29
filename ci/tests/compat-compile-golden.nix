@@ -152,6 +152,14 @@ let
   baseOf = d: if (d.__derived or false) then baseOf (builtins.head d.__derive.inputs) else d;
 
   # Each pipe fixture's `pipe.from` policy body is unconditional, so any ctx yields the pipeOp declaration.
+  # ★ AND THAT IS A PROPERTY OF THE FIXTURES, NOT OF PIPES — it is stated as a convenience and then relied
+  # on, which makes this fixture set a DEAD PREDICATE for any question of the form "does pipe behaviour
+  # depend on ctx?": all six `parity/fixtures/pipe-stages.nix` policies are `_ctx:` BY SELECTION, so that
+  # question answers "no" for every input here because the inputs were chosen to make it so. The corpus
+  # counter-example is not merely absent from this set, it is UNREPRESENTABLE in it: nix-config
+  # `modules/den/policies/pipes.nix:136-149` destructures `{ user, ... }` and closes its `transform` over
+  # `user.name`, so it cannot be fired with `{ }` at all. Any ctx-dependence claim needs a fixture that
+  # could have refuted it; this set cannot.
   derivePipeOp = builtins.head ((denCompat.compile pipeFx.derivePipe).policies.shapeMetric.fn { });
   deliverToOp = builtins.head ((denCompat.compile pipeFx.deliverToPipe).policies.routePorts.fn { });
   deliverAsOp = builtins.head ((denCompat.compile pipeFx.deliverAsPipe).policies.renameRaw.fn { });

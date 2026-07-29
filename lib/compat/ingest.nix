@@ -232,6 +232,18 @@ let
     v1Schema:
     prelude.filterAttrs (_: v: v != [ ]) (builtins.mapAttrs (_: k: k.includes or [ ]) v1Schema);
 
+  # Kind-attached EXCLUDES (`den.schema.<kind>.excludes = [ <policy> ]`) → `{ <kind> = [ <ref> ]; }`.
+  # ★ NOT the dual of `includes`, and the difference is measured, not assumed. v1 registers an exclude
+  # with `scope = "subtree"` (`nix/lib/aspects/fx/aspect/children.nix` `registerConstraints`) and every
+  # reader resolves it through `foldScopeAncestors`, so a descendant walking up `scopeParent` reaches K's
+  # scope and finds K's entries. An `includes` entry fires at K-NODES ONLY; an `excludes` entry reaches K
+  # AND ITS WHOLE SUBTREE. One extent each, and they differ — so "excludes is includes with a minus sign"
+  # is the wrong model, and compile honours only the case where the two extents coincide (same kind),
+  # aborting by name on the case where they do not.
+  kindExcludesOf =
+    v1Schema:
+    prelude.filterAttrs (_: v: v != [ ]) (builtins.mapAttrs (_: k: k.excludes or [ ]) v1Schema);
+
   # Build id_hash-bearing registries via gen-schema — the SAME evalModuleTree shape `entity.build`
   # uses, so identity is byte-identical to what mkDen stamps. Instances are stamped MINIMAL (`{ }`, so
   # id_hash reflects only `name`); the caller keeps the full v1 attrs separately (`instances`) for mkDen
@@ -774,6 +786,9 @@ let
         classRegistry
         ;
       kindIncludes = kindIncludesOf v1Schema;
+      kindExcludes = kindExcludesOf v1Schema;
+      # kind -> its schema PARENT kind (or null), the containment relation the subtree scope walks.
+      kindParent = builtins.mapAttrs (_: k: k.parent or null) v1Schema;
       resolveClass = resolveClass classRegistry;
       resolveBucket = resolveClass bucketRegistry;
       inherit aspectEntry classEntry;

@@ -320,36 +320,45 @@ let
       clusterLinkMod =
         { config, ... }:
         {
-          config.den.policies.clusterLink =
-            { cluster, ... }:
-            [
-              (declare.link { target = config.den.host.igloo; })
-              (declare.link { target = config.den.host.web-1; })
-            ];
+          config.den.policies.clusterLink = {
+            emits = [ "link" ];
+            fn =
+              { cluster, ... }:
+              [
+                (declare.link { target = config.den.host.igloo; })
+                (declare.link { target = config.den.host.web-1; })
+              ];
+          };
         };
       provisionDbMod =
         { config, ... }:
         {
-          config.den.policies.provisionDb =
-            { cluster, ... }:
-            [
-              (declare.demand {
-                kind = "database";
-                subject = config.den.host.igloo;
-              })
-            ];
+          config.den.policies.provisionDb = {
+            emits = [ "demand" ];
+            fn =
+              { cluster, ... }:
+              [
+                (declare.demand {
+                  kind = "database";
+                  subject = config.den.host.igloo;
+                })
+              ];
+          };
         };
       setColorMod =
         { config, ... }:
         {
-          config.den.policies.setColor =
-            { user, ... }:
-            [
-              (declare.configure {
-                of = config.den.aspects.app;
-                set.colorScheme = "prod-policy";
-              })
-            ];
+          config.den.policies.setColor = {
+            emits = [ "configure" ];
+            fn =
+              { user, ... }:
+              [
+                (declare.configure {
+                  of = config.den.aspects.app;
+                  set.colorScheme = "prod-policy";
+                })
+              ];
+          };
         };
       unrelatedPolicies =
         if permute then

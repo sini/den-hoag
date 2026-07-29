@@ -5,8 +5,8 @@
 # (attr 5). No structural attribute demands a resolution attribute (A4); the gen-resolve
 # schedule enforces it. Every attribute VALUE is inert data — never a dispatch accumulator record.
 #
-# `policiesRules` = { enrich; policy; } gen-dispatch rule lists (Task 3 compiles them from
-# `den.policies` via concern-policies; Task 2 threaded empty lists so the B1 fixpoint was real).
+# `policiesIndex` = { enrich; policy; } KIND-INDEXED gen-dispatch feeds (concern-policies compiles them
+# from `den.policies` and `indexByKind` selects each on the rule's declared `selects`).
 # `declarations` = the declaration vocabulary DEP (`declare`) — `stratumOf` a declaration to its
 # B2 stratum, `strata` (the stratified-dispatch order), `kindOf`/`kindToStratum`, `importEdgesOf`
 # (distinct from the attribute named `declarations` below, the dispatched policy declarations at a
@@ -30,7 +30,11 @@
   isCellNode,
 }:
 {
-  policiesRules,
+  # The two structural feeds already SELECTED by node kind (`concernPolicies.indexByKind`): each is a
+  # function `kind -> [rule]` built ONCE PER FLEET, so the per-node compute is a lookup instead of a scan
+  # of the whole rule list. Selection is a property of the feed, not of the node, so building it inside
+  # `compute` would rebuild it at every node.
+  policiesIndex,
   fleetChildren,
   linkTarget ? (_: null),
 }:
@@ -164,14 +168,12 @@ in
       self: id:
       let
         base = self.get id "inherited-context";
-        # SCOPE-LOCAL FIRING pre-filter: a rule may DECLARE the node-kinds it fires at (`__firesAtKinds`,
-        # a list). Drop a rule whose list excludes THIS node's kind BEFORE dispatch (absent = every node),
-        # so an include-scoped rule fires only at its owner-kind nodes — a coord shared with a descendant
-        # kind (inherited down a P edge) no longer over-fires. `.type` is total (every node carries a kind).
+        # SCOPE-LOCAL FIRING: a rule DECLARES the node-kinds it fires at (`selects`), and the feed is
+        # indexed on it, so an include-scoped rule reaches only its owner-kind nodes — a coord shared with
+        # a descendant kind (inherited down a P edge) no longer over-fires. `.type` is total (every node
+        # carries a kind), and the index is total over kinds.
         nodeKind = (self.node id).type;
-        applicableEnrich = builtins.filter (
-          r: !(r ? __firesAtKinds) || builtins.elem nodeKind r.__firesAtKinds
-        ) policiesRules.enrich;
+        applicableEnrich = policiesIndex.enrich nodeKind;
         # one enrich dispatch at a context → its fired enrich declarations. classify is a
         # constant single-kind tag here (every rule in policiesRules.enrich is an enrich
         # declaration); the general declaration classifier would be ceremony.
@@ -338,13 +340,11 @@ in
         ctx0 = (self.get id "enriched-context") // {
           suppressedPolicies = self.get id "suppressed-policies";
         };
-        # SCOPE-LOCAL FIRING pre-filter (see attr 2): drop a rule whose `__firesAtKinds` excludes this
-        # node's kind before dispatch (absent = every node), so an include-scoped rule fires only at its
-        # owner-kind nodes — an ancestor coord inherited by a descendant kind no longer over-fires.
+        # SCOPE-LOCAL FIRING (see attr 2): the feed is indexed on the rule's declared `selects`, so an
+        # include-scoped rule reaches only its owner-kind nodes — an ancestor coord inherited by a
+        # descendant kind no longer over-fires.
         nodeKind = (self.node id).type;
-        applicablePolicy = builtins.filter (
-          r: !(r ? __firesAtKinds) || builtins.elem nodeKind r.__firesAtKinds
-        ) policiesRules.policy;
+        applicablePolicy = policiesIndex.policy nodeKind;
         # §B3 linked-context, folded from the structural phase's own `link` declarations —
         # forward-threaded through `combine`, so it never feeds back into the links it reads. The
         # node's own bindings shadow it (`linkedContext // ctx`): a link only ADDS a target's
@@ -377,50 +377,24 @@ in
           extract = acts: acts; # pass the { <stratum> = actions; } group through to combine
           combine = ctx: delta: linkedFrom (delta.structural or [ ]) // ctx;
         };
-        # DOUBLE-FIRE DISCIPLINE (design note 2026-07-11 §3(ii)) + A5 + R2 REQUIREMENT 1. Resolve-family
-        # declarations {member, relate} are consumed by the STAGED ROOT-RESOLUTION pre-pass at membership-
-        # INDEPENDENT roots ONLY. A resolve policy fires in BOTH passes (a policy is `ctx: [decls]`); the
-        # main run's structural consumers (attr 5/6) never read member/relate. So a resolve-family emission
-        # in the main run has three cases:
+        # DOUBLE-FIRE DISCIPLINE (design note 2026-07-11 §3(ii)) + A5. Resolve-family declarations {member}
+        # are consumed by the STAGED ROOT-RESOLUTION pre-pass at membership-INDEPENDENT roots ONLY. A
+        # resolve policy fires in BOTH passes (a policy is `ctx: [decls]`); the main run's structural
+        # consumers (attr 5/6) never read member. So a resolve-family emission in the main run has two cases:
         #   • at a membership-DERIVED node (a fleet cell — `isCellNode`) → NO legitimate consumer (the
         #     pre-pass only fires at roots): abort LOUD `memberAtCell` (never a silent second partition; A5).
-        #   • at a membership-INDEPENDENT root by a FEED policy (in `resolveFamilyNames`) → the pre-pass
-        #     already routed the emission; this is the BENIGN double-fire — pass through (R1's verified posture).
-        #   • at a membership-INDEPENDENT root by a NON-feed policy (untagged AND undetected) → the pre-pass
-        #     never dispatched it, so the emission would SILENTLY DROP: abort LOUD `resolveFamilyUntagged`
-        #     (R2 REQUIREMENT 1 — converts the R1 reviewer's silent-drop edge to loud, with the tag remedy).
-        # A resolve policy that should not over-fire at a descendant cell restricts scope via `__firesAtKinds`.
+        #   • at a membership-INDEPENDENT root → the pre-pass already routed the emission; this is the
+        #     BENIGN double-fire — pass through (R1's verified posture).
+        # A resolve policy that should not over-fire at a descendant cell restricts scope via `selects`.
         #
-        # The FEED name-set: the resolve-family feed rules' identities strip their `#<stratum>` expansion
-        # suffix back to the original policy name (a value-conditional resolve policy expands to
-        # `<name>#structural`; a detected one keeps `<name>`) — the declarations carry the ORIGINAL `__policy`
-        # stamp, so this maps identities back to it. Derived from `policiesRules.resolveFamily` (already in
-        # scope), so R2 REQUIREMENT 1 stays local to this file (no default.nix/equations plumbing).
-        resolveFamilyPolicyNames = builtins.listToAttrs (
-          map (
-            r:
-            let
-              m = builtins.match "(.*)#structural" r.identity;
-            in
-            {
-              name = if m == null then r.identity else builtins.head m;
-              value = true;
-            }
-          ) policiesRules.resolveFamily
-        );
-        # The exclude-family feed's names (#72) — the SAME identity/suffix mapping over the exclude feed.
-        excludeFamilyPolicyNames = builtins.listToAttrs (
-          map (
-            r:
-            let
-              m = builtins.match "(.*)#structural" r.identity;
-            in
-            {
-              name = if m == null then r.identity else builtins.head m;
-              value = true;
-            }
-          ) (policiesRules.excludeFamily or [ ])
-        );
+        # THE UNTAGGED GUARDS ARE RETIRED, not relaxed. They asked whether an emitting policy was in its
+        # pre-pass feed, because feed membership used to be DETECTED by firing and a value-conditional
+        # emitter probed empty — so an undetected emitter's declaration silently vanished. Feed membership
+        # is now a set-membership test on the policy's DECLARED codomain, and the codomain is CHECKED at
+        # every firing, so a `member`/`suppress` emitter has declared that kind (or aborted at the emitting
+        # site) and a policy that declared it IS in the feed by derivation. The question the guards asked
+        # can no longer have a `false` answer: "emitted but untagged" is unrepresentable rather than
+        # detected. What remains below is A5, a DIFFERENT law about WHERE a member may be emitted.
         #
         # THE GUARD IS PER-ELEMENT AND LAZY: the check rides each structural declaration and fires ONLY
         # when that element is actually forced by a consumer (attr 6 `importEdgesOf`) — a node that never
@@ -436,28 +410,19 @@ in
         isMembershipDerived = isCellNode (self.node id);
         guardResolveFamily =
           a:
+          # A `suppress` in the main run is the benign double-fire ANYWHERE: the pre-pass consumed the root
+          # emission, and a cell firing of the same excluder is redundant because the root's suppression
+          # already covers descendants via inherited-context (v1's scope+ancestors consult). CEILING
+          # (corpus-zero): an excluder whose gate opens at a CELL but NOT at that cell's root would
+          # under-suppress — the corpus's one excluder gates on `host.class`, identical at both.
           if declarations.isSuppress a then
-            # #72 — the exclude-family twin of the R2 guard. A `suppress` from a FEED policy is the benign
-            # double-fire ANYWHERE (the pre-pass consumed the root emission; a cell firing of the same
-            # value-conditional excluder is redundant — the root's suppression already covers descendants
-            # via inherited-context, v1's scope+ancestors consult). CEILING (corpus-zero, P2-caught): a
-            # feed policy whose gate opens at a CELL but NOT at that cell's root would under-suppress —
-            # the corpus's one excluder gates on `host.class`, identical at the root and its cells. A
-            # NON-feed `suppress` was never pre-pass-dispatched → LOUD (the silent-drop conversion).
-            (
-              if excludeFamilyPolicyNames ? ${a.__policy or "«anonymous»"} then
-                a
-              else
-                errors.excludeFamilyUntagged (a.__policy or "«anonymous»") id
-            )
+            a
           else if !(declarations.isResolveFamily a) then
             a
           else if isMembershipDerived then
             errors.memberAtCell (a.__policy or "«anonymous»") id
-          else if resolveFamilyPolicyNames ? ${a.__policy or "«anonymous»"} then
-            a # a feed policy's benign double-fire at a root (the pre-pass consumed its emission)
           else
-            errors.resolveFamilyUntagged (a.__policy or "«anonymous»") id;
+            a; # a root emission the pre-pass already routed
         guardedActions =
           if result.actions ? structural then
             result.actions // { structural = map guardResolveFamily result.actions.structural; }

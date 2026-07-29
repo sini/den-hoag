@@ -199,16 +199,19 @@ let
   injectMod =
     { config, ... }:
     {
-      config.den.policies.injector =
-        { host, ... }:
-        [
-          (declare.inject {
-            class = denHoag.classes.nixos;
-            module = {
-              boot.tmp.cleanOnBoot = true;
-            };
-          })
-        ];
+      config.den.policies.injector = {
+        emits = [ "inject" ];
+        fn =
+          { host, ... }:
+          [
+            (declare.inject {
+              class = denHoag.classes.nixos;
+              module = {
+                boot.tmp.cleanOnBoot = true;
+              };
+            })
+          ];
+      };
     };
   denInject = (denHoag.mkDen (baseOf true ++ [ injectMod ])).den;
   injectedNixos = builtins.length (denInject.structural.eval.get axonId "class-seeds").nixos;

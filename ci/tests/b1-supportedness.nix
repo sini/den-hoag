@@ -59,188 +59,245 @@ let
   # values are attrsets), so these fixtures measure the supportedness law and not that constraint.
   #
   # a --NEGATIVE--> b (fires iff `b` is absent), b --POSITIVE--> a: the cycle through a negative edge.
-  negA =
-    ctx:
-    if ctx ? b then
-      [ ]
-    else
-      [
-        (d.enrich {
-          key = "a";
-          value = 1;
-        })
-      ];
-  posB = { a, ... }: [
-    (d.enrich {
-      key = "b";
-      value = "from-a=${builtins.toJSON a}";
-    })
-  ];
+  negA = {
+    emits = [ "enrich" ];
+    fn =
+      ctx:
+      if ctx ? b then
+        [ ]
+      else
+        [
+          (d.enrich {
+            key = "a";
+            value = 1;
+          })
+        ];
+  };
+  posB = {
+    emits = [ "enrich" ];
+    fn = { a, ... }: [
+      (d.enrich {
+        key = "b";
+        value = "from-a=${builtins.toJSON a}";
+      })
+    ];
+  };
   # self-referential NEGATIVE: one policy firing iff its own key is absent.
-  selfNeg =
-    ctx:
-    if ctx ? r then
-      [ ]
-    else
-      [
-        (d.enrich {
-          key = "r";
-          value = "R";
-        })
-      ];
+  selfNeg = {
+    emits = [ "enrich" ];
+    fn =
+      ctx:
+      if ctx ? r then
+        [ ]
+      else
+        [
+          (d.enrich {
+            key = "r";
+            value = "R";
+          })
+        ];
+  };
   # a positive chain that only closes across iterations of the fixpoint.
-  seedS = _: [
-    (d.enrich {
-      key = "s";
-      value = "S";
-    })
-  ];
-  chainC = { s, ... }: [
-    (d.enrich {
-      key = "c";
-      value = "c<${builtins.toJSON s}";
-    })
-  ];
-  chainE = { c, ... }: [
-    (d.enrich {
-      key = "e";
-      value = "e<${builtins.toJSON c}";
-    })
-  ];
+  seedS = {
+    emits = [ "enrich" ];
+    fn = _: [
+      (d.enrich {
+        key = "s";
+        value = "S";
+      })
+    ];
+  };
+  chainC = {
+    emits = [ "enrich" ];
+    fn = { s, ... }: [
+      (d.enrich {
+        key = "c";
+        value = "c<${builtins.toJSON s}";
+      })
+    ];
+  };
+  chainE = {
+    emits = [ "enrich" ];
+    fn = { c, ... }: [
+      (d.enrich {
+        key = "e";
+        value = "e<${builtins.toJSON c}";
+      })
+    ];
+  };
   # positive-only cycle, ungrounded: `x` needs `y`, `y` needs `x`. ABW Definition 3 condition 1
   # ADMITS same-stratum positive reads, so this is legal and yields the empty model, not an abort.
-  posCycX = { y, ... }: [
-    (d.enrich {
-      key = "x";
-      value = "x<${builtins.toJSON y}";
-    })
-  ];
-  posCycY = { x, ... }: [
-    (d.enrich {
-      key = "y";
-      value = "y<${builtins.toJSON x}";
-    })
-  ];
-  # defaulted formal — a negative edge that CONVERGES supported, and the shape shipped configuration
-  # actually writes. It must not be caught.
-  defG = _: [
-    (d.enrich {
-      key = "g";
-      value = "G";
-    })
-  ];
-  defH =
-    {
-      g ? "DEFAULT",
-      ...
-    }:
-    [
+  posCycX = {
+    emits = [ "enrich" ];
+    fn = { y, ... }: [
       (d.enrich {
-        key = "h";
-        value = "h<${builtins.toJSON g}";
+        key = "x";
+        value = "x<${builtins.toJSON y}";
       })
     ];
-  # value drift: the KEYSET stabilises while the values are still moving, so a keyset-level check
-  # cannot see it and nothing else on the path aborts — without the law this publishes {x=110; y=11;}.
-  driftY =
-    {
-      x ? 0,
-      ...
-    }:
-    [
+  };
+  posCycY = {
+    emits = [ "enrich" ];
+    fn = { x, ... }: [
       (d.enrich {
         key = "y";
-        value = if builtins.isInt x then x + 1 else 0;
+        value = "y<${builtins.toJSON x}";
       })
     ];
-  driftX = { y, ... }: [
-    (d.enrich {
-      key = "x";
-      value = if builtins.isInt y then y * 10 else 0;
-    })
-  ];
+  };
+  # defaulted formal — a negative edge that CONVERGES supported, and the shape shipped configuration
+  # actually writes. It must not be caught.
+  defG = {
+    emits = [ "enrich" ];
+    fn = _: [
+      (d.enrich {
+        key = "g";
+        value = "G";
+      })
+    ];
+  };
+  defH = {
+    emits = [ "enrich" ];
+    fn =
+      {
+        g ? "DEFAULT",
+        ...
+      }:
+      [
+        (d.enrich {
+          key = "h";
+          value = "h<${builtins.toJSON g}";
+        })
+      ];
+  };
+  # value drift: the KEYSET stabilises while the values are still moving, so a keyset-level check
+  # cannot see it and nothing else on the path aborts — without the law this publishes {x=110; y=11;}.
+  driftY = {
+    emits = [ "enrich" ];
+    fn =
+      {
+        x ? 0,
+        ...
+      }:
+      [
+        (d.enrich {
+          key = "y";
+          value = if builtins.isInt x then x + 1 else 0;
+        })
+      ];
+  };
+  driftX = {
+    emits = [ "enrich" ];
+    fn = { y, ... }: [
+      (d.enrich {
+        key = "x";
+        value = if builtins.isInt y then y * 10 else 0;
+      })
+    ];
+  };
   # ── values Nix cannot compare ────────────────────────────────────────────────────────────────────
   # `d.enrich`'s value carries no type constraint, and a deferred module is the obvious thing to
   # enrich with. Nix's `==` is FALSE for any two distinct closures, so the two `enrichAt` calls the
   # law compares can never agree on a lambda by `==` alone — the law compares them on the
   # comparison-total projection instead (lib/attributes/structural.nix, `agree`). Every other fixture
   # in this file is a scalar or a string, which is why a `==`-only law measured green here.
-  fnPol = _: [
-    (d.enrich {
-      key = "fn";
-      value = (x: x + 1);
-    })
-  ];
-  modPol = _: [
-    (d.enrich {
-      key = "m";
-      value = {
-        mod = { pkgs, ... }: { drv = pkgs; };
-        n = 5;
-      };
-    })
-  ];
-  listPol = _: [
-    (d.enrich {
-      key = "l";
-      value = [
-        1
-        (x: x)
-      ];
-    })
-  ];
-  # value drift INSIDE a function-carrying attrset: `box.n` moves while `box.mod` is a lambda in both
-  # states. The projection must compare the comparable FIELDS of a value it cannot compare whole.
-  boxN =
-    {
-      k ? 0,
-      ...
-    }:
-    [
+  fnPol = {
+    emits = [ "enrich" ];
+    fn = _: [
       (d.enrich {
-        key = "box";
+        key = "fn";
+        value = (x: x + 1);
+      })
+    ];
+  };
+  modPol = {
+    emits = [ "enrich" ];
+    fn = _: [
+      (d.enrich {
+        key = "m";
         value = {
-          mod = { pkgs, ... }: { };
-          n = if builtins.isInt k then k + 1 else 0;
+          mod = { pkgs, ... }: { drv = pkgs; };
+          n = 5;
         };
       })
     ];
-  boxK =
-    {
-      box ? null,
-      ...
-    }:
-    [
+  };
+  listPol = {
+    emits = [ "enrich" ];
+    fn = _: [
       (d.enrich {
-        key = "k";
-        value = if box ? n && builtins.isInt box.n then box.n * 10 else 0;
+        key = "l";
+        value = [
+          1
+          (x: x)
+        ];
       })
     ];
+  };
+  # value drift INSIDE a function-carrying attrset: `box.n` moves while `box.mod` is a lambda in both
+  # states. The projection must compare the comparable FIELDS of a value it cannot compare whole.
+  boxN = {
+    emits = [ "enrich" ];
+    fn =
+      {
+        k ? 0,
+        ...
+      }:
+      [
+        (d.enrich {
+          key = "box";
+          value = {
+            mod = { pkgs, ... }: { };
+            n = if builtins.isInt k then k + 1 else 0;
+          };
+        })
+      ];
+  };
+  boxK = {
+    emits = [ "enrich" ];
+    fn =
+      {
+        box ? null,
+        ...
+      }:
+      [
+        (d.enrich {
+          key = "k";
+          value = if box ? n && builtins.isInt box.n then box.n * 10 else 0;
+        })
+      ];
+  };
   # FORMALS drift: the only lambda difference Nix exposes. Alternating on its own formals is the one
   # shape that keeps a function moving past keyset stabilisation — a PRESENCE-driven branch settles
   # within the fixpoint's own trailing step, and a VALUE-driven one needs a comparable co-key that
   # would itself drift.
-  altFormals = ctx: [
-    (d.enrich {
-      key = "af";
-      value =
-        if !(ctx ? af && builtins.isFunction ctx.af) then
-          ({ a, ... }: 1)
-        else if builtins.functionArgs ctx.af ? a then
-          ({ b, ... }: 2)
-        else
-          ({ a, ... }: 1);
-    })
-  ];
+  altFormals = {
+    emits = [ "enrich" ];
+    fn = ctx: [
+      (d.enrich {
+        key = "af";
+        value =
+          if !(ctx ? af && builtins.isFunction ctx.af) then
+            ({ a, ... }: 1)
+          else if builtins.functionArgs ctx.af ? a then
+            ({ b, ... }: 2)
+          else
+            ({ a, ... }: 1);
+      })
+    ];
+  };
   # ★ THE STATED LIMIT of the law, as a fixture. Each dispatch wraps the previous context's function,
   # so the published closure answers one higher than the one the fixpoint's state carried — and the
   # two are indistinguishable, because a Nix closure exposes nothing below its formals.
-  growFn = ctx: [
-    (d.enrich {
-      key = "gf";
-      value = (_: 1 + (if ctx ? gf && builtins.isFunction ctx.gf then ctx.gf 0 else 0));
-    })
-  ];
+  growFn = {
+    emits = [ "enrich" ];
+    fn = ctx: [
+      (d.enrich {
+        key = "gf";
+        value = (_: 1 + (if ctx ? gf && builtins.isFunction ctx.gf then ctx.gf 0 else 0));
+      })
+    ];
+  };
   # ── a rule that fires only at the CONVERGED context ──────────────────────────────────────────────
   # `stepA` saturates: 0 -> 1 -> 2 -> 2. Its keyset stabilises one step BEFORE its value does, and
   # gen-scope's `circular` converges on the keyset, so `n` reaches 2 only in the returned iterate.
@@ -248,70 +305,88 @@ let
   # state never carried. Both are total over the value-less stratum probe's attrset sentinels: `stepA`
   # emits its declaration on the non-int branch, and `lateN` emits on the branch a sentinel takes, so
   # neither is a value-less probe (which the per-declaration-stratum guard rejects outright).
-  stepA =
-    {
-      n ? 0,
-      ...
-    }:
-    [
-      (d.enrich {
-        key = "n";
-        value =
-          if !(builtins.isInt n) then
-            1
-          else if n < 2 then
-            n + 1
-          else
-            n;
-      })
-    ];
-  lateN =
-    { n, ... }:
-    if builtins.isInt n && n < 2 then
-      [ ]
-    else
+  stepA = {
+    emits = [ "enrich" ];
+    fn =
+      {
+        n ? 0,
+        ...
+      }:
       [
         (d.enrich {
-          key = "z";
-          value = "Z";
+          key = "n";
+          value =
+            if !(builtins.isInt n) then
+              1
+            else if n < 2 then
+              n + 1
+            else
+              n;
         })
       ];
+  };
+  lateN = {
+    emits = [ "enrich" ];
+    fn =
+      { n, ... }:
+      if builtins.isInt n && n < 2 then
+        [ ]
+      else
+        [
+          (d.enrich {
+            key = "z";
+            value = "Z";
+          })
+        ];
+  };
   # ── an INHERITED key overwritten during iteration and inert at convergence ───────────────────────
   # The `dropped` shape over a key the node already carries. Because the published context still HAS
   # the key — `base`'s own value — no keyset arm can see it, and it is the one disagreement the law's
   # touched-key restriction does not reach; `untouchedAgree` is what catches it and widens the scan so
   # the key is named. `shadowNode` reads the ABSENCE of `flag`, so it fires once and is then inert.
-  shadowNode =
-    ctx:
-    if ctx ? flag then
-      [ ]
-    else
-      [
-        (d.enrich {
-          key = "node";
-          value = "OVERWRITTEN";
-        })
-      ];
-  flagPol = _: [
-    (d.enrich {
-      key = "flag";
-      value = true;
-    })
-  ];
+  shadowNode = {
+    emits = [ "enrich" ];
+    fn =
+      ctx:
+      if ctx ? flag then
+        [ ]
+      else
+        [
+          (d.enrich {
+            key = "node";
+            value = "OVERWRITTEN";
+          })
+        ];
+  };
+  flagPol = {
+    emits = [ "enrich" ];
+    fn = _: [
+      (d.enrich {
+        key = "flag";
+        value = true;
+      })
+    ];
+  };
 
   # two writers of one key — the pre-existing B1 single-writer collision.
-  w1 = _: [
-    (d.enrich {
-      key = "w";
-      value = 1;
-    })
-  ];
-  w2 = _: [
-    (d.enrich {
-      key = "w";
-      value = 2;
-    })
-  ];
+  w1 = {
+    emits = [ "enrich" ];
+    fn = _: [
+      (d.enrich {
+        key = "w";
+        value = 1;
+      })
+    ];
+  };
+  w2 = {
+    emits = [ "enrich" ];
+    fn = _: [
+      (d.enrich {
+        key = "w";
+        value = 2;
+      })
+    ];
+  };
 
   # ── the materialization arm: the same cycle read through the REAL nixpkgs crossing ───────────────
   # `consumer` destructures the unsupported key and renders it into a NixOS option value, so forcing
@@ -591,12 +666,15 @@ in
     # positive policy materializes normally, so the abort above is the cycle's and not the crossing's.
     test-crossing-materializes-supported-key = {
       expr = crossedDomain {
-        plainB = _: [
-          (d.enrich {
-            key = "b";
-            value = "ok";
-          })
-        ];
+        plainB = {
+          emits = [ "enrich" ];
+          fn = _: [
+            (d.enrich {
+              key = "b";
+              value = "ok";
+            })
+          ];
+        };
       };
       expected = "SAW-ok";
     };

@@ -87,7 +87,7 @@ let
   );
   hostPol = c.policies.${builtins.head hostPolNames};
 
-  # Force a policy body at a host ctx: a compiled record `{ __condition; fn }`.
+  # Force a policy body at a host ctx: a compiled record `{ gate; fn }`.
   forceThrows = e: !(builtins.tryEval (builtins.deepSeq e null)).success;
 in
 {

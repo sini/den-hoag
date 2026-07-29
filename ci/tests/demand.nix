@@ -103,14 +103,17 @@ let
         secretSeed = "from-ctx";
       };
       # one root database demand, emitted by a policy at the host node (subject = the firing host).
-      config.den.policies.provisionDb =
-        { host, ... }:
-        [
-          (declare.demand {
-            kind = "database";
-            subject = host;
-          })
-        ];
+      config.den.policies.provisionDb = {
+        emits = [ "demand" ];
+        fn =
+          { host, ... }:
+          [
+            (declare.demand {
+              kind = "database";
+              subject = host;
+            })
+          ];
+      };
     };
   denCascade = (denHoag.mkDen (fleetBase ++ [ cascadeMod ])).den;
   res = denCascade.demandResolution;
@@ -129,22 +132,28 @@ let
     {
       config.den.demandKinds = cascadeKinds;
       config.den.policies = {
-        provisionA =
-          { host, ... }:
-          [
-            (declare.demand {
-              kind = "database";
-              subject = config.den.host.axon;
-            })
-          ];
-        provisionB =
-          { host, ... }:
-          [
-            (declare.demand {
-              kind = "database";
-              subject = config.den.env.prod;
-            })
-          ];
+        provisionA = {
+          emits = [ "demand" ];
+          fn =
+            { host, ... }:
+            [
+              (declare.demand {
+                kind = "database";
+                subject = config.den.host.axon;
+              })
+            ];
+        };
+        provisionB = {
+          emits = [ "demand" ];
+          fn =
+            { host, ... }:
+            [
+              (declare.demand {
+                kind = "database";
+                subject = config.den.env.prod;
+              })
+            ];
+        };
       };
     };
   rootSubjects = trace: map (d: d.subject.rendered) (builtins.filter (d: d.stratum == 1) trace);
@@ -171,14 +180,17 @@ let
     }
     {
       config.den.demandKinds = cascadeKinds;
-      config.den.policies.provision =
-        { host, ... }:
-        [
-          (declare.demand {
-            kind = "database";
-            subject = host;
-          })
-        ];
+      config.den.policies.provision = {
+        emits = [ "demand" ];
+        fn =
+          { host, ... }:
+          [
+            (declare.demand {
+              kind = "database";
+              subject = host;
+            })
+          ];
+      };
     }
   ];
   permMembership =

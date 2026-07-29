@@ -56,6 +56,14 @@
   # produced-kind family lets `dispatch.deriveGroup` stamp the rule's group at definition time, retiring
   # the fire-and-observe blind fan for these. Native callers pass `{ }` (the default), byte-identical.
   producesByName ? { },
+  # The recovery sentinel (formerly the `den.probeSentinelFields` kernel option). It configures the SHIM's
+  # codomain recovery, and its own header always said the field NAMES live consumer-side; moving it here
+  # makes the code agree with the comment. Native callers pass `{ }`.
+  sentinelFields ? { },
+  # The codomain recovery desugar (policy-recover.nix), and its removability gate. OFF ⇒ no recovery: a v1
+  # bare closure with no declared codomain aborts NAMED, which is STRICTLY MORE STRICT than on.
+  policyRecover,
+  policyRecovery ? true,
   # den.features compat-desugar-arm gates (Tier-1, register compat-feature-register.md). Both default ON,
   # so a native/non-flag caller keeps the unconditional surface (all-on ≡ pre-feature, byte-identical).
   # `aspectIncludeArm` — the `{ __isPolicy }`-in-a-regular-aspect's-`.includes` diversion arm: off collapses
@@ -69,31 +77,71 @@
   lateDispatch ? true,
 }:
 let
-  # Stamp `__resolveFamily = true` iff a policy REF's v1 name is in `resolveFamilyNames` — the R2 tag
-  # propagation through kind-include / default-include compilation. `ref.name` is the coerced
-  # `{ __isPolicy; name; fn }` record's v1 name (a `{ __denCanTake }` route ref carries none → null → no
-  # stamp). The match is at the REF, not the synthetic compiled attr name concern-policies would see.
-  resolveFamilyStamp =
-    ref:
-    prelude.optionalAttrs (builtins.elem (ref.name or null) resolveFamilyNames) {
-      __resolveFamily = true;
-    };
-  # The #72 twin — `__excludeFamily` for a `suppress`-emitting corpus excluder wired via an include.
-  excludeFamilyStamp =
-    ref:
-    prelude.optionalAttrs (builtins.elem (ref.name or null) excludeFamilyNames) {
-      __excludeFamily = true;
-    };
-  # The declared-stratum stamp — `__produces = producesByName.<name>` iff a policy REF's v1 name is a key
-  # in the map, the twin of the family stamps for a value-conditional policy wired via an include (its
-  # compiled key is synthetic, so concern-policies' `name ∈ producesByName` lookup never matches it). The
-  # kinds are read at concern-policies as `v.__produces`, driving deriveGroup's definition-time group stamp.
-  producesStamp =
-    ref:
-    prelude.optionalAttrs ((ref.name or null) != null && producesByName ? ${ref.name}) {
-      __produces = producesByName.${ref.name};
-    };
-  familyStamps = ref: resolveFamilyStamp ref // excludeFamilyStamp ref // producesStamp ref;
+  # THE DECLARED CODOMAIN, from the three v1 corpus facts the shim already carries. Each of them was a
+  # different name-keyed way of saying the same thing — which declaration kinds a policy can produce — so
+  # they fold into ONE `emits` declaration rather than three tags the kernel reads off the value:
+  #   • `producesByName.<name>`      the kinds outright (single source compat/produces-by-name.nix);
+  #   • `name ∈ resolveFamilyNames`  the policy can emit `member` (single source resolve-family-names.nix);
+  #   • `name ∈ excludeFamilyNames`  the policy can emit `suppress` (single source exclude-family-names.nix).
+  # The family sets exist precisely because a value-conditional emitter cannot be DETECTED by firing, so
+  # each is a codomain fact its consumer knows and the recovery cannot learn. Feed membership then follows
+  # by derivation at the kernel — there is no tag to forget. A name with NO declared fact recovers its
+  # codomain by firing (policy-recover.nix); one that under-declares is caught LOUD at the emitting site
+  # (`emitsUndeclared`) rather than mis-routed.
+  declaredEmitsOf =
+    name:
+    if name == null then
+      [ ]
+    else
+      prelude.unique (
+        (producesByName.${name} or [ ])
+        ++ prelude.optional (builtins.elem name resolveFamilyNames) "member"
+        ++ prelude.optional (builtins.elem name excludeFamilyNames) "suppress"
+      );
+  declaredEmits = prelude.genAttrs (
+    builtins.attrNames producesByName ++ resolveFamilyNames ++ excludeFamilyNames
+  ) declaredEmitsOf;
+  # `emitsFor v1Name fn` — the codomain for one compiled policy. The v1 NAME is the identity the corpus
+  # facts key on; a policy wired through an include compiles to a SYNTHETIC attr key, so the lookup must
+  # happen at the REF (here) and never at the compiled key.
+  # `emitsFor declared v1Name gate fn` — the codomain, by DECLARATION wherever one exists and by recovery
+  # only where none does. `declared` is the SOURCE value's own `emits` (a v1 fleet that already declares
+  # its codomain is never fired at a sentinel at all — the shim's opt-out property); then the corpus facts
+  # keyed by v1 name; and only then the fire.
+  emitsFor =
+    declared: v1Name: gate: fn:
+    let
+      named = if v1Name == null then "«unnamed»" else v1Name;
+    in
+    if declared != null && declared != [ ] then
+      declared
+    else if v1Name != null && (declaredEmits.${v1Name} or [ ]) != [ ] then
+      declaredEmits.${v1Name}
+    else if !policyRecovery then
+      errors.policyCodomainUndeclared named
+    else
+      policyRecover.recoverEmits {
+        inherit sentinelFields;
+        declaredEmits = { };
+      } named gate fn;
+  # The include-arm stamp: one `emits` field where three `__`-prefixed tags used to ride.
+  # ★ `ungated` is the record BEFORE `gateSuppression` wraps its `fn`. A codomain is a STATIC property of
+  # a body; suppression is a PER-NODE DISPATCH concern. Recovering the codomain through the dispatch gate
+  # inverts those layers, and the inversion collapses two states that must stay apart: a gated body
+  # returns `[ ]` when suppressed, which is indistinguishable from "emits nothing" and compiles to NO
+  # rule — silently deleting a policy on the very path whose job is to discover what it does. Recovering
+  # from the ungated body makes the question unaskable rather than merely unlikely, and removes an
+  # accidental dependence on `gateSuppression`'s fail-open `or [ ]` default (so tightening that default
+  # later cannot silently break codomain recovery).
+  familyStamps = ref: ungated: {
+    emits = emitsFor (ref.emits or null) (ref.name or null) ungated.gate ungated.fn;
+  };
+
+  # THE DYNAMIC-ATTACHMENT ABSENCE, said rather than implied. A record with no entity-kind formal keeps
+  # its DYNAMIC attachment and must reach every node — which is `selects = null`, NOT `[ ]`. The omission
+  # this replaces was load-bearing and its own comment said so; the field makes the two absences different
+  # VALUES instead of the same missing key.
+  selectsOfFormals = firesAt: if firesAt == [ ] then null else firesAt;
 
   # #72 — THE SUPPRESSION GATE (v1 dispatch-policies.nix:15-33: dispatch filters `aspectPolicies` by
   # name against the scoped exclude constraints). den-hoag rendering: the pre-pass's suppression sets
@@ -1066,7 +1114,7 @@ let
   # the same way (`innerFn`). A value-conditional body (emits nothing at concern-policies' value-less
   # probe) has its stratum derived per-declaration there; this compile stays stratum-agnostic.
   compilePolicy = ing: normalizeList: aspectRec: policyId: value: {
-    __condition = fnArgsOf (innerFn value);
+    gate = fnArgsOf (innerFn value);
     # `imap0` threads each effect's within-policy index (its position in the body's effect list) into
     # `translateEffect` alongside the owning policy identity — the per-declaration disambiguator a compiled
     # deriving `pipe.from` folds into its gen-pipe declaration-`site` (pipe.nix `compilePipe`).
@@ -1099,7 +1147,7 @@ let
     # The route's fixed SHAPE retires into an explicit `__condition` coord set — the coords it gates
     # on, in the `functionArgs` shape (`false` = required). A hand-written formal lambda per shape is no
     # longer needed now that a rule's gate can be declared as data.
-    __condition =
+    gate =
       if value.__denCanTake == "host" then
         { host = false; }
       else if value.__denCanTake == "user-host" then
@@ -1119,7 +1167,7 @@ let
   };
 
   compilePolicies =
-    ing: normalizeList: aspectRec: policies:
+    ing: normalizeList: aspectRec: selectsFromSchema: policies:
     let
       names = builtins.attrNames policies;
       # Partition: `when`-over-inline-aspect values become aspects (conditional activation); a
@@ -1131,6 +1179,24 @@ let
       aspectNames = builtins.filter isAspectValued names;
       canTakeNames = builtins.filter isCanTake names;
       policyNames = builtins.filter (n: !(isAspectValued n) && !(isCanTake n)) names;
+      # The fleet-wide mint carries both halves the value could not: what it emits, and where it fires.
+      # `mintFleetWide name ungated gated` — the record is the GATED one (suppression is dispatch), but the
+      # codomain is recovered from the UNGATED body (a codomain is a static property of the body). See
+      # `familyStamps` for why the two must not be the same value.
+      mintFleetWide =
+        name: ungated: gated:
+        gated
+        // {
+          emits = emitsFor (policies.${name}.emits or null) name ungated.gate ungated.fn;
+          # DECLARATION BEATS DERIVATION, and the absence is the thing being decided. `selectsFromSchema`
+          # encodes "a v1 policy fires only where its schema INCLUDES it" — true of a v1 USER policy, and
+          # false of a shim-synthesised AMBIENT global, which has no includes entry because it is not a v1
+          # declaration at all (v1's equivalent binds at flake scope and is inherited fleet-wide). Those
+          # mechanisms therefore DECLARE `selects` on their own record, and a declared value wins —
+          # including `null`, which is a real value here and not a missing key. Only an UNDECLARED
+          # selection is derived from the schema.
+          selects = if policies.${name} ? selects then policies.${name}.selects else selectsFromSchema name;
+        };
     in
     {
       policies =
@@ -1138,10 +1204,18 @@ let
         # name IS the attr key here — user-to-host etc.), so a pre-pass-collected exclude suppresses it
         # at the emitting scope + descendants.
         prelude.genAttrs policyNames (
-          name: gateSuppression name (compilePolicy ing normalizeList aspectRec name policies.${name})
+          name:
+          let
+            ungated = compilePolicy ing normalizeList aspectRec name policies.${name};
+          in
+          mintFleetWide name ungated (gateSuppression name ungated)
         )
         // prelude.genAttrs canTakeNames (
-          name: gateSuppression name (compileCanTake ing normalizeList aspectRec name policies.${name})
+          name:
+          let
+            ungated = compileCanTake ing normalizeList aspectRec name policies.${name};
+          in
+          mintFleetWide name ungated (gateSuppression name ungated)
         );
       # The conditional aspects lifted out of `den.policies` (their guard + gated aspects).
       conditionalAspects = prelude.genAttrs aspectNames (
@@ -1471,11 +1545,11 @@ let
       {
         name = "__aspectInclude__${ref.name}";
         value =
-          gateSuppression (ref.name or null) (
-            compilePolicy ing normalizeList aspectRec "__aspectInclude__${ref.name}" ref
-          )
-          // familyStamps ref
-          // prelude.optionalAttrs (firesAt != [ ]) { __firesAtKinds = firesAt; };
+          let
+            ungated = compilePolicy ing normalizeList aspectRec "__aspectInclude__${ref.name}" ref;
+            compiled = gateSuppression (ref.name or null) ungated;
+          in
+          compiled // familyStamps ref ungated // { selects = selectsOfFormals firesAt; };
       }
     ) aspectIncludeRecords
   );
@@ -1523,8 +1597,9 @@ let
         map (s: {
           name = s.synthName;
           value = {
-            __condition = fnArgsOf s.fn;
-            __firesAtKinds = s.firesAt;
+            gate = fnArgsOf s.fn;
+            selects = selectsOfFormals s.firesAt;
+            emits = [ "edge" ];
             fn = _ctx: [ (declare.edge (aspectRec s.aspectName)) ];
           };
         }) synths
@@ -1544,7 +1619,61 @@ let
   # laziness ties the knot without a loop.
   aspectRec = name: (aspects.${name} or { }) // ing.aspectEntry name;
 
-  compiledPolicies = compilePolicies ing normalizeList aspectRec v1Policies;
+  # THE SELECTION ABSENCE, said rather than implied. A `den.policies.<name>` DEFINITION is a registry
+  # entry; `den.schema.<K>.includes` is what puts it into DISPATCH. A name in no `includes` list selects
+  # NOTHING (`[ ]`) — which is v1's behaviour, where a policy fires only where it is INCLUDED and never by
+  # `den.policies` presence alone, and which answers a registered-but-unreferenced policy firing at every
+  # node in the fleet. The two absences are now different VALUES: `[ ]` here, against `null` for a record
+  # whose formals leave its attachment dynamic (`selectsOfFormals`). The kernel learns no kind NAMES from
+  # this — `ing.kindIncludes` is data, and `expandRefs` is the same flattening the include arms use.
+  namesRef =
+    name: refs:
+    builtins.elem name (builtins.filter (n: n != null) (map (r: r.name or null) (expandRefs refs)));
+  includedAt =
+    name: builtins.attrNames (prelude.filterAttrs (_: refs: namesRef name refs) ing.kindIncludes);
+  # Is `k` a STRICT descendant of `anc` under the containment schema? The walk is up `parent`, which is
+  # the same relation v1's `foldScopeAncestors` walks when it resolves a subtree-scoped constraint.
+  isStrictDescendant =
+    anc: k:
+    let
+      up =
+        cur:
+        if cur == null then
+          false
+        else if cur == anc then
+          true
+        else
+          up (ing.kindParent.${cur} or null);
+    in
+    k != anc && up (ing.kindParent.${k} or null);
+  # `den.schema.<K>.excludes` — SUBTREE-scoped in v1, per-KIND here, so only the case where those two
+  # extents COINCIDE is honoured: the excluded policy attaches at K itself, and removing K from its
+  # selection is exact. A policy attaching at a strict DESCENDANT of K aborts by name rather than being
+  # flattened into a fleet-wide kind removal (which would suppress more than the declaration asks). A
+  # policy attaching anywhere else is untouched: an exclude at K cannot reach outside K's subtree.
+  # The kinds whose `excludes` name this policy.
+  excludedAtKinds =
+    name:
+    builtins.attrNames (prelude.filterAttrs (_: refs: namesRef name refs) (ing.kindExcludes or { }));
+  isExcludedAtKind = kind: name: name != null && builtins.elem kind (excludedAtKinds name);
+  # THE LOUD GAP, forced ONCE PER FLEET rather than per arm, so a descendant-scoped exclude is refused at
+  # the schema even when nothing forces the arm it would have suppressed. `null` when every exclude in the
+  # schema is representable per-kind; otherwise the first named violation.
+  excludeScopeCheck =
+    let
+      violations = prelude.concatMap (
+        kind:
+        prelude.concatMap (
+          name:
+          map (bad: errors.excludeSubtreeUnrepresentable kind name bad) (
+            builtins.filter (isStrictDescendant kind) (includedAt name)
+          )
+        ) (builtins.filter (n: n != null) (map (r: r.name or null) (expandRefs ing.kindExcludes.${kind})))
+      ) (builtins.attrNames (ing.kindExcludes or { }));
+    in
+    if violations == [ ] then null else builtins.head violations;
+  selectsFromSchema = name: builtins.filter (k: !(isExcludedAtKind k name)) (includedAt name);
+  compiledPolicies = compilePolicies ing normalizeList aspectRec selectsFromSchema v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag declarations,
   # classified PER REF exactly as v1's `wrapChild` (`aspects/fx/aspect/normalize.nix`, @ pin 11866c16). v1's
@@ -1707,8 +1836,9 @@ let
           edgeRefs = staticRefs ++ map (n: { name = n; }) (builtins.attrNames synthAspects);
           aspectPolicy = prelude.optionalAttrs (edgeRefs != [ ]) {
             "__kindInclude__${kind}" = {
-              __condition = kindCoord;
-              __firesAtKinds = [ kind ];
+              gate = kindCoord;
+              selects = [ kind ];
+              emits = [ "edge" ];
               fn = _ctx: map (ref: declare.edge (resolveAspectRef aspectRec ref)) edgeRefs;
             };
           };
@@ -1717,20 +1847,19 @@ let
               name = "__kindInclude__${kind}__policy__${toString i}";
               value =
                 let
-                  base = gateSuppression (ref.name or null) (
-                    compilePolicy ing normalizeList aspectRec "__kindInclude__${kind}__policy__${toString i}" ref
-                  );
+                  ungated =
+                    compilePolicy ing normalizeList aspectRec "__kindInclude__${kind}__policy__${toString i}"
+                      ref;
+                  base = gateSuppression (ref.name or null) ungated;
                 in
                 base
+                // familyStamps ref ungated
                 // {
-                  __condition = kindCoord // base.__condition;
-                  __firesAtKinds = [ kind ];
-                }
-                # R2/#72 tag propagation: a SYNTHETIC-keyed include policy whose source ref is a corpus
-                # resolve/exclude policy (name ∈ the family sets) carries the `__resolveFamily`/
-                # `__excludeFamily` tag concern-policies reads — its synthetic key never matches the
-                # name-based check.
-                // familyStamps ref;
+                  gate = kindCoord // base.gate;
+                  # `den.schema.<kind>.excludes` naming this policy removes it from THIS kind's selection.
+                  # Same-kind only; a descendant-scoped exclude has already aborted (`excludeScopeCheck`).
+                  selects = if isExcludedAtKind kind (ref.name or null) then [ ] else [ kind ];
+                };
             }) policyRefs
           );
         in
@@ -1872,11 +2001,15 @@ let
       ) (builtins.attrNames ing.kindIncludes);
     in
     builtins.filter (n: n != null) (map (r: r.name or null) (kindPolicyRefs ++ aspectIncludeRecords));
-  policies =
+  # `excludeScopeCheck` is forced on the WHOLE policy set, not on one arm: a policy wired through a
+  # kind-include never touches `compiledPolicies`, so seq-ing it there would leave the schema's own
+  # violation unforced for exactly the shape it describes.
+  policies = builtins.seq excludeScopeCheck (
     (builtins.removeAttrs compiledPolicies.policies includeReferencedNames)
     // kindIncludePolicies
     // aspectIncludePolicies
-    // aspectIncludeBareFnArm.policies;
+    // aspectIncludeBareFnArm.policies
+  );
 
   # SURFACE TOTALITY (C1): every top-level `den.<key>` is accounted — compiled, legacy-desugared, or a
   # named abort. The permissive v1 eval (flake-module.nix freeformType) absorbs UNKNOWN `den.*` keys

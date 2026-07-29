@@ -144,16 +144,19 @@ let
         }
       ];
       # terminal `configure` policy → the `policy` tier (authority-wins by position, A8).
-      config.den.policies.setLvl =
-        { user, ... }:
-        [
-          (denHoag.declare.configure {
-            of = config.den.aspects.app;
-            set = {
-              level = "policylvl";
-            };
-          })
-        ];
+      config.den.policies.setLvl = {
+        emits = [ "configure" ];
+        fn =
+          { user, ... }:
+          [
+            (denHoag.declare.configure {
+              of = config.den.aspects.app;
+              set = {
+                level = "policylvl";
+              };
+            })
+          ];
+      };
     };
 
   den = (denHoag.mkDen (fleetBase ++ [ mod ])).den;

@@ -36,9 +36,19 @@ let
   # the exact hard-read shape of the frozen corpus. A field-less entry would throw uncatchably here, so a
   # passing routing assertion IS a field-presence proof. At the value-less stratum probe the sentinel
   # `system = "«probe»"` makes `hasPrefix` false → clean expansion (the fleet building proves it).
-  markPolicy = mkPolicy "mark-aarch64" (
-    { host, ... }: optional (hasPrefix "aarch64-" host.system) (include markerRef)
-  );
+  # ★ DECLARED, and it must be. This body is VALUE-conditional on `host.system`, so firing it at a
+  # value-less sentinel emits nothing — and an empty RECOVERED codomain compiles to no rule at all, which
+  # would delete the policy silently rather than aborting. The declaration is what keeps a
+  # value-conditional emitter alive; `selects = null` keeps it unconstrained (it is registered here, not
+  # selected through any `includes` list).
+  markPolicy =
+    mkPolicy "mark-aarch64" (
+      { host, ... }: optional (hasPrefix "aarch64-" host.system) (include markerRef)
+    )
+    // {
+      emits = [ "edge" ];
+      selects = null;
+    };
 
   # A minimal v1-surface fleet: two hosts on DIFFERENT systems (the field the demoted path key becomes), the
   # route wired at host scope (den.schema.host.includes, where `host` is bound). Class is explicit on both.
@@ -192,9 +202,20 @@ in
       expected = true;
     };
     # (a) — and is GATED-EMPTY at the x86_64 host (real `system` = x86_64-linux, `hasPrefix` false → []).
+    # ★ ABSENCE ASSERTED ALONGSIDE THE PRESENCE THAT PROVES THE INSTRUMENT IS LIVE. On its own this leg
+    # is VACUOUS: the marker is absent at `host:pc` whenever the policy is broken, missing, or deleted, so
+    # it goes green through a repair and through the next regression alike. Pairing it with the aarch64
+    # host in the SAME expression makes it discriminate — absence at x86 only counts as gating if presence
+    # at aarch64 is demonstrated by the same run of the same mechanism.
     test-x86-route-gated-empty = {
-      expr = hasMarkerAt "host:pc";
-      expected = false;
+      expr = {
+        gatedOffAtX86 = hasMarkerAt "host:pc";
+        firesAtAarch64 = hasMarkerAt "host:arm"; # the positive control, in-run
+      };
+      expected = {
+        gatedOffAtX86 = false;
+        firesAtAarch64 = true;
+      };
     };
 
     # (b) — the stamped `system`/`hostName` (and pre-existing `class` + built-in `name`) are present on the

@@ -57,20 +57,23 @@ let
             };
           schema.user.includes = [ "acct" ];
           policies = {
-            hm-forward =
-              { user, host, ... }:
-              [
-                (route {
-                  fromClass = "home-manager";
-                  intoClass = host.class;
-                  intoPath = [
-                    "home-manager"
-                    "users"
-                    user.name
-                  ];
-                  __extra.appendToParent = true;
-                })
-              ];
+            hm-forward = {
+              emits = [ "delivery" ];
+              fn =
+                { user, host, ... }:
+                [
+                  (route {
+                    fromClass = "home-manager";
+                    intoClass = host.class;
+                    intoPath = [
+                      "home-manager"
+                      "users"
+                      user.name
+                    ];
+                    __extra.appendToParent = true;
+                  })
+                ];
+            };
           }
           // (
             if withRoute then

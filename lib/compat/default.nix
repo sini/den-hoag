@@ -109,8 +109,19 @@ let
   # `delivery` intent kind); the gen-edge record is rendered from that intent later, at the firing node.
   # The constant args (shared by every wiring); the two den.features desugar-arm gates
   # (`aspectIncludeArm`/`lateDispatch`) VARY per wiring, so `mkCompile` bakes them per feature record.
+  # The codomain RECOVERY desugar — the shim's total function from a v1 bare closure (no declared
+  # codomain) to a fully-specified policy record. It is the only surviving probe, it is non-authoritative
+  # (the kernel re-checks its output at every firing), and it aborts NAMED where the fire raises rather
+  # than reporting an error as an empty emission.
+  # The recovery sentinel's STATIC half (single source probe-sentinel.nix); the bridge path merges its
+  # deep `settings` submodule on top (flake-module `sentinelFor`).
+  staticSentinel = import ./probe-sentinel.nix;
+  policyRecover = import ./policy-recover.nix {
+    inherit prelude errors;
+    inherit (denHoag) declare;
+  };
   compileBaseArgs = {
-    inherit mkGateAspect;
+    inherit mkGateAspect policyRecover;
     inherit
       prelude
       ingest
@@ -147,11 +158,13 @@ let
   # surface, byte-identical. The external `compile`/`compileFull` API stays 1-arg (the fleet fn is NOT
   # curried) — a per-wiring compile is a distinct closed core, so `compile fx` callers are unaffected.
   mkCompile =
-    feat:
+    feat: sentinelFields:
     import ./compile.nix (
       compileBaseArgs
       // {
+        inherit sentinelFields;
         inherit (feat) aspectIncludeArm lateDispatch;
+        policyRecovery = feat.policyRecovery or true;
       }
       # `familyStamps` off ⇒ collapse the resolve/exclude tag sets to the kernel-identity `[ ]` at the
       # compile half (ATOMIC with the flake-module seam-module omit below — see mkDenWith; collapsing one
@@ -173,7 +186,7 @@ let
   # representation. `mkCompile defaultFeatures` is the RAW core (no typing); the wrap threads `typeAspects`
   # exactly once here (the bridge path types once inside `compileFull` over its own `mkCompile feat` core —
   # a separate binding, so no double-type). A direct-entry caller stays 1-arg: `compile v1Decls`.
-  compile = decls: mkCompile defaultFeatures (typeAspects decls);
+  compile = decls: mkCompile defaultFeatures staticSentinel (typeAspects decls);
   # The `deliver` surface (+ the permanent `route` / `provide` sugar): the v1 delivery-edge vocabulary
   # a corpus policy body calls. Produces inert delivery DESCRIPTORS `compile` desugars (Law C2).
   deliverLib = import ./deliver.nix { inherit prelude errors; };
@@ -278,7 +291,11 @@ let
         ;
       # the per-feature compile (bakes the aspectIncludeArm/lateDispatch desugar-arm gates); all-on ≡ the
       # shared `compile`, byte-identical. flake-module receives an already-feat-baked 1-arg compile.
-      compile = mkCompile feat;
+      compile = mkCompile feat staticSentinel;
+      # The same core, still awaiting its recovery sentinel: the bridge path merges the fleet's deep
+      # `settings` submodule onto the static fields, which only the bridge can materialize.
+      compileWithSentinel = mkCompile feat;
+      staticSentinel = staticSentinel;
       gather = gatherLib;
       inherit legacy;
       features = feat;
@@ -343,6 +360,12 @@ let
   defaultFeatures = (builtins.mapAttrs (_: _: true) featureLegacyModule) // {
     hasAspect = true; # class (b) — den.enrichBindings + den.enrichContext (ONE flag)
     gather = true; # class (b) — den.channelGather
+    # class (b). OFF ⇒ the shim performs NO codomain recovery: a v1 bare closure with no declared codomain
+    # aborts NAMED at registration. Flag-off is therefore STRICTLY MORE STRICT, and every fleet whose
+    # policies declare their codomain is byte-green with the flag either way — a removability property of
+    # the expression, not a measurement. `emits` itself is NOT gated: it is the total field, and a flag
+    # that could make a codomain optional again would restore the defect this design removes.
+    policyRecovery = true;
     aspectIncludeArm = true; # class (c) — compile.nix `{ __isPolicy }`-in-aspect-includes diversion arm
     lateDispatch = true; # class (c) — compile.nix descendant-formal bare-fn radiation arm
     # Rung-5 Tier-2 coupling-review flags (register compat-feature-register.md):

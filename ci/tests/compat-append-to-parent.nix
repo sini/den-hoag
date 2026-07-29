@@ -65,22 +65,31 @@ let
         den.schema.user.includes = [ "acct" ];
         # the CELL-FIRED forward ({ user, host } formals ⇒ fires at (user,host) cells only) — the
         # userForward shape: fromClass=home-manager, intoClass=host.class, intoPath=home-manager/users/<n>.
-        den.policies.hmForward =
-          { user, host, ... }:
-          [
-            (route (
-              {
-                fromClass = "home-manager";
-                intoClass = host.class;
-                intoPath = [
-                  "home-manager"
-                  "users"
-                  user.name
-                ];
-              }
-              // (if withParent then { __extra.appendToParent = true; } else { })
-            ))
-          ];
+        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+        # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+        # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+        # its job, and the right answer to a question this suite is not asking.
+        den.policies.hmForward = {
+          __isPolicy = true;
+          selects = null;
+          emits = [ "delivery" ];
+          fn =
+            { user, host, ... }:
+            [
+              (route (
+                {
+                  fromClass = "home-manager";
+                  intoClass = host.class;
+                  intoPath = [
+                    "home-manager"
+                    "users"
+                    user.name
+                  ];
+                }
+                // (if withParent then { __extra.appendToParent = true; } else { })
+              ))
+            ];
+        };
       }
     ];
   withParent = mkForward true;
@@ -111,15 +120,24 @@ let
         den.quirks.dst = { };
         den.aspects.seed.src = [ "hello" ];
         den.schema.host.includes = [ "seed" ];
-        den.policies.route1 = _ctx: [
-          (route (
-            {
-              fromClass = "src";
-              intoClass = "dst";
-            }
-            // (if withFlag then { __extra.appendToParent = true; } else { })
-          ))
-        ];
+        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+        # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+        # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+        # its job, and the right answer to a question this suite is not asking.
+        den.policies.route1 = {
+          __isPolicy = true;
+          selects = null;
+          emits = [ "delivery" ];
+          fn = _ctx: [
+            (route (
+              {
+                fromClass = "src";
+                intoClass = "dst";
+              }
+              // (if withFlag then { __extra.appendToParent = true; } else { })
+            ))
+          ];
+        };
       }
     ];
   parentlessEdge =

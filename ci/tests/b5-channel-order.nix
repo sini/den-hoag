@@ -174,9 +174,12 @@ let
           aspects = [ config.den.aspects.importA ];
         }
       ];
-      config.den.policies.linkBlade = { user, ... }: [
-        (denHoag.declare.link { target = config.den.host.blade; })
-      ];
+      config.den.policies.linkBlade = {
+        emits = [ "link" ];
+        fn = { user, ... }: [
+          (denHoag.declare.link { target = config.den.host.blade; })
+        ];
+      };
     };
   denNeron = (denHoag.mkDen (neronBase ++ [ neronMod ])).den;
   neronOrder = map (c: c.value) (

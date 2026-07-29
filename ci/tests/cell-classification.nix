@@ -79,17 +79,17 @@ let
       ];
     };
   # The DERIVED equivalent: a resolve-family policy emitting the SAME `{ box; seat }` membership at the box
-  # root (a non-candidate — the pre-pass fires it). `__firesAtKinds = [ box ]` keeps it off the seat cell
+  # root (a non-candidate — the pre-pass fires it). `selects = [ box ]` keeps it off the seat cell
   # (which also carries a `box` coord) so the main run's A5 guard is not tripped.
   derivedMembership =
     { config, ... }:
     {
       config.den.policies.enroll-seat = {
-        __condition = {
+        gate = {
           box = false;
         };
-        __firesAtKinds = [ "box" ];
-        __resolveFamily = true;
+        selects = [ "box" ];
+        emits = [ "member" ];
         fn =
           { box, ... }:
           [

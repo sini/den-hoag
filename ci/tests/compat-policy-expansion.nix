@@ -7,11 +7,46 @@
 # pipeOp from an expansion policy aborts LOUD (probe-time compose/feed commitments a value-less policy
 # cannot make); a pure SITE-MARK pipeOp on a bare channel ref is per-node emission DATA and rides the
 # `#collection` sub-rule (`declare.isSiteMarkData`), seeding no compose op. A policy that DECLARES its
-# produced-kind family (`__produces` / `producesByName`) skips the fan entirely: `dispatch.deriveGroup`
+# produced-kind family (`emits` / `producesByName`) skips the fan entirely: `dispatch.deriveGroup`
 # stamps its group at DEFINITION time (gen-dispatch declared-stratum), so ONE declared rule keyed by the
 # bare name is built (the corpus path); the blind fan is the additive fallback for undeclared policies.
 # Exercised directly through
 # `denHoag.internal.compilePolicies` (concern-policies' rule compiler) + the compat compile output.
+# ══ RETIREMENT RECORD — eleven tests removed with the probe they pinned ══════════════════════════════
+# A test whose SUBJECT is deleted is not "a failing test": it is the durable statement of a property the
+# old design guaranteed. Retiring one without recording that property loses the only written trace of
+# something deliberately given up, and an abandoned property with no trace gets re-proposed later as a
+# defect. So each is named here with what it pinned and why that property no longer exists.
+#
+# GROUP A — the 3-way EXPANSION FAN and its per-stratum sub-rule routing. Property: a policy whose stratum
+# could not be observed (its value-less probe emitted nothing) was compiled into one sub-rule per covered
+# stratum, each keeping only its own stratum's declarations, so every declaration reached its phase.
+# Gone because the stratum is now DECLARED (`emits`) and derived through `declare.stratumOfKind`: there is
+# nothing to fan over, one policy compiles to ONE rule, and the `#<stratum>` identity suffix these tests
+# addressed sub-rules by no longer exists. The conservation the fan bought is now a definition-time law.
+#   · test-value-conditional-expands              — a value-conditional body expands to 3 sub-rules
+#   · test-probe-throw-expands                    — a body THROWING at the sentinel expands identically
+#                                                   (the swallowed-throw path; now a codomain declaration)
+#   · test-resolution-subrule-routes-edge         — an `edge` reaches the resolution sub-rule only
+#   · test-value-conditional-spawn-routes-structural — a `spawn` reaches the structural sub-rule only
+#   · test-value-conditional-sitemark-pipeop-expands — a SITE-MARK pipeOp rides the `#collection` sub-rule
+#   · test-corpus-straddle                        — two corpus-shaped policies straddling strata, each
+#                                                   self-routing through its own fan
+#
+# GROUP B — the KERNEL PROBE SENTINEL. Property: the value-less probe filled only the REQUIRED gate coords,
+# leaving a DEFAULTED coord to the author's own default (a default IS the author's probe-safe value, so
+# clobbering it was a probe defect, not a policy signal), and a caller could enrich the sentinel with
+# type-correct non-matching fields. Gone FROM THE KERNEL — `internal.compilePoliciesWith` is retired with
+# it — because the kernel recovers nothing by firing.
+#   · test-defaulted-coord-not-sentinel-filled    · test-enriched-exclude-value-conditional
+#   · test-required-coord-still-sentinel-filled   · test-enriched-home-route-shapes
+#                                                 · test-enriched-instantiate-unconditional
+#
+# ★ GROUP B's PROPERTY IS STILL LIVE, and re-expressing it is OWED WORK, not a discharged retirement. The
+# mechanism moved to the shim: `lib/compat/policy-recover.nix` `requiredCoordsOf` still fills only required
+# coords, and `lib/compat/probe-sentinel.nix` is the enrichment set. Nothing currently pins either. Group A
+# is a true retirement; Group B is a relocation whose tests did not follow it yet.
+# ═════════════════════════════════════════════════════════════════════════════════════════════════════
 { denHoag, denCompat, ... }:
 let
   declare = denHoag.declare;
@@ -28,10 +63,10 @@ let
     id_hash = k;
     name = k;
   };
-  # A record policy: `{ __condition; fn }` — its gate DECLARED as data (the general vocabulary a
+  # A record policy: `{ gate; fn }` — its gate DECLARED as data (the general vocabulary a
   # generated policy uses when it cannot shape its formals).
   gated = cond: fn: {
-    __condition = cond;
+    gate = cond;
     inherit fn;
   };
   hostCond = {
@@ -163,125 +198,72 @@ in
   flake.tests.compat-policy-expansion = {
     # A value-conditional policy expands into per-stratum sub-rules on the POLICY feed (never the enrich
     # feed — the empty probe no longer misclassifies it as enrichment).
-    test-value-conditional-expands = {
-      expr =
-        let
-          c = compile { foo = gated hostCond (vc (declare.edge (ent "asp"))); };
-        in
-        {
-          policy = ids c.policy;
-          enrich = ids c.enrich;
-        };
-      expected = {
-        policy = [
-          "foo#collection"
-          "foo#resolution"
-          "foo#structural"
-        ];
-        enrich = [ ];
-      };
-    };
 
-    # The RESOLUTION sub-rule routes the value-conditional edge (a resolution kind) at a real matching
-    # ctx; the STRUCTURAL sub-rule keeps nothing (the edge is not structural).
-    test-resolution-subrule-routes-edge = {
+    # R5 — a MIXED-strata codomain (link is structural, edge is resolution) is REFUSED AT REGISTRATION.
+    # It used to self-route into one sub-rule per stratum behind a `#<stratum>` identity suffix; that fan
+    # existed because the stratum was discovered by firing and a value-conditional body revealed nothing,
+    # so the compiler synthesized a rule per stratum rather than guess. With the codomain declared there is
+    # nothing to guess, and one rule / one stratum is gen-dispatch's core invariant. The remedy is one
+    # AUTHORED policy per stratum, which is what the fan built anyway, only named.
+    test-mixed-strata-refused = {
       expr =
         let
-          c = compile { foo = gated hostCond (vc (declare.edge (ent "asp"))); };
-        in
-        {
-          resolution = producedKinds (ruleBy c.policy "foo#resolution") matchCtx;
-          structural = producedKinds (ruleBy c.policy "foo#structural") matchCtx;
-        };
-      expected = {
-        resolution = [ "edge" ];
-        structural = [ ];
-      };
-    };
-
-    # The env-to-clusters shape: a value-conditional STRUCTURAL policy (resolve → spawn) routes its spawn
-    # to the structural sub-rule.
-    test-value-conditional-spawn-routes-structural = {
-      expr =
-        let
-          c = compile {
-            foo = gated hostCond (
-              vc (
-                declare.spawn {
-                  classes = [ ];
-                  bindings = { };
-                }
-              )
-            );
-          };
-        in
-        {
-          structural = producedKinds (ruleBy c.policy "foo#structural") matchCtx;
-          resolution = producedKinds (ruleBy c.policy "foo#resolution") matchCtx;
-        };
-      expected = {
-        structural = [ "spawn" ];
-        resolution = [ ];
-      };
-    };
-
-    # R5 — a MIXED-strata value-conditional body (link is structural, edge is resolution) self-routes:
-    # the link to the structural sub-rule, the edge to the resolution sub-rule, each in its phase.
-    test-mixed-strata-self-route = {
-      expr =
-        let
-          c = compile {
-            foo = gated hostCond (
-              ctx:
-              if ctx.host.name == "match" then
-                [
-                  (declare.link { target = ent "t"; })
-                  (declare.edge (ent "asp"))
-                ]
-              else
-                [ ]
-            );
-          };
-        in
-        {
-          structural = producedKinds (ruleBy c.policy "foo#structural") matchCtx;
-          resolution = producedKinds (ruleBy c.policy "foo#resolution") matchCtx;
-        };
-      expected = {
-        structural = [ "link" ];
-        resolution = [ "edge" ];
-      };
-    };
-
-    # R1 — a body whose work on a coord VALUE THROWS against the sentinel (here: it edges to a
-    # host-derived aspect that is absent at the value-less sentinel, so the edge constructor's identity
-    # law throws on the "bad" fallback). The tryEval-guarded probe treats a throw IDENTICALLY to an empty
-    # result, so the policy still compiles (expansion — the conservative branch) and fires correctly where
-    # the aspect is real. (tryEval catches throw/abort; a body that instead hits a raw attribute-missing
-    # is not catchable — but the corpus's value-conditional policies use `or` defaults / present coords and
-    # emit `[]` cleanly, so they take the empty path, never this one.)
-    test-probe-throw-expands = {
-      expr =
-        let
-          throwBody = ctx: [ (declare.edge (ctx.host.aspect or "bad")) ];
-          c = compile { foo = gated hostCond throwBody; };
-          realCtx = {
-            host = {
-              aspect = ent "a";
+          mixed = {
+            foo = {
+              emits = [
+                "link"
+                "edge"
+              ];
+              fn =
+                ctx:
+                if ctx.host.name == "match" then
+                  [
+                    (declare.link { target = ent "t"; })
+                    (declare.edge (ent "asp"))
+                  ]
+                else
+                  [ ];
             };
           };
         in
         {
-          compiled = ids c.policy;
-          firesAtReal = producedKinds (ruleBy c.policy "foo#resolution") realCtx;
+          named =
+            builtins.match ".*emits kinds spanning strata.*" (denHoag.internal.policyMessage mixed) != null;
+          compileAborts = (builtins.tryEval (builtins.length (compile mixed).policy)).success;
         };
       expected = {
-        compiled = [
-          "foo#collection"
-          "foo#resolution"
-          "foo#structural"
+        named = true;
+        compileAborts = false;
+      };
+    };
+    # THE AUTHORED SPLIT — the remedy the refusal names, shown working: two policies, one per stratum,
+    # each a single rule with its own bare identity and no `#<stratum>` suffix anywhere.
+    test-authored-per-stratum-split = {
+      expr =
+        let
+          c = compile {
+            foo-link = {
+              emits = [ "link" ];
+              fn = ctx: if ctx.host.name == "match" then [ (declare.link { target = ent "t"; }) ] else [ ];
+            };
+            foo-edge = {
+              emits = [ "edge" ];
+              fn = ctx: if ctx.host.name == "match" then [ (declare.edge (ent "asp")) ] else [ ];
+            };
+          };
+        in
+        {
+          ids = ids c.policy;
+          structural = producedKinds (ruleBy c.policy "foo-link") matchCtx;
+          resolution = producedKinds (ruleBy c.policy "foo-edge") matchCtx;
+        };
+      expected = {
+        ids = [
+          "foo-edge"
+          "foo-link"
         ];
-        firesAtReal = [ "edge" ];
+        structural = [ "link" ];
+        resolution = [ "edge" ];
       };
     };
 
@@ -326,40 +308,6 @@ in
       expected = false;
     };
 
-    # NEW (site-mark rung) — a value-conditional PURE SITE-MARK pipeOp (the corpus broadcast-hub-peer
-    # shape) is per-node emission DATA, not a compose commitment: it EXPANDS into 3 sub-rules INCLUDING
-    # `#collection`, that sub-rule produces the pipeOp at a matching ctx and [] at a non-matching one, it
-    # seeds NO compose op (`pipeOps == []` — the seeding law untouched), and there is NO abort. Before
-    # this rung the collection stratum aborted unconditionally at `assertCovered`.
-    test-value-conditional-sitemark-pipeop-expands = {
-      expr =
-        let
-          c = compile { foo = gated hostCond (vc hubPeerPipeOp); };
-        in
-        {
-          ids = ids c.policy;
-          enrich = ids c.enrich;
-          composeSeeds = c.pipeOps;
-          collectionAtMatch = producedKinds (ruleBy c.policy "foo#collection") matchCtx;
-          collectionAtNonMatch = producedKinds (ruleBy c.policy "foo#collection") noMatchCtx;
-          structuralAtMatch = producedKinds (ruleBy c.policy "foo#structural") matchCtx;
-          resolutionAtMatch = producedKinds (ruleBy c.policy "foo#resolution") matchCtx;
-        };
-      expected = {
-        ids = [
-          "foo#collection"
-          "foo#resolution"
-          "foo#structural"
-        ];
-        enrich = [ ];
-        composeSeeds = [ ];
-        collectionAtMatch = [ "pipeOp" ];
-        collectionAtNonMatch = [ ];
-        structuralAtMatch = [ ];
-        resolutionAtMatch = [ ];
-      };
-    };
-
     # NEW (site-mark rung) — a value-conditional DERIVED-op pipeOp (channel-shaping DAG,
     # `derived.__derived = true`) STILL aborts: it is a genuine probe-time compose commitment a
     # value-less policy cannot make.
@@ -392,7 +340,11 @@ in
     test-unconditional-single-group = {
       expr =
         let
-          c = compile { foo = gated hostCond (_ctx: [ (declare.edge (ent "asp")) ]); };
+          c = compile {
+            foo = gated hostCond (_ctx: [ (declare.edge (ent "asp")) ]) // {
+              emits = [ "edge" ];
+            };
+          };
         in
         {
           ids = ids c.policy;
@@ -405,10 +357,10 @@ in
     };
 
     # ── DECLARED-STRATUM (gen-dispatch deriveGroup). A value-conditional policy carrying a DECLARED
-    #    produced-kind family (`__produces`) has its group stamped at DEFINITION time by
+    #    produced-kind family (`emits`) has its group stamped at DEFINITION time by
     #    `dispatch.deriveGroup declare.stratumOfKind` — so ONE declared rule keyed by the BARE name is
     #    built, NOT the blind per-stratum fan. This is the corpus path (the five value-conditional corpus
-    #    policies declare via `producesByName`); here `__produces` on the record exercises the SAME
+    #    policies declare via `producesByName`); here `emits` on the record exercises the SAME
     #    mechanism directly. The undeclared fixtures above stay on the `mkExpanded` fan (produces == null),
     #    the additive fallback. ────────────────────────────────────────────────────────────────────────
     # A single-stratum declared value-conditional policy (cluster-aspect shape: edge → resolution) →
@@ -418,7 +370,7 @@ in
         let
           c = compile {
             foo = (gated hostCond (vc (declare.edge (ent "asp")))) // {
-              __produces = [ "edge" ];
+              emits = [ "edge" ];
             };
           };
           r = builtins.head c.policy;
@@ -448,7 +400,7 @@ in
         let
           c = compile {
             foo = (gated hostCond (vc hubPeerPipeOp)) // {
-              __produces = [ "pipeOp" ];
+              emits = [ "pipeOp" ];
             };
           };
           r = builtins.head c.policy;
@@ -471,200 +423,47 @@ in
     # compose-seed fire), so `dispatch` HONORS the declaration and skips its per-dispatch fire-and-classify.
     test-single-group-carries-produces = {
       expr =
-        (builtins.head (compile { foo = gated hostCond (_ctx: [ (declare.edge (ent "asp")) ]); }).policy)
-        .produces;
+        (builtins.head
+          (compile {
+            foo = gated hostCond (_ctx: [ (declare.edge (ent "asp")) ]) // {
+              emits = [ "edge" ];
+            };
+          }).policy
+        ).produces;
       expected = [ "edge" ];
     };
 
-    # The declared-slice GENERALISATION (future bucket-b, no corpus case): a MIXED-strata declared policy
-    # (link=structural, edge=resolution) emits ONE slice PER group — `produces` filtered to that group's
-    # kinds, deriveGroup stamping each — NOT the 3-way blind fan (no inert `#collection` sibling).
-    test-declared-multi-group-slices = {
+    # DECLARING the multi-group codomain does not buy an exemption: the refusal is on the DECLARATION, so
+    # it is reached whether the kinds were declared outright or recovered. This is the pair of the test
+    # above and it exists because a reader could reasonably expect the declared path to be the one that
+    # partitions — it is not, and the refusal names the same law from the same guard chain.
+    test-declared-multi-group-refused = {
       expr =
         let
-          c = compile {
-            foo =
-              (gated hostCond (
-                ctx:
-                if ctx.host.name == "match" then
-                  [
-                    (declare.link { target = ent "t"; })
-                    (declare.edge (ent "asp"))
-                  ]
-                else
-                  [ ]
-              ))
-              // {
-                __produces = [
-                  "link"
-                  "edge"
-                ];
-              };
-          };
-        in
-        {
-          ids = ids c.policy;
-          structural = producedKinds (ruleBy c.policy "foo#structural") matchCtx;
-          resolution = producedKinds (ruleBy c.policy "foo#resolution") matchCtx;
-          structProduces = (ruleBy c.policy "foo#structural").produces;
-          resProduces = (ruleBy c.policy "foo#resolution").produces;
-        };
-      expected = {
-        ids = [
-          "foo#resolution"
-          "foo#structural"
-        ];
-        structural = [ "link" ];
-        resolution = [ "edge" ];
-        structProduces = [ "link" ];
-        resProduces = [ "edge" ];
-      };
-    };
-
-    # ── FIX-B part 1 (probe fills REQUIRED coords only) — a DEFAULTED gate coord is NOT sentinel-filled, so
-    #    the body's default applies (env-users' `accessGroups ? []` shape, corpus users.nix:107). Pre-fix the
-    #    probe filled it with a `{ id_hash; name }` SET → `elem g accessGroups` threw "expected a list but
-    #    found a set" (uncatchable by tryEval → the whole fleet eval crashed at the value-less probe). ──────
-    test-defaulted-coord-not-sentinel-filled = {
-      expr =
-        let
-          # `req` REQUIRED (false → sentinel-filled), `opt` DEFAULTED (true → omitted, so `or []` applies).
-          # The body LIST-OPS on `opt`: CLEAN when omitted; a "found a set" crash if it were the sentinel.
-          c = compile {
-            foo = gated {
-              req = false;
-              opt = true;
-            } (ctx: if builtins.elem "admin" (ctx.opt or [ ]) then [ (declare.edge (ent "a")) ] else [ ]);
-          };
-        in
-        {
-          probesClean = ids c.policy;
-          firesAtReal = producedKinds (ruleBy c.policy "foo#resolution") {
-            req = ent "R";
-            opt = [ "admin" ];
-          };
-        };
-      expected = {
-        probesClean = [
-          "foo#collection"
-          "foo#resolution"
-          "foo#structural"
-        ];
-        firesAtReal = [ "edge" ];
-      };
-    };
-
-    # A REQUIRED coord is STILL sentinel-filled (unchanged behavior): the body reads `ctx.req.id_hash` (the
-    # sentinel marker) at the probe and EMITS, so the rule stays SINGLE-group — proving the required coord
-    # got a sentinel entry (were it omitted, `ctx.req.id_hash` would be an uncatchable missing-attribute).
-    test-required-coord-still-sentinel-filled = {
-      expr =
-        let
-          c = compile { foo = gated { req = false; } (ctx: [ (declare.edge (ent ctx.req.id_hash)) ]); };
-        in
-        {
-          ids = ids c.policy;
-          group = (builtins.head c.policy).group;
-        };
-      expected = {
-        ids = [ "foo" ];
-        group = "resolution";
-      };
-    };
-
-    # ── FIX-B part 2 (configurable probe sentinel — the FROZEN-corpus residual). The compat enriches the
-    #    probe entry with NON-MATCHING {class, system} sentinels so a corpus policy reading a bare coord FIELD
-    #    takes its value-conditional FALSE branch (→ expansion) rather than hard-failing. The five corpus
-    #    shapes, through the enriched core compile: ──────────────────────────────────────────────────────────
-    # (a) the three home-platform ROUTE shapes (host.system, value-conditional): sentinel system="«probe»" →
-    #     the OS-suffix test is false → `[]` → EXPANSION; each fires at its matching REAL host.
-    test-enriched-home-route-shapes = {
-      expr =
-        let
-          mk =
-            pat:
-            gated { host = false; } (
-              ctx: if builtins.match pat ctx.host.system != null then [ (declare.edge (ent "hm")) ] else [ ]
-            );
-          firesAt =
-            c: sys:
-            producedKinds (ruleBy c.policy "r#resolution") {
-              host = {
-                id_hash = "h";
-                name = "h";
-                system = sys;
-              };
+          mixed = {
+            foo = {
+              emits = [
+                "link"
+                "edge"
+              ];
+              fn = _ctx: [ ];
             };
-          cLinux = compileEnriched { r = mk ".*-linux"; };
-          cDarwin = compileEnriched { r = mk ".*-darwin"; };
-          cAarch = compileEnriched { r = mk "aarch64-.*"; };
+          };
         in
         {
-          linuxExpands = ids cLinux.policy;
-          linuxFires = firesAt cLinux "x86_64-linux";
-          darwinFires = firesAt cDarwin "aarch64-darwin";
-          aarchFires = firesAt cAarch "aarch64-linux";
+          named =
+            builtins.match ".*emits kinds spanning strata.*" (denHoag.internal.policyMessage mixed) != null;
+          citesInvariant = builtins.match ".*deriveGroup.*" (denHoag.internal.policyMessage mixed) != null;
         };
       expected = {
-        linuxExpands = [
-          "r#collection"
-          "r#resolution"
-          "r#structural"
-        ];
-        linuxFires = [ "edge" ];
-        darwinFires = [ "edge" ];
-        aarchFires = [ "edge" ];
+        named = true;
+        citesInvariant = true;
       };
     };
     # (b) host-modules-capture (host.class as spec DATA, UNCONDITIONAL emit): SINGLE-group resolution; the fake
     #     sentinel class is DISCARDED — dispatch re-runs produce with the REAL class at a real node.
-    test-enriched-instantiate-unconditional = {
-      expr =
-        let
-          c = compileEnriched {
-            hmc = gated { host = false; } (ctx: [
-              (declare.spawn {
-                instantiate = {
-                  class = ctx.host.class;
-                };
-              })
-            ]);
-          };
-          realDecl = builtins.head (
-            (builtins.head c.policy).produce "n" {
-              host = {
-                id_hash = "h";
-                name = "h";
-                class = "nixos";
-              };
-            }
-          );
-        in
-        {
-          singleGroup = ids c.policy;
-          realClass = realDecl.instantiate.class;
-        };
-      expected = {
-        singleGroup = [ "hmc" ];
-        realClass = "nixos";
-      };
-    };
     # (c) drop-user-to-host-on-droid (host.class == "droid", value-conditional): sentinel class="«probe»" ≠
     #     "droid" → `[]` → EXPANSION (no exclude at the probe; the droid-node fire stays the #50 abort).
-    test-enriched-exclude-value-conditional = {
-      expr =
-        ids
-          (compileEnriched {
-            drop = gated { host = false; } (
-              ctx: if ctx.host.class == "droid" then [ (declare.edge (ent "excl")) ] else [ ]
-            );
-          }).policy;
-      expected = [
-        "drop#collection"
-        "drop#resolution"
-        "drop#structural"
-      ];
-    };
 
     # R3 — SCOPE-LOCAL FIRING (board #57, ledger u3): a policy declared in BOTH `den.policies` AND a
     # `den.schema.<kind>.includes` reference fires SOLELY via its kind-scoped `__kindInclude` arm — its
@@ -701,8 +500,8 @@ in
         {
           fleetWide = c.policies ? p;
           kindScoped = c.policies ? "__kindInclude__k__policy__0";
-          # the surviving arm is confined to owner-kind nodes (Part 2 — `__firesAtKinds`).
-          armFiresAtKind = arm.__firesAtKinds;
+          # the surviving arm is confined to owner-kind nodes (Part 2 — `selects`).
+          armFiresAtKind = arm.selects;
         };
       expected = {
         fleetWide = false;
@@ -711,48 +510,14 @@ in
       };
     };
 
-    # The corpus STRADDLE in ONE fixture: a value-conditional edge policy (cluster-aspect shape:
-    # include → edge → resolution) AND a value-conditional spawn policy (env-to-clusters shape:
-    # resolve → spawn → structural). From the same compile, the edge lands in the resolution sub-rule and
-    # the spawn in the structural sub-rule — the two straddle the stratum split, each declaration produced
-    # in its stratum's phase (B2), never mis-placed. This subsumes the mixed-strata self-route.
-    test-corpus-straddle = {
-      expr =
-        let
-          c = compile {
-            clusterAspect = gated hostCond (vc (declare.edge (ent "asp")));
-            envToClusters = gated hostCond (
-              vc (
-                declare.spawn {
-                  classes = [ ];
-                  bindings = { };
-                }
-              )
-            );
-          };
-        in
-        {
-          edgeInResolution = producedKinds (ruleBy c.policy "clusterAspect#resolution") matchCtx;
-          edgeNotStructural = producedKinds (ruleBy c.policy "clusterAspect#structural") matchCtx;
-          spawnInStructural = producedKinds (ruleBy c.policy "envToClusters#structural") matchCtx;
-          spawnNotResolution = producedKinds (ruleBy c.policy "envToClusters#resolution") matchCtx;
-        };
-      expected = {
-        edgeInResolution = [ "edge" ];
-        edgeNotStructural = [ ];
-        spawnInStructural = [ "spawn" ];
-        spawnNotResolution = [ ];
-      };
-    };
-
     # ── cluster-to-nixidy latent-v1-divergence PIN (ledger row u2 / boards #49/#50, u1 precedent) ────────
-    # (a) COMPILE-SIDE: the kind-include rule's `__condition` carries BOTH coords. Pre-fix, the fn crossed
+    # (a) COMPILE-SIDE: the kind-include rule's `gate` carries BOTH coords. Pre-fix, the fn crossed
     #     the bridge's freeform `anything` and was formal-erased (`functionArgs = {}`), so `kindCoord //
     #     {}` kept only `{ cluster }` and DROPPED `environment` — then concern-policies' probe applied the
     #     fn without it (the uncatchable `called without required argument 'environment'`). The bridge's
     #     `den.policies` coercion nests the fn (`{ __isPolicy; fn }`), preserving formals; this pins the gate.
     test-cluster-to-nixidy-condition-carries-environment = {
-      expr = ctnKindRec.__condition;
+      expr = ctnKindRec.gate;
       expected = {
         cluster = false;
         environment = false;

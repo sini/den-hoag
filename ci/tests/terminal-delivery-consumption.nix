@@ -69,15 +69,24 @@ let
         den.hosts.x86_64-linux.igloo.class = "nixos";
         den.aspects.hostc.nixos.tag = "nixos-host";
         den.schema.host.includes = [ "hostc" ];
-        den.policies.self1 = _ctx: [
-          (deliver (
-            {
-              from = "nixos";
-              to = "nixos";
-            }
-            // (if nest then { at = [ "p" ]; } else { })
-          ))
-        ];
+        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+        # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+        # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+        # its job, and the right answer to a question this suite is not asking.
+        den.policies.self1 = {
+          __isPolicy = true;
+          selects = null;
+          emits = [ "delivery" ];
+          fn = _ctx: [
+            (deliver (
+              {
+                from = "nixos";
+                to = "nixos";
+              }
+              // (if nest then { at = [ "p" ]; } else { })
+            ))
+          ];
+        };
       }
     ];
   sameClassMerge = mkSameClass false;
@@ -98,12 +107,21 @@ let
       den.aspects.cellc.darwin.tag = "cell-darwin";
       den.schema.user.includes = [ "cellc" ];
       # the delivery FIRES AT THE CELL (a user-coord policy) → targets the cell, not the host.
-      den.policies.cellRoute = { user, ... }: [
-        (deliver {
-          from = "darwin";
-          to = "nixos";
-        })
-      ];
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
+      # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
+      # its job, and the right answer to a question this suite is not asking.
+      den.policies.cellRoute = {
+        __isPolicy = true;
+        selects = null;
+        emits = [ "delivery" ];
+        fn = { user, ... }: [
+          (deliver {
+            from = "darwin";
+            to = "nixos";
+          })
+        ];
+      };
     }
   ];
   igloo = "host:igloo";

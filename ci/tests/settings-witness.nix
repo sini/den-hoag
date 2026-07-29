@@ -156,20 +156,23 @@ let
       ];
       # axis 5 — a `configure` policy → the terminal `policy` slot (A8): patches `level` (beats host) and
       # `backup`'s schedule/retention subkeys (per-subkey provenance — schedule/retention=policy, method=host).
-      config.den.policies.patch =
-        { user, ... }:
-        [
-          (declare.configure {
-            of = config.den.aspects.app;
-            set = {
-              level = "pollvl";
-              backup = {
-                schedule = "policy";
-                retention = "policy";
+      config.den.policies.patch = {
+        emits = [ "configure" ];
+        fn =
+          { user, ... }:
+          [
+            (declare.configure {
+              of = config.den.aspects.app;
+              set = {
+                level = "pollvl";
+                backup = {
+                  schedule = "policy";
+                  retention = "policy";
+                };
               };
-            };
-          })
-        ];
+            })
+          ];
+      };
     };
 
   den = (denHoag.mkDen (fleetBase ++ [ mod ])).den;
@@ -285,33 +288,39 @@ let
   mlEnvToHost =
     { config, ... }:
     {
-      config.den.policies.env-to-host =
-        { env, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit env;
-              host = config.den.host.axon;
-            };
-            containTo = "host";
-          })
-        ];
+      config.den.policies.env-to-host = {
+        emits = [ "member" ];
+        fn =
+          { env, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit env;
+                host = config.den.host.axon;
+              };
+              containTo = "host";
+            })
+          ];
+      };
     };
   # env→cluster CONTAINMENT relation: the SIBLING family shares env but must NOT cross-join the user cell.
   mlEnvToCluster =
     { config, ... }:
     {
-      config.den.policies.env-to-cluster =
-        { env, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit env;
-              cluster = config.den.cluster.k3s;
-            };
-            containTo = "cluster";
-          })
-        ];
+      config.den.policies.env-to-cluster = {
+        emits = [ "member" ];
+        fn =
+          { env, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit env;
+                cluster = config.den.cluster.k3s;
+              };
+              containTo = "cluster";
+            })
+          ];
+      };
     };
   mlApp =
     { config, ... }:
@@ -414,33 +423,39 @@ let
   dOrgToEnv =
     { config, ... }:
     {
-      config.den.policies.org-to-env =
-        { org, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit org;
-              env = config.den.env.prod;
-            };
-            containTo = "env";
-          })
-        ];
+      config.den.policies.org-to-env = {
+        emits = [ "member" ];
+        fn =
+          { org, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit org;
+                env = config.den.env.prod;
+              };
+              containTo = "env";
+            })
+          ];
+      };
     };
   # env→host containment relation (the NEARER level): records env as host's containment ancestor.
   dEnvToHost =
     { config, ... }:
     {
-      config.den.policies.env-to-host =
-        { env, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit env;
-              host = config.den.host.axon;
-            };
-            containTo = "host";
-          })
-        ];
+      config.den.policies.env-to-host = {
+        emits = [ "member" ];
+        fn =
+          { env, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit env;
+                host = config.den.host.axon;
+              };
+              containTo = "host";
+            })
+          ];
+      };
     };
   dApp =
     { config, ... }:

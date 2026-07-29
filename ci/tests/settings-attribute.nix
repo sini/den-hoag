@@ -145,14 +145,17 @@ let
         }
       ];
       # policy `configure` → the terminal `policy` slot.
-      config.den.policies.setAppLevel =
-        { user, ... }:
-        [
-          (denHoag.declare.configure {
-            of = config.den.aspects.app;
-            set = policySet;
-          })
-        ];
+      config.den.policies.setAppLevel = {
+        emits = [ "configure" ];
+        fn =
+          { user, ... }:
+          [
+            (denHoag.declare.configure {
+              of = config.den.aspects.app;
+              set = policySet;
+            })
+          ];
+      };
     };
 
   den = (denHoag.mkDen (fleetBase ++ [ mod ])).den;

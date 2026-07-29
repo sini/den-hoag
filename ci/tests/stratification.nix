@@ -183,16 +183,19 @@ let
         }
       ];
       # `hasAspect` is never a policy-dispatch ctx key (it routes to the guard system) ⇒ never fires.
-      config.den.policies.wouldConfigure =
-        { hasAspect, ... }:
-        [
-          (denHoag.declare.configure {
-            of = config.den.aspects.app;
-            set = {
-              level = "pwned";
-            };
-          })
-        ];
+      config.den.policies.wouldConfigure = {
+        emits = [ "configure" ];
+        fn =
+          { hasAspect, ... }:
+          [
+            (denHoag.declare.configure {
+              of = config.den.aspects.app;
+              set = {
+                level = "pwned";
+              };
+            })
+          ];
+      };
     };
   denNoFire = (denHoag.mkDen (fleetBase ++ [ noFireMod ])).den;
   rsNoFire = denNoFire.structural.eval.get cellId "resolved-settings";
@@ -214,14 +217,17 @@ let
           aspects = [ config.den.aspects.app ];
         }
       ];
-      config.den.policies.wouldConfigure =
-        { __coords, ... }:
-        [
-          (denHoag.declare.configure {
-            of = config.den.aspects.app;
-            set.level = "pwned";
-          })
-        ];
+      config.den.policies.wouldConfigure = {
+        emits = [ "configure" ];
+        fn =
+          { __coords, ... }:
+          [
+            (denHoag.declare.configure {
+              of = config.den.aspects.app;
+              set.level = "pwned";
+            })
+          ];
+      };
     };
   denCoords = (denHoag.mkDen (fleetBase ++ [ coordsMod ])).den;
   rsCoords = denCoords.structural.eval.get cellId "resolved-settings";

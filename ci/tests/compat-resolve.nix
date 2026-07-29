@@ -28,13 +28,17 @@ let
     };
     policies = {
       # LEAF target → member. Fires at the parent-dim (rack) scope; `ctx.rack` is the firing node's own entry.
-      enroll = { rack, ... }: [
-        (R.to "blade" {
-          blade = {
-            name = "b1";
-          };
-        })
-      ];
+      enroll = {
+        __isPolicy = true;
+        emits = [ "member" ];
+        fn = { rack, ... }: [
+          (R.to "blade" {
+            blade = {
+              name = "b1";
+            };
+          })
+        ];
+      };
       # LEAF target with a FULL resolved entity (the corpus's `resolve.to "user" { user = registry.<n>; }`
       # shape: the target carries the registry entity's fields — the content-field rung). The member leaf
       # coord must ride the WHOLE entity (so the cell's kind-includes + batteries read `blade.role`/etc.),
@@ -52,14 +56,18 @@ let
       ];
       # ROOT target → CONTAINMENT member. Carries the NON-entity bindings ({ token }); `containTo = "rack"`
       # names the target coord; the source coord is the firing node's own entry.
-      grant = { zone, ... }: [
-        (R.to "rack" {
-          rack = {
-            name = "r1";
-          };
-          token = "t";
-        })
-      ];
+      grant = {
+        __isPolicy = true;
+        emits = [ "member" ];
+        fn = { zone, ... }: [
+          (R.to "rack" {
+            rack = {
+              name = "r1";
+            };
+            token = "t";
+          })
+        ];
+      };
       # corpus-UNEXERCISED arms — each must abort NAMED at translation.
       bare = { zone, ... }: [ (R { anything = 1; }) ];
       sharedTo = { zone, ... }: [
@@ -135,18 +143,21 @@ let
     (
       { config, ... }:
       {
-        config.den.policies.grant =
-          { zone, ... }:
-          [
-            (declare.member {
-              coords = {
-                inherit zone;
-                rack = config.den.rack.r1;
-              };
-              bindings.authToken = "tok";
-              containTo = "rack";
-            })
-          ];
+        config.den.policies.grant = {
+          emits = [ "member" ];
+          fn =
+            { zone, ... }:
+            [
+              (declare.member {
+                coords = {
+                  inherit zone;
+                  rack = config.den.rack.r1;
+                };
+                bindings.authToken = "tok";
+                containTo = "rack";
+              })
+            ];
+        };
       }
     )
   ];
@@ -155,9 +166,13 @@ let
     tag:
     { config, ... }:
     {
+      # `tag` used to be `{ __resolveFamily = true; }` — the DECLARED intent a value-conditional resolve
+      # policy needed, because its value-less probe emitted no `member` and so could not be detected. It is
+      # now the CODOMAIN itself: declaring `member` puts the rule in the pre-pass feed BY DERIVATION, and
+      # declaring something else makes the body's `member` a codomain violation caught at the emitting site.
       config.den.policies.enroll = {
-        __condition.rack = false;
-        __firesAtKinds = [ "rack" ];
+        gate.rack = false;
+        selects = [ "rack" ];
       }
       // tag
       // {
@@ -174,8 +189,11 @@ let
             [ ];
       };
     };
-  untaggedDen = (denHoag.mkDen (base ++ [ (enrollMod { }) ])).den; # NO tag → untagged → loud
-  taggedDen = (denHoag.mkDen (base ++ [ (enrollMod { __resolveFamily = true; }) ])).den; # tagged → benign
+  # `enrich` is a legal, well-formed codomain — so registration is CLEAN and the body's `member` is a
+  # codomain violation caught at the EMITTING SITE, which is where the hazard moved when the untagged
+  # guard retired. The pair is the negative control: same body, two declarations, opposite outcomes.
+  untaggedDen = (denHoag.mkDen (base ++ [ (enrollMod { emits = [ "enrich" ]; }) ])).den; # mis-declared → loud
+  taggedDen = (denHoag.mkDen (base ++ [ (enrollMod { emits = [ "member" ]; }) ])).den; # declared → benign
   forceRackDecls =
     den:
     (builtins.tryEval (builtins.deepSeq (den.structural.eval.get "rack:r1" "declarations") true))
@@ -232,8 +250,8 @@ let
     { config, ... }:
     {
       config.den.policies."__kindInclude__rack__policy__0" = {
-        __condition.rack = false;
-        __firesAtKinds = [ "rack" ];
+        gate.rack = false;
+        selects = [ "rack" ];
       }
       // tag
       // {
@@ -250,8 +268,8 @@ let
             [ ];
       };
     };
-  untaggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { }) ])).den; # synthetic-keyed, untagged → loud
-  taggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { __resolveFamily = true; }) ])).den; # tagged → benign
+  untaggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { emits = [ "enrich" ]; }) ])).den; # mis-declared → loud
+  taggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { emits = [ "member" ]; }) ])).den; # declared → benign
 in
 {
   flake.tests.compat-resolve = {
@@ -456,16 +474,16 @@ in
     #    `den.schema.<kind>.includes` whose v1 name ∈ the tag set gets `__resolveFamily` stamped on its
     #    synthetic-keyed compiled record → it reaches the pre-pass resolve-family feed. A name NOT in the
     #    set gets NO stamp → absent from the feed (the synthetic key never matches the name-based check).
+    # The `__resolveFamily` STAMP sub-assertion is retired with the stamp: feed membership is a
+    # set-membership test on the declared codomain, so there is no tag to observe on the record. The
+    # PROPERTY the test protects — that a kind-include resolve policy reaches the pre-pass feed, and one
+    # that is not a resolve emitter does not — is unchanged and is what remains asserted here.
     test-kindinclude-tag-propagation = {
       expr = {
-        tagged = (kiPolicy "env-to-hosts").__resolveFamily or false; # v1 name ∈ resolveFamilyNames → stamped
-        untagged = (kiPolicy "local-noise").__resolveFamily or false; # v1 name ∉ set → no stamp
-        feedTagged = kiFeedIds "env-to-hosts"; # reaches the pre-pass resolve-family feed (the declared structural rule)
-        feedUntagged = kiFeedIds "local-noise"; # absent — synthetic key never matched by the name check
+        feedTagged = kiFeedIds "env-to-hosts"; # reaches the pre-pass resolve-family feed (declared codomain)
+        feedUntagged = kiFeedIds "local-noise"; # absent — it declares no resolve-family kind
       };
       expected = {
-        tagged = true;
-        untagged = false;
         # env-to-hosts declares `produces = [member spawn]` (both structural), so deriveGroup builds ONE
         # declared rule keyed by the bare synthetic name — no per-stratum fan, no `#structural` suffix.
         feedTagged = [ "__kindInclude__rack__policy__0" ];

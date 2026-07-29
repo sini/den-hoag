@@ -20,6 +20,11 @@
 { denHoag, ... }:
 let
   I = denHoag.internal;
+  # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
+  # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
+  # index's total fallback and computes the real selection — the fixture exercises the shipped predicate
+  # rather than a hand-rolled stand-in of it.
+  idxFeed = I.indexPolicyFeed [ ];
   inherit (I)
     structural
     runResolve
@@ -65,9 +70,9 @@ let
   res = runResolve {
     inherit roots parseParent;
     equations = structural {
-      policiesRules = {
-        enrich = [ ];
-        policy = [ ];
+      policiesIndex = {
+        enrich = idxFeed [ ];
+        policy = idxFeed [ ];
       };
       fleetChildren = noChildren;
     };

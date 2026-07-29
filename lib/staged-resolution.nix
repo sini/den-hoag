@@ -121,26 +121,28 @@ let
   #   registries     = the entity registries; the containment-target index spans ALL registry kinds (a
   #                    containTo target — e.g. `cluster` — may be a root we do NOT fire at, so the index is
   #                    NOT restricted to the fired root kinds).
-  #   resolveRules   = the RESOLVE-FAMILY feed (concern-policies `policiesRules.resolveFamily`): the
-  #                    structural-group rules that can emit `member` (single-group probe DETECTED, or the
-  #                    `__resolveFamily` tag DECLARED for a value-conditional resolve policy). This feed —
-  #                    NOT the whole structural feed — is what the pass dispatches, so an arbitrary
-  #                    co-firing policy body is never run at a root (which could hit an uncatchable
-  #                    missing-attribute read); a resolve-free fleet has an empty feed → the pass is inert.
+  #   resolveIndex   = the RESOLVE-FAMILY feed (concern-policies `policiesRules.resolveFamily`) already
+  #                    SELECTED by node kind (`concernPolicies.indexByKind`): a function `kind -> [rule]`
+  #                    over the structural-group rules that can emit `member`. This feed — NOT the whole
+  #                    structural feed — is what the pass dispatches, so an arbitrary co-firing policy body
+  #                    is never run at a root (which could hit an uncatchable missing-attribute read); a
+  #                    resolve-free fleet indexes an empty feed → the pass is inert. The selection arrives
+  #                    PRE-APPLIED because it is a property of the feed, not of the firing: building it
+  #                    here would rebuild it at every root.
   runPrePass =
     {
       scopeRoots,
       registries,
-      resolveRules,
-      # The EXCLUDE-FAMILY feed (#72, candidate A — ledger u21): the structural-group rules that can emit
-      # `suppress` (detected or `__excludeFamily`-declared). Dispatched at the SAME roots/ctx as the resolve
-      # family in the DELIVER firing, collecting per-root SUPPRESSION SETS — v1's `policy.exclude <policy>`
-      # constraint registration (pin 11866c16 fx/handlers/dispatch-policies.nix:15-33: name-keyed at the
-      # emitting scope, consulted scope+ancestors ⇒ descendants inherit, siblings isolated per #613). The
-      # caller injects each set onto its root's decls (the typed `suppressedPolicies` slot), which the
+      resolveIndex,
+      # The EXCLUDE-FAMILY feed (#72, candidate A — ledger u21), likewise indexed: the structural-group
+      # rules that can emit `suppress`. Dispatched at the SAME roots/ctx as the resolve family in the
+      # DELIVER firing, collecting per-root SUPPRESSION SETS — v1's `policy.exclude <policy>` constraint
+      # registration (pin 11866c16 fx/handlers/dispatch-policies.nix:15-33: name-keyed at the emitting
+      # scope, consulted scope+ancestors ⇒ descendants inherit, siblings isolated per #613). The caller
+      # injects each set onto its root's decls (the typed `suppressedPolicies` slot), which the
       # `suppressed-policies` inherited attribute (gen-scope inheritSet) delivers with the v1 semantics.
-      # Default `[ ]` → `suppressions = { }` → byte-identical.
-      excludeRules ? [ ],
+      # Default: an index over the empty feed → `suppressions = { }` → byte-identical.
+      excludeIndex ? (_: [ ]),
       # kindName -> its schema PARENT kind name, or null for a top-level kind (`ent.meta.<k>.parent`,
       # scalar per kind). The admissible source kind for a containment target of kind K is exactly
       # `kindParent K`, which is what makes the source-kind check total.
@@ -175,22 +177,20 @@ let
           "__root"
         ];
 
-      # Fire the resolve-family rules at ONE root and return its `member` emissions. Only the resolve-family
-      # feed is dispatched (see `resolveRules`), so every rule here is a genuine resolve policy — no `tryEval`
-      # masking: a broken resolve policy surfaces LOUD (never a silent drop). A single one-shot dispatch
-      # (single-group), honoring `__firesAtKinds` (the same scope-local firing pre-filter attr 2/4 apply);
-      # the caller partitions CELL (`containTo == null`) vs CONTAINMENT (`containTo` set) tuples. A
-      # value-conditional resolve policy taking its false branch simply emits nothing here (its member
-      # arrives once its ctx value is present).
+      # Fire ONE feed at ONE root. The feed arrives PRE-INDEXED by node kind, so the selection is a lookup
+      # rather than a predicate hidden inside a helper that two call sites share without either naming it —
+      # which is how a change to one feed's selection used to reach the other unnoticed. Only the named
+      # feed is dispatched, so every rule here is a genuine emitter of what `keep` collects: no `tryEval`
+      # masking, and a broken policy surfaces LOUD rather than as a silent drop. `keep` is the EMISSION
+      # filter (which acts this feed consumes), a different question from selection. The caller partitions
+      # CELL (`containTo == null`) vs CONTAINMENT (`containTo` set) tuples. A value-conditional policy
+      # taking its false branch simply emits nothing here (its emission arrives once its ctx value is).
       fireFeedAt =
-        rules: keep: nodeKind: id: ctx:
+        index: keep: nodeKind: id: ctx:
         let
-          applicable = builtins.filter (
-            r: !(r ? __firesAtKinds) || builtins.elem nodeKind r.__firesAtKinds
-          ) rules;
           acts =
             (dispatch.dispatch {
-              rules = applicable;
+              rules = index nodeKind;
               inherit id;
               context = ctx;
               match = dispatch.fromFunctionMatch;
@@ -199,9 +199,9 @@ let
             }).actions.pre-pass or [ ];
         in
         builtins.filter keep acts;
-      fireAt = fireFeedAt resolveRules declare.isResolveFamily;
-      # The exclude-family twin: fire the suppress emitters at the root, keep the `suppress` acts.
-      fireExcludeAt = fireFeedAt excludeRules declare.isSuppress;
+      # Each call site NAMES the feed it selects from and the emission it keeps.
+      fireAt = fireFeedAt resolveIndex declare.isResolveFamily;
+      fireExcludeAt = fireFeedAt excludeIndex declare.isSuppress;
 
       isContainment = a: (a.containTo or null) != null;
 

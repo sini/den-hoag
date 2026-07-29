@@ -38,15 +38,15 @@ let
 
   # The coerced route records now ride `den.aspects.defaults.includes` (`{ __isPolicy; name; fn }`), and
   # each compiles to an `__aspectInclude__<name>` policy (the general include arm). The compiled GATE reads
-  # `compilePolicy`'s `__condition` (the fn's formals) off the `__aspectInclude__` arm.
+  # `compilePolicy`'s `gate` (the fn's formals) off the `__aspectInclude__` arm.
 
   # ── R3 — os → host.class routing (os-class.nix:26-43), a FORMAL-PRESERVING route via the include arm ───
-  # The coerced record's `{ host, ... }` formals become `compilePolicy`'s `__condition` (den-hoag fires it
+  # The coerced record's `{ host, ... }` formals become `compilePolicy`'s `gate` (den-hoag fires it
   # only where a host coordinate is in scope). It routes os → the host's OS class (`host.class or null`).
   # `r3Route` reads the COMPILED arm's fn (`ctx: concatMap translateEffect …`) so its deliveries carry the
   # `__dropped` materialization marker + resolved `sourceClass`/`targetClass` entries the shape assertions read.
   r3Route = r2Compiled.policies.__aspectInclude__os-to-host.fn;
-  r3CanTake = r2Compiled.policies.__aspectInclude__os-to-host.__condition; # { host = false; } — compilePolicy's gate, the fn's formals
+  r3CanTake = r2Compiled.policies.__aspectInclude__os-to-host.gate; # { host = false; } — compilePolicy's gate, the fn's formals
   r3ToNixos = r3Route {
     host = {
       name = "h";

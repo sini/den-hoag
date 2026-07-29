@@ -134,7 +134,8 @@ let
   # fills the required `thing` coord with the value-less sentinel, observing the structural `link`.
   # The ctx projection wraps ONLY the FINAL dispatch produce, never the probe.
   linkFoo = {
-    __condition = {
+    emits = [ "link" ];
+    gate = {
       thing = false;
     };
     fn = ctx: [ (declare.link { target = ctx.thing; }) ];
@@ -594,7 +595,7 @@ in
           c = compileWithStrata {
             order = fourStrata;
             ctxKeyStrata = { };
-          } { } [ ] [ ] { } { foo = linkFoo; };
+          } { foo = linkFoo; };
           rule = builtins.head c.policy;
         in
         map (a: a.__action) (
@@ -617,7 +618,7 @@ in
           c = compileWithStrata {
             order = fourStrata;
             ctxKeyStrata.resolution = [ "thing" ];
-          } { } [ ] [ ] { } { foo = linkFoo; };
+          } { foo = linkFoo; };
           rule = builtins.head c.policy;
         in
         (builtins.tryEval (
@@ -637,7 +638,8 @@ in
       expr =
         let
           edgeFoo = {
-            __condition = {
+            emits = [ "edge" ];
+            gate = {
               asp = false;
             };
             fn = ctx: [ (declare.edge ctx.asp) ];
@@ -645,7 +647,7 @@ in
           c = compileWithStrata {
             order = fourStrata;
             ctxKeyStrata.structural = [ "asp" ];
-          } { } [ ] [ ] { } { foo = edgeFoo; };
+          } { foo = edgeFoo; };
           rule = builtins.head c.policy;
         in
         map (a: a.__action) (

@@ -73,16 +73,19 @@ let
           };
         }
       ];
-      config.den.policies.setLevel =
-        { user, ... }:
-        [
-          (denHoag.declare.configure {
-            of = config.den.aspects.app;
-            set = {
-              logLevel = "error";
-            };
-          })
-        ];
+      config.den.policies.setLevel = {
+        emits = [ "configure" ];
+        fn =
+          { user, ... }:
+          [
+            (denHoag.declare.configure {
+              of = config.den.aspects.app;
+              set = {
+                logLevel = "error";
+              };
+            })
+          ];
+      };
     };
   denDisc = (denHoag.mkDen (fleetBase ++ [ discMod ])).den;
   rsDisc = denDisc.structural.eval.get cellId "resolved-settings";
@@ -97,29 +100,35 @@ let
     let
       p1 = {
         name = "pAlpha";
-        value =
-          { user, ... }:
-          [
-            (denHoag.declare.configure {
-              of = config.den.aspects.app;
-              set = {
-                a = "1";
-              };
-            })
-          ];
+        value = {
+          emits = [ "configure" ];
+          fn =
+            { user, ... }:
+            [
+              (denHoag.declare.configure {
+                of = config.den.aspects.app;
+                set = {
+                  a = "1";
+                };
+              })
+            ];
+        };
       };
       p2 = {
         name = "pBeta";
-        value =
-          { user, ... }:
-          [
-            (denHoag.declare.configure {
-              of = config.den.aspects.app;
-              set = {
-                b = "2";
-              };
-            })
-          ];
+        value = {
+          emits = [ "configure" ];
+          fn =
+            { user, ... }:
+            [
+              (denHoag.declare.configure {
+                of = config.den.aspects.app;
+                set = {
+                  b = "2";
+                };
+              })
+            ];
+        };
       };
       ordered =
         if order then

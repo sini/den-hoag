@@ -22,6 +22,11 @@
 let
   registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
   I = denHoag.internal;
+  # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
+  # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
+  # index's total fallback and computes the real selection — the fixture exercises the shipped predicate
+  # rather than a hand-rolled stand-in of it.
+  idxFeed = I.indexPolicyFeed [ ];
   inherit (I)
     structural
     runResolve
@@ -82,8 +87,19 @@ let
       })
     ];
 
-  # Compile a v1 policy SET through the real compat compile + concern-policies (probe → strata feeds).
-  rulesFor = policies: I.compilePolicies (denCompat.compile { inherit policies; }).policies;
+  # Compile a v1 policy SET through the real compat compile + concern-policies (declared codomain → feeds).
+  # `selects = null` is restated on each compiled record because THIS suite's subject is the ENRICH
+  # FIXPOINT — that a presence-gated consumer becomes live once `secretsConfig` is bound. These fixture
+  # decl sets carry no `den.schema.<K>.includes`, so compat's own mint would correctly give every one of
+  # them `selects = [ ]` (a registered-but-unincluded policy selects nothing — the defect this design
+  # removes). That is the right answer to a question this suite is not asking, and it would make all three
+  # rule sets equally inert and the comparison vacuous.
+  rulesFor =
+    policies:
+    I.compilePolicies (
+      builtins.mapAttrs (_: v: v // { selects = null; })
+        (denCompat.compile { inherit policies; }).policies
+    );
 
   enrichRules = rulesFor { fleet-context-enrich = policy; };
   bothRules = rulesFor {
@@ -142,8 +158,9 @@ let
     runResolve {
       inherit roots parseParent;
       equations = structural {
-        policiesRules = {
-          inherit (rules) enrich policy;
+        policiesIndex = {
+          enrich = idxFeed rules.enrich;
+          policy = idxFeed rules.policy;
         };
         fleetChildren = _self: _id: { };
       };

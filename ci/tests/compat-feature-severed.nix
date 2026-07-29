@@ -218,9 +218,17 @@ let
     schema.host.includes = [ "hostc" ];
     quirks.resolved-users = { };
     aspects.emit-ru.resolved-users = { user, ... }: [ { name = user.name or "?"; } ];
-    policies.expose-ru = { user, ... }: [
-      (denCompat.pipe.from "resolved-users" [ denCompat.pipe.expose ])
-    ];
+    # `schema.user.includes` above names this by STRING, which selects the ASPECT of that name — compat's
+    # include arms match RECORD policy refs (`{ __isPolicy; ... }`), never bare strings — so the policy is
+    # not include-referenced and its selection derives `[ ]`: absent from every node. At HEAD it fired
+    # anyway, fleet-wide and unselected, which is the defect this design removes. The fixture models a
+    # user-scope emitter, so it says so.
+    policies.expose-ru = {
+      __isPolicy = true;
+      emits = [ "pipeOp" ];
+      selects = [ "user" ];
+      fn = { user, ... }: [ (denCompat.pipe.from "resolved-users" [ denCompat.pipe.expose ]) ];
+    };
   };
   gatheredNames =
     w:
@@ -439,10 +447,16 @@ let
     };
     policies = { };
   };
+  # RE-EXPRESSED. This read `.__resolveFamily`, a stamp that no longer exists: feed membership is a
+  # set-membership test on the DECLARED codomain, so there is nothing to observe on the record. The
+  # PROPERTY the flag guards is unchanged and is what is asserted now — ON, a kind-include resolve policy
+  # reaches the staged pre-pass's resolve-family feed; OFF, the name sets collapse, no codomain is declared,
+  # and it does not.
   resolveStampOf =
     w:
-    ((w.compileFull kiResolveFixture).policies."__kindInclude__rack__policy__0").__resolveFamily
-      or false;
+    builtins.any (r: builtins.match ".*rack.*" r.identity != null) (
+      (denHoag.internal.compilePolicies (w.compileFull kiResolveFixture).policies).resolveFamily
+    );
   # exclude half = the SEAM-module omit (`den.excludeFamilyNames`): the corpus value-conditional excluder
   # (`drop-user-to-host-on-droid` ∈ exclude-family-names.nix) fires a `suppress` at the droid host — ON the
   # seam names it ⇒ the pre-pass feed consumes it ⇒ benign double-fire; OFF the seam is omitted ⇒ `[ ]` ⇒ its
@@ -516,18 +530,22 @@ let
     if p == null then
       null
     else
+      # `mkEnrichPolicy` is a policy RECORD now, not a bare closure — it declares its own codomain and its
+      # unconstrained selection (fleet-context.nix), which a bare fn cannot carry. The body is `.fn`.
       builtins.listToAttrs (
         map
           (d: {
             name = d.key;
             value = d.value;
           })
-          (p {
-            host = {
-              environment = "prod";
-              name = "axon";
-            };
-          })
+          (
+            p.fn {
+              host = {
+                environment = "prod";
+                name = "axon";
+              };
+            }
+          )
       );
 in
 {
@@ -740,6 +758,20 @@ in
     };
     # (b) off-PARKS — OFF the field is absent → `host ? class` false at the probe → the enrich rides an
     # expansion sub-rule → `expansionEnrich` NAMED throw (the ABSENCE surfaced as a catchable park).
+    # ★★ EXPECTED-RED, DELIBERATELY LEFT FAILING — do not "fix" this by asserting what it now does.
+    #
+    # PROPERTY IT PINNED: with `probeSentinel` OFF the sentinel loses its `class` field, so the corpus
+    # shape `if host ? class` reads value-conditional, its enrich rode an EXPANSION sub-rule, and
+    # `errors.expansionEnrich` aborted NAMED. The off-park was the ABSENCE of a sentinel field surfaced as
+    # a CATCHABLE den throw.
+    #
+    # WHY IT IS GONE: the expansion fan is retired, and with it `expansionEnrich`. The successor path is
+    # that the codomain RECOVERS EMPTY and the policy compiles to NO RULE — silently. So the flag-off arm
+    # converts a loud, informative refusal into a silent drop.
+    #
+    # That is a KNOWN OPEN DEFECT (the empty-recovery hazard), not a behaviour we endorse. Asserting the
+    # silence would pin the defect into the suite and make it green through its own fix. It stays red as a
+    # live witness until an empty RECOVERY is as loud as a throwing one.
     test-probeSentinel-off-parks = {
       expr = probeEnrichParks offProbeSentinel;
       expected = true;
@@ -759,9 +791,16 @@ in
       expr = declSeverableOn offFamilyStamps;
       expected = true;
     };
+    # ★ RE-EXPRESSED, same movement as the resolve half. This asserted that severing `familyStamps` is
+    # BYTE-NEUTRAL over the non-feature fixtures. That is no longer true, and the change is deliberate:
+    # the flag's OFF arm collapses the corpus name sets, so policies that had a DECLARED codomain lose it
+    # and the shim must recover one by firing — and `user-to-host`'s body raises at a value-less sentinel,
+    # which is now a NAMED abort instead of a swallowed throw. Byte-neutral severability was a property of
+    # the era when a failed probe was silently treated as "emits nothing"; it cannot survive making that
+    # failure loud, and we chose loud. Asserted as an abort so the movement is pinned rather than assumed.
     test-familyStamps-trace-baseline = {
-      expr = traceSeverableOn offFamilyStamps;
-      expected = true;
+      expr = (builtins.tryEval (builtins.deepSeq (traceSeverableOn offFamilyStamps) true)).success;
+      expected = false;
     };
     # (b) resolve half = the mkCompile bake site — ON a kind-include resolve policy whose ref name ∈ the set
     # gets `__resolveFamily` stamped; OFF the bake collapses to `[ ]` ⇒ unstamped (the pre-pass feed empties).
@@ -769,8 +808,15 @@ in
       expr = resolveStampOf full;
       expected = true;
     };
+    # ★ RE-EXPRESSED, and the flag's semantics MOVED rather than survived. OFF used to mean "unstamped,
+    # therefore quietly absent from the pre-pass feed". It now means the corpus name sets collapse, so no
+    # codomain is DECLARED for a value-conditional resolve policy, so the shim must recover one by firing
+    # the body — which raises, and raises NAMED. Flag-off is therefore STRICTLY MORE STRICT than flag-on,
+    # which is the removability posture this design states for `policyRecovery`: severing a compat input
+    # may refuse a fleet, never silently degrade it. Asserted as an abort, with the ON arm above as the
+    # negative control in the same run.
     test-familyStamps-resolve-stamp-off = {
-      expr = resolveStampOf offFamilyStamps;
+      expr = (builtins.tryEval (builtins.deepSeq (resolveStampOf offFamilyStamps) true)).success;
       expected = false;
     };
     # (b) exclude half = the seam-module omit site — ON the corpus excluder's main-run `suppress` is benign

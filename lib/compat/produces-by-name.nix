@@ -39,4 +39,45 @@
   env-users = [ "member" ];
   cluster-aspect = [ "edge" ];
   broadcast-hub-peer = [ "pipeOp" ];
+  # THE ROUTE BUILT-INS. Each is a v1 flake-output / delivery route whose body deliberately THROWS when
+  # fired at a value-less sentinel — `outputStub`'s informative class-F/G refusal, and the route arms'
+  # identity-law aborts on a fabricated target. At HEAD the kernel probe caught those throws and filed the
+  # policy as "emits nothing", which is a message written to be READ being used as a classification signal
+  # and discarded. Declared here, the shim never fires them: the codomain is a fact about the body, and
+  # the body is a delivery route.
+  user-to-host = [ "delivery" ];
+  route-custom-toplevel = [ "delivery" ];
+  route-guarded-false = [ "delivery" ];
+  route-phantom = [ "delivery" ];
+  route-src-subpath = [ "delivery" ];
+  # DEN-COMPAT'S OWN THROWING BUILT-INS (builtins.nix `outputStub` and the home-env forwards), listed here
+  # rather than on the value because the surrounding entries are the same KIND of fact: which declaration
+  # kinds a policy can produce, for a body that cannot be asked. `outputStub` is a deliberate, informative
+  # refusal — a v1 flake-OUTPUT policy is ship-gate class F/G, not the class-A arm — and it throws at ANY
+  # context, sentinel or real. Declaring `delivery` (the kind it would produce) keeps the rule ALIVE and
+  # gated on its `system` coord, so the refusal still fires LOUDLY where a flake-system node binds one.
+  # `emits = [ ]` would be the wrong answer: it compiles to NO rule, replacing a designed refusal with
+  # silence.
+  system-to-os-outputs = [ "delivery" ];
+  system-to-hm-outputs = [ "delivery" ];
+  system-to-flake-parts = [ "delivery" ];
+  systemToFlakeParts = [ "delivery" ];
+  devshell-to-flake-parts = [ "delivery" ];
+  homeLinux-to-hm = [ "delivery" ];
+  # Its DARWIN twin, identical in shape (`home-platform.nix` — both are `lib.optional (hasSuffix …
+  # host.system) (route {…})`). Both are VALUE-conditional on `host.system`, so both emit nothing at a
+  # sentinel whose system matches neither suffix: undeclared, the codomain recovers EMPTY and the policy
+  # compiles to no rule at all. Declaring the linux arm without the darwin one left the corpus's darwin
+  # hosts silently unrouted.
+  homeDarwin-to-hm = [ "delivery" ];
+  # ★ A LIVE CORPUS DROP, closed. `nixpkgs-overlays.nix:20` is VALUE-conditional on
+  # `host.settings.core.users.home-manager-shared.useGlobalPkgs`, which is false at a sentinel built from
+  # the settings tree's own defaults — so its codomain recovered EMPTY and the policy compiled to no rule
+  # at all, silently. It is selected (`den.schema.user.includes`), so only the codomain was missing.
+  # MEASURED before declaring: its emission is a `pipe.expose` on a bare channel, which is SITE-MARK data
+  # (`declare.isSiteMarkData`) — so the rule fires, passes `conformingProduce`'s pipeOp arm, and makes no
+  # compose commitment. Declaring it therefore does not touch the unbuilt `ops` seam.
+  project-user-overlays = [ "pipeOp" ];
+  hm-forward = [ "delivery" ];
+  hmForward = [ "delivery" ];
 }

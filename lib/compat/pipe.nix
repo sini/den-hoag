@@ -285,8 +285,15 @@ in
       #
       # `over` is value-demanding (gen-pipe `overC`): a deferred `__configThunk` emission feeding a deriving
       # pipe would raise gen-pipe E6 at the flatten (the value list must resolve before the element
-      # cardinality is known). CEILING (corpus-zero, LOUD not silent): nix-config declares no deriving pipe,
-      # and a config-thunk consumed by a value-demanding derive is already gen-pipe E6 by §2.6.
+      # cardinality is known). CEILING (LOUD not silent): a config-thunk consumed by a value-demanding
+      # derive is already gen-pipe E6 by §2.6.
+      # ★ THE CORPUS-ZERO CLAIM THAT USED TO STAND HERE — "nix-config declares no deriving pipe" — IS
+      # FALSE, and was measured false with a positive control. nix-config
+      # `modules/den/policies/pipes.nix:143` (`broadcast-syncthing-hub-shares`, added 2026-06-26) carries a
+      # `pipe.transform`, whose role IS `derive`. The narrower hazard above is about a config-thunk feeding
+      # such a pipe, which is a different and still-unwitnessed conjunction — but the premise stated to
+      # guard it was simply wrong, and a false premise guarding a real hazard is worse than no comment
+      # because the next reader trusts it and stops looking.
       #
       # DEDUP CEILING (corpus-zero): `over` re-seeds each flattened element as a SYNTHETIC contribution with
       # `producer.entity = null` and `scope = position` (gen-pipe `overC`/`synthetic`), so every element at

@@ -9,7 +9,7 @@
 # include grain), gated on the record fn's own formals. This suite pins the arm:
 #   (1) PARTITION — the record compiles to `__aspectInclude__<name>`, NEVER `defaults` aspect content (no
 #       `fn` leak, no `__isPolicy` element in the normalized includes);
-#   (2) GATE — the compiled policy's `__condition` is the record fn's formals (`{ host = false; }`, the v1
+#   (2) GATE — the compiled policy's `gate` is the record fn's formals (`{ host = false; }`, the v1
 #       required-coord presence gate); the `den.policies` registration's fleet-wide global is REMOVED
 #       (`includeReferencedNames`), so the record fires SOLELY via its `__aspectInclude__<name>` arm;
 #   (3) INERTNESS at class-A (the w3 declaration-level witness) — at a nixos-classed host ctx the
@@ -111,14 +111,14 @@ in
         noPolicyInIncludes = true;
       };
     };
-    # (2) GATE + SCOPE-LOCAL FIRING: `__condition = { host = false; }` — the record fn's formals (the v1
+    # (2) GATE + SCOPE-LOCAL FIRING: `gate = { host = false; }` — the record fn's formals (the v1
     #     required-coord presence gate). The `den.policies.drop-on-droid` registration is ALSO
     #     include-referenced (it rides `default.includes`), so its fleet-wide global is REMOVED — the record
     #     fires SOLELY via this `__aspectInclude__<name>` arm (v1: a policy fires only where INCLUDED, not by
     #     `den.policies` presence).
     test-radiation-coord-and-scope-local = {
       expr = {
-        cond = c.policies.${aspectIncludeName}.__condition;
+        cond = c.policies.${aspectIncludeName}.gate;
         alsoCompiledFleetWide = c.policies ? drop-user-to-host-on-droid;
       };
       expected = {

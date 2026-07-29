@@ -56,42 +56,61 @@
       envs,
       secretsConfig,
     }:
-    { host, ... }:
-    let
-      # `host.environment` (the registry-stamped host field — the bridge-registry passthrough, ingest
-      # `entityFields`) defaulting to v1's schema default `"prod"` (nix-config schema/host.nix:174-178;
-      # pin 11866c16 host.nix).
-      envName = host.environment or "prod";
-      env =
-        if envs ? ${envName} then
-          envs.${envName}
-        else
-          # NAMED abort (never a bare `envs.${envName}` attr access): a missing registry entry names the
-          # host, the env name, and the available env names. See the module header's PROBE EDGE note for
-          # the one misdirected case (a fleet whose DEFAULTED env is absent → tryEval'd at the probe).
-          throw
-            "den-compat fleet-context enrichment: host `${host.name or "<unnamed>"}` selects environment `${envName}` (its `host.environment` field, defaulting to \"prod\" per the v1 host schema), which is not in the environments registry — available: [${builtins.concatStringsSep ", " (builtins.attrNames envs)}]. Declare `den.environments.${envName}` or fix the host's `environment` field.";
-    in
-    [
-      # environment — v1 `env-to-hosts` binds the env ENTITY per host (fleet.nix:70-72, under the env-scope
-      # `{ environment = env; }`); here the direct entity lookup off the bridge-ingested registry.
-      (declare.enrich {
-        key = "environment";
-        value = env;
-      })
-      # secretsConfig — v1 `to-fleet` binds it at flake scope, inherited fleet-wide (fleet.nix:27
-      # `inherit (config.den) secretsConfig`).
-      (declare.enrich {
-        key = "secretsConfig";
-        value = secretsConfig;
-      })
-      # fleet — v1 `to-fleet` binds `{ name = "fleet"; }` at flake scope (fleet.nix:24-26), inherited
-      # fleet-wide. ZERO corpus consumers (lead-censused), but bound for the exact v1 ctx surface.
-      (declare.enrich {
-        key = "fleet";
-        value = {
-          name = "fleet";
-        };
-      })
-    ];
+    {
+      # A v1-SHAPED policy record (`__isPolicy`), because this is registered on the COMPAT surface where
+      # `den.policies.<name>` speaks v1 — a bare fn or a `{ __isPolicy; fn; }` record. The declaration
+      # fields ride alongside it and are read at the mint (`compile.nix` `emitsFor` / `mintFleetWide`),
+      # which is what lets a shim built-in declare what a v1 author cannot.
+      __isPolicy = true;
+      name = "fleet-context-enrich";
+      # The fleet-context binding is a pure enrichment: one `enrich` declaration carrying the host's
+      # environment + secrets bindings, and nothing else.
+      emits = [ "enrich" ];
+      # UNCONSTRAINED, declared rather than derived. This is a SHIM-SYNTHESISED ambient global, not a v1
+      # `den.policies` registration: it appears in no `den.schema.<K>.includes` because there is no v1
+      # declaration of it to include, and v1's counterpart binds this context at FLAKE scope where the
+      # whole fleet inherits it. Deriving its selection from the schema would read that absence as "in no
+      # includes list, therefore selects nothing" and delete the enrich fixpoint's single writer from every
+      # node — the right rule for a user policy, the wrong one for the shim's own mechanism.
+      selects = null;
+      fn =
+        { host, ... }:
+        let
+          # `host.environment` (the registry-stamped host field — the bridge-registry passthrough, ingest
+          # `entityFields`) defaulting to v1's schema default `"prod"` (nix-config schema/host.nix:174-178;
+          # pin 11866c16 host.nix).
+          envName = host.environment or "prod";
+          env =
+            if envs ? ${envName} then
+              envs.${envName}
+            else
+              # NAMED abort (never a bare `envs.${envName}` attr access): a missing registry entry names the
+              # host, the env name, and the available env names. See the module header's PROBE EDGE note for
+              # the one misdirected case (a fleet whose DEFAULTED env is absent → tryEval'd at the probe).
+              throw
+                "den-compat fleet-context enrichment: host `${host.name or "<unnamed>"}` selects environment `${envName}` (its `host.environment` field, defaulting to \"prod\" per the v1 host schema), which is not in the environments registry — available: [${builtins.concatStringsSep ", " (builtins.attrNames envs)}]. Declare `den.environments.${envName}` or fix the host's `environment` field.";
+        in
+        [
+          # environment — v1 `env-to-hosts` binds the env ENTITY per host (fleet.nix:70-72, under the env-scope
+          # `{ environment = env; }`); here the direct entity lookup off the bridge-ingested registry.
+          (declare.enrich {
+            key = "environment";
+            value = env;
+          })
+          # secretsConfig — v1 `to-fleet` binds it at flake scope, inherited fleet-wide (fleet.nix:27
+          # `inherit (config.den) secretsConfig`).
+          (declare.enrich {
+            key = "secretsConfig";
+            value = secretsConfig;
+          })
+          # fleet — v1 `to-fleet` binds `{ name = "fleet"; }` at flake scope (fleet.nix:24-26), inherited
+          # fleet-wide. ZERO corpus consumers (lead-censused), but bound for the exact v1 ctx surface.
+          (declare.enrich {
+            key = "fleet";
+            value = {
+              name = "fleet";
+            };
+          })
+        ];
+    };
 }

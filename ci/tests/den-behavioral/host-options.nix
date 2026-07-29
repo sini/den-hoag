@@ -92,7 +92,7 @@ in
     # unaffected by the parent-targeted user→host route this rung fixed (which projects a user cell's OWN
     # `.user`-class content — os-user-class.nix — not a host-side to-users policy walk).
     # PARAMETRIC-INCLUDE LATE-DISPATCH does NOT reach this either: the `to-users` fn is a
-    # `policies.<name>` POLICY RECORD (it rides the shipped aspect-include-policy arm's `__firesAtKinds`
+    # `policies.<name>` POLICY RECORD (it rides the shipped aspect-include-policy arm's `selects`
     # confinement, `compat-scope-local-firing.nix`), not the bare-fn radiation arm. The
     # LATE-DISPATCH half — a `{ host, user }` include reaching the user CELL — is now witnessed by
     # `compat-nested-aspects.nix test-barefn-latedispatch-fires-at-cell-not-host`. What remains RED here is

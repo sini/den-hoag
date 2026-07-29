@@ -38,12 +38,15 @@ let
       config.den.quirks.feat = { };
       config.den.aspects.seed.feat = [ "hello" ];
       config.den.schema.host.includes = [ "seed" ];
-      config.den.policies.shapeFeat = _ctx: [
-        (pipeEffect "feat" [
-          (transform (x: x))
-          (filterS (_: true))
-        ])
-      ];
+      config.den.policies.shapeFeat = {
+        emits = [ "pipeOp" ];
+        fn = _ctx: [
+          (pipeEffect "feat" [
+            (transform (x: x))
+            (filterS (_: true))
+          ])
+        ];
+      };
     }
   ];
   withPipeChannels = builtins.sort (a: b: a < b) (builtins.attrNames withPipe.den.quirkDag.channels);
@@ -76,7 +79,10 @@ let
         config.den.quirks.feat = { };
         config.den.aspects.seed.feat = [ "hello" ];
         config.den.schema.host.includes = [ "seed" ];
-        config.den.policies.shapeFeat = _ctx: [ (pipeEffect "feat" [ stage ]) ];
+        config.den.policies.shapeFeat = {
+          emits = [ "pipeOp" ];
+          fn = _ctx: [ (pipeEffect "feat" [ stage ]) ];
+        };
       }
     ];
   derivedOf =

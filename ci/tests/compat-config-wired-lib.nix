@@ -81,16 +81,25 @@ let
       host.isEntity = true;
       user.isEntity = true;
     };
-    den.policies.env-to-host =
-      { host, ... }:
-      [
-        {
-          __policyEffect = "resolve";
-          value = {
-            user = { };
-          };
-        }
-      ];
+    # ★ THE CORPUS'S OWN SELECTION, modelled rather than approximated. This models a host-scope resolve
+    # policy, so its selection is `[ "host" ]`. `selects = null` would assert unconstrained-by-node-kind —
+    # strictly weaker and false — leaving a `member` emitter eligible at descendant cells, where
+    # `errors.memberAtCell` aborts. `null` is a claim, not a neutral placeholder.
+    den.policies.env-to-host = {
+      __isPolicy = true;
+      selects = [ "host" ];
+      emits = [ "member" ];
+      fn =
+        { host, ... }:
+        [
+          {
+            __policyEffect = "resolve";
+            value = {
+              user = { };
+            };
+          }
+        ];
+    };
   };
   policyReport = policyLib.policyInspect.inspect {
     kind = "host";

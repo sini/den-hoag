@@ -10,7 +10,7 @@
 # corpus `env-to-hosts` (`{environment,…}`, a `den.schema.environment.includes` policy) fired at HOST nodes
 # once `environment` was enriched there → hit the stubbed resolve fan-out. The two-part fix:
 #   PART 1 — an include-referenced policy's fleet-wide GLOBAL is REMOVED; it fires via its include ARM only.
-#   PART 2 — `__firesAtKinds` on each include arm confines it to OWNER-KIND nodes at dispatch (compile.nix
+#   PART 2 — `selects` on each include arm confines it to OWNER-KIND nodes at dispatch (compile.nix
 #            stamps it; concern-policies threads it onto every compiled rule; structural.nix pre-filters).
 #
 # The witnesses, driven through the REAL compat compile + concern-policies + structural pipeline (the same
@@ -19,9 +19,9 @@
 #       fire at a HOST node that CARRIES an enriched `environment` binding → the node resolves CLEAN;
 #   (2) the SAME policy DOES fire at an environment-KIND node (the throw surfaces) — owner-kind, not never;
 #   (3) a host-include SITE-MARK policy fires at the host but NOT at its user cell (the over-fire closed);
-#   (4) the synthetic fleet-context enrich (no `__firesAtKinds`) STILL fires at host root AND user cell;
+#   (4) the synthetic fleet-context enrich (no `selects`) STILL fires at host root AND user cell;
 #   (5) [PART 1] an include-referenced policy name has NO global rule — only its `__kindInclude` arm;
-#   (6) a VALUE-CONDITIONAL include's EXPANSION sub-rules each inherit the arm's `__firesAtKinds`.
+#   (6) a VALUE-CONDITIONAL include's EXPANSION sub-rules each inherit the arm's `selects`.
 {
   denHoag,
   denCompat,
@@ -30,6 +30,11 @@
 }:
 let
   I = denHoag.internal;
+  # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
+  # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
+  # index's total fallback and computes the real selection — the fixture exercises the shipped predicate
+  # rather than a hand-rolled stand-in of it.
+  idxFeed = I.indexPolicyFeed [ ];
   inherit (I)
     structural
     runResolve
@@ -56,10 +61,14 @@ let
 
   # ── the include SHAPES (v1 policy records; the bridge coercion is applied by hand off the direct compile) ──
   # env-to-hosts shape: an `{environment,…}` fan-out whose body THROWS when applied — modelling the STUBBED
-  # `den.lib.policy.resolve` fan-out (the live corpus frontier). Its probe throw is tryEval-caught → the
-  # policy EXPANDS; firing it (at an environment-kind node) surfaces the throw.
+  # `den.lib.policy.resolve` fan-out (the live corpus frontier). It DECLARES its codomain, which is the
+  # point: a body that cannot be fired cannot have its codomain recovered by firing, so the declaration is
+  # the only honest source. The shim therefore never fires it at a sentinel, and the throw surfaces where
+  # it should — at a real environment-kind node — instead of being caught and silently reclassified as
+  # "emits nothing", which is what the retired probe did with it.
   envThrowRec = {
     __isPolicy = true;
+    emits = [ "member" ];
     name = "env-fanout";
     fn =
       { environment, ... }:
@@ -133,8 +142,9 @@ let
   res = runResolve {
     inherit roots parseParent;
     equations = structural {
-      policiesRules = {
-        inherit (rules) enrich policy;
+      policiesIndex = {
+        enrich = idxFeed rules.enrich;
+        policy = idxFeed rules.policy;
       };
       fleetChildren = _self: _id: { };
     };
@@ -169,7 +179,7 @@ let
   };
 
   # ── (6) a VALUE-CONDITIONAL host include (broadcast-hub-peer shape) — EXPANDS; its sub-rules inherit
-  #    the arm's `__firesAtKinds`. ──
+  #    the arm's `selects`. ──
   vcHostRec = {
     __isPolicy = true;
     name = "vc-host";
@@ -231,10 +241,10 @@ in
       };
     };
 
-    # ── (4) the synthetic fleet-context enrich (no `__firesAtKinds`) STILL fires at host root AND cell ───
+    # ── (4) the synthetic fleet-context enrich (no `selects`) STILL fires at host root AND cell ───
     # Unfiltered: it enriches wherever its `{host}` gate matches — the host root AND the user cell — so both
     # carry the enrich signature (`secretsConfig`). (It is gate-bounded, not kind-bounded: the environment
-    # node, lacking a `host` coord, is not enriched — but that is the gate, not `__firesAtKinds`.)
+    # node, lacking a `host` coord, is not enriched — but that is the gate, not `selects`.)
     test-fleet-context-enrich-unfiltered = {
       expr = {
         hostEnriched = (ctxAt "host:h1") ? secretsConfig;
@@ -253,7 +263,7 @@ in
       expr = {
         fleetWideGlobal = w5.policies ? p;
         kindArm = w5.policies ? "__kindInclude__k__policy__0";
-        armFiresAtKind = w5.policies."__kindInclude__k__policy__0".__firesAtKinds;
+        armFiresAtKind = w5.policies."__kindInclude__k__policy__0".selects;
       };
       expected = {
         fleetWideGlobal = false;
@@ -262,15 +272,23 @@ in
       };
     };
 
-    # ── (6) EXPANSION sub-rules inherit `__firesAtKinds` — a value-conditional include is confined too ───
-    test-expansion-subrules-inherit-firesAtKinds = {
+    # ── (6) EXPANSION sub-rules inherit `selects` — a value-conditional include is confined too ───
+    # THE FAN COLLAPSE, asserted. This policy used to compile to THREE sub-rules — one per covered
+    # stratum, each carrying the same selection — because the stratum could not be read without firing the
+    # body, and a value-conditional body revealed nothing. With the codomain declared there is nothing to
+    # fan over: ONE rule, its group derived from `emits`, keeping the selection the formals imply. The
+    # count is the whole point, so it is asserted rather than the weaker "at least one".
+    test-expansion-collapses-to-one-rule = {
       expr = {
         subRuleCount = builtins.length w6SubRules;
-        allFiresAtHost = builtins.all (r: r.__firesAtKinds == [ "host" ]) w6SubRules;
+        allFiresAtHost = builtins.all (r: r.selects == [ "host" ]) w6SubRules;
+        # and no `#<stratum>` suffix survives in the identity space.
+        noStratumSuffix = builtins.all (r: builtins.match ".*#.*" r.identity == null) w6SubRules;
       };
       expected = {
-        subRuleCount = 3;
+        subRuleCount = 1;
         allFiresAtHost = true;
+        noStratumSuffix = true;
       };
     };
   };

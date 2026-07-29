@@ -103,18 +103,21 @@ let
   zoneRelateMod =
     { config, ... }:
     {
-      config.den.policies.grant-token =
-        { zone, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit zone;
-              rack = config.den.rack.r1;
-            };
-            bindings.authToken = "tok-${zone.name}";
-            containTo = "rack";
-          })
-        ];
+      config.den.policies.grant-token = {
+        emits = [ "member" ];
+        fn =
+          { zone, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit zone;
+                rack = config.den.rack.r1;
+              };
+              bindings.authToken = "tok-${zone.name}";
+              containTo = "rack";
+            })
+          ];
+      };
     };
   # a SECOND containment source, to a DISTINCT target (rack r2), carrying its own token. Two sources fired
   # in one collection prove the carrier is per-TARGET keyed and order-independent: r2's slice never leaks
@@ -122,34 +125,38 @@ let
   zoneRelateR2Mod =
     { config, ... }:
     {
-      config.den.policies.grant-token-r2 =
-        { zone, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit zone;
-              rack = config.den.rack.r2;
-            };
-            bindings.authToken = "tok2-${zone.name}";
-            containTo = "rack";
-          })
-        ];
+      config.den.policies.grant-token-r2 = {
+        emits = [ "member" ];
+        fn =
+          { zone, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit zone;
+                rack = config.den.rack.r2;
+              };
+              bindings.authToken = "tok2-${zone.name}";
+              containTo = "rack";
+            })
+          ];
+      };
     };
   # rack phase: reads the relation-carried `authToken` and emits a leaf-dim MEMBERSHIP (rack, blade) — the
-  # blade cell. Value-conditional (emits nothing without the token → expansion). `__firesAtKinds = [rack]`
+  # blade cell. Value-conditional (emits nothing without the token → expansion). `selects = [rack]`
   # keeps it off the blade cell (which inherits `rack` + the injected `authToken`) — the resolve-policy
   # scope-restriction the double-fire discipline expects.
   rackMemberMod =
     { config, ... }:
     {
       config.den.policies.enroll-blade = {
-        __condition = {
+        gate = {
           rack = false;
         };
-        __firesAtKinds = [ "rack" ];
-        # value-conditional (empty probe) resolve policy → the emitting adapter DECLARES resolve-family
-        # intent (its probe cannot reveal the member it emits only once `authToken` is present).
-        __resolveFamily = true;
+        selects = [ "rack" ];
+        # The codomain a probe could not reveal: this body emits its `member` only once `authToken` is
+        # present, so firing it at a value-less context observes nothing. Declared, it is in the pre-pass's
+        # resolve-family feed by derivation.
+        emits = [ "member" ];
         fn =
           ctx:
           if (ctx.authToken or null) != null then
@@ -229,26 +236,29 @@ let
   sameSourceTwiceMod =
     { config, ... }:
     {
-      config.den.policies.grant-two =
-        { zone, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit zone;
-              rack = config.den.rack.r1;
-            };
-            bindings.tokenA = "a-${zone.name}";
-            containTo = "rack";
-          })
-          (declare.member {
-            coords = {
-              inherit zone;
-              rack = config.den.rack.r1;
-            };
-            bindings.tokenB = "b-${zone.name}";
-            containTo = "rack";
-          })
-        ];
+      config.den.policies.grant-two = {
+        emits = [ "member" ];
+        fn =
+          { zone, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit zone;
+                rack = config.den.rack.r1;
+              };
+              bindings.tokenA = "a-${zone.name}";
+              containTo = "rack";
+            })
+            (declare.member {
+              coords = {
+                inherit zone;
+                rack = config.den.rack.r1;
+              };
+              bindings.tokenB = "b-${zone.name}";
+              containTo = "rack";
+            })
+          ];
+      };
     };
 
   # (B) EMPTY source slice — coords name ONLY the target, so the slice is `{ }`. A legitimate
@@ -258,17 +268,20 @@ let
   bindingsOnlyMod =
     { config, ... }:
     {
-      config.den.policies.grant-bare =
-        { zone, ... }:
-        builtins.seq zone [
-          (declare.member {
-            coords = {
-              rack = config.den.rack.r1;
-            };
-            bindings.bareToken = "no-attachment";
-            containTo = "rack";
-          })
-        ];
+      config.den.policies.grant-bare = {
+        emits = [ "member" ];
+        fn =
+          { zone, ... }:
+          builtins.seq zone [
+            (declare.member {
+              coords = {
+                rack = config.den.rack.r1;
+              };
+              bindings.bareToken = "no-attachment";
+              containTo = "rack";
+            })
+          ];
+      };
     };
 
   # (C) MULTI-COORD source slice: coords name zone AND blade beside the target, so the slice has two
@@ -277,19 +290,22 @@ let
   multiCoordMod =
     { config, ... }:
     {
-      config.den.policies.grant-ambiguous =
-        { zone, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit zone;
-              rack = config.den.rack.r1;
-              blade = config.den.blade.b1;
-            };
-            bindings.t = "x";
-            containTo = "rack";
-          })
-        ];
+      config.den.policies.grant-ambiguous = {
+        emits = [ "member" ];
+        fn =
+          { zone, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit zone;
+                rack = config.den.rack.r1;
+                blade = config.den.blade.b1;
+              };
+              bindings.t = "x";
+              containTo = "rack";
+            })
+          ];
+      };
     };
 
   # (D) CROSS-KIND source: the slice is a `blade`, but a `rack`'s schema parent kind is `zone`. The
@@ -298,18 +314,21 @@ let
   crossKindMod =
     { config, ... }:
     {
-      config.den.policies.grant-crosskind =
-        { zone, ... }:
-        builtins.seq zone [
-          (declare.member {
-            coords = {
-              rack = config.den.rack.r1;
-              blade = config.den.blade.b1;
-            };
-            bindings.t = "x";
-            containTo = "rack";
-          })
-        ];
+      config.den.policies.grant-crosskind = {
+        emits = [ "member" ];
+        fn =
+          { zone, ... }:
+          builtins.seq zone [
+            (declare.member {
+              coords = {
+                rack = config.den.rack.r1;
+                blade = config.den.blade.b1;
+              };
+              bindings.t = "x";
+              containTo = "rack";
+            })
+          ];
+      };
     };
 
   # (E) A `link` at a zone targeting the MULTI-ATTACHED rack. Linked context binds one context per
@@ -322,23 +341,29 @@ let
   linkMultiMod =
     { config, ... }:
     {
-      config.den.policies.link-multi =
-        { zone, ... }:
-        builtins.seq zone [ (declare.link { target = config.den.rack.r1; }) ];
+      config.den.policies.link-multi = {
+        emits = [ "link" ];
+        fn =
+          { zone, ... }:
+          builtins.seq zone [ (declare.link { target = config.den.rack.r1; }) ];
+      };
       # A SEPARATE policy, and it has to be: B2 stratum coherence requires every declaration a single
       # policy emits to classify to ONE stratum, so the later-stratum declaration cannot ride along
       # with the link. Emitting both from one policy aborts on stratum coherence INSTEAD of on the
       # link guard — which still turns the assertion below green, for entirely the wrong reason.
-      config.den.policies.force-combine =
-        { zone, ... }:
-        builtins.seq zone [
-          (declare.configure {
-            of = config.den.rack.r1;
-            set = {
-              forcesCombine = true;
-            };
-          })
-        ];
+      config.den.policies.force-combine = {
+        emits = [ "configure" ];
+        fn =
+          { zone, ... }:
+          builtins.seq zone [
+            (declare.configure {
+              of = config.den.rack.r1;
+              set = {
+                forcesCombine = true;
+              };
+            })
+          ];
+      };
     };
 
   sliceDen =
@@ -363,30 +388,36 @@ let
   memberAtCellMod =
     { config, ... }:
     {
-      config.den.policies.bad-member =
-        { blade, ... }:
-        [
-          (declare.member {
-            rack = config.den.rack.r1;
-            inherit blade;
-          })
-        ];
+      config.den.policies.bad-member = {
+        emits = [ "member" ];
+        fn =
+          { blade, ... }:
+          [
+            (declare.member {
+              rack = config.den.rack.r1;
+              inherit blade;
+            })
+          ];
+      };
     };
   containAtCellMod =
     { config, ... }:
     {
-      config.den.policies.bad-contain =
-        { blade, ... }:
-        [
-          (declare.member {
-            coords = {
-              inherit blade;
-              rack = config.den.rack.r1;
-            };
-            bindings.x = 1;
-            containTo = "rack";
-          })
-        ];
+      config.den.policies.bad-contain = {
+        emits = [ "member" ];
+        fn =
+          { blade, ... }:
+          [
+            (declare.member {
+              coords = {
+                inherit blade;
+                rack = config.den.rack.r1;
+              };
+              bindings.x = 1;
+              containTo = "rack";
+            })
+          ];
+      };
     };
   abortFleet = baseFleet ++ [ rackBladeStatic ];
   memberAtCellDen = (denHoag.mkDen (abortFleet ++ [ memberAtCellMod ])).den;

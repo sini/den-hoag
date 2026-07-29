@@ -119,11 +119,19 @@ let
               plain = [ "role-${host.role}" ]; # reads a SAFE stamped field
             };
           schema.host.includes = [ "hemit" ];
-          policies.collect-guests =
-            { host, ... }:
-            [
-              (P.from "guests" [ (P.collect ({ host, ... }: true)) ])
-            ];
+          # Registered here and named in no `includes` list (this fixture's includes name ASPECTS), so an
+          # undeclared selection derives `[ ]` from the schema and the policy is absent from every node's rule
+          # list. Declared unconstrained: this suite's subject is not selection.
+          policies.collect-guests = {
+            __isPolicy = true;
+            emits = [ "pipeOp" ];
+            selects = null;
+            fn =
+              { host, ... }:
+              [
+                (P.from "guests" [ (P.collect ({ host, ... }: true)) ])
+              ];
+          };
           _entityStamps.hosts = safeStamps;
         }
         // (if withRaw then { _entityRawStamps.hosts = rawStamps; } else { });

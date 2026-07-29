@@ -256,6 +256,12 @@ let
     {
       __isPolicy = true;
       inherit name;
+      # DECLARED HERE because this body is VALUE-conditional: it emits only where the host already carries
+      # a user of `className`, so it emits NOTHING at a sentinel that carries no users. An undeclared
+      # codomain would recover EMPTY and the policy would compile to no rule — the module import would
+      # never happen and its option would never exist, surfacing as a nixpkgs "option does not exist"
+      # error that names nothing about policies. The emission is an aspect `include` → an `edge`.
+      emits = [ "edge" ];
       fn =
         { host, ... }:
         if hostHasUserWithClass host className then
@@ -370,6 +376,8 @@ let
   hostToWslHost = {
     __isPolicy = true;
     name = "host-to-wsl-host";
+    # DECLARED: value-conditional on `host.wsl.enable`, absent at the sentinel (see mkHostModulePolicy).
+    emits = [ "edge" ];
     fn =
       { host, ... }:
       if (host.class or null) == "nixos" && ((host.wsl or { }).enable or false) then
@@ -395,6 +403,9 @@ let
   # the host aspect's own wsl content would be dropped. v1's guard (`options ? wsl`) is likewise omitted —
   # the intoClass null-gate already bounds firing to wsl-enabled hosts, and the guard's target-option read
   # filtered the content out before the sibling host-to-wsl-host module import declared `options.wsl`.
+  # Mark a shim-provisioned route AMBIENT: its dispatch selection is unconstrained BY DECLARATION, never
+  # derived from a schema that was never asked to include it.
+  ambient = route: route // { selects = null; };
   wslToHost = {
     __denCanTake = "host";
     fn =
@@ -416,12 +427,28 @@ in
     policies = {
       host-to-users = _ctx: [ ];
       user-to-host = userToHost;
-      hm-user-detect = hmUserDetect;
       # v1 ambient home-env-family / wsl content routes (see the batteries section above): the maid/hjem
       # user-scope forwards + the wsl class-content route. Corpus-inert (null-gated).
-      maid-user-detect = maidUserDetect;
-      hjem-user-detect = hjemUserDetect;
-      wsl-to-host = wslToHost;
+      #
+      # ★ AMBIENT BY DECLARATION. v1's flakeModule auto-imports every `modules/**.nix`, so these routes are
+      # present on EVERY v1 fleet without any `den.schema.<K>.includes` naming them. The compat mint derives
+      # an undeclared selection from the schema, where "in no includes list" means "selects nothing" — right
+      # for a v1 USER policy the author chose not to include, and wrong for a shim mechanism no schema was
+      # ever going to mention. Undeclared, all four are absent from every node's rule list, silently.
+      # Internal control in this same file: `user-to-host` fires without this, because it reaches dispatch
+      # through an aspect-include arm that HAS an includes path; these four have none.
+      #
+      # HISTORY, kept because the measurement is the lesson: declaring this was once ablated against the
+      # whole suite and parity and read INERT — failure sets byte-identical either way — so it was removed
+      # as an unwitnessed claim. That ablation was sound in method and CONFOUNDED in fact: it ran while the
+      # fixtures' own `env-users` was also not firing, so no cell existed for these routes to fire AT, and
+      # no outcome could move. A no-change ablation cannot distinguish "this factor is irrelevant" from
+      # "this factor is one of two" — and breadth does not save it when the confound sits inside every arm.
+      # `compat-hm-battery`'s resolved-user tests are the witness that was missing.
+      hm-user-detect = ambient hmUserDetect;
+      maid-user-detect = ambient maidUserDetect;
+      hjem-user-detect = ambient hjemUserDetect;
+      wsl-to-host = ambient wslToHost;
       system-to-os-outputs = outputStub "system-to-os-outputs" "modules/policies/flake.nix:53";
       system-to-hm-outputs = outputStub "system-to-hm-outputs" "modules/policies/flake.nix:67";
       system-to-flake-parts = outputStub "system-to-flake-parts" "modules/policies/flake-parts.nix:9";

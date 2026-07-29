@@ -56,17 +56,27 @@ let
               description = "fp";
             };
           };
-          policies.devshell-to-flake-parts = _: [
-            (denCompat.route {
-              fromClass = "devshell";
-              intoClass = intoClass;
-              path = [
-                "devshells"
-                "default"
-              ];
-              adaptArgs = { config, ... }: config;
-            })
-          ];
+          # Selected by DECLARATION rather than by a schema entry: this fixture registers the policy and
+          # includes it nowhere, so an undeclared selection would derive `[ ]` from the schema — "in no
+          # includes list" means "selects nothing", the 241-firings correction doing its job. That is the
+          # right answer to a question this suite is not asking (the delivery target), so the selection is
+          # stated instead of inherited. This policy models no corpus wiring, so unconstrained is honest.
+          policies.devshell-to-flake-parts = {
+            __isPolicy = true;
+            emits = [ "delivery" ];
+            selects = null;
+            fn = _: [
+              (denCompat.route {
+                fromClass = "devshell";
+                intoClass = intoClass;
+                path = [
+                  "devshells"
+                  "default"
+                ];
+                adaptArgs = { config, ... }: config;
+              })
+            ];
+          };
           aspects.igloo = {
             nixos = {
               networking.hostName = "igloo";

@@ -48,10 +48,10 @@ let
     builtins.mapAttrs (
       _: p:
       let
-        # A compiled policy is a `{ __condition; fn }` record (its gate declared as data) or a bare
+        # A compiled policy is a `{ gate; fn }` record (its gate declared as data) or a bare
         # `ctx:` function (its gate = functionArgs). Gated policies are skipped (calling with `{ }` is
         # invalid); ungated bare-ctx bodies run.
-        cond = if builtins.isAttrs p && p ? __condition then p.__condition else builtins.functionArgs p;
+        cond = if builtins.isAttrs p && p ? gate then p.gate else builtins.functionArgs p;
         body = if builtins.isAttrs p && p ? fn then p.fn else p;
       in
       if cond == { } then map builtins.attrNames (body { }) else [ ]
@@ -158,7 +158,7 @@ let
   # ── den.default → `defaults` aspect via the kind-include, narrowed to {host,user} (v1 defaults.nix:15-19
   #    radiates to {host,user,home}; den-hoag folds home→user). The desugar wires `defaults` into
   #    `den.schema.{host,user}.includes` ONLY, so the `__kindInclude__{host,user}` arms carry it and their
-  #    `__firesAtKinds` confine it to those kinds — NEVER a custom kind (env/cluster). The schema-includes
+  #    `selects` confine it to those kinds — NEVER a custom kind (env/cluster). The schema-includes
   #    membership lives in the legacy desugar's v1→v1 output (not the built config surface); the
   #    resolved-aspects read at each scope proves the end-to-end reach + the custom-kind exclusion.
   defaultV1 = {
@@ -175,7 +175,7 @@ let
   defaultBuilt = denCompat.mkDen defaultFixture;
   defaultDen = defaultBuilt.den;
   # `defaults` is wired ONLY into host + user schema includes — never a custom kind (env). The kind-scope
-  # membership is the three-kind narrowing (v1 {host,user,home} → den-hoag {host,user}); `__firesAtKinds`
+  # membership is the three-kind narrowing (v1 {host,user,home} → den-hoag {host,user}); `selects`
   # on the `__kindInclude__{host,user}` arms enforces it at dispatch. The wiring is in the DESUGARED tree.
   defaultDesugared = denCompat.legacy.defaults.desugar defaultV1;
   schemaIncludesOf = kind: defaultDesugared.schema.${kind}.includes or [ ];
@@ -270,7 +270,7 @@ in
       };
       # THREE-KIND NARROWING (v1 defaults.nix:15-19 = {host,user,home}, den-hoag {host,user}): `defaults` is
       # wired ONLY into host + user schema includes — NEVER a custom kind (env). The `__kindInclude__{host,
-      # user}` arms' `__firesAtKinds` confine it at dispatch.
+      # user}` arms' `selects` confine it at dispatch.
       test-default-wired-into-host-user = {
         expr = {
           host = builtins.elem "defaults" (schemaIncludesOf "host");
