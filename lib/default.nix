@@ -292,6 +292,14 @@ let
   queryLib = import ./query.nix {
     inherit prelude graph;
   };
+  # The coordinate projections over the `contains` edge pool (§B4a topology) — THE derivation of a
+  # node's position, replacing the `__coords` payload cache and the `coordDims` negative enumeration
+  # the settings reader used to choose between. Rides the same unshadowed outer `graph` seam as the
+  # query spine: it needs `transpose` (the inbound adjacency), `expandPreorder` (the ordered closure)
+  # and `cycles` (the loud back-edge guard), none of which the mkDen-local `graph` shadow carries.
+  coordinatesLib = import ./coordinates.nix {
+    inherit prelude graph errors;
+  };
   # The UNSHADOWED gen-graph lib alias — the relation producer (den-hoag §9) reverses each relation kind's forward
   # edges via `genGraphLib.transpose` (Mokhov 2017 §5.2) instead of a hand-rolled from/to swap. Inside the mkDen
   # closure `graph` is shadowed by the read-only `graph = graphEscape {…}` surface (no `.transpose`), so the
@@ -1128,6 +1136,20 @@ let
         attachments = prePass.containmentAttachments;
       };
 
+      # THE COORDINATE PROJECTIONS over that pool (lib/coordinates.nix) — a node's position, derived.
+      # Built ONCE here, at the fleet, and shared by every reader: the settings cascade, the §B4a
+      # ancestor visibility read, and the producing-scope coordinate a contribution carries. The
+      # inbound adjacency is a property of the POOL, not of a query over it, so building it inside a
+      # per-node compute would add an O(E) term at every node of an already-cubic path.
+      coordinates = coordinatesLib {
+        inherit
+          containsEdges
+          settingsDims
+          dimKinds
+          isCellNode
+          ;
+      };
+
       # The BASE root scope nodes (un-injected) — the MAIN run's roots, over the membership-derived
       # `rootScopeKinds` (non-candidates ∪ UNtargeted candidates, e.g. the corpus's cluster). Distinct from
       # `prePassScopeRoots` (non-candidates only): an untargeted candidate is a root the main run reads but
@@ -1157,8 +1179,8 @@ let
       # …AND each per-system external flake-view (den.systemViews) folded onto its system-bearing root's decls:
       # the flake's `inputs'`/`self'` delivered as INHERITED NODE ATTRIBUTES, not a `_module.args` battery. A
       # root carries its OWN system coordinate on `__entry.system` (a host/home); the view selected by that
-      # coordinate lands in its decls, and inherited-context (attr 1, which strips only __edges/__containment/
-      # __coords) threads it to the root and its cells — a cell's system == its host's, so the host is the LCA
+      # coordinate lands in its decls, and inherited-context (attr 1, which strips only __edges and
+      # suppressedPolicies) threads it to the root and its cells — a cell's system == its host's, so the host is the LCA
       # of a system-homogeneous subtree and no single decl above a mixed-system boundary ever carries a
       # system-specific value. A root with no system coordinate (an environment/cluster) folds nothing; a
       # system with no declared view folds nothing — both byte-identical. Cheap thunks, forced only when a
@@ -1379,8 +1401,7 @@ let
       settingsProduction = attributesLib.mkSettingsProduction {
         fleet = theFleet;
         allAspects = ent.config.den.aspects;
-        containmentRelations = prePass.containmentAncestors;
-        inherit (stagedResolution) ancNodeId;
+        coords = coordinates;
         inherit
           lin
           settingsLayers
@@ -1790,8 +1811,12 @@ let
         consumerLib = if npkgs == null then null else npkgs.lib or null;
         localDemandData = demandLib.localDemandData;
         # The settings resolution facet no longer threads its instance args (fleet/lin/settingsLayers/
-        # dimKinds/projectors/containmentRelations) here — it is seeded into `productionsTable` as a
+        # dimKinds/projectors/coords) here — it is seeded into `productionsTable` as a
         # `den.productions` record (settingsProduction, below) and arrives via the `productions` arg.
+        # The coordinate projections DO come through here, because two OTHER attributes read a node's
+        # position: `resolved-aspects` (the §B4a containment-ancestor visibility set) and `collections`
+        # (the producing-scope coordinate on every contribution).
+        coords = coordinates;
         classNames = effectiveClassNames;
         inherit (denAspects) classifyKey;
         inherit
@@ -2599,6 +2624,14 @@ let
         # `membershipTuples` the declared containment tuples.
         cellKinds = cellKinds;
         membershipTuples = membershipTuples;
+        # THE COORDINATE PROJECTIONS over that pool — a node's POSITION, as a query rather than a payload
+        # (`coordOf` / `cellCoordsOf` / `nodeCoords` / `ancestorSlicesOf` / `containAncestorIds`, each
+        # taking the eval's `node` accessor). Read-only, and the same record every internal reader uses,
+        # so a consumer asking where a node sits gets the kernel's answer rather than a second derivation
+        # — which is the whole content of this migration. Exposed for the same reason the producer's
+        # inputs above are: the pool is public, and a projection over it that nothing can name is not a
+        # surface. Corpus-inert (nothing in the corpus calls it; forcing a field walks the pool only).
+        coords = coordinates;
         # relQuery (§5): the fleet's `sel`→`matchId` `where`-adapted relation query over `den.relationEdges` —
         # `relQuery { from; kind; sel ? null; mode ? "all" }`. Per-mkDen (closes over the fleet's scope +
         # relation edges); corpus-inert — a new read-only surface nothing in the corpus calls.

@@ -36,6 +36,14 @@
   # as an opaque value a caller supplies, never imported here (mirrors `den.nixpkgs` threading, lib/default.nix
   # nixpkgsDecl).
   consumerLib ? null,
+  # THE PRODUCING SCOPE'S COORDINATE — `coords.nodeCoords` (lib/coordinates.nix), the node's own slice on
+  # whichever arm it is on. Required, not defaulted. This is NOT decoration: gen-pipe reads it as the
+  # scope half of a contribution's L7 DEDUP IDENTITY (`identityKey`) and projects it as `__coords` for
+  # coordinate selectors, so a wrong coordinate here is a wrong dedup and a wrong selector match, not a
+  # wrong label. It replaces a `removeAttrs decls [ … ]` negative enumeration whose key set was open —
+  # `scopeRoots` folds USER-NAMED containment bindings onto root `decls`, so any binding the strip list
+  # did not know about became a coordinate.
+  nodeCoords,
 }:
 let
   # A config-demanding aspect channel value (a `{ config, ... }: …` thunk) is the deferred (per-member)
@@ -66,15 +74,6 @@ let
   isFnLike = v: builtins.isFunction v || (builtins.isAttrs v && (v.__isWrappedFn or false));
   isPipelineParametric = v: isFnLike v && !(isConfigThunk v);
 
-  # The reserved decls keys are graph machinery, never producing-scope coordinates.
-  coordDims =
-    node:
-    removeAttrs (node.decls or { }) [
-      "__entry"
-      "__edges"
-      "__containment"
-      "__coords"
-    ];
 in
 {
   # neron-order — the pinned self → imports → parent node sequence at this position. The ordering
@@ -121,7 +120,7 @@ in
         node = self.node id;
         cls = classOfNode node; # class entry | null
         ownEntry = node.decls.__entry or null;
-        coords = coordDims node;
+        coords = nodeCoords self.node id;
         positionClasses = if cls == null then [ ] else [ cls ];
 
         # The node's enriched-context — the SAME per-node binding surface the terminal reads (output-

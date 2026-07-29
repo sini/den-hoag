@@ -26,8 +26,8 @@
 # `den.productions` record (`mkSettingsProduction`); concern-productions' `compile` wraps its `compute`
 # in the synthesized `resolve.attr` — no direct `resolve` dep here. Instance args: fleet (the
 # restricted gen-product), lin (the linearization record), settingsLayers (compiled den-layer
-# records), dimKinds (product dimension names, for the full-cell test), containmentRelations (the
-# staged pre-pass's env→host / env→cluster ancestor slices — the §3c-UNIFIED chain extension).
+# records), dimKinds (product dimension names, for the containment chain), coords (the coordinate
+# projections over the `contains` edge pool — lib/coordinates.nix, THE derivation of a node's position).
 {
   prelude,
   product,
@@ -35,35 +35,13 @@
   settingsLib,
   projects,
   errors,
-  graph,
 }:
 let
-  # Reserved decls keys are graph machinery, never producing-scope coordinates (mirrors
-  # collections.nix coordDims; `__coords` is the full-cell coordinate cache added for this attribute).
-  coordDims =
-    node:
-    removeAttrs (node.decls or { }) [
-      "__entry"
-      "__edges"
-      "__containment"
-      "__coords"
-    ];
-
   # An identity-bearing aspect entry from a resolved aspect's content (id_hash added by the aspect
   # submodule's idModule; name is the display key). gen-settings routes the batch + refs by id_hash.
   entryOf = content: {
     inherit (content) name id_hash;
   };
-
-  # Two coordinate sets denote the same slice iff same dims and same entry identities (by id_hash).
-  coordsEq =
-    a: b:
-    builtins.attrNames a == builtins.attrNames b
-    && builtins.all (d: (a.${d}.id_hash or null) == (b.${d}.id_hash or null)) (builtins.attrNames a);
-
-  # The full product coordinates of a node: a cell caches them at `decls.__coords` (all product
-  # dims → entries), a flat root carries only its own single dim (coordDims).
-  coordsOfNode = node: node.decls.__coords or (coordDims node);
 
   # `configure` policy layers at this node for this aspect → the terminal `policy` slot (A8). The
   # layer carries the coordinates the policy fired at (§4.3); `via` is null (den policies are not
@@ -95,86 +73,23 @@ let
       dimKinds,
       allAspects ? { },
       projectors ? [ ],
-      # §3c-UNIFIED chain extension: the staged pre-pass's containment relations (nodeId -> [ source slice ]).
-      # A `containTo`-marked member recorded the target root's SOURCE coordinate (the env→host / env→cluster
-      # edge); it is NOT a product dimension, so gen-product's `containmentChain` (over the product dims)
-      # cannot produce its slice — den-hoag PREPENDS it here, after the empty slice, giving the settings fold
-      # default < env < host < user (the owner's cascade). Default `{ }` ⇒ no env slice, byte-identical.
-      containmentRelations ? { },
       # Is this NODE a CELL? (`build-roots.nix isCellNode` — the constructor TAG test.) Required, not
       # defaulted: the chain builder below picks the cell branch on it, and a defaulted `_: false`
       # would silently make every cell read its OWN containment ancestors instead of its parent root's.
       isCellNode,
-      # A single-kind coordinate slice -> the scope node id it names. Owned by the pre-pass that produces
-      # the slices (staged-resolution.nix); threaded here so the id convention has one definition rather
-      # than a second copy that could drift from the one the parent map is rendered with.
-      ancNodeId,
+      # THE COORDINATE PROJECTIONS over the `contains` edge pool (lib/coordinates.nix), built once per
+      # fleet and shared with every other reader of a node's position. Required, not defaulted: this is
+      # the only derivation of where a node sits, and a default would be a second one.
+      coords,
     }:
     let
-      # Transitive containment-relation ancestors of a node (least→most specific `fixed` coord-sets). Each
-      # ancestor slice is single-kind ({ <kind> = entry }); the reversed pre-order emission (below) puts
-      # the deepest source first, so a multi-level chain (fleet→env→host) resolves least-specific first.
-      # Empty for a node with no containment relation (the corpus's environment root, and every native
-      # fleet without a containTo member) ⇒ the chain is byte-identical to the pre-§3c product chain.
-      # CYCLE GUARD (loud-error discipline): a cyclic `containTo` topology (A contains B contains A)
-      # aborts NAMED (`errors.containmentCycle`) instead of hanging. Corpus-unreachable (a v1-surface
-      # adapter's source coordinate strictly ascends the acyclic schema topology); a native fixture can
-      # author it.
-      #
-      # Containment-edge accessor over the MULTI-VALUED `containmentRelations` map (nid -> [ source
-      # slice ]): a node id's upward edges are the ids of its containment-ancestor slices. This is a
-      # separate map from the single-parent self-graph P-edge (`node.parent`) — a node may sit under
-      # several containment sources — so it is untraversable by a single-parent inherit walk and is a
-      # genuine graph accessor. `containEdges`/`sliceById` only touch the containment topology + slice
-      # names (id strings), never aspect/settings content.
-      containEdges = nid: map ancNodeId (containmentRelations.${nid} or [ ]);
-      # Ancestor id back to the single-kind coord-set it names: every slice is an entry in some node's
-      # `containmentRelations` list, and its id (`kind:name`) is its identity.
-      sliceById = builtins.listToAttrs (
-        prelude.concatMap (
-          nid:
-          map (s: {
-            name = ancNodeId s;
-            value = s;
-          }) (containmentRelations.${nid} or [ ])
-        ) (builtins.attrNames containmentRelations)
-      );
-      # The containment-ancestor upward closure, routed through gen-graph. `expandPreorder` carries the
-      # slice payload and visits in first-occurrence PRE-order (nearest-first over `containEdges`);
-      # reversing it yields the LEAST-specific-first emission the settings-precedence fold consumes at
-      # `chain` (default < env < host < user, ORDER load-bearing). `cycles`/`selfReachable` over the
-      # SAME edge accessor is the loud back-edge guard — a cyclic `containTo` topology throws NAMED
-      # (`errors.containmentCycle`) rather than hanging. SEMANTICS-NORMALIZING vs the prior hand-rolled
-      # path-scoped grey-set DFS over a BRANCHING ancestor forest, on TWO off-corpus deltas: (1) gen-graph's
-      # global first-occurrence visited set dedups a diamond (shared-grandparent) slice the path-scoped walk
-      # emitted TWICE (a latent duplicate-layer fix); (2) reverse-of-pre-order ≠ the old post-order for
-      # SIBLING branches, so two ancestors of one node fold in the opposite relative order (sibling
-      # precedence is unspecified either way). Byte-neutral on the corpus, whose containment is single-source
-      # / linear / acyclic — `containmentRelations.<nid>` is singleton|empty, so neither a diamond nor a
-      # sibling forest is reachable and both deltas are latent.
-      # Dep-free list reversal (gen-prelude keeps its own `reverseList` internal to `toposort`): turns
-      # gen-graph's nearest-first pre-order into the least-specific-first emission the fold consumes.
-      reverseList =
-        xs:
-        let
-          l = builtins.length xs;
-        in
-        builtins.genList (n: builtins.elemAt xs (l - n - 1)) l;
-      ancestorsOf =
-        nid:
-        let
-          walk = graph.expandPreorder {
-            roots = containEdges nid;
-            key = anc: anc;
-            edges = containEdges;
-            emit = anc: _payload: sliceById.${anc};
-          };
-          cyclic = graph.cycles {
-            edges = containEdges;
-            nodes = builtins.attrNames walk.seen;
-          };
-        in
-        if cyclic == [ ] then reverseList walk.nodes else errors.containmentCycle (builtins.head cyclic);
+      inherit (coords)
+        coordOf
+        cellCoordsOf
+        nodeCoords
+        ancestorSlicesOf
+        coordsEq
+        ;
 
       # A14 (projects facet) — `projectionLayersAt`: expand every projecting aspect into `via`-carrying
       # den-layer records at its attachment scopes, added to the scoped-override pool. resolved-settings
@@ -231,28 +146,33 @@ let
         self: id:
         let
           node = self.node id;
-          coords = coordsOfNode node;
-          # containmentChain needs a full cell; a flat root fixes ≤1 dim, whose only subsets
-          # (∅ ⊂ own-slice) are ⊆-comparable and need no linearization tie-break.
-          isFullCell = builtins.length (builtins.attrNames coords) == builtins.length dimKinds;
+          nodeOf = self.node;
+          isCell = isCellNode node;
+          # THE ARM IS THE CONSTRUCTOR TAG, NOT A CARDINALITY. The retired test compared the coordinate
+          # key COUNT against `|dimKinds|`, which a root polluted by user bindings passes with the wrong
+          # keys — measured, a root whose `containTo` member carries one binding key counts 2 against
+          # 2 dims and is routed down the CELL arm. `isCellNode` is right on that same input, and as a
+          # node FIELD rather than a `decls` key no user-named binding can write it.
+          #
+          # `containmentChain` needs the full product coordinate; a root fixes only its own slice, whose
+          # subsets (∅ ⊂ own-slice) are ⊆-comparable and need no linearization tie-break.
           baseChain =
-            if isFullCell then
-              map (e: e.fixed) (product.containmentChain fleet coords lin)
+            if isCell then
+              map (e: e.fixed) (product.containmentChain fleet (cellCoordsOf nodeOf id) lin)
             else
               [
                 { }
-                coords
+                (coordOf nodeOf id)
               ];
-          # §3c-UNIFIED chain extension: prepend the containment-relation ancestor slices (env→host /
-          # env→cluster) AFTER the empty slice, so the fold order is default < env < host < user (the
-          # owner's cascade). A cell inherits its parent root's ancestors (`node.parent`); a root reads
-          # its own (`id`). `baseChain` always leads with the empty slice, so [ ∅ ] ++ ancestors ++ tail
-          # keeps every product slice in its original relative order (byte-neutral when ancestors = [ ]).
+          # The cascade slices — the containment closure MINUS what `baseChain` already carries, in the
+          # traversal's emission order, prepended AFTER the empty slice so the fold order is
+          # default < env < host < user (the owner's cascade). `baseChain` always leads with the empty
+          # slice, so [ ∅ ] ++ ancestors ++ tail keeps every product slice in its original relative order.
           # A CELL reads its parent root's containment ancestors; a ROOT reads its own. Discriminated by
           # the constructor tag, not by parentage nor by the id's shape — a root carrying a containment
           # parent still owns its own ancestor slices, and a multi-attached root's id carries an '@',
           # so either of those spellings would send such a root to read its parent's instead.
-          ancSlices = if isCellNode node then ancestorsOf node.parent else ancestorsOf id;
+          ancSlices = ancestorSlicesOf nodeOf (if isCell then node.parent else id) baseChain;
           chain = [ (builtins.head baseChain) ] ++ ancSlices ++ (builtins.tail baseChain);
 
           present = self.get id "resolved-aspects";
@@ -267,9 +187,14 @@ let
             in
             {
               schema = settingsLib.mkSchemaFor aspectEntry (a.content.settings or { });
+              # The terminal policy slot's `scope` is the node's OWN coordinate on whichever arm it is on
+              # — the same value `baseChain` already ends with, not a fourth projection. It is PROVENANCE
+              # ONLY: policy layers are appended after the chain fold and are never matched (`layersAtSlice`
+              # reads a layer's own `atCoords`), and gen-settings passes the value fold its layers and its
+              # labels as SEPARATE arguments, so a label cannot reach the fold even in principle.
               layers =
                 prelude.concatMap (sliceFixed: layersAtSlice aspectEntry sliceFixed) chain
-                ++ policyLayersAt resolutionActs coords aspectEntry;
+                ++ policyLayersAt resolutionActs (nodeCoords nodeOf id) aspectEntry;
               key = a.content.name;
             }
           ) present;

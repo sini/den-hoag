@@ -15,6 +15,7 @@ let
     "errors.nix"
     "entity.nix"
     "fleet.nix"
+    "coordinates.nix"
     "build-roots.nix"
     "scope-adapter.nix"
     "declarations.nix"

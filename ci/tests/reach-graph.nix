@@ -44,7 +44,12 @@ let
         ;
       graph = denHoag.internal.genGraph;
     } instanceArgs;
-  ra = mkRa { };
+  # This harness drives `reach` against a STUB graph that authors no containment at all — no `contains`
+  # edge pool, no membership tuple, no attachment. So the containment-ancestor query is `_: [ ]` HERE, as
+  # a statement about this fixture rather than as a default in the kernel: the argument is required
+  # precisely so a fleet that DOES author containment cannot silently read none.
+  noContainment = _nid: [ ];
+  ra = mkRa { containAncestorIds = noContainment; };
 
   # A synthetic resolution-action list: one positive reach-edge (class-scoped home-manager), one negative
   # reach-suppress (droid-gated), and unrelated actions (an `edge`/`drop` from the existing strata) the

@@ -46,16 +46,23 @@ let
     select
     ;
   raReach =
-    (import "${denHoagSrc}/lib/attributes/resolved-aspects.nix" {
-      inherit
-        prelude
-        scope
-        resolve
-        aspects
-        select
-        ;
-      graph = denHoag.internal.genGraph;
-    } { }).reach;
+    (import "${denHoagSrc}/lib/attributes/resolved-aspects.nix"
+      {
+        inherit
+          prelude
+          scope
+          resolve
+          aspects
+          select
+          ;
+        graph = denHoag.internal.genGraph;
+      }
+      {
+        # A synthetic stub graph with no `contains` pool — stated at the fixture, not defaulted in the
+        # kernel (see reach-graph.nix for the same statement and the reason).
+        containAncestorIds = _nid: [ ];
+      }
+    ).reach;
 
   # ── settings-layers (§2.7): the per-(node, aspect) layer fold ────────────────────────────────────
   # A synthetic multi-level fleet: env prod ⊇ host axon ⊇ user alice, with an aspect carrying a schema

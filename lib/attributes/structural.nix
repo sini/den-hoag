@@ -102,18 +102,21 @@ in
       self: id:
       let
         layers = scope.inheritAll {
-          # Strip reserved decls from the generic context: `__edges` (gen-scope's own) and
-          # `__containment` (the cell's coordinate-root ids, a resolution-only visibility aid) are
-          # graph machinery, not entity bindings — a settings/policy read must never see them.
-          # `suppressedPolicies` is the typed suppression control-fact: it rides its OWN inherited
-          # carrier (`suppressed-policies`, gen-scope inheritSet) and must NOT re-leak into the generic
-          # binding context, so it is stripped here alongside the graph-machinery keys.
+          # Strip reserved decls from the generic context. `__edges` is gen-scope's OWN reserved key,
+          # never den-hoag's to remove. `suppressedPolicies` is the typed suppression control-fact: it
+          # rides its OWN inherited carrier (`suppressed-policies`, gen-scope inheritSet) and must NOT
+          # re-leak into the generic binding context. Both survive because both are real keys with a
+          # reason to be excluded.
+          #
+          # The coordinate keys are NOT in this list any more, and their absence is structural rather
+          # than remembered: containment is an edge pool and a node's position is a query over it, so
+          # `decls` no longer carries a graph fact for a reader to skip. A strip list is a NEGATIVE
+          # enumeration — sound only while its key set is closed — and this one shrank to the keys whose
+          # exclusion is a property of the key itself.
           extract =
             node:
             removeAttrs (node.decls or { }) [
               "__edges"
-              "__containment"
-              "__coords"
               "suppressedPolicies"
             ];
         } self id;

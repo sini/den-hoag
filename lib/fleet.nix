@@ -137,26 +137,26 @@ let
             id = cid;
             type = leafDim;
             parent = hostNodeId;
+            # ── NO GRAPH FACT RIDES HERE ──────────────────────────────────────────────────────────
+            # This mint used to write two: `__coords` (the full product coordinate) and
+            # `__containment` (the cell's other coordinate roots). Both were the SAME containment
+            # relation the `contains` pool now carries as edges, cached at construction time into the
+            # node they describe — and a cache beside a query is two derivations of one fact, selected
+            # by whether the cache happens to be present. `resolved-settings` read exactly that:
+            # `node.decls.__coords or (coordDims node)`. They are deleted in the commit that points
+            # the reads at the pool, because a window in which both exist IS the defect.
+            #
+            # What is left is what a node genuinely owns: its DIM BINDINGS (policies destructure them,
+            # `{ host, user, … }:`) and `__entry`, its own registry entry. `__entry` stays on the
+            # corrected grounds of §6.4 — its kernel reads are attribute reads OFF the entry, not
+            # traversals, so an edge buys no query; it is an IDENTITY projection rather than a topology
+            # fact; and all three coordinate projections read it as the coordinate VALUE, so migrating
+            # it would remove the one value source the query depends on. The bindings' accidental
+            # second job as the coordinate SOURCE is what ends here.
             decls = {
               ${parentDim} = hostEntry;
               ${leafDim} = leafEntry;
               __entry = leafEntry;
-              # Full product coordinates of this cell (all dims → entries), cached for attribute 13's
-              # `gen-product.containmentChain` — the settings chain needs every coordinate. `c` is the
-              # cell within the host-sliced view, so it carries only the FREE dims (host was fixed by
-              # the slice and dropped); re-add the host coordinate for the full product cell. Reserved
-              # `__` key: excluded from context/coordDims, so it never leaks into policy ctx or channels.
-              __coords = c // {
-                ${parentDim} = hostEntry;
-              };
-              # Containment ancestors (§B4a visibility): the flat root scope id of every non-leaf
-              # coordinate of this cell (e.g. env:prod, host:axon). resolved-aspects reads these
-              # ancestors' resolved sets top-down — env is a coordinate root, not a P-parent, so
-              # aspect radiation from env reaches every cell it contains without a P-tree nesting.
-              # Reserved `__` key: excluded from context/coordDims.
-              __containment = map (d: "${d}:${c.${d}.name}") (
-                builtins.filter (d: d != leafDim) (builtins.attrNames c)
-              );
             };
           };
         }

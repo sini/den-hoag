@@ -74,6 +74,45 @@ in
     nodeId:
     fail "containment cycle (§3c)" "the containment-relation ancestor chain revisits node `${nodeId}` — a cyclic `containTo` topology (A contains B contains A); containment relations must follow the acyclic kind topology";
 
+  # ── the coordinate projections' three named aborts (§6.1) ─────────────────────────────────────────
+  # A node whose own TYPE is not a settings dimension. A coordinate is matched against a layer by
+  # `coordsEq`, and a layer validates its `at` dims against `settingsDims`, so a node of a kind outside
+  # that set would carry a coordinate NO LAYER COULD EVER NAME — silently, forever, with its settings
+  # resolving to the schema defaults and nothing to distinguish that from "no layer applies".
+  #
+  # UNREACHABLE TODAY BY AN IDENTITY, and that is exactly why it is written. `settingsDims` is
+  # `dimKinds ∪ (allKinds \ cellKinds)`, and both sides are ⊆ `allKinds` while every kind lands in one of
+  # them, so `settingsDims = allKinds` as a SET for every fleet — readable off `entity.nix`'s single
+  # `mapAttrs` and default.nix's two filters, with no fixture involved. This guard is what fires if that
+  # relationship ever stops holding. An unreachable guard costs nothing now and is the only thing that
+  # turns a silent wrong answer into an abort later.
+  unknownAxis =
+    nodeId: kindName: dims:
+    fail "coordinate axis (§6.1)" "node `${nodeId}` has type `${kindName}`, which is not a settings dimension (${
+      builtins.concatStringsSep ", " (map (d: "`${d}`") dims)
+    }); its coordinate could name no layer, so the settings chain would silently resolve to schema defaults";
+
+  # TWO ancestors of one node on ONE product axis. The per-axis projection selects the unique type-`d`
+  # member of `{ n } ∪ closure n`; a second member means two candidate coordinates on one axis, and an
+  # attrset literal would have silently last-won. Names the node, the axis and every member it saw.
+  #
+  # This is also the guard the cell-arm reduction rests on: the cascade filter's type test is sound
+  # exactly when a dim-typed ancestor IS the axis selection, and the only other case is this collision.
+  coordCollision =
+    nodeId: axis: members:
+    fail "coordinate collision (§6.1)" "node `${nodeId}` has ${toString (builtins.length members)} ancestors on axis `${axis}` (${
+      builtins.concatStringsSep ", " (map (m: "`${m}`") members)
+    }); a product axis fixes ONE coordinate, so two same-type ancestors name two incompatible cells";
+
+  # A node carrying no `__entry`. Every node minter writes one (`buildRoots` and `cellChildrenFor` both
+  # do), so this names a node that reached the projections without going through either. A BARE SELECT
+  # here would be an uncatchable crash naming only the attribute; a silent sentinel would be an
+  # absence⇒something decision of exactly the class these projections exist to remove. Neither: abort
+  # NAMED, beside `unknownAxis`, since the projection is total only if its value source is.
+  missingEntry =
+    nodeId:
+    fail "coordinate value (§6.1)" "node `${nodeId}` carries no `decls.__entry`, so it has no coordinate value; every node minter writes one, so this node reached the coordinate projections without being minted by `buildRoots` or `cellChildrenFor`";
+
   # A containment SOURCE slice naming more than one coordinate. The slice is the emitting scope's coords
   # minus the target (`containmentOf`), and it denotes ONE source node — the id rule reads a single
   # `kind:name` off it. Two coordinates means two candidate sources and the rule would silently take the

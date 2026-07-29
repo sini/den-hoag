@@ -31,6 +31,12 @@
   # the ctx handed to `forwardExpand` (seed + fixpoint expansion). A17: it must keep `resolvedAspects`
   # unforced at stamp — see the `ctx` binding in `compute` for the force-boundary law.
   enrichContext ? ({ bindings, ... }: bindings),
+  # A node id -> the ids of its transitive containment ancestors, a query over the `contains` edge pool
+  # (`coords.containAncestorIds`, lib/coordinates.nix). Required, not defaulted: a defaulted `_: [ ]`
+  # would silently narrow §B4a visibility to the P-tree at any fleet that forgot to supply it, which is
+  # exactly the failure the retired `decls.__containment or [ ]` had — absence reading as "no ancestors"
+  # rather than as a missing input.
+  containAncestorIds,
 }:
 let
   keyOf = aspects.key;
@@ -181,21 +187,34 @@ let
     );
 
   # §B4a visibility candidate set: the resolved-aspect keys of every scope ABOVE this node in
-  # containment — the P-parent chain (`node.parent`) UNION the cell's coordinate roots
-  # (`decls.__containment`, e.g. env:prod / host:axon). Each is a flat root or a strict ancestor,
-  # so `self.get ancestorId "resolved-aspects"` is a top-down read that never reaches back into a
-  # descendant — acyclic along the containment DAG (the §B4a ordering note, over containment rather
-  # than the P-tree). O(depth). Reading an ancestor's FINAL resolved set (not the seed) is what
-  # gives arrival-path independence across scopes.
+  # containment — the P-parent chain (`node.parent`) UNION the node's containment ancestors, read as a
+  # QUERY over the `contains` edge pool. Each is a flat root or a strict ancestor, so
+  # `self.get ancestorId "resolved-aspects"` is a top-down read that never reaches back into a descendant
+  # — acyclic along the containment DAG (the §B4a ordering note, over containment rather than the
+  # P-tree). O(depth). Reading an ancestor's FINAL resolved set (not the seed) is what gives
+  # arrival-path independence across scopes.
+  #
+  # ★ THE CONTAINMENT HALF WAS A PAYLOAD AND IS NOW THE RELATION ITSELF. It read `decls.__containment`, a
+  # list written at MINT time by `cellChildrenFor` — which made it structurally narrower than "the
+  # ancestor edge set" in a way its name concealed: the cell it was built from had already had the parent
+  # dim dropped by the slice before the leaf dim was filtered out, so it held the non-P-edge, non-leaf
+  # coordinate roots ONLY and was EMPTY on any 2-dimensional fleet. It was also absent on every root, so
+  # a containment declared as a static membership tuple — with no `containTo` relation and no P-edge —
+  # reached nothing at all here. The pool has both spellings of the relation as one deduplicated edge
+  # set, so this reads the relation rather than the residue of it, and the cycle guard comes with it.
+  #
+  # The fold is `acc // keysAt aid` over `{ key = true; }` sets, so it is ORDER-INDEPENDENT and the
+  # traversal's emission order is not load-bearing here (it is in the settings cascade, which is why the
+  # closure is ordered at all). `prelude.unique`'s O(n²) over the union goes with the second
+  # representation: the pool is keyed by `contains/${from}->${to}`, so one relation declared two ways is
+  # one edge, and the traversal's global visited set handles multi-path arrival.
   ancestorResolvedKeys =
     self: id:
     let
-      node = self.node id;
       # the P-parent chain — gen-scope's structural `ancestors` query walks `node.parent` upward
       # (immediate parent first, cycle-protected) instead of an inline chain walk.
       parentChain = scope.ancestors self id;
-      containment = node.decls.__containment or [ ];
-      ancestorIds = prelude.unique (parentChain ++ containment);
+      ancestorIds = prelude.unique (parentChain ++ containAncestorIds id);
       keysAt =
         aid: prelude.foldl' (acc: n: acc // { ${n.key} = true; }) { } (self.get aid "resolved-aspects");
     in

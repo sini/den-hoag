@@ -72,7 +72,6 @@ let
       settingsLib
       projects
       errors
-      graph
       ;
   };
   classModules = import ./class-modules.nix {
@@ -154,6 +153,14 @@ in
       # productions, with their strata) driving the claim-accessor reverse-read. Empty ⇒ the claim-accessor's
       # handle is inert (`.query` constantly `[ ]`, `.rel` `{ }`) ⇒ byte-identical.
       claimKinds ? { },
+      # THE COORDINATE PROJECTIONS over the `contains` edge pool (lib/coordinates.nix), built once per
+      # fleet in `mkDen` and threaded to every reader of a node's position: the settings cascade
+      # (`mkSettingsProduction`, seeded through `den.productions`), the §B4a ancestor visibility read
+      # (`resolved-aspects`), and the producing-scope coordinate a contribution carries (`collections`).
+      # ONE derivation, several callers — which is the point: the retired shape had a payload cache in
+      # one file and a negative `removeAttrs` enumeration in two others, and the settings reader chose
+      # between them on whether the cache was present.
+      coords,
     }:
     (structural { inherit policiesIndex fleetChildren linkTarget; })
     // {
@@ -169,6 +176,7 @@ in
             directIncludes
             enrichContext
             ;
+          inherit (coords) containAncestorIds;
         })
         resolved-aspects
         reach
@@ -181,6 +189,7 @@ in
         channelNames
         consumerLib
         ;
+      inherit (coords) nodeCoords;
     })
     // {
       # Only the EQUATION records `class-seeds` (the per-(node, channel) content query, consumed by

@@ -167,14 +167,12 @@ let
 
       ids = builtins.attrNames scopeRoots;
 
-      # A root is parentless: its base ctx = its own decls (the same `__`-key strip as attr 1).
-      baseCtxOf =
-        id:
-        removeAttrs scopeRoots.${id}.decls [
-          "__edges"
-          "__containment"
-          "__coords"
-        ];
+      # A root is parentless: its base ctx = its own decls (the same `__`-key strip as attr 1). One key
+      # left to strip: `__edges` is gen-scope's OWN reserved key, never den-hoag's to remove. The
+      # coordinate keys this list used to name are gone from `decls` entirely — containment is an edge
+      # pool and a node's position is a query over it — so the list no longer has to remember them, which
+      # is the point of moving a graph fact off the node rather than teaching every reader to skip it.
+      baseCtxOf = id: removeAttrs scopeRoots.${id}.decls [ "__edges" ];
 
       # Fire ONE feed at ONE root. The feed arrives PRE-INDEXED by node kind, so the selection is a lookup
       # rather than a predicate hidden inside a helper that two call sites share without either naming it —
