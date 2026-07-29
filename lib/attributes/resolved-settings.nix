@@ -164,10 +164,16 @@ let
                 { }
                 (coordOf nodeOf id)
               ];
-          # The cascade slices — the containment closure MINUS what `baseChain` already carries, in the
-          # traversal's emission order, prepended AFTER the empty slice so the fold order is
+          # The cascade slices — the containment closure MINUS what `baseChain` already carries, in
+          # LEAST-SPECIFIC-FIRST order, prepended AFTER the empty slice so the fold order is
           # default < env < host < user (the owner's cascade). `baseChain` always leads with the empty
           # slice, so [ ∅ ] ++ ancestors ++ tail keeps every product slice in its original relative order.
+          #
+          # ★ THAT ORDER IS A TOPOLOGICAL ONE AND IT HAS TO BE. This fold is positional — gen-settings
+          # gives authority to the LAST contributor and does not reorder — so a containment ancestor
+          # emitted after something it contains overrides its own descendant. `lib/coordinates.nix` ranks
+          # the closure with gen-graph's `coneRank` rather than reusing the traversal's emission sequence
+          # precisely because the two differ on any DAG (`ci/tests/containment-edges.nix`, witness O).
           # A CELL reads its parent root's containment ancestors; a ROOT reads its own. Discriminated by
           # the constructor tag, not by parentage nor by the id's shape — a root carrying a containment
           # parent still owns its own ancestor slices, and a multi-attached root's id carries an '@',

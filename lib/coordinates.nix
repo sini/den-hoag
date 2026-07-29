@@ -80,29 +80,39 @@ let
   # domain, so a node that no edge names is not a missing key, it is a node with no containment ancestor.
   containEdges = nid: inbound.edges nid;
 
-  # Dep-free list reversal (gen-prelude keeps its own inside `toposort`): turns gen-graph's nearest-first
-  # pre-order into the least-specific-first emission the settings fold consumes.
-  reverseList =
-    xs:
-    let
-      l = builtins.length xs;
-    in
-    builtins.genList (n: builtins.elemAt xs (l - n - 1)) l;
-
   # ── the closure: a node's containment ancestors, the node EXCLUDED ────────────────────────────────
-  # `expandPreorder` visits in first-occurrence PRE-order (nearest-first over `containEdges`); reversing
-  # yields the least-specific-first order the cascade fold consumes (default < env < host < user, ORDER
-  # load-bearing). `cycles` over the SAME accessor is the loud back-edge guard — a cyclic containment
-  # aborts NAMED rather than hanging.
+  # TWO SEPARATE QUESTIONS, TWO SEPARATE COMBINATORS, and keeping them separate is the whole correction.
+  # `expandPreorder` answers MEMBERSHIP — which ancestors are in the closure. `coneRank` answers ORDER —
+  # in which sequence the cascade fold consumes them. The traversal's own emission sequence answers
+  # NEITHER: it is an artefact of the DFS root order, and nothing below reads it.
+  #
+  # ★ WHY THE TRAVERSAL ORDER IS NOT THE CASCADE ORDER. Reverse-of-DFS-pre-order is a topological order
+  # on a TREE and is NOT one on a DAG. Measured on a diamond (`zone:g` containing both `rack:a` and
+  # `pod:b`, both containing `blade:d`) the reversed pre-order is `[rack:a, zone:g, pod:b]` — the shared
+  # grandparent lands BETWEEN its own two children, so `zone:g`'s layer OVERRIDES `rack:a`'s while being
+  # overridden by `pod:b`'s. That is the opposite of a cascade, and it is not a latent nicety: the
+  # settings fold is positional (gen-settings `resolve.nix` — "authority is positional: for `replace`,
+  # the last contributor wins", and it deliberately does not reorder), so the RESOLVED VALUE moves with
+  # the emission order. On the SAME containment relation `zone:g ⊃ rack:a`, the linear pool resolves to
+  # `rack:a`'s layer and the diamond resolved to `zone:g`'s — one relation, two answers, decided by a
+  # second path. The cascade therefore requires a genuine topological order, not merely determinism.
+  #
+  # `coneRank` (gen-graph `global.nix`, RTD 1983 topological enumeration restricted to a dependent cone)
+  # is that order: `depth id = 1 + max(depth of in-cone producers)` over the SAME `containEdges`
+  # accessor, so a container always ranks strictly below everything it contains, and its `(depth, name)`
+  # sort makes the residual freedom between INCOMPARABLE ancestors canonical rather than DFS-shaped. Its
+  # precondition is an acyclic cone, which the `cycles` guard below discharges in the same expression —
+  # the guard is forced first by the `if`, so a cyclic containment aborts NAMED rather than reaching
+  # `coneRank`'s memoized depth recurrence, which on a cycle is self-referential and uncatchable.
   #
   # ★ THE VISITED SET IS WHAT MAKES A DIAMOND ONE SLICE. `foldPreorder` threads ONE `visited` attrset
   # through the fold across ALL roots, so first-occurrence is GLOBAL rather than per-root, and a node
-  # reached by two paths from a shared grandparent is emitted once. That is dedup requirement 2; the
+  # reached by two paths from a shared grandparent is in the cone once. That is dedup requirement 2; the
   # first is edge identity (`contains/${from}->${to}`), which collapses one relation declared through two
   # spellings into ONE edge in the pool rather than in a pass someone runs.
   #
   # `emit` CANNOT PRUNE — `expandPreorder`'s fold body appends exactly one entry per visited frame — so
-  # (3)'s partition is applied as an ORDER-PRESERVING FILTER after the reversal, never inside `emit`. And
+  # (3)'s partition is applied as an ORDER-PRESERVING FILTER after the ranking, never inside `emit`. And
   # the walk must not stop at dim-typed ancestors: a non-dim ancestor reachable only THROUGH a dim one
   # still owes its slice, so the closure is walked in full and partitioned at the end.
   ancestorIdsOf =
@@ -119,7 +129,10 @@ let
         nodes = builtins.attrNames walk.seen;
       };
     in
-    if cyclic == [ ] then reverseList walk.nodes else errors.containmentCycle (builtins.head cyclic);
+    if cyclic == [ ] then
+      (graph.coneRank { edges = containEdges; } walk.nodes).order
+    else
+      errors.containmentCycle (builtins.head cyclic);
 
   # Memoized over the pool's endpoints — the closure is a property of the POOL, not of the reader, and
   # both the settings cascade and the aspect-radiation ancestor read ask for it at the same nodes. A node
@@ -198,7 +211,8 @@ let
   nodeCoords = node: nid: if isCellNode (node nid) then cellCoordsOf node nid else coordOf node nid;
 
   # ── (3) the cascade slices ────────────────────────────────────────────────────────────────────────
-  # The closure partitioned against what `baseChain` already carries, in the traversal's emission order.
+  # The closure partitioned against what `baseChain` already carries, in `containAncestorIds`' ranked
+  # least-specific-first order (NOT the traversal's emission order — see the closure comment above).
   #
   # ★ THE PREDICATE IS A SLICE TEST, NOT A TYPE TEST, and the difference is a wrong answer on the ROOT
   # arm. `containmentChain` runs only on the cell arm; on the root arm `baseChain` is `[ { }, coordOf n ]`

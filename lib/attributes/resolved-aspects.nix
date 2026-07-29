@@ -204,8 +204,11 @@ let
   # set, so this reads the relation rather than the residue of it, and the cycle guard comes with it.
   #
   # The fold is `acc // keysAt aid` over `{ key = true; }` sets, so it is ORDER-INDEPENDENT and the
-  # traversal's emission order is not load-bearing here (it is in the settings cascade, which is why the
-  # closure is ordered at all). `prelude.unique`'s O(n²) over the union goes with the second
+  # closure's SEQUENCE is not load-bearing here — it is in the settings cascade, which is the only reason
+  # `containAncestorIds` is ordered at all. Measured rather than asserted, with a positive control on the
+  # same predicate in the same run (`ci/tests/containment-edges.nix`, witness O row 5): the same ancestor
+  # SET in both orders resolves identically, and dropping an ancestor from the SET moves the answer.
+  # `prelude.unique`'s O(n²) over the union goes with the second
   # representation: the pool is keyed by `contains/${from}->${to}`, so one relation declared two ways is
   # one edge, and the traversal's global visited set handles multi-path arrival.
   ancestorResolvedKeys =

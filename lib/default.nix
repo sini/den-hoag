@@ -295,8 +295,10 @@ let
   # The coordinate projections over the `contains` edge pool (§B4a topology) — THE derivation of a
   # node's position, replacing the `__coords` payload cache and the `coordDims` negative enumeration
   # the settings reader used to choose between. Rides the same unshadowed outer `graph` seam as the
-  # query spine: it needs `transpose` (the inbound adjacency), `expandPreorder` (the ordered closure)
-  # and `cycles` (the loud back-edge guard), none of which the mkDen-local `graph` shadow carries.
+  # query spine: it needs `transpose` (the inbound adjacency), `expandPreorder` (the closure MEMBERSHIP),
+  # `coneRank` (the least-specific-first ORDER over that closure — a separate combinator because the
+  # traversal's own emission sequence is not a topological order on a DAG) and `cycles` (the loud
+  # back-edge guard), none of which the mkDen-local `graph` shadow carries.
   coordinatesLib = import ./coordinates.nix {
     inherit prelude graph errors;
   };

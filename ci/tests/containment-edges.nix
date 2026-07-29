@@ -11,7 +11,10 @@
 #   B  the coordinate at EVERY node class, including the NON-DIM ROOT — the `dimKinds`-codomain kill.
 #   E4 the cascade filter as a SLICE rule rather than its cell-arm TYPE reduction, at a root.
 #   G  the `settingsDims` axis guard, shown FIRING rather than merely unreached.
-#   O  the traversal ORDER under the real combinator, on fixtures no den fleet authors.
+#   O  the closure ORDER under the real combinator, on fixtures no den fleet authors — and, since the
+#      order is only ever a means, the resolved CASCADE VALUE the order decides (rows 4-5). The DIAMOND
+#      is the discriminating input for all of them: every construction ever proposed here agrees on a
+#      tree, so a corpus-shaped fixture cannot tell a topological order from a reversed pre-order.
 {
   denHoag,
   denHoagSrc,
@@ -22,6 +25,8 @@ let
   prelude = denHoag.internal.prelude;
   graph = denHoag.internal.genGraph;
   errors = import "${denHoagSrc}/lib/errors.nix";
+  settings = denHoag.internal.settings;
+  settingsLib = denHoag.internal.settingsLib;
   mkCoords = import "${denHoagSrc}/lib/coordinates.nix" { inherit prelude graph errors; };
 
   sortStr = builtins.sort (a: b: a < b);
@@ -347,6 +352,177 @@ let
     (synthEdge "pod:b" "blade:d")
   ];
   closureOf = pool: (synthCoords pool).containAncestorIds "blade:d";
+
+  reverseL =
+    xs:
+    let
+      l = builtins.length xs;
+    in
+    builtins.genList (n: builtins.elemAt xs (l - n - 1)) l;
+
+  # ── O2: is the CASCADE VALUE order-sensitive across a diamond? ────────────────────────────────────
+  # The order rows above measure a SEQUENCE. This block measures the thing the sequence is FOR: the
+  # resolved settings value. It exists because "does the cascade require a topological order, or only
+  # determinism plus dedup?" is answerable by construction — put the SAME settings key at two ancestors
+  # and see whether the resolved value moves when their emission order does — and answering it by
+  # reading gen-settings' fold would have been an argument, not a measurement.
+  #
+  # The layer pair is the DISCRIMINATING input: `zone:g` and `rack:a` are COMPARABLE (`zone:g` contains
+  # `rack:a`), so a cascade owes a definite answer here — the contained one is more specific and must
+  # win. Two incomparable ancestors would not discriminate: nothing orders them, so either answer is
+  # admissible and the fixture could not tell a topological order from an arbitrary one.
+  #
+  # `at = { zone = … }` validates because the layer domain is `settingsDims` (`unique (dimKinds ++
+  # rootScopeKinds)`, lib/default.nix), NOT `dimKinds` — a containment ancestor that is no product axis
+  # still carries a layer. That is what closes the "the two are always separated by some other
+  # mechanism" escape: nothing keeps a grandparent's layer and a child's layer out of one fold.
+  probeAspect = {
+    name = "cascade";
+    id_hash = "h-cascade";
+  };
+  probeSchema = settingsLib.mkSchemaFor probeAspect {
+    workers = {
+      default = "DEFAULT";
+    };
+  };
+  probeLayers = settingsLib.compileLayers {
+    productDims = [
+      "zone"
+      "rack"
+      "pod"
+      "blade"
+    ];
+    layers = [
+      {
+        at = {
+          zone = (synthNode "zone:g").decls.__entry;
+        };
+        of = probeAspect;
+        set.workers = "FROM-zone";
+      }
+      {
+        at = {
+          rack = (synthNode "rack:a").decls.__entry;
+        };
+        of = probeAspect;
+        set.workers = "FROM-rack";
+      }
+    ];
+  };
+  # resolved-settings' ROOT-arm chain, verbatim (`synthCoords` tags every node a non-cell): the empty
+  # slice, then the ancestor slices, then the node's own. `reorder` is the experimental variable and
+  # the ONLY thing that differs between the rows — same pool, same layers, same fold.
+  probeResolveAt =
+    pool: reorder:
+    let
+      c = synthCoords pool;
+      baseChain = [
+        { }
+        (c.coordOf synthNode "blade:d")
+      ];
+      ancSlices = reorder (c.ancestorSlicesOf synthNode "blade:d" baseChain);
+      chain = [ (builtins.head baseChain) ] ++ ancSlices ++ (builtins.tail baseChain);
+      layersAtSlice =
+        sliceFixed:
+        let
+          here = builtins.filter (
+            l: l.of.id_hash == probeAspect.id_hash && c.coordsEq l.atCoords sliceFixed
+          ) probeLayers;
+        in
+        map settingsLib.toGenLayer (
+          builtins.filter (l: l.via != null) here ++ builtins.filter (l: l.via == null) here
+        );
+      layers = prelude.concatMap layersAtSlice chain;
+      resolved = settings.resolveAll {
+        batch = [
+          {
+            schema = probeSchema;
+            inherit layers;
+            key = probeAspect.name;
+          }
+        ];
+      };
+    in
+    {
+      # ★ THE VACUITY GUARDS RIDE IN THE ANSWER. A fold over zero layers resolves to the schema default
+      # and would report "the order does not matter" for the wrong reason, so the chain length and the
+      # layer count are asserted beside the winner rather than trusted.
+      winner = resolved.value.${probeAspect.name}.workers;
+      chainLen = builtins.length chain;
+      layerCount = builtins.length layers;
+    };
+
+  # ── O3: the OTHER consumer of the ancestor sequence (acceptance criterion e) ───────────────────────
+  # `containAncestorIds` has three readers. `ancestorSlicesOf` → the settings cascade is measured above
+  # and IS order-sensitive. `cellCoordsOf` reduces its ancestor list to the UNIQUE type-`d` member (a
+  # singleton or a NAMED collision abort), so its answer is a function of the SET — and the suite pins it
+  # (witness B) across this change. The third is `resolved-aspects`' §B4a visibility set, and it is the
+  # one that takes the sequence as an INSTANCE ARGUMENT, so it can be driven under a permutation.
+  #
+  # THE PREDICATE IS "the computed value moves when the ancestor SEQUENCE is permuted", and the row below
+  # carries its own POSITIVE CONTROL on that same predicate in the same run: `oneAncestorOnly` drops an
+  # ancestor from the SET, and the answer moves. An instrument that cannot see the ancestor set at all
+  # would report "order-independent" identically, which is the shape this control exists to exclude.
+  eAspect = name: { inherit name; };
+  eCarrier = {
+    name = "carrier";
+    neededBy = [ (eAspect "alpha") ];
+  };
+  eNode = {
+    parent = null;
+    decls = { };
+  };
+  # A stub `self` for `resolved-aspects.compute`: two ancestors each holding one resolved aspect, and a
+  # target holding none of its own — so every key in `visible` arrives through the ancestor query.
+  eStub = {
+    get =
+      id: attr:
+      if attr == "resolved-aspects" then
+        {
+          "anc:1" = [
+            {
+              key = "alpha";
+              content = eAspect "alpha";
+            }
+          ];
+          "anc:2" = [
+            {
+              key = "beta";
+              content = eAspect "beta";
+            }
+          ];
+        }
+        .${id} or [ ]
+      else if attr == "enriched-context" then
+        { }
+      else if attr == "declarations" then
+        { actions.resolution = [ ]; }
+      else
+        throw "containment-edges stub: unexpected attr ${attr}";
+    node = _id: eNode;
+  };
+  eResolvedKeysWith =
+    ancestorIds:
+    map (n: n.key) (
+      (import "${denHoagSrc}/lib/attributes/resolved-aspects.nix"
+        {
+          inherit prelude graph;
+          inherit (denHoag.internal)
+            scope
+            resolve
+            aspects
+            select
+            ;
+        }
+        {
+          allAspects.carrier = eCarrier;
+          directIncludes = [ ];
+          containAncestorIds = _nid: ancestorIds;
+        }
+      ).resolved-aspects.compute
+        eStub
+        "tgt:d"
+    );
 in
 {
   flake.tests.containment-edges = {
@@ -527,14 +703,16 @@ in
       };
     };
 
-    # ══ O — the traversal ORDER under the REAL combinator ══════════════════════════════════════════
-    # NEW COVERAGE, not a port: nothing anywhere pinned what the traversal emits, because the closure
-    # was previously a walk over a pre-pass payload map that no branching fixture ever populated. These
-    # three rows drive `graph.expandPreorder` over a `genGraphLib.transpose` adjacency — the real
-    # instrument — on the three containment shapes.
+    # ══ O — the closure ORDER, and the cascade VALUE it decides, under the REAL combinators ═════════
+    # NEW COVERAGE, not a port: nothing anywhere pinned what the closure emits, because it was
+    # previously a walk over a pre-pass payload map that no branching fixture ever populated. These rows
+    # drive `graph.expandPreorder` + `graph.coneRank` over a `genGraphLib.transpose` adjacency — the real
+    # instruments — on the three containment shapes, and then drive `gen-settings.resolveAll` over the
+    # result, because a claim about an order is only ever a claim about the value the order produces.
     #
-    # (1) LINEAR is the control and it holds: reversing the nearest-first pre-order yields the
-    #     least-specific-first emission the cascade fold consumes (`zone` before `rack`).
+    # (1) LINEAR is the control and it holds: the closure is least-specific-first (`zone` before `rack`),
+    #     which is what the cascade fold consumes. It is also the row that CANNOT discriminate — every
+    #     construction proposed for this closure agrees on a chain, which is why rows 3-4 exist.
     test-cascade-order-linear-is-least-specific-first = {
       expr = closureOf linearPool;
       expected = [
@@ -560,27 +738,101 @@ in
         forestClosureSize = 2;
       };
     };
-    # (3) ⚠ THE ORDER CLAIM DOES NOT SURVIVE A DIAMOND, AND THIS ROW PINS WHAT ACTUALLY HAPPENS RATHER
-    #     THAN WHAT WAS CLAIMED. `reverseList`'s own comment says it "turns gen-graph's nearest-first
-    #     pre-order into the least-specific-first emission the fold consumes". Reverse-of-DFS-pre-order
-    #     is a topological order on a TREE, and is not one on a DAG: measured here, the shared
-    #     grandparent `zone:g` lands BETWEEN its two children, so its layer would override `rack:a`'s
-    #     and be overridden by `pod:b`'s — the opposite of a cascade in which an ancestor is less
-    #     specific than everything beneath it.
+    # (3) THE ORDER HOLDS ON A DIAMOND — and this expectation MOVED, deliberately, when it was made to.
+    #     Its predecessor pinned `[ rack:a, zone:g, pod:b ]` under the caption "the order claim does not
+    #     survive a diamond": the closure was the DFS pre-order reversed, which is a topological order on
+    #     a TREE and is not one on a DAG, so the shared grandparent `zone:g` landed BETWEEN its own two
+    #     children. That row existed to make installing a real order a VISIBLE decision rather than a
+    #     silent change, and this is that decision — the reversal is gone and `coneRank` (gen-graph, a
+    #     producers-first rank over the ancestor cone) supplies the order, with `expandPreorder` left
+    #     answering membership only.
     #
-    #     This is a property of the COMBINATOR, not of this migration: the same
-    #     `expandPreorder`/`reverseList` pair produced it before. What the migration changes is
-    #     REACHABILITY — merging the two containment spellings into one pool makes a diamond
-    #     expressible where a singleton-or-empty pre-pass map could not represent one. The claim is
-    #     recorded as measured rather than adjusted to fit, and a fix that gives the traversal a real
-    #     topological order should move THIS expectation deliberately.
-    test-cascade-order-diamond-is-not-least-specific-first = {
+    #     `zone:g` now leads, ahead of BOTH the children that contain `blade:d`. The residual freedom is
+    #     between `pod:b` and `rack:a` — genuinely incomparable, so no topological order fixes them
+    #     relative to each other; `coneRank`'s `(depth, name)` sort is what makes that residue canonical
+    #     rather than an artefact of the walk.
+    test-cascade-order-diamond-is-least-specific-first = {
       expr = closureOf diamondPool;
       expected = [
-        "rack:a"
         "zone:g"
         "pod:b"
+        "rack:a"
       ];
+    };
+    # (4) ★ THE CASCADE IS ORDER-SENSITIVE ACROSS A DIAMOND — the measurement that decides whether a
+    #     topological order is REQUIRED or whether determinism plus dedup would do. Same pool, same two
+    #     layers, same fold; the ancestor sequence is the only variable.
+    #
+    #       `diamondShipped`  the shipped order   → the CONTAINED node's layer wins
+    #       `diamondPermuted` the same two layers, ancestor sequence reversed → the CONTAINER's wins
+    #
+    #     Two different values from one containment relation ⇒ the resolved value is a function of the
+    #     emission order, so a merely deterministic order would be deterministically WRONG on half the
+    #     diamonds. gen-settings is explicit that it will not rescue this: its fold is positional ("for
+    #     `replace`, the last contributor wins") and it deliberately does not reorder — the ORDER IS THE
+    #     SEMANTICS, and supplying a correct one is this layer's obligation.
+    #
+    #     `linearControl` is the same relation `zone:g ⊃ rack:a` drawn as a CHAIN, where the answer was
+    #     never in doubt. Agreement between it and `diamondShipped` is the statement that a second path
+    #     to a grandparent no longer changes what a cascade means; under the pre-`coneRank` order the two
+    #     disagreed (the chain resolved `FROM-rack`, the diamond `FROM-zone`).
+    #
+    #     ★ AND DETERMINISM WAS NEVER THE MISSING HALF — measured, not assumed. Re-running these rows
+    #     against the pre-`coneRank` closure gives `diamondShipped = FROM-zone` / `diamondPermuted =
+    #     FROM-rack`: the two branches swap, so the OLD order was wrong, but it was not UNSTABLE. It could
+    #     not be: gen-graph's `transpose` materializes through `builtins.attrNames`, which sorts, so
+    #     `containEdges` answers in id order and the DFS root order is canonical however the triples were
+    #     declared — a permutation of the pool is a no-op on BOTH constructions, which is why no such row
+    #     appears here (it would assert an equivalence with no input that could break it, the vacuity this
+    #     file's header forbids). "Determinism plus dedup" was already satisfied and was already wrong.
+    #     TOPOLOGICALITY is the property that was missing, and only a DAG separates the two.
+    test-cascade-value-is-order-sensitive-across-a-diamond = {
+      expr = {
+        diamondShipped = probeResolveAt diamondPool (xs: xs);
+        diamondPermuted = probeResolveAt diamondPool reverseL;
+        linearControl = probeResolveAt linearPool (xs: xs);
+      };
+      expected = {
+        diamondShipped = {
+          winner = "FROM-rack";
+          chainLen = 5;
+          layerCount = 2;
+        };
+        diamondPermuted = {
+          winner = "FROM-zone";
+          chainLen = 5;
+          layerCount = 2;
+        };
+        linearControl = {
+          winner = "FROM-rack";
+          chainLen = 4;
+          layerCount = 2;
+        };
+      };
+    };
+    # (5) ACCEPTANCE CRITERION (e): the OTHER consumer of the ancestor sequence does not read the order.
+    #     `resolved-aspects` folds the closure into the §B4a visibility KEYSET (`acc // keysAt aid` over
+    #     `{ key = true; }` attrsets), so the sequence cannot survive into it. Measured rather than read:
+    #     the same ancestor SET in both orders resolves the same carrier, and `oneAncestorOnly` — the
+    #     POSITIVE CONTROL on the same predicate in the same run — drops `anc:1` from the SET and the
+    #     answer moves, which is what distinguishes "order-independent" from "blind to its ancestors".
+    test-ancestor-sequence-is-read-only-by-the-settings-cascade = {
+      expr = {
+        forward = eResolvedKeysWith [
+          "anc:1"
+          "anc:2"
+        ];
+        reversed = eResolvedKeysWith [
+          "anc:2"
+          "anc:1"
+        ];
+        oneAncestorOnly = eResolvedKeysWith [ "anc:2" ];
+      };
+      expected = {
+        forward = [ "carrier" ];
+        reversed = [ "carrier" ];
+        oneAncestorOnly = [ ];
+      };
     };
   };
 }
