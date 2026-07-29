@@ -10,41 +10,12 @@
   ...
 }:
 let
-  libFiles = [
-    "default.nix"
-    "errors.nix"
-    "entity.nix"
-    "fleet.nix"
-    "coordinates.nix"
-    "build-roots.nix"
-    "scope-adapter.nix"
-    "declarations.nix"
-    "concern-policies.nix"
-    "concern-aspects.nix"
-    "concern-quirks.nix"
-    "concern-classes.nix"
-    "concern-collectors.nix"
-    "concern-relations.nix"
-    "concern-derived.nix"
-    "outputs.nix"
-    "query.nix"
-    "nest.nix"
-    "linearization.nix"
-    "settings.nix"
-    "projects.nix"
-    "demand.nix"
-    "graph-escape.nix"
-    "attributes/default.nix"
-    "attributes/structural.nix"
-    "attributes/resolved-aspects.nix"
-    "attributes/collections.nix"
-    "attributes/resolved-settings.nix"
-    "attributes/class-modules.nix"
-    "attributes/output-modules.nix"
-    "output/terminal.nix"
-    "output/class-share.nix"
-    "output/flake-adapter.nix"
-  ];
+  # The scan set is DERIVED from the tree (`_lib/core-files.nix`), shared with boundary.nix and
+  # end-to-end.nix. It used to be a hand-written copy of boundary.nix's list, and it silently fell 17
+  # files behind: a new kernel file was simply not named here, so it was NOT SCANNED and this suite
+  # stayed green — a tripwire that keeps reporting success over a shrinking fraction of the kernel is
+  # worse than none, because the coverage it claims never visibly drops.
+  libFiles = import ./_lib/core-files.nix { inherit denHoagSrc nixpkgsLib; };
   forbidden = [
     "builtins.genericClosure"
     "lib.fix"

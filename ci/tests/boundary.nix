@@ -22,10 +22,20 @@ let
   inherit (nixpkgsLib) hasSuffix;
   inherit (genPrelude) hasInfix;
 
-  # ── the CORE file set — lib/ MINUS lib/compat/ (explicit + checked-in, like zero-machinery.nix: adding
-  #    a core file forces a visible edit here, which is the point). KEEP IN SYNC with `find lib -name
-  #    '*.nix' -not -path 'lib/compat/*'`; a `test-core-file-list-complete` guard below catches drift. ──
-  coreFiles = [
+  # ── the CORE file set the guards below SCAN — `lib/` minus `lib/compat/`, DERIVED from the tree by
+  #    `_lib/core-files.nix` and shared with zero-machinery.nix and end-to-end.nix. A new kernel file is
+  #    scanned the moment it exists. It used to be the checked-in list below, which meant each scan
+  #    reported success over whatever the list happened to name. ──────────────────────────────────────
+  actualCore = import ./_lib/core-files.nix { inherit denHoagSrc nixpkgsLib; };
+  sortStr = builtins.sort (a: b: a < b);
+  missingFrom = present: candidates: builtins.filter (x: !(builtins.elem x present)) candidates;
+
+  # ── the DECLARED core set — checked-in, and asserted equal to the derived set by
+  #    `test-core-file-list-complete`. It is no longer any scan's input: its one job is to make adding a
+  #    kernel file force a visible edit HERE, so the boundary is re-reviewed when the core grows. A
+  #    review trigger and a scan set are different obligations; this file used to serve both with one
+  #    list, and the two guards that copied it inherited the scan job without the review that pinned it.
+  declaredCore = [
     "default.nix"
     "errors.nix"
     "entity.nix"
@@ -125,7 +135,7 @@ let
       t = stripCompatible (readCore f);
     in
     map (tok: "${f}:${tok}") (builtins.filter (tok: hasInfix tok t) forbiddenTokens)
-  ) coreFiles;
+  ) actualCore;
 
   # ── (2) IMPORT DIRECTION — a core file importing from lib/compat/ reverses the dependency. `compat`
   #    (token 1) already catches the path fragment `compat/`; this asserts the specific import expressions
@@ -136,7 +146,7 @@ let
       t = readCore f;
     in
     hasInfix "import ./compat" t || hasInfix "import ../compat" t || hasInfix "/compat/" t
-  ) coreFiles;
+  ) actualCore;
 
   # ── (3) SEAM ENUMERATION — the ONLY core `denHoag.*` surfaces the shim may consume. A comment-anchored
   #    constant + a scan of lib/compat/** that asserts its `denHoag.<top>` references are a subset. A NEW
@@ -229,26 +239,6 @@ let
   seamViolations = nixpkgsLib.unique (
     builtins.filter (r: !(builtins.elem r seamApiSurfaces)) topRefs
   );
-
-  # actual core-file-list drift guard: the on-disk core set == the checked-in list.
-  actualCore =
-    let
-      walk =
-        rel:
-        let
-          e = builtins.readDir "${denHoagSrc}/lib/${rel}";
-        in
-        builtins.concatMap (
-          n:
-          if e.${n} == "directory" then
-            (if n == "compat" then [ ] else walk "${rel}${n}/")
-          else if isNix n then
-            [ "${rel}${n}" ]
-          else
-            [ ]
-        ) (builtins.attrNames e);
-    in
-    walk "";
 
   # ── (4) LEGACY SIBLING ISOLATION — each legacy surface (lib/compat/legacy/*) is a PURE ISOLATED battery
   #    over the shared primitive; no legacy module imports another legacy MODULE (that would recouple the
@@ -370,11 +360,22 @@ in
       ];
     };
 
-    # the checked-in core file list has not drifted from the on-disk core set (adding a core file must
-    # add it here, so it is actually scanned by guards 1–2).
+    # The DECLARED core list has not drifted from the tree. Guards 1–2 scan the DERIVED set, so drift here
+    # can no longer mean a file went unscanned; it means a kernel file entered or left the core without the
+    # compat/core boundary being re-reviewed, which is a review obligation in its own right.
+    #
+    # Reported as the symmetric difference BY NAME, not as a boolean. `sorted a == sorted b` fails with
+    # `false != true`, which says something is wrong without saying what — and a guard that cannot name
+    # what it caught is one confusing bisect away from being read as noise.
     test-core-file-list-complete = {
-      expr = builtins.sort (a: b: a < b) coreFiles == builtins.sort (a: b: a < b) actualCore;
-      expected = true;
+      expr = {
+        undeclared = sortStr (missingFrom declaredCore actualCore);
+        stale = sortStr (missingFrom actualCore declaredCore);
+      };
+      expected = {
+        undeclared = [ ];
+        stale = [ ];
+      };
     };
 
     # (4) legacy SIBLING ISOLATION — no legacy module imports a legacy sibling; only the shared deliver

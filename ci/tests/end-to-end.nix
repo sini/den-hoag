@@ -159,35 +159,12 @@ let
   # and ZERO `dispatchStep` anywhere (the enrichment accumulator was retired to the re-dispatch form,
   # decision #25). Collections use gen-pipe folds, not a circular. Any NEW `scope.circular` in another
   # file, any extra call in these two, or any `dispatchStep` fails the suite.
-  libFiles = [
-    "default.nix"
-    "errors.nix"
-    "entity.nix"
-    "fleet.nix"
-    "coordinates.nix"
-    "build-roots.nix"
-    "scope-adapter.nix"
-    "declarations.nix"
-    "staged-resolution.nix"
-    "concern-policies.nix"
-    "concern-aspects.nix"
-    "concern-quirks.nix"
-    "concern-classes.nix"
-    "linearization.nix"
-    "settings.nix"
-    "projects.nix"
-    "demand.nix"
-    "graph-escape.nix"
-    "attributes/default.nix"
-    "attributes/structural.nix"
-    "attributes/resolved-aspects.nix"
-    "attributes/collections.nix"
-    "attributes/resolved-settings.nix"
-    "attributes/class-modules.nix"
-    "attributes/output-modules.nix"
-    "output/terminal.nix"
-    "output/class-share.nix"
-  ];
+  # The scan set is DERIVED from the tree (`_lib/core-files.nix`), shared with boundary.nix and
+  # zero-machinery.nix. It used to be a hand-written copy and had fallen 23 files behind: a NEW fixpoint
+  # in a file this list did not name was not counted, so the census answered "exactly two `scope.circular`
+  # call sites" over a subset of the kernel while reporting it of the whole. A census whose domain is
+  # hand-maintained measures the list, not the code.
+  libFiles = import ./_lib/core-files.nix { inherit denHoagSrc nixpkgsLib; };
   read = f: builtins.readFile "${denHoagSrc}/lib/${f}";
   isCommentLine = l: builtins.match "[[:space:]]*#.*" l != null;
   codeOf =
