@@ -189,7 +189,17 @@ in
             classify = _: "enrich";
             groupOrder = [ "enrich" ];
           }).actions.enrich or [ ];
-        delta = acts: prelude.foldl' (acc: e: acc // { ${e.key} = e.value; }) { } acts;
+        # THE FACT CARRIES ITS JUSTIFICATION. A binding is where the derived value and the rule that
+        # derived it are both in scope, so the provenance is attached HERE rather than at any one
+        # reader: every force of `ctx.<key>` — the supportedness comparison below, a downstream policy
+        # body, a materialized NixOS option — raises inside a frame naming the producing policy. A raise
+        # is the policy author's own diagnostic (`errors.enrichValueContext`); un-attributed it surfaces
+        # at whichever consumer happened to read the key, with no path back to the rule that wrote it.
+        delta =
+          acts:
+          prelude.foldl' (
+            acc: e: acc // { ${e.key} = errors.enrichValueContext e.__policy e.key e.value; }
+          ) { } acts;
         converged =
           scope.circular
             {

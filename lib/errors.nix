@@ -165,6 +165,33 @@ in
     key: ownerA: ownerB:
     fail "single-writer enrichment (B1)" "enrich key `${key}` is written by two policies (`${ownerA}` and `${ownerB}`); a key may be enriched by exactly one policy";
 
+  # THE JUSTIFICATION RIDES THE FACT. An enrichment fact's justification is the policy that derived it
+  # (ABW's supportedness, p. 95: a fact in the model is there BECAUSE some rule's body holds). So when
+  # forcing that fact raises, the diagnostic must name the rule — otherwise the author's own `throw`
+  # surfaces at whichever consumer read the key, with no path back to the policy that wrote it.
+  #
+  # NOT a `tryEval` guard, and the difference is the whole point. `tryEval` would have to CATCH the
+  # error to name it, and Nix cannot recover a caught throw's TEXT — so naming the policy would cost
+  # the author's own message, trading one missing half of the diagnosis for the other. It also cannot
+  # catch the non-recoverable class (a missing attribute) at all, which is exactly the class a policy
+  # body reading an absent ctx field raises. `addErrorContext` DECORATES instead: the original error
+  # propagates verbatim with this frame added to its trace, and it is total over the error classes
+  # because it never inspects the error.
+  #
+  # LAZY, and therefore free: the wrapper is an unforced application, so a fact nothing reads costs
+  # nothing and A17's laziness contract is untouched. It also cannot reorder anything, because it
+  # neither forces earlier nor catches.
+  #
+  # ★ ITS EXTENT IS ONE FORCE, said rather than implied. `addErrorContext` decorates what raises while
+  # the fact is brought to WHNF; a throw sitting DEEPER inside an already-WHNF value (`value = { a =
+  # throw …; }`) raises after this frame has returned and is not decorated. Closing that would mean
+  # `deepSeq`-ing every enrichment fact at its binding — a strictness change on a lazy contract, which
+  # is a worse defect than the one it would diagnose. The wrapper covers the fact ITSELF, which is what
+  # a policy's enrichment VALUE is.
+  enrichValueContext =
+    policyName: key: value:
+    builtins.addErrorContext "while forcing the enrichment fact `${key}`, derived by policy `${policyName}` (B1 enrichment; the error below is the policy's own)" value;
+
   # Context supportedness — Apt, Blair & Walker (1988), "Towards a Theory of Declarative
   # Knowledge": supportedness (printed p. 95), Theorem 7 (printed p. 111). The enrichment
   # fixpoint's published delta must be the state the loop reached (a fixed point of the
