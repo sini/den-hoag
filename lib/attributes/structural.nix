@@ -114,7 +114,6 @@ in
               "__edges"
               "__containment"
               "__coords"
-              "__root"
               "suppressedPolicies"
             ];
         } self id;

@@ -47,7 +47,6 @@ let
       "__edges"
       "__containment"
       "__coords"
-      "__root"
     ];
 
   # An identity-bearing aspect entry from a resolved aspect's content (id_hash added by the aspect

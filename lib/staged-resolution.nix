@@ -174,7 +174,6 @@ let
           "__edges"
           "__containment"
           "__coords"
-          "__root"
         ];
 
       # Fire ONE feed at ONE root. The feed arrives PRE-INDEXED by node kind, so the selection is a lookup
