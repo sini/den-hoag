@@ -107,8 +107,8 @@ let
   # the ONE equations map like the relation/derived accessors. The vocabulary + laws validation is the
   # definition-time guard (default.nix); this only builds the attr records. See concern-productions.nix.
   resolutionProductions = import ../concern-productions.nix { inherit prelude strataScope resolve; };
-  # §5 / §9 — the claim-accessor: the reverse-read (who-claims-me) resolution equation over the off-trace
-  # claim pool, the transpose (Mokhov 2017 §4.3) of the leaf-claim forward adjacency. Sibling of the relation
+  # den-hoag §5 / §9 — the claim-accessor: the reverse-read (who-claims-me) resolution equation over the off-trace
+  # claim pool, the transpose (Mokhov 2017 §5.2) of the leaf-claim forward adjacency. Sibling of the relation
   # accessors; its per-node handle carries the node.query/node.rel silent-vs-throwing contract. See the file.
   claimAccessor = import ./claim-accessor.nix {
     inherit prelude resolve strataScope;

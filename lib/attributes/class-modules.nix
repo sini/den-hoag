@@ -276,7 +276,7 @@ let
       else
         {
           inherit rel;
-          # Mokhov 2017 §4.3 — the SAME primitive the relation producer (`lib/default.nix`) already uses for
+          # Mokhov 2017 §5.2 — the SAME primitive the relation producer (`lib/default.nix`) already uses for
           # the inverse-edge job, whose comment there names the hand-rolled from/to swap as the thing NOT to
           # write. See REFERENCE.md.
           rev = graph.transpose rel;

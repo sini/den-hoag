@@ -1,7 +1,7 @@
 # The claim-accessor — the REVERSE-READ resolution equation over the off-trace claim pool (spec §5,
 # productions substrate). Where the leaf claims (`emit = edges` CONSTANT productions, from = ∅) supply the
 # FORWARD adjacency (a source reads its egress, who-do-I-claim), this equation delivers its TRANSPOSE (a
-# target reads its ingress, who-claims-me) — the §9 algebraic-graph transpose (Mokhov 2017 §4.3), NOT a
+# target reads its ingress, who-claims-me) — the den-hoag §9 algebraic-graph transpose (Mokhov 2017 §5.2), NOT a
 # hand-rolled from/to swap. It is the sibling of `rel-accessor`: a `resolve.attr` at the `resolution` stratum
 # with `readsAttrs = [ ]` (the claim pool is the STATIC, registry-derived `relationEdges` — GAP-5, so the
 # compute ignores `self`). A later provider reads THIS accessor at its OWN node — an INTRA-stratum positive
@@ -56,7 +56,7 @@ let
 
   # reverseByKind — the per-claim-kind REVERSE adjacency over an edge pool (§9 transpose). For each claim kind
   # `k`: `k`'s forward edges become `{ edges = from → [to]; nodes = k's endpoints }`; `transpose` reverses the
-  # adjacency (to → [from], Mokhov 2017 §4.3), so `(reverseByKind pool).<k> id` = the sources that claim `id`
+  # adjacency (to → [from], Mokhov 2017 §5.2), so `(reverseByKind pool).<k> id` = the sources that claim `id`
   # via `k` (who-claims-me). A kind with no forward edges in `pool` ⇒ an empty reverse (never an attr-miss).
   reverseByKind =
     pool:
@@ -86,7 +86,7 @@ let
       ) claimKindNames
     );
 
-  # (b) PAYLOAD-PROJECTING reverse-read (§5, additive). `transpose` is adjacency-ONLY (Mokhov 2017 §4.3 —
+  # (b) PAYLOAD-PROJECTING reverse-read (den-hoag §5, additive). `transpose` is adjacency-ONLY (Mokhov 2017 §5.2 —
   # gen-graph reverses id→[id], dropping `e.data`); the payload PROJECTION lives HERE, in the kernel accessor.
   # `projectedByKind pool` builds, per claim kind, a per-TARGET index of `{ from; data }` records (the claimer
   # id PLUS its carried edge payload), so `(projectedByKind pool).<k> id` = `[ { from; data } ]` for id's

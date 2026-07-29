@@ -1,7 +1,7 @@
 # The PROVIDER/CONSUMER witness (§5 resolution facet / productions substrate, §9 transpose reverse-read).
 # The FORWARD claim view (a source reads its egress, who-do-I-claim) is queried over the §3 query spine in the
 # sibling `claim-pool.nix`; this suite proves the REVERSE view and the provider/consumer wiring built on it:
-#   claim-accessor — the who-claims-me handle, the §9 transpose (Mokhov 2017 §4.3) of the leaf-claim forward
+#   claim-accessor — the who-claims-me handle, the den-hoag §9 transpose (Mokhov 2017 §5.2) of the leaf-claim forward
 #     adjacency, delivered as a `resolution`-stratum `resolve.attr` (readsAttrs = [ ], a static-pool read).
 #   provider — a `den.productions` attr at `resolution` reading `claim-accessor` at its OWN node (an INTRA-
 #     stratum positive read, A9 — exactly the posture derived-accessor reads rel-accessor), building a

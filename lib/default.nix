@@ -292,8 +292,8 @@ let
   queryLib = import ./query.nix {
     inherit prelude graph;
   };
-  # The UNSHADOWED gen-graph lib alias — the relation producer (§9) reverses each relation kind's forward edges
-  # via `genGraphLib.transpose` (Mokhov 2017 §4.3) instead of a hand-rolled from/to swap. Inside the mkDen
+  # The UNSHADOWED gen-graph lib alias — the relation producer (den-hoag §9) reverses each relation kind's forward
+  # edges via `genGraphLib.transpose` (Mokhov 2017 §5.2) instead of a hand-rolled from/to swap. Inside the mkDen
   # closure `graph` is shadowed by the read-only `graph = graphEscape {…}` surface (no `.transpose`), so the
   # producer reaches the outer labeled-graph calculus through this alias (the seam receiversLib/queryLib ride).
   genGraphLib = graph;
@@ -2010,8 +2010,8 @@ let
           ) (builtins.attrNames entityEdges)
         ) (builtins.attrNames ent.registries.${kindName})
       ) (builtins.attrNames ent.registries);
-      # ── THE INVERSE EDGES via gen-graph.transpose (§9): the reverse-query edges are the FORWARD edges of a
-      # relation kind REVERSED — a per-kind `genGraphLib.transpose` (Mokhov 2017 §4.3), NOT a hand-rolled from/to
+      # ── THE INVERSE EDGES via gen-graph.transpose (den-hoag §9): the reverse-query edges are the FORWARD edges
+      # of a relation kind REVERSED — a per-kind `genGraphLib.transpose` (Mokhov 2017 §5.2), NOT a hand-rolled from/to
       # swap. For each relation kind `k` carrying an `inverse` label `k⁻¹`: k's forward edges become a per-kind
       # accessor `{ edges = from → [to]; nodes = k's endpoints }` (the synthesized `nodes` is the union of k's
       # endpoints — transpose materializes over it); `transpose` reverses the adjacency (to → [from]); each
