@@ -56,8 +56,12 @@
   # refusal — a v1 flake-OUTPUT policy is ship-gate class F/G, not the class-A arm — and it throws at ANY
   # context, sentinel or real. Declaring `delivery` (the kind it would produce) keeps the rule ALIVE and
   # gated on its `system` coord, so the refusal still fires LOUDLY where a flake-system node binds one.
-  # `emits = [ ]` would be the wrong answer: it compiles to NO rule, replacing a designed refusal with
-  # silence.
+  # `emits = [ ]` would be the wrong answer for a DIFFERENT reason than it once was. It no longer deletes
+  # the policy (an empty codomain is an empty HEAD — the rule compiles and fires; concern-policies.nix),
+  # so the refusal would still be reached; but the stub's throw would then arrive as a codomain-violating
+  # emission's neighbour rather than as the routed class-F/G message, and the bottom-stratum assignment an
+  # empty head takes would move it off the delivery stratum it belongs to. `delivery` is the kind it would
+  # produce, so declaring it is the true statement as well as the working one.
   system-to-os-outputs = [ "delivery" ];
   system-to-hm-outputs = [ "delivery" ];
   system-to-flake-parts = [ "delivery" ];
@@ -72,8 +76,13 @@
   homeDarwin-to-hm = [ "delivery" ];
   # ★ A LIVE CORPUS DROP, closed. `nixpkgs-overlays.nix:20` is VALUE-conditional on
   # `host.settings.core.users.home-manager-shared.useGlobalPkgs`, which is false at a sentinel built from
-  # the settings tree's own defaults — so its codomain recovered EMPTY and the policy compiled to no rule
-  # at all, silently. It is selected (`den.schema.user.includes`), so only the codomain was missing.
+  # the settings tree's own defaults — so its codomain recovered EMPTY and, under the kernel of the day,
+  # the policy compiled to no rule at all, silently. It is selected (`den.schema.user.includes`), so only
+  # the codomain was missing. The DELETION half of that failure is now structurally gone (an empty
+  # codomain compiles to a firing rule), but the entry stays and is still load-bearing: the recovery would
+  # otherwise hand the kernel an empty head for a body that genuinely emits, and the emission would abort
+  # against its own declared codomain. Recovering the wrong answer is the defect; deleting the policy was
+  # only its loudest consequence.
   # MEASURED before declaring: its emission is a `pipe.expose` on a bare channel, which is SITE-MARK data
   # (`declare.isSiteMarkData`) — so the rule fires, passes `conformingProduce`'s pipeOp arm, and makes no
   # compose commitment. Declaring it therefore does not touch the unbuilt `ops` seam.

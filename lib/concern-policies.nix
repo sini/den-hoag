@@ -12,8 +12,32 @@
 # rather than an annotation: the declaration cannot drift from the body. Five facts the kernel used to
 # obtain by execution are set-membership tests on it — the dispatch group (`declare.stratumOfKind` is
 # TOTAL on the kind vocabulary), the produced-kind family, resolve-family membership, exclude-family
-# membership, and enrich-only-ness. `emits = [ ]` is legal, means "emits nothing", and compiles to NO
-# rule: an emitter of nothing is not a rule.
+# membership, and enrich-only-ness.
+#
+# `emits = [ ]` IS AN EMPTY HEAD, NOT AN ABSENT RULE, and that is a RULING on what an empty declaration
+# means rather than a default nobody chose. The three readings and why two are refused:
+#   · EVERYTHING — not expressible, and already refused by a law here: the stratum is DERIVED from the
+#     codomain, and a codomain over the whole kind vocabulary spans strata, which `policyMessage`
+#     rejects. Ruled out by the representation, not by preference.
+#   · NOTHING, i.e. compile the policy away — REFUSED, and this is the ruling that matters. It reads an
+#     under-specified declaration as a DELETION ORDER, and the deletion is total and silent: the body
+#     fires at no node, and the record's `selects`, `gate` and fleet-wide `ops` go with it, because
+#     every feed is a filter over the compiled rules. Nothing reddens, and an absent policy leaves
+#     nothing to look at — the worst shape a failure can take. It also conflates two states that must
+#     stay apart: "I deliberately produce nothing" and "my codomain could not be determined", which is
+#     the same conflation an under-specified declaration always invites.
+#   · A RULE WHOSE CONSEQUENCE SET IS EMPTY — the ruling. A clause with an empty head is an ordinary
+#     clause form, not the absence of one: it is in the program P, T_P maps over it, and it contributes
+#     nothing to the model. Dropping it from P yields a DIFFERENT program. So an `emits = [ ]` policy
+#     compiles to a rule like any other, fires where its gate admits, and produces nothing — and the
+#     codomain contract already here makes the honest reading enforceable: a body that emits ANYTHING
+#     violates an empty codomain and aborts NAMED at the emitting site (`conformingProduce` →
+#     `errors.emitsUndeclared`), naming the policy and the kind it produced. The check that catches the
+#     drift is the one every other policy already runs; nothing new has to be maintained for this case.
+# THE DELETION IS THEREFORE UNREPRESENTABLE rather than merely discouraged: `compileOne` is TOTAL onto
+# exactly one rule per declared policy, with no arm that yields none, so no value of `emits` can remove
+# a policy from the compiled rule set. A policy disappears only by not being written — which is the one
+# spelling of "this fleet has no such rule" that a reader cannot mistake for anything else.
 #
 # SELECTS is the 3-VALUED dispatch selection, because absence has two DIFFERENT meanings and one value
 # cannot carry both: `null` = unconstrained (dynamic attachment — fires wherever the gate admits),
@@ -76,8 +100,25 @@ let
   opsOf = v: v.ops or [ ];
   # The group a policy's declared codomain classifies to. `declare.stratumOfKind` is TOTAL on the closed
   # kind vocabulary, so the stratum is DERIVED and never declared twice (a second source can disagree with
-  # the first). An empty codomain classifies to no group and compiles to no rule (see `compileOne`).
+  # the first). Stratum-spanning is refused at registration, so this is a singleton wherever the codomain
+  # is non-empty; `groupOf` below is the total function `compileOne` reads.
   groupsOf = emits: prelude.unique (map declare.stratumOfKind emits);
+
+  # THE STRATUM OF AN EMPTY HEAD, decided rather than defaulted. ABW's level condition (Apt, Blair &
+  # Walker 1988, Stratified Programs Definition 3, p. 96) constrains a clause's level THROUGH THE
+  # RELATIONS IN ITS HEAD: a clause whose head is in P_i bounds where its body may read from. An empty
+  # head names no relation and so imposes no lower bound, which makes the BOTTOM stratum the canonical
+  # assignment — and it is the conservative one on the reading that matters here, because the A9
+  # capability projection admits only STRICTLY LOWER ctx facts, so a bottom-stratum rule is granted the
+  # least. It also fires earliest, so a body that violates its empty codomain aborts at the first
+  # dispatch rather than a later one. `declare.strata` is non-empty by construction (compileStrata seeds
+  # the framework strata), so this is total.
+  groupOf =
+    emits:
+    let
+      groups = groupsOf emits;
+    in
+    if groups == [ ] then builtins.head declare.strata else builtins.head groups;
 
   # policyMessage — the DEFINITION-TIME validator as a VALUE (`null` = clean, else the FIRST named
   # message), so every named contract here is CI-testable: Nix cannot recover a throw's TEXT from a caught
@@ -100,7 +141,7 @@ let
         if !(builtins.isAttrs v) then
           "den.policies: `${name}` is not a record - a policy value is `{ emits; fn; selects ? null; gate ? <formals>; ops ? [ ]; }`. A bare `ctx: [ declarations ]` closure cannot carry the emitted-kind family the kernel schedules on, and recovering it by firing the body against a fabricated context is what this surface replaces"
         else if !(v ? emits) then
-          "den.policies: `${name}` declares no `emits` - the declaration codomain is REQUIRED. `emits = [ ]` (produces nothing, compiles to no rule) is a legal value; an omitted `emits` is not, because silence must not be read as a permission to discover it by execution"
+          "den.policies: `${name}` declares no `emits` - the declaration codomain is REQUIRED. `emits = [ ]` (an EMPTY HEAD: the rule compiles, fires, and producing anything violates its codomain) is a legal value; an omitted `emits` is not, because silence must not be read as a permission to discover it by execution"
         else if !(builtins.isList emits) then
           "den.policies: `${name}`.emits must be a LIST of declaration-kind tags, got ${builtins.typeOf emits}"
         else if !(v ? fn) || !(builtins.isFunction v.fn) then
@@ -211,33 +252,36 @@ let
             a // { __policy = name; }
         ) (baseProduce id ctx);
 
-      # ONE policy compiles to ONE rule. No probe, no sentinel, no fabricated context, no per-stratum fan:
-      # `group` is stamped from the DECLARED codomain at definition time, and `produces` IS that codomain,
-      # so gen-dispatch honours it and skips its per-dispatch fire-and-classify validation. A policy
-      # declaring an EMPTY codomain compiles to NO rule. The capability projection over ctx (A9) is
-      # unchanged; it now reads a declared group instead of an observed one.
+      # ONE policy compiles to ONE rule — TOTALLY, with no arm that compiles to none. `group` is stamped
+      # from the DECLARED codomain at definition time and `produces` IS that codomain, so gen-dispatch
+      # honours it and skips its per-dispatch fire-and-classify validation. There is no probe, no
+      # sentinel, no fabricated context and no per-stratum fan. The capability projection over ctx (A9)
+      # is unchanged; it now reads a declared group instead of an observed one.
+      #
+      # THE MAP IS TOTAL, which IS the remedy for the silent-deletion defect rather than a check against
+      # it. A `[ ]` arm here would be a policy-shaped hole in the compiled rule set that nothing can
+      # observe — no acts, no error, no trace — so there is no such arm: an empty codomain is an empty
+      # HEAD (a rule that fires and produces nothing, its emptiness enforced by `conformingProduce`), not
+      # an absent rule. `groupOf` is total over codomains, so the group exists for every policy.
       compileOne =
         name: v:
         let
           emits = emitsOf v;
           base = dispatch.fromFunction (fnOf v);
-          groups = groupsOf emits;
+          group = groupOf emits;
         in
-        if emits == [ ] then
-          [ ]
-        else
-          [
-            (dispatch.deriveGroup declare.stratumOfKind {
-              inherit (base) nac priority overrides;
-              condition = gateOf v;
-              group = builtins.head groups;
-              produces = emits;
-              selects = selectsOf v;
-              ops = opsOf v;
-              identity = name;
-              produce = conformingProduce name emits (projectedBase (builtins.head groups) base.produce);
-            })
-          ];
+        [
+          (dispatch.deriveGroup declare.stratumOfKind {
+            inherit (base) nac priority overrides;
+            inherit group;
+            condition = gateOf v;
+            produces = emits;
+            selects = selectsOf v;
+            ops = opsOf v;
+            identity = name;
+            produce = conformingProduce name emits (projectedBase group base.produce);
+          })
+        ];
 
       # Registration rejection is forced BEFORE any rule exists, so a malformed surface is refused at its
       # own boundary rather than at whichever consumer first forces a rule.
