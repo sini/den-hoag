@@ -1111,6 +1111,23 @@ let
         inherit dimKinds membershipTuples;
       };
 
+      # THE `contains` EDGE POOL (§B4a topology) — containment as real Model-Q adjacency rather than as
+      # node payload. Built HERE, after the pre-pass and beside the minters, because its endpoints ARE
+      # minted node ids: `containmentAttachments` decides `mintedRootId`'s arm, so the ids do not exist
+      # until attachments are known, and an edge read at mint time would have to spell them itself. The
+      # producer therefore takes the same attachment map `buildRoots` takes and the same `cellKinds` that
+      # decide which constructor mints a child, and reuses both minters' id rules rather than restating
+      # them.
+      #
+      # Off the materialization trace by DECLARATION: `contains` is a registered structural kind whose
+      # registry row states `to = "query"`, so `materializeEdges` drops it. It lives in the query pool,
+      # which is never concatenated into `edgesForRoot`.
+      containsEdges = fleet.containmentEdges {
+        inherit membershipTuples cellKinds;
+        inherit (ent) meta;
+        attachments = prePass.containmentAttachments;
+      };
+
       # The BASE root scope nodes (un-injected) — the MAIN run's roots, over the membership-derived
       # `rootScopeKinds` (non-candidates ∪ UNtargeted candidates, e.g. the corpus's cluster). Distinct from
       # `prePassScopeRoots` (non-candidates only): an untargeted candidate is a root the main run reads but
@@ -2572,6 +2589,16 @@ let
         # `memberEdges` twin — NOT in `output.edgesForRoot`/the live trace, so byte-identity holds; corpus-inert
         # `[ ]` (no `.edges` ⇒ nothing). Forcing it fires the woven undeclared-relation guard.
         relationEdges = relationEdges;
+        # THE `contains` POOL (§B4a): containment as Model-Q adjacency `{ id; kind; from; to; stratum }`,
+        # endpoints being minted node ids. Off the materialization trace by its registry row
+        # (`to = "query"`), so reading it cannot move the frozen trace.
+        containsEdges = containsEdges;
+        # The producer's own INPUTS, exposed because `containmentPairs`/`containmentEdges` are public
+        # re-exports and a caller cannot supply required arguments it has no way to read. `cellKinds` is
+        # the membership-derived cell/root partition (which constructor mints a kind) and
+        # `membershipTuples` the declared containment tuples.
+        cellKinds = cellKinds;
+        membershipTuples = membershipTuples;
         # relQuery (§5): the fleet's `sel`→`matchId` `where`-adapted relation query over `den.relationEdges` —
         # `relQuery { from; kind; sel ? null; mode ? "all" }`. Per-mkDen (closes over the fleet's scope +
         # relation edges); corpus-inert — a new read-only surface nothing in the corpus calls.
@@ -2792,9 +2819,10 @@ in
     # (§4.2/§4.6) — the cell/containment nest-edge producer, for the nest-producer suite (emits nest
     # intents + graft contributions from `containmentPairs`, gated corpus-inert by `resolveReceiver`).
     inherit (edgesLib) applyOverrides assembleEdges nestProducer;
-    # `containmentPairs { fleet; meta }` (§4.2/§4.6) — the fleet's immediate parent→child cell edges, the
-    # thin containment accessor `nestProducer` reads.
-    inherit (fleet) containmentPairs;
+    # `containmentPairs { membershipTuples; meta; attachments; cellKinds }` (§4.2/§4.6) — the fleet's
+    # immediate parent→child containment, the thin accessor `nestProducer` reads. A VIEW over
+    # `containmentRelation`, which also produces the `contains` edge pool, so the two cannot disagree.
+    inherit (fleet) containmentPairs containmentRelation containmentEdges;
     # `memberProducer { collectors; memberIdsFor; classNameOf }` (§4.7) — the selector-driven member-edge
     # producer (collector→member), the nestProducer twin the aggregate folds over. Pure over the gather.
     inherit (collectorsLib) memberProducer;

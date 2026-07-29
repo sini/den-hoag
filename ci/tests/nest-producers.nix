@@ -120,7 +120,7 @@ let
   # The attachments the scope-root pivot supplies at mkDen; stated literally here because this suite
   # exercises `containmentPairs` as a unit, and `multiDen`'s own roots (below) confirm they are the real ones.
   multiPairs = containmentPairs {
-    inherit (multiDen.den) fleet meta;
+    inherit (multiDen.den) membershipTuples meta cellKinds;
     attachments = {
       "rack:r1" = [
         "zone:z1"
@@ -129,9 +129,53 @@ let
     };
   };
 
+  # ── WITNESS C's fixture (§6.7 C): the DISCRIMINATING input for the one-id-rule obligation ──────────
+  # `multiDen` above cannot serve as this witness and the reason is precise: its root-kind child
+  # `rack:r1` has TWO attachments, and at >1 attachment `mintedRootId` produces the same `@`-suffixed
+  # spelling the cell rule produces — so the two rules AGREE there and a wrong child-id rule stays
+  # invisible. The discriminating condition is two-fold: the membership tuple must NAME the root-kind
+  # child's parent dim (else no `zone -> rack` containment is emitted at all), AND that child must have
+  # <= 1 attachment (else the spellings coincide). `wcDen` satisfies both.
+  #
+  # `rack` is a ROOT kind here by construction, not by declaration: `candidateKinds` admits only
+  # topology LEAVES that have a parent, and `rack` is `blade`'s parent, so it can never be a cell kind
+  # however membership is written. `blade` is the cell kind.
+  wcDen = denHoag.mkDen [
+    (
+      { config, ... }:
+      {
+        config.den.schema = {
+          zone.parent = null;
+          rack.parent = "zone";
+          blade.parent = "rack";
+        };
+        config.den.zone.z1 = { };
+        config.den.rack.r2 = { };
+        # the NEGATIVE CONTROL: same kind, same arm, no containment at all.
+        config.den.rack.r0 = { };
+        config.den.blade.b1 = { };
+        config.den.membership = [
+          {
+            coords = {
+              zone = config.den.zone.z1;
+              rack = config.den.rack.r2;
+              blade = config.den.blade.b1;
+            };
+          }
+        ];
+      }
+    )
+  ];
+  wcNodes = wcDen.den.structural.eval.allNodes;
+  wcEdges = wcDen.den.containsEdges;
+
   pairs = containmentPairs {
-    fleet = synthFleet.den.fleet;
-    meta = synthFleet.den.meta;
+    inherit (synthFleet.den) membershipTuples meta cellKinds;
+    # REQUIRED now, and stated here rather than defaulted: `{ }` means "nothing multiplies", and a
+    # producer that accepts it by default mints wrong ids in silence whenever roots really ARE
+    # attached. This fleet attaches nothing, so `{ }` is the true value — which is exactly the case
+    # a default would have made indistinguishable from an omission.
+    attachments = { };
   };
 
   # A CONTENT-mode receives row on `host.receives.user` (consumes ModulesInfo, its `at` the nixos-nested
@@ -226,15 +270,76 @@ in
           "zone:z1"
           "zone:z2"
         ];
+        # RE-DERIVED, and the two added rows are the point. Obligation 2 makes the producer total over
+        # CONTAINMENT rather than over surviving cells, so the `zone -> rack` containment — declared by
+        # the attachments and witnessed by no cell of its own — now yields edges where the cell fold
+        # emitted nothing at all.
         parents = [
           "rack:r1@zone:z1"
           "rack:r1@zone:z2"
+          "zone:z1"
+          "zone:z2"
         ];
         children = [
           "blade:b1@rack:r1@zone:z1"
           "blade:b1@rack:r1@zone:z2"
+          "rack:r1@zone:z1"
+          "rack:r1@zone:z2"
         ];
         allResolve = true;
+      };
+    };
+
+    # ── WITNESS C (§6.7 C): producer soundness, four assertions on ONE fixture in ONE run ───────────
+    # Assertion 1 — THE ID RULE. Every endpoint of every `contains` edge names a node that exists. This
+    # is the obligation the previous producer failed: it spelled every child with the cell rule, so a
+    # root-kind child with <= 1 attachment got `rack:r2@zone:z1` while `buildRoots` minted the bare
+    # `rack:r2`.
+    #
+    # Assertion 3 — THE COUNT THAT MAKES 1 NON-VACUOUS, and it is not decoration. The suite's own
+    # `test-pairs-name-real-nodes` has asserted assertion 1 and been green for the whole time the defect
+    # was live, because its fixture emits ZERO root-kind children at the discriminating attachment
+    # count: green on a path it never reaches. An equivalence assertion needs a COUNT on the at-risk
+    # construct, measured non-zero on the very fixture offered as the control.
+    #
+    # Assertion 4 — THE ABSENCE CONTROL. `rack:r0` is the same kind on the same arm with no containment,
+    # so it yields no edge. Without it, "the producer emits the right edges" could not be told apart
+    # from "the fixture declares almost nothing".
+    test-witness-c-producer-soundness = {
+      expr =
+        let
+          childOf = e: e.to;
+          rootKindChildEdges = builtins.filter (e: builtins.match "rack:[^@]*" (childOf e) != null) wcEdges;
+          namesR0 = builtins.filter (e: builtins.match ".*rack:r0.*" (childOf e) != null) wcEdges;
+        in
+        {
+          # 1 — red today, green required after
+          allResolve = builtins.all (e: (wcNodes ? ${e.from}) && (wcNodes ? ${e.to})) wcEdges;
+          # 3 — the at-risk construct is actually reached
+          rootKindChildEdgeCount = builtins.length rootKindChildEdges;
+          # the two edges, spelled by the two DIFFERENT rules the one producer dispatches between
+          edges = builtins.sort (a: b: a < b) (map (e: "${e.from}=>${e.to}") wcEdges);
+          # 4 — the absence control: same kind, same arm, no containment
+          r0EdgeCount = builtins.length namesR0;
+          r0IsANode = wcNodes ? "rack:r0";
+          # the OLD rule's spelling of the root-kind child, re-derived live: it names no node, which is
+          # the "red today" half of assertion 1 exhibited rather than remembered.
+          oldRuleRootKindChildResolves = builtins.all (
+            e:
+            wcNodes
+            ? "${builtins.head (builtins.match "([^:]*):.*" e.to)}:${builtins.head (builtins.match "[^:]*:([^@]*).*" e.to)}@${e.from}"
+          ) rootKindChildEdges;
+        };
+      expected = {
+        allResolve = true;
+        rootKindChildEdgeCount = 1;
+        edges = [
+          "rack:r2=>blade:b1@rack:r2"
+          "zone:z1=>rack:r2"
+        ];
+        r0EdgeCount = 0;
+        r0IsANode = true;
+        oldRuleRootKindChildResolves = false;
       };
     };
 
