@@ -193,18 +193,28 @@ let
     derive = node: _: membersClosureQuery node;
   };
   # capability bound (§2.3): the SAME query body at the relation's OWN stratum (rel:memberOf) — memberOf sits
-  # at that stratum, NOT strictly below the derive's own, so its edges are EXCLUDED from the scoped source. The
-  # follow yields EMPTY (silent capability scoping — never a throw, never a leak of a same-stratum relation).
+  # at that stratum, so under Apt, Blair & Walker Definition 3 condition 1 (a positive occurrence's definition
+  # lies within `⋃_{j ≤ i}`) its edges ARE in the scoped source and the follow resolves.
   queryCapabilityBoundFleet = mkDerivedFleet "capViaQuery" {
     over = [ ];
     direction = "forward";
     stratum = "rel:memberOf";
     derive = node: _: membersClosureQuery node;
   };
+  # THE PAIRED CONTROL: the SAME body at `structural`, which is STRICTLY BELOW rel:memberOf. The relation is
+  # then strictly ABOVE the reader, condition 1 excludes it, and the follow is silently EMPTY. Without this,
+  # the assertion above could not tell a correctly-widened source from a source that admits everything.
+  queryBelowRelationFleet = mkDerivedFleet "belowViaQuery" {
+    over = [ ];
+    direction = "forward";
+    stratum = "structural";
+    derive = node: _: membersClosureQuery node;
+  };
 
-  # stratum-gate fixtures (§2.3): a derive AT a relation's own stratum (rel:memberOf) reading that relation must
-  # be BLOCKED (same-stratum ≥ n → NAMED throw); the SAME body at stratum=closure is exposed (rel:memberOf <
-  # closure). over=[] so a stratum=rel:memberOf derive isn't rejected at the field guard FIRST — the gate, not
+  # stratum-gate fixtures (§2.3): a derive AT a relation's own stratum (rel:memberOf) reading that relation is
+  # ADMITTED (the same-stratum positive read condition 1 permits); the SAME body at stratum=closure is also
+  # exposed (rel:memberOf < closure); and the SAME body at `structural` — strictly BELOW the relation — still
+  # THROWS. over=[] so a stratum=rel:memberOf derive isn't rejected at the field guard FIRST — the gate, not
   # the guard, is under test (node.rel exposes ALL kinds regardless of over).
   gatedSameStratumFleet = mkDerivedFleet "atRelStratum" {
     over = [ ];
@@ -216,6 +226,12 @@ let
     over = [ ];
     direction = "forward";
     stratum = "closure";
+    derive = node: _: node.rel.memberOf.targets;
+  };
+  gatedBelowRelationFleet = mkDerivedFleet "belowRelStratum" {
+    over = [ ];
+    direction = "forward";
+    stratum = "structural";
     derive = node: _: node.rel.memberOf.targets;
   };
 
@@ -359,9 +375,19 @@ in
     };
 
     # ── the stratum-gate on the node handle (capability scoping, §2.3) ──
-    # a derive AT a relation's own stratum reading that relation is BLOCKED (same-stratum ≥ → NAMED throw).
-    test-derived-gate-same-stratum-throws = {
-      expr = throws (gatedSameStratumFleet.den.derivedAt "atRelStratum" "node:a");
+    # a derive AT a relation's own stratum reading that relation is ADMITTED — Apt, Blair & Walker (1988),
+    # "Stratified Programs", Definition 3, p. 96, condition 1: a POSITIVE occurrence has its definition within
+    # `⋃_{j ≤ i}`, so a same-stratum positive read is lawful. Polarity is not observable at a runtime read, so
+    # this gate carries condition 1; condition 2 stays at the `negates` declaration (see negation-gate.nix).
+    test-derived-gate-same-stratum-admitted = {
+      expr = gatedSameStratumFleet.den.derivedAt "atRelStratum" "node:a";
+      expected = [ "node:b" ];
+    };
+    # THE PAIRED CONTROL: the SAME body at `structural`, STRICTLY BELOW rel:memberOf, reads a relation ABOVE
+    # itself and still NAMED-throws. This is what keeps the relaxation from being a deletion — without it the
+    # assertion above would be satisfied by a gate that admits unconditionally.
+    test-derived-gate-above-reader-throws = {
+      expr = throws (gatedBelowRelationFleet.den.derivedAt "belowRelStratum" "node:a");
       expected = true;
     };
     # the SAME body at stratum=closure reading the same (below-closure) relation is EXPOSED (rel:memberOf <
@@ -385,11 +411,24 @@ in
         "node:b"
       ];
     };
-    # capability bound (§2.3): the SAME query body at the relation's own stratum reads memberOf — NOT strictly
-    # below the derive's own stratum, so the edge is EXCLUDED from the scoped source. The result is EMPTY
-    # (silent scoping), never a throw and never a same-stratum leak — the source IS the capability.
-    test-derived-query-capability-bound-empty = {
-      expr = queryCapabilityBoundFleet.den.derivedAt "capViaQuery" "node:c";
+    # capability bound (§2.3): the SAME query body at the relation's own stratum reads memberOf — AT the
+    # derive's own stratum, which condition 1 admits, so the edges ARE in the scoped source and the reverse
+    # closure resolves. The silent surface widens with the loud one: `.query` and `.rel` differ in LOUDNESS,
+    # not in polarity, so they must agree on what "in scope" means.
+    test-derived-query-same-stratum-admitted = {
+      expr = builtins.sort builtins.lessThan (
+        queryCapabilityBoundFleet.den.derivedAt "capViaQuery" "node:c"
+      );
+      expected = [
+        "node:a"
+        "node:b"
+      ];
+    };
+    # THE PAIRED CONTROL: the SAME body at `structural` reads a relation STRICTLY ABOVE it, which condition 1
+    # excludes — the result is EMPTY (silent scoping), never a throw. The source IS the capability, and it is
+    # still a capability.
+    test-derived-query-above-reader-empty = {
+      expr = queryBelowRelationFleet.den.derivedAt "belowViaQuery" "node:c";
       expected = [ ];
     };
 
@@ -465,10 +504,25 @@ in
       };
       expected = true;
     };
-    test-derived-msg-not-later = {
-      expr = matches ".*not LATER.*" {
+    # `over` IS the derive's DECLARED POSITIVE read set, so its law is ABW Definition 3 condition 1: a derive
+    # may declare `over` a relation at its OWN stratum and registers CLEAN (`null` = no message). This must
+    # move with the runtime gate — leaving it strict would refuse at registration a read the gate then admits.
+    test-derived-msg-over-same-stratum-clean = {
+      expr = msgOf {
         over = [ "memberOf" ];
         stratum = "resolution";
+        derive = _: _: null;
+      };
+      expected = null;
+    };
+    # THE PAIRED CONTROL: a derive BELOW its `over` relation is still NAMED-rejected, and the message cites the
+    # condition it applied. Re-pinning the case above without this would turn the guard into one that registers
+    # anything.
+    test-derived-msg-over-above-reader = {
+      expr = matches ".*is BELOW the strata its .over. relations sit at.*condition 1.*" {
+        over = [ "memberOf" ];
+        stratum = "structural";
+        derive = _: _: null;
       };
       expected = true;
     };

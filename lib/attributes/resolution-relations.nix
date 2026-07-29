@@ -19,6 +19,7 @@
   relations,
   derived,
   query,
+  strataScope,
 }:
 {
   relationEdges ? [ ],
@@ -40,11 +41,17 @@ let
     inherit (query) denQuery kindGraphOf;
     inherit relationEdges strataOrder;
     relationKinds = relationEdgeKinds;
-    # `ceiling = null` = the full relation pool (§2.3). In the shipped single-stratum facet the relation
-    # accessor AND its relations both sit at `resolution`, so a strictly-below ceiling would exclude every
-    # relation; the derive gate (mkDerived's `ceilingGate`) enforces the boundary per the DERIVE's stratum.
-    # The per-relation reader-stratum ceiling arrives with §11 L2 (per-relation strata).
-    ceiling = null;
+    # The accessor's capability ceiling is its OWN stratum (§2.3) — the posture `claim-accessor.nix` already
+    # takes for the claim pool. It is armed rather than null because the reason it was switched off no longer
+    # holds: that reason was that the accessor and its relations both sat at `resolution`, so a strictly-below
+    # ceiling would have excluded every relation. §5 L2 has since minted each relation at its own `rel:<name>`
+    # stratum inserted after `structural`, which lands every relation strictly below `resolution`.
+    #
+    # Arming it is observably inert on the shipped surface — the accessor only ever maps over `relationKinds`
+    # keys, so the non-relation (production claim) edges the ceiling drops were already unreachable through it.
+    # The value is that the source becomes stratum-scoped BY CONSTRUCTION rather than by that accident, which
+    # is what makes the per-relation reader-stratum ceiling of §11 L2 a parameter change, not a new mechanism.
+    ceiling = strataScope.indexOf strataOrder "resolution";
   };
 in
 {

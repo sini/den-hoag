@@ -17,23 +17,32 @@
   ...
 }:
 let
-  # the provider/consumer fleet: the leaf claims (connect/secret/database, the claim-pool.nix fixture) BESIDE an out-of-scope claim at
-  # `resolution` (the capability-boundary witness) + the provider + consumer productions. `lonely` is claimed
+  # the provider/consumer fleet: the leaf claims (connect/secret/database, the claim-pool.nix fixture) BESIDE a
+  # same-stratum claim at `resolution` and an out-of-scope one at `postres` (the capability-boundary witness) +
+  # the provider + consumer productions. `lonely` is claimed
   # by nobody (the empty-reverse witness). The claim strata sit densely below `resolution` (structural <
   # connect < secret < database < route < resolution), so the provider at `resolution` reads them strictly
-  # below (§2.3 L2) and the reverse-read is in scope for every claim kind EXCEPT the `resolution`-level one.
+  # below (§2.3 L2) and the reverse-read is in scope for every claim kind EXCEPT the one STRICTLY ABOVE
+  # `resolution` — a claim AT `resolution` is admitted by ABW Definition 3 condition 1.
   fleet = denHoag.mkDen [
     {
       config.den.schema.node.parent = null;
-      config.den.strata.insert = denHoag.declare.strataChain {
-        after = "structural";
-        chain = [
-          "connect"
-          "secret"
-          "database"
-          "route"
-        ];
-      };
+      config.den.strata.insert =
+        (denHoag.declare.strataChain {
+          after = "structural";
+          chain = [
+            "connect"
+            "secret"
+            "database"
+            "route"
+          ];
+        })
+        // {
+          # a stratum STRICTLY ABOVE `resolution`, carrying the genuinely-out-of-scope claim.
+          postres = {
+            after = "resolution";
+          };
+        };
       config.den.node.arr = { };
       config.den.node.prowlarr = { };
       config.den.node.lonely = { };
@@ -70,10 +79,26 @@ let
           }
         ];
       };
-      # an OUT-OF-SCOPE claim declared AT the accessor's own stratum (`resolution`) — NOT strictly below it, so
-      # the reverse-read hides it via `.query` (silent) and NAMED-throws via `.rel` (the capability boundary).
-      config.den.productions.oosclaim = {
+      # a claim declared AT the accessor's own stratum (`resolution`) — IN scope, because Apt, Blair & Walker
+      # (1988), "Stratified Programs", Definition 3, p. 96, condition 1 admits a POSITIVE occurrence's
+      # definition within `⋃_{j ≤ i}`. `.rel` resolves and `.query` answers.
+      config.den.productions.atclaim = {
         stratum = "resolution";
+        from = [ ];
+        emit = "edges";
+        mode = "all";
+        readsAttrs = [ ];
+        compute = _self: _id: [
+          {
+            from = "node:arr";
+            to = "node:prowlarr";
+          }
+        ];
+      };
+      # THE CAPABILITY-BOUNDARY WITNESS, at a stratum STRICTLY ABOVE `resolution`: the reverse-read hides it
+      # via `.query` (silent) and NAMED-throws via `.rel`. The boundary moved up by one stratum; it still exists.
+      config.den.productions.aboveclaim = {
+        stratum = "postres";
         from = [ ];
         emit = "edges";
         mode = "all";
@@ -214,10 +239,17 @@ in
       expr = (handleAt "node:prowlarr").rel.connect;
       expected = [ "node:arr" ];
     };
-    # an OUT-OF-SCOPE claim kind (at the accessor's own `resolution` stratum) is SILENTLY empty via `.query`.
-    test-handle-oos-query-silent = {
-      expr = (handleAt "node:prowlarr").query "oosclaim";
+    # an OUT-OF-SCOPE claim kind (STRICTLY ABOVE the accessor's `resolution` stratum) is SILENTLY empty via
+    # `.query`.
+    test-handle-above-query-silent = {
+      expr = (handleAt "node:prowlarr").query "aboveclaim";
       expected = [ ];
+    };
+    # THE PAIRED ADMISSION: a claim AT the accessor's own stratum ANSWERS — the same-stratum positive read
+    # condition 1 permits. This assertion is one the positive-read rule inverts; it pinned `[ ]` before.
+    test-handle-at-stratum-query-answers = {
+      expr = (handleAt "node:prowlarr").query "atclaim";
+      expected = [ "node:arr" ];
     };
     # a MISSING claim kind (never declared) is ALSO silently empty via `.query` (the exploratory-query mode).
     test-handle-missing-query-silent = {
@@ -226,9 +258,15 @@ in
     };
     # the THROWING variant NAMED-throws on the SAME out-of-scope read — a capturable tryEval failure (the L4
     # throwing-gate a stratified negation consumes: it cannot mistake out-of-scope for absent).
-    test-handle-oos-rel-throws = {
-      expr = (builtins.tryEval (builtins.deepSeq (handleAt "node:prowlarr").rel.oosclaim null)).success;
+    test-handle-above-rel-throws = {
+      expr = (builtins.tryEval (builtins.deepSeq (handleAt "node:prowlarr").rel.aboveclaim null)).success;
       expected = false;
+    };
+    # THE PAIRED ADMISSION: the SAME read at the accessor's own stratum SUCCEEDS. Both surfaces move together,
+    # because `.rel` and `.query` differ in LOUDNESS, not in polarity, and must agree on what "in scope" means.
+    test-handle-at-stratum-rel-resolves = {
+      expr = (handleAt "node:prowlarr").rel.atclaim;
+      expected = [ "node:arr" ];
     };
 
     # ── the §2.3 L2 strictly-below gate over the reverse-read (value-split so the NAMED message is testable) ──

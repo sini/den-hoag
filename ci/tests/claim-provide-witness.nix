@@ -68,19 +68,27 @@ let
   #   node lonely              — claimed by nobody (the empty-reverse / empty-spawn witness).
   # Claim strata sit densely below `resolution` via `strataChain` (structural < connect < secret < database <
   # route < resolution), so every resolution-level provider/dedup/lockdown reverse-reads its claim strata
-  # strictly below (§2.3 L2) and the whole pool is in scope for the ONE claim-accessor.
+  # strictly below (§2.3 L2). Every one of those, plus the `atclaim` at `resolution` itself, is in scope for
+  # the ONE claim-accessor under ABW condition 1; only `aboveclaim` at `postres` sits outside it.
   fleet = denHoag.mkDen [
     {
       config.den.schema.node.parent = null;
-      config.den.strata.insert = denHoag.declare.strataChain {
-        after = "structural";
-        chain = [
-          "connect"
-          "secret"
-          "database"
-          "route"
-        ];
-      };
+      config.den.strata.insert =
+        (denHoag.declare.strataChain {
+          after = "structural";
+          chain = [
+            "connect"
+            "secret"
+            "database"
+            "route"
+          ];
+        })
+        // {
+          # a stratum STRICTLY ABOVE `resolution`, carrying the genuinely-out-of-scope claim (`aboveclaim`).
+          postres = {
+            after = "resolution";
+          };
+        };
       config.den.node.arr = { };
       config.den.node.prowlarr = { };
       config.den.node.sonarr = { };
@@ -186,11 +194,27 @@ let
           }
         ];
       };
-      # an OUT-OF-SCOPE claim declared AT the accessor's own stratum (`resolution`) — NOT strictly below it, so
-      # `.query` hides it (silent) and `.rel` NAMED-throws (the L4 capability boundary the negation consumes to
-      # tell out-of-scope from absent).
-      config.den.productions.oosclaim = {
+      # a claim declared AT the accessor's own stratum (`resolution`) — IN scope, because Apt, Blair & Walker
+      # (1988), "Stratified Programs", Definition 3, p. 96, condition 1 admits a POSITIVE occurrence's
+      # definition within `⋃_{j ≤ i}`. `.rel` resolves and `.query` answers.
+      config.den.productions.atclaim = {
         stratum = "resolution";
+        from = [ ];
+        emit = "edges";
+        mode = "all";
+        readsAttrs = [ ];
+        compute = _self: _id: [
+          {
+            from = "node:rootapp";
+            to = "node:hub";
+          }
+        ];
+      };
+      # THE L4 CAPABILITY-BOUNDARY WITNESS, at a stratum STRICTLY ABOVE `resolution`: `.query` hides it
+      # (silent) and `.rel` NAMED-throws — the distinction a sound negation consumes to tell out-of-scope from
+      # absent. The boundary moved up by one stratum under condition 1; it still exists.
+      config.den.productions.aboveclaim = {
+        stratum = "postres";
         from = [ ];
         emit = "edges";
         mode = "all";
@@ -478,14 +502,26 @@ in
       expected = false;
     };
     # the THROWING gate: an out-of-scope `.rel` read NAMED-throws (capturable) while the silent `.query` on the
-    # SAME kind is empty — the L4 routing distinction a sound negation consumes.
-    test-lockdown-rel-oos-throws = {
-      expr = throws (handleAt "node:hub").rel.oosclaim;
+    # SAME kind is empty — the L4 routing distinction a sound negation consumes. OUT OF SCOPE means STRICTLY
+    # ABOVE the accessor's own stratum (ABW condition 1), which is `aboveclaim`.
+    test-lockdown-rel-above-throws = {
+      expr = throws (handleAt "node:hub").rel.aboveclaim;
       expected = true;
     };
-    test-lockdown-query-oos-silent = {
-      expr = (handleAt "node:hub").query "oosclaim";
+    test-lockdown-query-above-silent = {
+      expr = (handleAt "node:hub").query "aboveclaim";
       expected = [ ];
+    };
+    # THE PAIRED ADMISSION: a claim AT the accessor's own stratum is IN scope under condition 1 — `.rel`
+    # resolves instead of throwing and `.query` answers instead of being silently empty. These two are the
+    # assertions the positive-read rule inverts; they pinned `true` and `[ ]` under the blanket rule.
+    test-lockdown-rel-at-stratum-resolves = {
+      expr = (handleAt "node:hub").rel.atclaim;
+      expected = [ "node:rootapp" ];
+    };
+    test-lockdown-query-at-stratum-answers = {
+      expr = (handleAt "node:hub").query "atclaim";
+      expected = [ "node:rootapp" ];
     };
 
     # ── (7) the cyclic connect pair = TWO distinct facts; the whole composed fleet EVALUATES (no divergence) ──
@@ -536,6 +572,8 @@ in
     };
     # the WHOLE claim-strata set orders the composed fleet (structural < connect < secret < database < route <
     # resolution) — the ONE strataChain governs every piece.
+    # `postres` carries the out-of-scope claim witness and sits between `resolution` and `collection`, so the
+    # accessor's ceiling has a stratum genuinely above it to exclude.
     test-compose-strata-order = {
       expr = fleet.den.strata;
       expected = [
@@ -545,6 +583,7 @@ in
         "database"
         "route"
         "resolution"
+        "postres"
         "collection"
         "demand"
         "output"

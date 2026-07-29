@@ -23,21 +23,31 @@ let
 
   # the lockdown fleet: `hub` is claimed by `rootapp` (a ROOT — nobody claims it), `midapp` (a NON-root — `hub`
   # claims it back), and `hub` itself (a self-claim, `@self`). The `member` leaf claim sits at `connect`
-  # (strictly below `resolution`), in scope for the reverse-read; an `oosclaim` sits AT `resolution` (out of
-  # scope — the throwing-gate witness). All claim data is from = ∅ EDB, so the who-claims-whom cycle
+  # (strictly below `resolution`), in scope for the reverse-read; an `atclaim` sits AT `resolution` (also in
+  # scope — the same-stratum positive read ABW condition 1 permits) and an `aboveclaim` sits at `postres`,
+  # strictly above it (out of scope — the throwing-gate witness). All claim data is from = ∅ EDB, so the
+  # who-claims-whom cycle
   # (midapp↔hub) is sound at the acyclic `connect` stratum (a claim cycle is NOT a stratum cycle).
   fleet = denHoag.mkDen [
     {
       config.den.schema.node.parent = null;
-      config.den.strata.insert = denHoag.declare.strataChain {
-        after = "structural";
-        chain = [
-          "connect"
-          "secret"
-          "database"
-          "route"
-        ];
-      };
+      config.den.strata.insert =
+        (denHoag.declare.strataChain {
+          after = "structural";
+          chain = [
+            "connect"
+            "secret"
+            "database"
+            "route"
+          ];
+        })
+        // {
+          # a stratum STRICTLY ABOVE `resolution`, so the fleet can carry a claim that is genuinely out of
+          # scope under ABW condition 1 — the L4 throwing-gate witness (see `aboveclaim` below).
+          postres = {
+            after = "resolution";
+          };
+        };
       config.den.node.hub = { };
       config.den.node.rootapp = { };
       config.den.node.midapp = { };
@@ -69,10 +79,29 @@ let
           }
         ];
       };
-      # an OUT-OF-SCOPE claim AT `resolution` (NOT strictly below the accessor's own stratum) — the throwing-gate
-      # witness: `.rel.oosclaim` NAMED-throws, `.query "oosclaim"` is silently empty (the L4 routing distinction).
-      config.den.productions.oosclaim = {
+      # a claim AT `resolution` — the accessor's OWN stratum. Under Apt, Blair & Walker (1988), "Stratified
+      # Programs", Definition 3, p. 96, condition 1 a POSITIVE occurrence has its definition within
+      # `⋃_{j ≤ i}`, so this is IN scope: `.rel.atclaim` resolves and `.query "atclaim"` answers. It used to
+      # be the throwing-gate witness under the blanket strictly-below rule; `aboveclaim` is that witness now.
+      config.den.productions.atclaim = {
         stratum = "resolution";
+        from = [ ];
+        emit = "edges";
+        mode = "all";
+        readsAttrs = [ ];
+        compute = _self: _id: [
+          {
+            from = "node:rootapp";
+            to = "node:hub";
+          }
+        ];
+      };
+      # THE L4 THROWING-GATE WITNESS, restored at a stratum that is genuinely out of scope under condition 1:
+      # `postres` sits STRICTLY ABOVE `resolution`. `.rel.aboveclaim` NAMED-throws, `.query "aboveclaim"` is
+      # silently empty — the routing distinction a stratified negation consumes (it cannot mistake
+      # out-of-scope for absent). Widening the rule moved this demonstration; it did not delete it.
+      config.den.productions.aboveclaim = {
+        stratum = "postres";
         from = [ ];
         emit = "edges";
         mode = "all";
@@ -183,13 +212,25 @@ in
     # ── (2) (a) throwing-gate routing: the negation reads via `.rel` (THROWING), proven by an out-of-scope throw ──
     # an out-of-scope `.rel` read NAMED-throws (a capturable tryEval failure) — the gate a negation consumes to
     # distinguish out-of-scope from absent. The silent `.query` on the SAME kind is empty (the routing distinction).
-    test-negation-rel-oos-throws = {
-      expr = throws (handleAt "node:hub").rel.oosclaim;
+    # OUT OF SCOPE now means STRICTLY ABOVE the accessor's stratum (ABW condition 1), which is `aboveclaim`.
+    test-negation-rel-above-throws = {
+      expr = throws (handleAt "node:hub").rel.aboveclaim;
       expected = true;
     };
-    test-negation-query-oos-silent = {
-      expr = (handleAt "node:hub").query "oosclaim";
+    test-negation-query-above-silent = {
+      expr = (handleAt "node:hub").query "aboveclaim";
       expected = [ ];
+    };
+    # THE PAIRED ADMISSION: a claim AT the accessor's own stratum is IN scope under condition 1 — `.rel`
+    # resolves instead of throwing and `.query` answers instead of being silently empty. These two assertions
+    # are the ones the positive-read rule inverts; they pinned `true` and `[ ]` under the blanket rule.
+    test-negation-rel-at-stratum-resolves = {
+      expr = (handleAt "node:hub").rel.atclaim;
+      expected = [ "node:rootapp" ];
+    };
+    test-negation-query-at-stratum-answers = {
+      expr = (handleAt "node:hub").query "atclaim";
+      expected = [ "node:rootapp" ];
     };
     # the IN-SCOPE `.rel` read the lockdown negation actually uses resolves (member is strictly below resolution).
     test-negation-rel-inscope-resolves = {

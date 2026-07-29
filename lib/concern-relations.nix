@@ -138,9 +138,18 @@ let
   # endpoints ARE scope node-ids (matchId's domain).
   #
   # `ceiling` (§2.3, default `null` = full pool) — a stratum-order INDEX above which relation edges are OUT OF
-  # this reader's capability; when non-null the query SOURCE is pre-filtered through `edgesBelowStratum` (a
-  # relation ≥ ceiling is silently absent). Null keeps the fleet-global `relQuery` reading every relation
-  # (it is parameterized by `from`, not by a reader stratum); a per-relation ceiling arrives with §11 L2.
+  # this reader's capability; when non-null the query SOURCE is pre-filtered through `positiveEdges` (a
+  # relation strictly above the ceiling is silently absent, ABW Definition 3 condition 1).
+  #
+  # It ships NULL, and the reason is that THIS SURFACE HAS NO READER, not that a ceiling would exclude too
+  # much. `relQuery` is a fleet-global helper parameterized by `from`, never by a reader — so there is no
+  # reader whose capability a ceiling would express, and any ceiling chosen for it would be arbitrary. An
+  # arbitrary ceiling is not free: the pool also carries the production CLAIM edges, whose kinds are absent
+  # from `relationKinds` and therefore resolve to a null stratum, which every admittance excludes — so a
+  # ceiling would silently amputate the claim pool from a surface whose stated purpose is a source-agnostic
+  # query over `den.relationEdges`. The right time to arm it is when a caller carrying a stratum exists,
+  # which is the §11 L2 per-relation-reader work. The predicate is already the positive one so that arming
+  # it then is a parameter change rather than a semantic decision.
   mkRelQuery =
     {
       denQuery,
@@ -156,7 +165,7 @@ let
         if ceiling == null then
           relationEdges
         else
-          strataScope.edgesBelowStratum { inherit strataOrder relationKinds relationEdges; } ceiling;
+          strataScope.positiveEdges { inherit strataOrder relationKinds relationEdges; } ceiling;
       # THE ADJACENCY, BUILT ONCE. `ceiling` is fixed for the life of this query handle, so its pool is too
       # — and a pool's adjacency is a property of the pool, not of a call over it. Bound here, outside the
       # per-call lambda below, so every `relQuery` this handle serves shares one O(E) build. Lazy: the
@@ -191,9 +200,11 @@ let
   #   paths   = the path witnesses (paths mode).
   #   `ceiling` (§2.3, default `null` = full pool) — a stratum-order INDEX above which relation edges are OUT
   #   OF this reader's capability; when non-null the accessor's query SOURCE is pre-filtered through
-  #   `edgesBelowStratum` (a relation ≥ ceiling is silently absent). Null keeps the shipped single-stratum
-  #   behavior (the relation accessor and its resolution relations share the `resolution` stratum, so the
-  #   downstream derive gate — not the accessor — enforces the boundary); a per-relation ceiling arrives with §11 L2.
+  #   `positiveEdges` (a relation strictly above the ceiling is silently absent, ABW Definition 3 condition 1
+  #   — the accessor cannot see the polarity of the read it serves, so condition 1 is the whole of the law
+  #   available to it). The resolution facet passes its OWN stratum, so the accessor's source is stratum-scoped
+  #   BY CONSTRUCTION rather than by the accident that a relation kind is the only key it exposes; that is what
+  #   makes the per-relation reader-stratum ceiling of §11 L2 a parameter change rather than a new mechanism.
   mkRelAccessor =
     {
       denQuery,
@@ -208,7 +219,7 @@ let
         if ceiling == null then
           relationEdges
         else
-          strataScope.edgesBelowStratum { inherit strataOrder relationKinds relationEdges; } ceiling;
+          strataScope.positiveEdges { inherit strataOrder relationKinds relationEdges; } ceiling;
       # THE ADJACENCY, BUILT ONCE — and this binding is why the accessor must be applied above any
       # per-node `compute`, not inside one. The four fields below are four `denQuery` calls per KIND, and
       # `denQuery` used to group the whole pool inside each of them: the cost was O(E) per

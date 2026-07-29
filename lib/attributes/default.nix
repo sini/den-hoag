@@ -96,7 +96,7 @@ let
   # closures INTO the ONE equations map). Imports the concern libs directly (like the `classShare` import
   # above) so the equations builder needs no new top-level lib args — only the per-fleet DATA is threaded.
   resolutionRelations = import ./resolution-relations.nix {
-    inherit resolve;
+    inherit resolve strataScope;
     relations = import ../concern-relations.nix { inherit prelude strataScope; };
     derived = import ../concern-derived.nix { inherit prelude strataScope; };
     query = import ../query.nix { inherit prelude graph; };

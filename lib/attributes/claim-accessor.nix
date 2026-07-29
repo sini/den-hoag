@@ -15,9 +15,13 @@
 #                             with a NAMED throw (the capability-by-construction gate; a negation over this
 #                             throwing read cannot mistake absent for out-of-scope).
 # The capability boundary is the accessor's OWN stratum (`resolution`): a claim kind sits IN SCOPE when its
-# stratum is STRICTLY BELOW `resolution` (the shipped connect < secret < database < route claim strata all
-# qualify); a claim declared AT/above `resolution` is out of scope. Both variants share ONE `edgesBelowStratum`
-# ceiling (the query SOURCE side of the boundary — scoping the claim pool scopes the capability).
+# stratum is AT OR BELOW `resolution` (the shipped connect < secret < database < route claim strata all
+# qualify, as does a claim declared AT `resolution`); a claim STRICTLY ABOVE `resolution` is out of scope.
+# `.rel` and `.query` differ in LOUDNESS, not in polarity, so both take Apt, Blair & Walker (1988),
+# "Stratified Programs", Definition 3, p. 96, condition 1 — a positive occurrence has its definition within
+# `⋃_{j ≤ i}`, and a runtime read cannot see whether the read it serves is positive or negative. Both
+# variants share ONE `positiveEdges` ceiling (the query SOURCE side of the boundary — scoping the claim pool
+# scopes the capability).
 #
 # Corpus-inert: an empty `claimKinds` ⇒ `.query` is constantly `[ ]` and `.rel` is `{ }` for every node, and
 # nothing outside a claim/provide fleet reads `claim-accessor`, so it never reaches the trace — byte-identical
@@ -34,22 +38,22 @@
   strataOrder ? [ ],
 }:
 let
-  inherit (strataScope) indexOf;
-  # the accessor's own capability ceiling: claim facts at strata STRICTLY BELOW `resolution` are in scope.
+  inherit (strataScope) indexOf admitPositive;
+  # the accessor's own capability ceiling: claim facts at strata AT OR BELOW `resolution` are in scope.
   ownStratum = "resolution";
   ceiling = indexOf strataOrder ownStratum;
   claimKindNames = builtins.attrNames claimKinds;
-  # a claim kind is in scope when its stratum sits strictly below the accessor's own (§2.3 strictly-below).
-  inScope = kind: indexOf strataOrder (claimKinds.${kind}.stratum or null) < ceiling;
+  # a claim kind is in scope when its stratum sits at or below the accessor's own (ABW condition 1).
+  inScope = kind: admitPositive (indexOf strataOrder (claimKinds.${kind}.stratum or null)) ceiling;
 
-  # the STRATUM-SCOPED claim source (§2.3, the SILENT filter): only claim edges whose stratum is strictly
+  # the STRATUM-SCOPED claim source (§2.3, the SILENT filter): only claim edges whose stratum is at or
   # below the ceiling survive (`claimKinds` doubles as the edge-kind → stratum index, so a NON-claim relation
   # edge — absent from `claimKinds` — resolves to a null stratum and is excluded: the claim pool alone). This
   # isolation assumes the leaf-claim NAMES are DISJOINT from the den.relations edge-kinds — a relation edge
   # whose kind collided with a claim name would be admitted and mis-scoped by the claim stratum. That name-
   # disjointness is a framework-wide name-uniqueness invariant (owned by the shared registration pass), NOT
   # re-guarded here (a local throw would be a half-measure patch on a global concern).
-  scopedPool = strataScope.edgesBelowStratum {
+  scopedPool = strataScope.positiveEdges {
     inherit strataOrder relationEdges;
     relationKinds = claimKinds;
   } ceiling;
@@ -151,7 +155,7 @@ in
             else
               throw "den.productions: claim-accessor at stratum '${ownStratum}' may not read claim kind '${kind}' — its stratum '${
                 claimKinds.${kind}.stratum or "<none>"
-              }' is not strictly below the accessor's own (a reverse-read sees claims strictly below its stratum, §2.3)";
+              }' is ABOVE the accessor's own — a positive read admits strata at or below the reader's own (Apt-Blair-Walker 1988, Definition 3, condition 1) (§2.3)";
         }) claimKindNames
       );
     };

@@ -53,8 +53,9 @@ let
     inherit (receiversLib) resolveReceiver;
     inherit (nestLib) executeNest checkSingular;
   };
-  # stratum-scope (§2.3): the capability-scope arithmetic (edgesBelowStratum / ceilingGate / indexOf /
-  # strataLt) shared by the relation accessors and the derive compute. See stratum-scope.nix.
+  # stratum-scope (§2.3): the capability-scope arithmetic (edgesWithin / gateWithin and their shipped
+  # positive instantiations / indexOf / strataLt / strataLe) shared by the relation accessors and the
+  # derive compute. See stratum-scope.nix.
   strataScopeLib = import ./stratum-scope.nix { inherit prelude; };
   # production-guard (§8 law 5): the bounded-NTA registration law for a node-spawning production (`emit =
   # nodes`). A STANDALONE guard — no `den.productions` user surface yet (Phase 5); Phase-5's productions compile
@@ -190,6 +191,7 @@ let
       declare
       errors
       ;
+    strataScope = strataScopeLib;
   };
 
   # The STAGED ROOT-RESOLUTION pre-pass (design note 2026-07-11 §2/§3(ii), slice R1): the kind-ordered
@@ -2789,8 +2791,9 @@ in
     # The derived-attribute field validator (§5): `derivedFieldMessage`, for the suite's field-guard scenarios
     # (the NAMED contract as a value).
     derived = derivedLib;
-    # The stratum-scope arithmetic (§2.3): `edgesBelowStratum`/`ceilingGate`/`indexOf`/`strataLt`, for the
-    # suite's capability-scope scenarios (the extraction's own witnesses beside the derived/acl behavior tests).
+    # The stratum-scope arithmetic (§2.3): `positiveEdges`/`positiveGate`/`negativeGate`/`indexOf`/
+    # `strataLt`/`strataLe`, for the suite's capability-scope scenarios (the extraction's own witnesses
+    # beside the derived/acl behavior tests).
     strataScope = strataScopeLib;
     # The resolution-facet production surface (§5, Phase 5a): the lib (`productionMessage` validator +
     # `compile`), for the suite's vocabulary/laws-gate scenarios (the NAMED contract as a value).

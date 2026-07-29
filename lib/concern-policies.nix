@@ -77,6 +77,7 @@
   dispatch,
   declare,
   errors,
+  strataScope,
 }:
 let
   # The SEEDED strata config (§B2): the compiled stratum order with the stratum→ctx-key-groups map EMPTY
@@ -109,8 +110,9 @@ let
   # RELATIONS IN ITS HEAD: a clause whose head is in P_i bounds where its body may read from. An empty
   # head names no relation and so imposes no lower bound, which makes the BOTTOM stratum the canonical
   # assignment — and it is the conservative one on the reading that matters here, because the A9
-  # capability projection admits only STRICTLY LOWER ctx facts, so a bottom-stratum rule is granted the
-  # least. It also fires earliest, so a body that violates its empty codomain aborts at the first
+  # capability projection admits ctx facts only AT OR BELOW the rule's stratum (Definition 3, condition 1),
+  # so a bottom-stratum rule is granted the least. It also fires earliest, so a body that violates its
+  # empty codomain aborts at the first
   # dispatch rather than a later one. `declare.strata` is non-empty by construction (compileStrata seeds
   # the framework strata), so this is total.
   groupOf =
@@ -188,10 +190,17 @@ let
     strataCfg: policies:
     let
       # Capability-scoped ctx (A9 stratification-by-construction, spec §5): a rule declared at stratum
-      # `ruleStratum` may read ONLY ctx facts of a STRICTLY LOWER stratum. A ctx key whose declared
-      # stratum is ≥ the rule's is REPLACED with a NAMED THROW (not omitted — a replaced key aborts
+      # `ruleStratum` may read ctx facts AT OR BELOW its own stratum — Apt, Blair & Walker (1988),
+      # "Stratified Programs", Definition 3, p. 96, condition 1. A ctx key whose declared stratum is
+      # ABOVE the rule's is REPLACED with a NAMED THROW (not omitted — a replaced key aborts
       # CATCHABLY when read, diagnosing better than an attribute-missing read). The seeded map is empty
       # above structural, so this is an identity map for every shipped rule.
+      #
+      # Condition 1 is not a choice here, it is the only law this guard can carry. `mapAttrs` preserves
+      # the ctx KEY SET exactly and replaces only VALUES, so the one negation-shaped read an attribute set
+      # offers — `ctx ? key` — is INVARIANT under the projection. A guard that cannot observe a negation is
+      # not guarding negation, whatever operator it spells; its only observable is a forced value, which is
+      # a positive read.
       stratumIndex = prelude.foldl' (acc: i: acc // { ${builtins.elemAt strataCfg.order i} = i; }) { } (
         builtins.genList (i: i) (builtins.length strataCfg.order)
       );
@@ -205,23 +214,30 @@ let
         else
           prelude.foldl' (acc': key: acc' // { ${key} = stratum; }) acc (strataCfg.ctxKeyStrata.${stratum})
       ) { } (builtins.attrNames (strataCfg.ctxKeyStrata or { }));
+      # TOTAL in the rule's own stratum: a bare `stratumIndex.${ruleStratum}` select is an attribute miss
+      # on an order that omits the stratum, which `tryEval` CANNOT catch — it aborts the evaluation outright
+      # rather than yielding a value. The `or (throw …)` makes it a NAMED, catchable failure.
+      # `ctxKeyStratum` is already total by its own construction (the fold above throws NAMED on a stratum
+      # absent from the order), so `stratumIndex.${ks}` needs no fallback.
       projectCtx =
         ruleStratum: ctx:
         let
-          r = stratumIndex.${ruleStratum};
+          r =
+            stratumIndex.${ruleStratum}
+              or (throw "den.strata: rule stratum '${ruleStratum}' is not in the compiled strata order");
         in
         builtins.mapAttrs (
           key: v:
           let
             ks = ctxKeyStratum.${key} or null;
           in
-          if ks != null && stratumIndex.${ks} >= r then
-            throw "den.strata: ctx fact '${key}' is stratum '${ks}' ≥ rule stratum '${ruleStratum}'"
+          if ks != null && !(strataScope.admitPositive stratumIndex.${ks} r) then
+            throw "den.strata: ctx fact '${key}' is stratum '${ks}', ABOVE rule stratum '${ruleStratum}' — a rule reads ctx facts at or below its own stratum (Apt-Blair-Walker 1988, Definition 3, condition 1)"
           else
             v
         ) ctx;
-      # The FINAL (dispatch) produce reads its ctx through `projectCtx stratum`, so a ≥-stratum ctx fact
-      # throws named when the body reads it.
+      # The FINAL (dispatch) produce reads its ctx through `projectCtx stratum`, so an ABOVE-stratum ctx
+      # fact throws named when the body reads it.
       projectedBase =
         stratum: baseProduce: id: ctx:
         baseProduce id (projectCtx stratum ctx);

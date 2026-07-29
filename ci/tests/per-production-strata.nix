@@ -2,9 +2,12 @@
 # `rel:<name>` — NOT the shipped constant `resolution`. §5 makes relations EDB (extensional base facts,
 # BOTTOM-PINNED), so a relation is inserted `after = "structural"`: distinct per-relation strata sitting
 # STRICTLY BELOW the `resolution` checkpoint (and thus below the derives, IDB, that read them). This gives
-# the schedule + the derive-read ceiling a real inter-relation strictly-below order to enforce: a derive
-# whose `over` reads a relation NOT strictly-below its own stratum is rejected NAMED at registration (the
-# derivedFieldMessage `notLater` rung, §2.3). See REFERENCE.md §5.
+# the schedule + the derive-read ceiling a real inter-relation order to enforce: a derive whose `over` reads
+# a relation STRICTLY ABOVE its own stratum is rejected NAMED at registration (the derivedFieldMessage
+# `overAbove` rung, §2.3). `over` is the DECLARED POSITIVE read set, so the rung applies Apt, Blair & Walker
+# (1988), "Stratified Programs", Definition 3, p. 96, condition 1 — a positive occurrence has its definition
+# within `⋃_{j ≤ i}`, so a SAME-stratum `over` is admitted and only an above-stratum one rejects.
+# See REFERENCE.md §5.
 {
   denHoag,
   ...
@@ -44,9 +47,9 @@ let
     in
     go 0 strata;
 
-  # a WELL-ORDERED derive at `resolution` (idx strictly above both rel:alpha, rel:beta) reading BOTH — the
-  # strictly-below positive read (§2.3): the derive sits at the all-relations-resolved checkpoint above the
-  # EDB relations. Registration is clean.
+  # a WELL-ORDERED derive at `resolution` (idx strictly above both rel:alpha, rel:beta) reading BOTH — an
+  # at-or-below positive read (§2.3, ABW Definition 3 condition 1): the derive sits at the all-relations-
+  # resolved checkpoint above the EDB relations. Registration is clean.
   wellFleet = mkFleet {
     foo = {
       over = [
@@ -59,8 +62,8 @@ let
     };
   };
 
-  # a CROSS-STRATUM derive at `rel:alpha` reading `beta` (at rel:beta, a SIBLING ABOVE rel:alpha) — NOT
-  # strictly-below, so registration rejects NAMED (the `notLater` rung fires when forced).
+  # a CROSS-STRATUM derive at `rel:alpha` reading `beta` (at rel:beta, a SIBLING ABOVE rel:alpha) — the
+  # relation sits ABOVE the reader, which condition 1 rejects, so registration rejects NAMED when forced.
   crossFleet = mkFleet {
     foo = {
       over = [ "beta" ];
@@ -95,7 +98,13 @@ let
       ];
       resolutionProductNames = [ ];
     };
-  matchesNotLater = deriv: builtins.match ".*is not LATER than.*" (msgOf deriv) != null;
+  # the `over` guard's NAMED message. `over` is the DECLARED POSITIVE read set, so its law is Apt, Blair &
+  # Walker (1988), "Stratified Programs", Definition 3, p. 96, condition 1: a derive BELOW its `over` relation
+  # is the violation, and the message cites the condition it applied.
+  matchesOverAbove =
+    deriv:
+    builtins.match ".*is BELOW the strata its .over. relations sit at.*condition 1.*" (msgOf deriv)
+    != null;
 in
 {
   flake.tests.per-production-strata = {
@@ -121,14 +130,15 @@ in
       expr = throws (builtins.deepSeq wellFleet.den.derived true);
       expected = false;
     };
-    # a derive reading a relation NOT strictly-below its own stratum → registration rejects when forced.
+    # a derive reading a relation STRICTLY ABOVE its own stratum → registration rejects when forced.
     test-cross-stratum-read-throws = {
       expr = throws (builtins.deepSeq crossFleet.den.derived true);
       expected = true;
     };
-    # …and the reject is the NAMED `notLater` message (§2.3), not a raw eval crash.
+    # …and the reject is the NAMED `over`-guard message (§2.3), not a raw eval crash. `beta` sits at
+    # `rel:beta`, STRICTLY ABOVE the derive's own `rel:alpha`, which condition 1 rejects.
     test-cross-stratum-read-named = {
-      expr = matchesNotLater {
+      expr = matchesOverAbove {
         over = [ "beta" ];
         direction = "forward";
         stratum = "rel:alpha";

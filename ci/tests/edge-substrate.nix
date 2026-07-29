@@ -660,6 +660,79 @@ in
         );
       expected = [ "edge" ];
     };
+    # THE EQUAL CASE — a ctx key tagged at the rule's OWN stratum. Apt, Blair & Walker (1988), "Stratified
+    # Programs", Definition 3, p. 96, condition 1: a POSITIVE occurrence has its definition within
+    # `⋃_{j ≤ i}`, so a same-stratum ctx fact is ADMITTED. `link` is structural and `thing` is tagged
+    # structural, so the body produces normally. The projection can only ever see a positive read — it is a
+    # `mapAttrs` that preserves the KEY SET exactly and replaces only VALUES, so `ctx ? key`, the one
+    # negation-shaped read an attribute set offers, is invariant under it.
+    test-ctx-scoping-equal-stratum-ok = {
+      expr =
+        let
+          c = compileWithStrata {
+            order = fourStrata;
+            ctxKeyStrata.structural = [ "thing" ];
+          } { foo = linkFoo; };
+          rule = builtins.head c.policy;
+        in
+        map (a: a.__action) (
+          rule.produce "n" {
+            thing = {
+              id_hash = "t";
+              name = "t";
+            };
+          }
+        );
+      expected = [ "link" ];
+    };
+    # THE PAIRED CONTROL, asserted in the SAME fixture rather than left to the tripwire above: the guard still
+    # fires on a key tagged STRICTLY ABOVE the rule. A future change that relaxed the comparison further would
+    # fail here, on a test that also proves the guard is not vacuous.
+    test-ctx-scoping-above-stratum-throws = {
+      expr =
+        let
+          c = compileWithStrata {
+            order = fourStrata;
+            ctxKeyStrata.resolution = [ "thing" ];
+          } { foo = linkFoo; };
+          rule = builtins.head c.policy;
+        in
+        (builtins.tryEval (
+          builtins.deepSeq (rule.produce "n" {
+            thing = {
+              id_hash = "t";
+              name = "t";
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
+    # THE TOTALITY ARM (§7): a rule whose OWN stratum is absent from the compiled order. A bare
+    # `stratumIndex.${ruleStratum}` select is an attribute miss, which `tryEval` CANNOT catch — it aborts the
+    # evaluation outright rather than yielding a value, so a suite that hit this path would DIE rather than
+    # report. The `or (throw …)` makes it a NAMED, catchable failure, which is what this assertion pins.
+    test-ctx-scoping-absent-rule-stratum-catchable = {
+      expr =
+        let
+          c = compileWithStrata {
+            order = [
+              "resolution"
+              "collection"
+            ];
+            ctxKeyStrata.resolution = [ "thing" ];
+          } { foo = linkFoo; };
+          rule = builtins.head c.policy;
+        in
+        (builtins.tryEval (
+          builtins.deepSeq (rule.produce "n" {
+            thing = {
+              id_hash = "t";
+              name = "t";
+            };
+          }) null
+        )).success;
+      expected = false;
+    };
 
     # ── den.edges: the edge-kind registry (spec §2.2/§7) ──
     # the framework pre-registers the kinds with their strata (contains/include/kindOf structural;

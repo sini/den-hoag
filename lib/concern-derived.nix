@@ -8,8 +8,9 @@
   strataScope,
 }:
 let
-  # the strata-order position + strictly-below primitives (§2.3), shared with the relation accessors.
-  inherit (strataScope) indexOf strataLt;
+  # the strata-order position + the two ABW admittance primitives (§2.3), shared with the relation
+  # accessors: `strataLe` is condition 1 (a POSITIVE read, `over`), `strataLt` is condition 2 (`negates`).
+  inherit (strataScope) indexOf strataLt strataLe;
 
   # derivedFieldMessage — the DEFINITION-TIME field validator as a VALUE (`null` = clean, else the NAMED message),
   # so the NAMED contract is CI-testable (Nix's `tryEval` cannot capture a throw's text). It checks each declared
@@ -41,10 +42,13 @@ let
           negates = spec.negates or [ ];
           strat = if builtins.isString stratum then stratum else "<none>";
           unknownRel = builtins.filter (r: !(builtins.elem r relationNames)) over;
-          # (past guard (a)) the strata the `over` relations sit at; a derive must sit strictly LATER — reject
-          # when its stratum is NOT strictly above some `over` relation's (`!(s ≺ stratum)` = `stratum ≼ s`).
+          # (past guard (a)) the strata the `over` relations sit at. `over` IS the derive's DECLARED POSITIVE
+          # read set (`negates` below is the negative one), so its law is Apt, Blair & Walker (1988),
+          # "Stratified Programs", Definition 3, p. 96, condition 1: a positive occurrence has its definition
+          # within `⋃_{j ≤ i}`. Reject only a relation STRICTLY ABOVE the derive (`!(s ≼ stratum)`); a
+          # same-stratum positive read is admitted, exactly as the runtime gate below admits it.
           overStrata = map (r: relationKinds.${r}.stratum) over;
-          notLater = builtins.any (s: !(strataLt strataOrder s stratum)) overStrata;
+          overAbove = builtins.any (s: !(strataLe strataOrder s stratum)) overStrata;
           reverseInverseless =
             direction == "reverse" && builtins.any (r: (relationKinds.${r}.inverse or null) == null) over;
           # (L4 (a) throwing-gate routing) a NEGATED predicate must be read through the THROWING gate (node.rel,
@@ -56,10 +60,12 @@ let
           # `negates` entry is rejected.
           negatesUnroutable = builtins.filter (r: !(builtins.elem r relationNames)) negates;
           # (L4 (b) strictly-above) a negation reads a COMPLETE predicate, so the derive must sit STRICTLY ABOVE
-          # every producer of each negated relation (reading it before it is fully produced is non-monotone). The
-          # SAME strictly-below ceiling the positive `over` read enforces, made EXPLICIT for negation — reject when
-          # some negated relation's stratum is NOT strictly below the derive's own (only reached once `negates`
-          # entries are known relations, so `relationKinds.${r}.stratum` is total).
+          # every producer of each negated relation (reading it before it is fully produced is non-monotone).
+          # This is Apt, Blair & Walker Definition 3, condition 2 (`⋃_{j < i}`), and it is the ONE guard in this
+          # file that knows its read's polarity — which is why it keeps `strataLt` while the positive `over`
+          # guard above takes `strataLe`. Reject when some negated relation's stratum is NOT strictly below the
+          # derive's own (only reached once `negates` entries are known relations, so `relationKinds.${r}.stratum`
+          # is total).
           negatesStrata = map (r: relationKinds.${r}.stratum) negates;
           negatesNotAbove = builtins.any (s: !(strataLt strataOrder s stratum)) negatesStrata;
         in
@@ -67,8 +73,8 @@ let
           "den.derived: '${name}' over names unknown relation '${builtins.head unknownRel}' — not a relation in den.relations (§5)"
         else if !(builtins.isString stratum) || !(builtins.elem stratum strataOrder) then
           "den.derived: '${name}' names unknown stratum '${strat}' — not in the compiled strata order (§2.3)"
-        else if notLater then
-          "den.derived: '${name}' stratum '${stratum}' is not LATER than the strata its `over` relations sit at — a derive reads strata below its own (§2.3)"
+        else if overAbove then
+          "den.derived: '${name}' stratum '${stratum}' is BELOW the strata its `over` relations sit at — a positive read admits strata at or below the reader's own (Apt-Blair-Walker 1988, Definition 3, condition 1) (§2.3)"
         else if reverseInverseless then
           "den.derived: '${name}' direction = \"reverse\" over a relation whose `inverse` is null — the reverse read would be silently empty; declare the relation's inverse (§5)"
         else if negatesUnroutable != [ ] then
@@ -99,7 +105,7 @@ let
   # placeholder — honest + loud, never a silent `{}`. `derivedIndex` is the name→spec registry (`den.derived`
   # itself), so `spec = derivedIndex.${name}`.
   #
-  # `node.query args` (§3 over §2.3): a `denQuery` over `relationEdges` SCOPED to relations at strata STRICTLY BELOW
+  # `node.query args` (§3 over §2.3): a `denQuery` over `relationEdges` SCOPED to relations at strata AT OR BELOW
   # the derive's own — the SAME capability boundary gatedRel enforces per-kind, but applied to the query SOURCE
   # (scoping the edge list scopes the capability). The caller supplies `from`/`follow`/`mode`/… ; the `edges` arg is
   # framework-forced (the rightmost `//` wins), so a caller cannot widen the source. An out-of-scope `follow`
@@ -122,15 +128,18 @@ let
         derivedIndex.${name}
           or (throw "den.derived: no such derived '${name}' — not a name declared in den.derived (§5)");
       # the stratum-gate (§2.3, the projectCtx throw-on-read pattern): node.rel exposes ONLY relation kinds whose
-      # stratum sits STRICTLY BELOW the derive's own — reading a kind tagged stratum ≥ the derive's stratum is
-      # REPLACED with a NAMED throw. The gate withholds the VALUE, not the OBSERVATION: a derive body can wrap
+      # stratum sits AT OR BELOW the derive's own — reading a kind tagged stratum > the derive's stratum is
+      # REPLACED with a NAMED throw. This is a RUNTIME read, where polarity is not observable — `node.rel` and
+      # `node.query` differ in LOUDNESS, not in polarity — so it takes Apt, Blair & Walker Definition 3,
+      # condition 1, and condition 2 stays at the `negates` registration check above.
+      # The gate withholds the VALUE, not the OBSERVATION: a derive body can wrap
       # the read in `builtins.tryEval` and recover a boolean, so out-of-scope stays distinguishable from absent
-      # (the SOUND direction for L4). `strataScope.ceilingGate` holds the `>= ceilingIdx` arithmetic; the gate
+      # (the SOUND direction for L4). `strataScope.positiveGate` holds the admittance arithmetic; the gate
       # wraps `node.rel` ONLY — `node.id` is a sibling of `rel` (a plain string, never gated), so it always passes.
       deriveStratum = spec.stratum;
       deriveStratumIdx = indexOf strataOrder deriveStratum;
       gatedRel =
-        strataScope.ceilingGate
+        strataScope.positiveGate
           {
             inherit strataOrder relationKinds;
           }
@@ -140,11 +149,12 @@ let
             ceilingIdx = deriveStratumIdx;
           }
           (relAt id);
-      # the STRATUM-SCOPED query source (§2.3): every relation edge whose stratum sits STRICTLY BELOW the derive's
-      # own — the same boundary gatedRel gates per-kind, applied to the edge list (`strataScope.edgesBelowStratum`).
-      # An out-of-scope (≥ own stratum) or unknown-label edge is SILENTLY excluded (no throw — the query mode is
-      # exploratory, its out-of-capability reach is naturally empty).
-      scopedEdges = strataScope.edgesBelowStratum {
+      # the STRATUM-SCOPED query source (§2.3): every relation edge whose stratum sits AT OR BELOW the derive's
+      # own — the same boundary gatedRel gates per-kind, applied to the edge list (`strataScope.positiveEdges`,
+      # ABW condition 1, for the same reason the gate takes it: a query SOURCE cannot see the polarity of the
+      # read it serves). An out-of-scope (> own stratum) or unknown-label edge is SILENTLY excluded (no throw —
+      # the query mode is exploratory, its out-of-capability reach is naturally empty).
+      scopedEdges = strataScope.positiveEdges {
         inherit strataOrder relationKinds relationEdges;
       } deriveStratumIdx;
       node = {
@@ -153,7 +163,7 @@ let
         # `edges` is framework-forced (rightmost `//` wins): the caller cannot widen the scoped source.
         #
         # This one takes the EDGES-adapting entry point deliberately, and the reason is that its pool is not
-        # the relation pool: `scopedEdges` is cut to the strata strictly below THIS derive's own, so it is a
+        # the relation pool: `scopedEdges` is cut to the strata at or below THIS derive's own, so it is a
         # different edge set per derive name, re-scoped at every (name, id). There is no single adjacency to
         # hoist to mkDen the way the relation accessor's is hoisted — collapsing this one would mean lifting
         # the scoping out of `mkDerived`'s per-name currying, which is a change to the capability boundary's
