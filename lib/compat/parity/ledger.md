@@ -543,7 +543,7 @@ against the node set. **The limit is stated deliberately:** a schema with four o
 carry a middle dim that is simultaneously a non-parent coordinate root and a multi-source containment
 target, and that WOULD dangle. This row says "unreachable in this schema shape, measured" and not
 "cannot happen", because three unreachability claims in this arc have already been disproved (see row
-3) and a fourth asserted one would be worth less than an open question. No guard was added: an abort
+3\) and a fourth asserted one would be worth less than an open question. No guard was added: an abort
 on an unreachable path cannot be armed, and an unarmable guard is the vacuous-witness problem row 6
 describes.
 
