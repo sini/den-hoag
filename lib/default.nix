@@ -2098,7 +2098,7 @@ let
       # would make a FUNCTION-valued attribute (violating "an attribute value is inert data") for no warm-serve
       # gain; it is therefore NOT part of the second delivery-context Phase 1 deletes.
       relQuery = relationsLib.mkRelQuery {
-        denQuery = queryLib.denQuery;
+        inherit (queryLib) denQuery kindGraphOf;
         inherit relationEdges;
         whereFor = matchIdStructural;
       };
@@ -2645,7 +2645,12 @@ in
   # labeled edge list (`[{ kind; from; to }]`) onto gen-graph — `query { edges; from; follow; where ? (_: true);
   # mode ? "all"; order ? {}; empty; combine; valueOf; }`. Source-agnostic (plain-string ids); the live
   # relation-graph source is a downstream concern. See lib/query.nix.
-  query = queryLib.denQuery;
+  #
+  # This is the EXPLORATORY surface and it keeps its edge-list signature: a caller here holds a pool it has
+  # just assembled, and building the adjacency for the call is that pool's honest cost. The kernel's own hot
+  # readers do NOT come through here — they take `denQuery` with a `kindGraph` built once per pool, which is
+  # what stopped the relation accessor re-grouping the whole pool at every (node × kind × field).
+  query = queryLib.denQueryOverEdges;
   # den's selector vocabulary (identity-law entry/kind constructors + adapters); used to
   # write declarations, independent of any one mkDen instance.
   sel = select;

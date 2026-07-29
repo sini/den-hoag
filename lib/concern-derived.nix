@@ -112,7 +112,7 @@ let
       relationKinds,
       strataOrder,
       relationEdges,
-      denQuery,
+      denQueryOverEdges,
     }:
     name: id:
     let
@@ -151,7 +151,15 @@ let
         rel = gatedRel;
         inherit id;
         # `edges` is framework-forced (rightmost `//` wins): the caller cannot widen the scoped source.
-        query = args: denQuery (args // { edges = scopedEdges; });
+        #
+        # This one takes the EDGES-adapting entry point deliberately, and the reason is that its pool is not
+        # the relation pool: `scopedEdges` is cut to the strata strictly below THIS derive's own, so it is a
+        # different edge set per derive name, re-scoped at every (name, id). There is no single adjacency to
+        # hoist to mkDen the way the relation accessor's is hoisted — collapsing this one would mean lifting
+        # the scoping out of `mkDerived`'s per-name currying, which is a change to the capability boundary's
+        # shape rather than to where a build happens. Named rather than hidden: `denQueryOverEdges` says in
+        # its name that it builds an adjacency for the call.
+        query = args: denQueryOverEdges (args // { edges = scopedEdges; });
       };
       deps = throw depsPlaceholderMessage;
     in

@@ -26,6 +26,27 @@
   strataOrder ? [ ],
   derivedTable ? { },
 }:
+let
+  # THE RELATION ACCESSOR, BUILT ONCE PER MKDEN — and the placement is the whole point, not a tidiness
+  # preference. This module is applied once per mkDen, so a `let` here is evaluated once; `mkRelAccessor`
+  # returns `id: …` after binding its pool's adjacency, so building it here and applying it per id inside
+  # `compute` collapses the per-node rebuild that made the adjacency cost O(E) per (node × kind × field).
+  # Constructing it inside `compute` — as this did — re-ran the accessor's entire outer `let`, its pool
+  # scoping and its adjacency build, for every node in the fleet.
+  #
+  # Nothing is forced eagerly by moving it: `mkRelAccessor` binds thunks and returns a function, so a fleet
+  # that never reads a relation still pays nothing, and a fleet that reads many shares one build.
+  relAccessor = relations.mkRelAccessor {
+    inherit (query) denQuery kindGraphOf;
+    inherit relationEdges strataOrder;
+    relationKinds = relationEdgeKinds;
+    # `ceiling = null` = the full relation pool (§2.3). In the shipped single-stratum facet the relation
+    # accessor AND its relations both sit at `resolution`, so a strictly-below ceiling would exclude every
+    # relation; the derive gate (mkDerived's `ceilingGate`) enforces the boundary per the DERIVE's stratum.
+    # The per-relation reader-stratum ceiling arrives with §11 L2 (per-relation strata).
+    ceiling = null;
+  };
+in
 {
   # relAt (§5) as a scheduled attribute — the per-node `{ <kind> = { targets; inverse; closure; paths }; }`
   # relation accessor. `readsAttrs = [ ]`: the producer is the static `relationEdges` pool, so the compute
@@ -35,18 +56,7 @@
     kind = "synthesized";
     stratum = "resolution";
     readsAttrs = [ ];
-    compute =
-      _self: id:
-      relations.mkRelAccessor {
-        denQuery = query.denQuery;
-        inherit relationEdges strataOrder;
-        relationKinds = relationEdgeKinds;
-        # `ceiling = null` = the full relation pool (§2.3). In the shipped single-stratum facet the relation
-        # accessor AND its relations both sit at `resolution`, so a strictly-below ceiling would exclude every
-        # relation; the derive gate (mkDerived's `ceilingGate`) enforces the boundary per the DERIVE's stratum.
-        # The per-relation reader-stratum ceiling arrives with §11 L2 (per-relation strata).
-        ceiling = null;
-      } id;
+    compute = _self: id: relAccessor id;
   };
 
   # derivedAt (§5) as a scheduled attribute — the per-node name→value map of every declared derive. `node.rel`
@@ -68,7 +78,7 @@
           relAt = innerId: self.get innerId "rel-accessor";
           derivedIndex = derivedTable;
           relationKinds = relationEdgeKinds;
-          denQuery = query.denQuery;
+          inherit (query) denQueryOverEdges;
           inherit strataOrder relationEdges;
         };
       in

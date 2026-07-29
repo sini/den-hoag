@@ -8,6 +8,13 @@
 # — no coupling to any rendered identity, synthetic-testable. It takes the edge list as data; assembling the
 # live relation graph (and the scoped `where` a gen-select selector needs) is a caller concern.
 #
+# TWO ENTRY POINTS, and the split is the cost boundary. `denQuery` takes a BUILT `kindGraph`; a caller that
+# owns a static pool builds it ONCE (`kindGraphOf`) and every query over that pool shares it.
+# `denQueryOverEdges` takes an edge list and builds the adjacency for the call — correct for an exploratory
+# read over a pool assembled on the spot, wrong for a hot per-node reader. They are separate NAMES rather
+# than one function with a defaulted argument, so that taking the per-call build is something a caller
+# writes down rather than something it gets by omission.
+#
 # Deps: `prelude` (utility base); `graph` = the OUTER gen-graph engine (`labeledFrom` / `query` / `regex`) —
 # NOT the mkDen-local `graphEscape` read-only edge/trace surface, which has no `.query`.
 {
@@ -49,12 +56,29 @@ let
       fromMap.${fromId} or [ ]
     ) byLabelFrom;
 
+  # kindGraphOf — the flat edge list → gen-graph labeled-graph adaptation, as its OWN name. Separating it
+  # from `denQuery` is the whole of the cost fix: the O(E) two-pass `groupBy` build below is a property of
+  # the POOL, not of a query, so it belongs at the site that owns the pool and can be forced once. A caller
+  # holding a static pool builds this ONCE and hands the result to every query over it; `denQuery` no longer
+  # has the opportunity to rebuild it, because it never sees the edges.
+  kindGraphOf = edges: graph.labeledFrom (perLabelFromEdges edges);
+
   # denQuery — lower the den surface onto `graph.query`. The guards are den-namespaced NAMED throws that
   # PRE-EMPT the tryEval-uncatchable class (an unknown mode reaching gen-graph's raw throw, a `where`/`combine`
   # that is not a function → "attempt to call …", an unparseable follow forced deep inside the traversal).
+  #
+  # TAKES A BUILT `kindGraph`, REQUIRED — never an edge list, and never a defaulted one. This function used
+  # to build its own adjacency inside its `let`, so the O(E) build ran once PER CALL: the relation accessor
+  # issues four queries per (node × kind) and Nix has no CSE, so the pool was re-grouped for every field of
+  # every kind at every node. Availability was never the obstacle — `relationEdges` is a static
+  # registry-derived pool — only call placement was. Making the parameter required rather than defaulting it
+  # beside `edges` is deliberate: a defaulted second input is exactly the absence-is-a-decision shape that
+  # lets a caller silently reopen the cost, and `output-modules.nix`'s `channelNames` is the in-file
+  # precedent for required-not-defaulted. Callers holding an edge list use `denQueryOverEdges` below, which
+  # names the adaptation it performs.
   denQuery =
     {
-      edges,
+      kindGraph,
       from,
       follow,
       where ? (_: true),
@@ -87,7 +111,6 @@ let
             p
           else
             throw "den.query: unparseable follow '${follow}' (§3 follow-grammar)";
-        kindGraph = graph.labeledFrom (perLabelFromEdges edges);
         common = {
           graph = kindGraph;
           inherit from where;
@@ -109,7 +132,26 @@ let
       # [[{node;path}]]; visible → {visible;shadowed}; fixpoint → the fold). No node-dedup — that is a
       # caller-specific concern (e.g. resolveKey's diamond dedup), not the general query contract.
       graph.query (common // perMode // { inherit mode; });
+
+  # denQueryOverEdges — the edges-taking adaptation, for a caller that holds a pool rather than a built
+  # graph: the EXPLORATORY surface (`den.query`, and a per-derive stratum-scoped pool whose membership is a
+  # function of the reader's own stratum). It builds the adjacency for the call, which is the honest cost of
+  # querying a pool you have only just scoped. It is a SEPARATE NAME rather than a defaulted argument so
+  # that a hot-path caller cannot reach it by omission — choosing the per-call build has to be written down.
+  denQueryOverEdges =
+    args:
+    denQuery (
+      removeAttrs args [ "edges" ]
+      // {
+        kindGraph = kindGraphOf args.edges;
+      }
+    );
 in
 {
-  inherit perLabelFromEdges denQuery;
+  inherit
+    perLabelFromEdges
+    kindGraphOf
+    denQuery
+    denQueryOverEdges
+    ;
 }

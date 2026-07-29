@@ -144,6 +144,7 @@ let
   mkRelQuery =
     {
       denQuery,
+      kindGraphOf,
       relationEdges,
       whereFor,
       relationKinds ? { },
@@ -156,6 +157,11 @@ let
           relationEdges
         else
           strataScope.edgesBelowStratum { inherit strataOrder relationKinds relationEdges; } ceiling;
+      # THE ADJACENCY, BUILT ONCE. `ceiling` is fixed for the life of this query handle, so its pool is too
+      # — and a pool's adjacency is a property of the pool, not of a call over it. Bound here, outside the
+      # per-call lambda below, so every `relQuery` this handle serves shares one O(E) build. Lazy: the
+      # thunk is forced by the first query, and a fleet that never queries pays nothing.
+      scopedGraph = kindGraphOf scopedEdges;
     in
     {
       from,
@@ -164,7 +170,7 @@ let
       mode ? "all",
     }:
     denQuery {
-      edges = scopedEdges;
+      kindGraph = scopedGraph;
       inherit from mode;
       follow = kind;
       where = if sel == null then (_: true) else whereFor sel;
@@ -191,6 +197,7 @@ let
   mkRelAccessor =
     {
       denQuery,
+      kindGraphOf,
       relationEdges,
       relationKinds,
       strataOrder ? [ ],
@@ -202,6 +209,13 @@ let
           relationEdges
         else
           strataScope.edgesBelowStratum { inherit strataOrder relationKinds relationEdges; } ceiling;
+      # THE ADJACENCY, BUILT ONCE — and this binding is why the accessor must be applied above any
+      # per-node `compute`, not inside one. The four fields below are four `denQuery` calls per KIND, and
+      # `denQuery` used to group the whole pool inside each of them: the cost was O(E) per
+      # (node × kind × field). Hoisting it here removes the kind and field factors; the CALLER removes the
+      # node factor by building the accessor once per mkDen and applying it per id. In-tree precedent is
+      # the sibling `claim-accessor.nix`, which binds `scopedReverse` outside its compute for this reason.
+      scopedGraph = kindGraphOf scopedEdges;
     in
     id:
     builtins.mapAttrs (
@@ -209,7 +223,7 @@ let
       let
         inverseLabel = kindRow.inverse or null;
         base = {
-          edges = scopedEdges;
+          kindGraph = scopedGraph;
           from = id;
         };
       in
