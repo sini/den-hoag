@@ -24,10 +24,13 @@
 #     own laziness invariant: config ⊥ helpers), so the fleet is cycle-free.
 #  2. PARTIAL MATCHING (denTest's `intersectAttrs`): den-hoag's `mkCi` asserts FULL `expr == expected`; v1
 #     compared only the keys `expected` names. Reproduced: both attrsets → `intersectAttrs expected expr`.
-#  3. expectedError → tryEval (mkCi has no error channel): `{ expr = (tryEval <erroring expr>).success;
-#     expected = false; }` (precedent: compat-flat-host.nix). CEILING: `tryEval` catches `throw`/`assert`
-#     only — an `abort`/"missing arg"/inf-recursion is UNCATCHABLE (v1 `Abort`/`MissingArgumentError` can't
-#     ride this arm).
+#  3. expectedError rides nix-unit's NATIVE error channel: the leaf FORWARDS `{ type; msg; }` and the
+#     RUNNER does the catching. That channel is strictly stronger than a `tryEval`-to-a-boolean lowering
+#     on every axis — it catches `EvalError` (a missing attribute, which `tryEval` does NOT catch: that
+#     one propagates and kills the evaluation), it FAILS when the expression does not throw at all
+#     ("Expected error, but no error was caught"), and it matches `msg` as an unanchored substring. So a
+#     witness naming ONE abort no longer passes on ANY error — which is the whole content of the
+#     assertion. CEILING: a leaf carries `expected` XOR `expectedError` (see the tail's refusal).
 #  4. `apple`/`tuxHm`/`pinguHm` are EXPOSED but NOT realizable in den-hoag CI: no nix-darwin input (⇒
 #     `darwinConfigurations.apple` has no `.config`) and no home-manager input (⇒ `igloo.home-manager` has
 #     no option). ENVIRONMENTAL, not a path bug — a test forcing them throws in-CI. Left lazy so a
@@ -260,26 +263,45 @@ let
 
       out = testFn helpers;
       expr = out.expr;
-      hasExpectedError = out ? expectedError;
+
+      # ── THE LEAF IS A PROJECTION OF `out`, NOT A REBUILD OF IT ─────────────────────────────────────
+      # `assertionKeys` is the leaf's key set, declared in ONE place. An arm may TRANSFORM a key it owns
+      # (the value arm rewrites `expr` for partial matching); NO arm enumerates what to keep. The tail
+      # previously constructed a fresh literal attrset in each arm, so every key an arm did not name was
+      # ERASED — and each arm's list drifted independently of the other's, which is why the same defect
+      # had to be found twice from two directions. A projection has no arm-local key list to drift:
+      # a new leaf field is one edit HERE and reaches every arm by construction.
+      assertionKeys = {
+        expr = null;
+        expected = null;
+        expectedError = null;
+      };
+      projected = builtins.intersectAttrs assertionKeys out;
     in
-    if hasExpectedError then
-      {
-        expr = (builtins.tryEval (builtins.deepSeq expr expr)).success;
-        expected = false;
-      }
+    # `expected` and `expectedError` are MUTUALLY EXCLUSIVE at the leaf: nix-unit forces `expr` against
+    # `expected` OUTSIDE its error channel, so a leaf carrying both lets the error escape uncaught and the
+    # runner attributes the failure to the throw rather than to the leaf. REFUSED, not silently dropped —
+    # a scaffold that quietly discards a declared assertion key is the exact defect this projection
+    # removes, so the contradiction is named where it was written.
+    if projected ? expectedError then
+      if projected ? expected then
+        throw (
+          "den-compat-test: a leaf declares BOTH `expected` and `expectedError`. nix-unit carries one "
+          + "assertion form per leaf — with both, `expr` is forced against `expected` outside the error "
+          + "channel and the error escapes uncaught. Declare exactly one."
+        )
+      else
+        # `expr` rides UNFORCED: nix-unit's native channel does the catching, and it is what compares
+        # `type` and `msg`. Nothing here reshapes the error declaration.
+        projected
     else
       let
         expected = out.expected;
       in
       # PARTIAL MATCHING (denTest.nix:20-24): compare only the keys `expected` names when both are attrsets.
       if builtins.isAttrs expected && builtins.isAttrs expr then
-        {
-          expr = builtins.intersectAttrs expected expr;
-          inherit expected;
-        }
+        projected // { expr = builtins.intersectAttrs expected expr; }
       else
-        {
-          inherit expr expected;
-        };
+        projected;
 in
 denTest
