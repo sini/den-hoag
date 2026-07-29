@@ -20,25 +20,65 @@
   checkSingular,
 }:
 let
-  # The framework-pre-registered kinds and their strata (spec §2.2): contains/include/kindOf are
-  # structural; member/reach/reach-suppress resolution (selector-driven membership targets a later
-  # stratum per §2.3, and literal declared membership rides the same kind harmlessly); nest/defer are
-  # OUTPUT — a stratum the framework itself registers through the den.strata dense-insertion mechanism
-  # after `demand` (the seed stays the shipped four; the framework dogfoods the extension). `demand` is
-  # the demand-stratum edge kind demand's `toEdges` stamps — the first live labeled kind (its records
-  # cite this registry row).
-  preRegisteredStrata = {
-    contains = "structural";
-    include = "structural";
-    kindOf = "structural";
-    member = "resolution";
-    reach = "resolution";
-    reach-suppress = "resolution";
-    nest = "output";
-    defer = "output";
-    demand = "demand";
+  # The framework-pre-registered kinds, their strata and their projection targets (spec §2.2/§7):
+  # contains/include/kindOf are structural; member/reach/reach-suppress resolution (selector-driven
+  # membership targets a later stratum per §2.3, and literal declared membership rides the same kind
+  # harmlessly); nest/defer are OUTPUT — a stratum the framework itself registers through the den.strata
+  # dense-insertion mechanism after `demand` (the seed stays the shipped four; the framework dogfoods the
+  # extension). `demand` is the demand-stratum edge kind demand's `toEdges` stamps — the first live
+  # labeled kind (its records cite this registry row).
+  #
+  # BOTH FIELDS ARE REQUIRED HERE — there is no `or` on either, and that totality is the point. A `to`
+  # read through a default says *a kind that did not declare its projection target delivers content*: a
+  # decision made silently, at a site four files from this seed, in the wrong direction. This is the one
+  # place where the framework's own vocabulary is enumerated in full, so a framework kind that has not
+  # said where it projects is an INCOMPLETE DECLARATION, not a materializing one — after this, adding a
+  # reserved kind without a `to` is an eval error HERE rather than a silent trace entry later.
+  #
+  # THE RULE, not the enumeration: a kind is `materialize` IFF IT DELIVERS CONTENT. Structural and
+  # resolution kinds are assertions ABOUT the graph — they answer topology questions and belong in the
+  # query pool; output and demand kinds CARRY CONFIGURATION. `demand` must stay `materialize`:
+  # `edgesForRoot = materializeFilter (edge.edgesFor {…} ++ demandEdges)` puts demand edges on the
+  # materialization trace by design.
+  preRegisteredKinds = {
+    contains = {
+      stratum = "structural";
+      to = "query";
+    };
+    include = {
+      stratum = "structural";
+      to = "query";
+    };
+    kindOf = {
+      stratum = "structural";
+      to = "query";
+    };
+    member = {
+      stratum = "resolution";
+      to = "query";
+    };
+    reach = {
+      stratum = "resolution";
+      to = "query";
+    };
+    reach-suppress = {
+      stratum = "resolution";
+      to = "query";
+    };
+    nest = {
+      stratum = "output";
+      to = "materialize";
+    };
+    defer = {
+      stratum = "output";
+      to = "materialize";
+    };
+    demand = {
+      stratum = "demand";
+      to = "materialize";
+    };
   };
-  reservedNames = builtins.attrNames preRegisteredStrata;
+  reservedNames = builtins.attrNames preRegisteredKinds;
 
   # The strata the registry itself requires: `output` (nest/defer) enters the compiled order through the
   # SAME `den.strata.insert` machinery the user surface uses — dense-inserted after `demand`.
@@ -97,8 +137,12 @@ let
   # `to ∈ { query, materialize, both }` (spec §7) is the PROJECTION TARGET — the parity-load-bearing tag: an
   # edge-production declares WHERE its edges land. `query` is OFF the materialization trace (a relation/query
   # edge — parity-safe); `materialize` is ON the trace (real config, like demandEdges); `both` lands on both.
-  # The DEFAULT is `materialize` — a framework/user/cascade kind is on-trace; the `den.relations` desugar
-  # (`relationsToEdgeKinds`) overrides it to `query`, keeping relation edges provably off the frozen trace.
+  # The `raw.to or "materialize"` default below is scoped to the USER surface (`den.edges` kinds), where it
+  # is the documented and tested contract; the `den.relations` desugar (`relationsToEdgeKinds`) overrides it
+  # to `query`, keeping relation edges provably off the frozen trace. The FRAMEWORK rows never reach this
+  # default — `preRegisteredKinds` states every reserved kind's `to`, and the seed passes it through, so the
+  # `raw.to` read finds it. Making the seed total while keeping the user default is the whole point: the
+  # framework's vocabulary is declared, the user's is defaulted.
   entryOf =
     disciplines: name: raw:
     let
@@ -109,7 +153,9 @@ let
         discipline = raw.discipline or null;
         inverse = raw.inverse or null;
         closure = raw.closure or false;
-        stratum = raw.stratum or preRegisteredStrata.${name} or "resolution";
+        # a USER kind reusing a reserved name inherits that name's stratum off the seed row. The whole
+        # select path binds before the final `or`, so a non-reserved name falls to "resolution" as before.
+        stratum = raw.stratum or preRegisteredKinds.${name}.stratum or "resolution";
         to = raw.to or "materialize";
       };
     in
@@ -133,14 +179,15 @@ let
     }:
     let
       strataSet = prelude.genAttrs strataOrder (_: true);
-      # the reserved seed is the pre-registered framework rows keyed by their strata — its keyset is the
-      # reserved set (a user kind re-registering one aborts NAMED inside the combinator) and its values
-      # pre-populate the table (allRaw = seed // kinds), byte-identical to the original union.
+      # the reserved seed is the pre-registered framework rows — its keyset is the reserved set (a user
+      # kind re-registering one aborts NAMED inside the combinator) and its values pre-populate the table
+      # (allRaw = seed // kinds). BOTH declared fields ride through: `entryOf` reads `raw.to` and finds
+      # the seed's, so no framework row is ever classified by the user-surface default.
       compiled = reservedRegistry.mkReservedRegistry {
         subject = "den.edges";
         noun = "kind";
         reserved = prelude.genAttrs reservedNames (n: {
-          stratum = preRegisteredStrata.${n};
+          inherit (preRegisteredKinds.${n}) stratum to;
         });
         entryOf = entryOf disciplines;
         table = kinds;
@@ -162,12 +209,26 @@ let
   # ── the projection filter (spec §7, the parity-load-bearing seam) ──────────────────────────────────────
   # `projectsMaterialize compiledKinds edge` — does this edge land ON the materialization trace? It reads the
   # edge's `kind` label, looks up the kind's `to` projection target in the compiled table, and keeps `to ∈
-  # { materialize, both }`. An UNLABELED edge (`kind = null` — the corpus content-edge majority) and a kind
-  # ABSENT from the table both default `materialize` (on-trace): the filter NEVER silently drops an edge it
-  # cannot classify — a parity-preserving default. Only a registered `to = query` kind (the `den.relations`
-  # desugar) is excluded, and relation edges never reach `edgesForRoot` anyway, so this is INERT on the corpus
-  # (it FORMALIZES the already-holding off-trace separation, it does not create it — spec §7). `materializeEdges`
-  # is the list filter output-modules.nix applies to `edgesForRoot`.
+  # { materialize, both }`. Excluded: every registered `to = query` kind — the `den.relations` desugar, AND
+  # the framework's own structural/resolution vocabulary (contains/include/kindOf/member/reach/
+  # reach-suppress), which the seed above declares `query` because they assert things ABOUT the graph rather
+  # than delivering content. This is what keeps a `contains` edge off the materialization trace by
+  # DECLARATION rather than by the accident that the query pool is never concatenated into `edgesForRoot`.
+  #
+  # TWO `absence ⇒ materialize` decisions remain here, and they are DIFFERENT facts, both KEPT deliberately:
+  #   • `k == null` — an UNLABELED edge, the corpus content-edge majority. An edge with no kind label IS
+  #     content; this default is parity-preserving and stays.
+  #   • `compiledKinds.${k}.to or "materialize"` — a LABELED edge naming a kind in the table nowhere. NOT
+  #     "an edge I cannot classify" but an UNREGISTERED LABEL. Kept on a REACHABILITY argument, not on a
+  #     frozen-path one: exactly three constructors put edges into this filter's input (gen-edge's
+  #     `defaultEdges`, `deliveryEdgesAt`'s `renderDelivery`, and `demandLib.toEdges`), and only the third
+  #     passes a `kind` at all — the literal "demand", whose row exists by the seed's totality. So the
+  #     residual arm's reachable set is empty today. It EXPIRES the moment a new producer stamps a `kind`
+  #     on an edge reaching `edgesForRoot`; at that point the same absence-is-a-decision argument the seed
+  #     makes applies here, and `assembleEdges` in this very file is the in-file precedent for the remedy
+  #     (it aborts NAMED on an intent naming an unregistered kind). The two sites disagree today; that is
+  #     recorded rather than resolved, because resolving it changes the delivery-edge path.
+  # `materializeEdges` is the list filter output-modules.nix applies to `edgesForRoot`.
   projectsMaterialize =
     compiledKinds: e:
     let
@@ -509,7 +570,7 @@ let
 in
 {
   inherit
-    preRegisteredStrata
+    preRegisteredKinds
     reservedNames
     frameworkStrataInserts
     closureMessage

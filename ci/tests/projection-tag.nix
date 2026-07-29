@@ -3,11 +3,16 @@
 # edges land. `to = query` is OFF the materialization trace (a relation/query edge — parity-safe); `to =
 # materialize` is ON the trace (real config, exactly as today's demandEdges); `to = both` lands on both.
 #
-# The DEFAULT is per-kind (§4 "Default per emit kind"): a relation-DERIVED kind (the `den.relations` desugar,
-# `relationsToEdgeKinds`) stamps `to = "query"` explicitly — a relation edge-production must be query, off the
-# trace; EVERY other kind (framework-pre-registered, user den.edges, demand/cascade) defaults `to = "materialize"`
-# — on the trace. The materialize edge set (`edgesForRoot`, output-modules.nix) filters to `to ∈ { materialize,
-# both }`, so a `to = query` kind's edges never reach the trace.
+# WHERE A KIND'S `to` COMES FROM, in three tiers (§4 "Default per emit kind"):
+#   • the FRAMEWORK pre-registered kinds STATE it at the registry seed (`preRegisteredKinds`), both fields
+#     required — a kind is `materialize` IFF IT DELIVERS CONTENT, so contains/include/kindOf/member/reach/
+#     reach-suppress are `query` (assertions ABOUT the graph) and nest/defer/demand are `materialize`;
+#   • a relation-DERIVED kind (the `den.relations` desugar, `relationsToEdgeKinds`) stamps `to = "query"`
+#     explicitly — a relation edge-production must be query, off the trace;
+#   • a USER `den.edges` kind DEFAULTS to `materialize` (on the trace) — the one surviving default, and the
+#     one this suite still witnesses as a default.
+# The materialize edge set (`edgesForRoot`, output-modules.nix) filters to `to ∈ { materialize, both }`, so a
+# `to = query` kind's edges never reach the trace.
 #
 # PARITY IS INERT BY CONSTRUCTION (this suite FORMALIZES it, it does not create it): relation edges live in a
 # SEPARATE `relationEdges` pool never merged into `edgesForRoot`; the corpus `edgesForRoot` carries only
@@ -76,6 +81,12 @@ let
     kind = "broadcast";
     marker = "B";
   };
+  # the WITNESS-D subject: a framework STRUCTURAL edge. Before the seed became total this rode the trace
+  # by defaulting; after it, the seed declares it `query` and the filter drops it.
+  containsEdge = {
+    kind = "contains";
+    marker = "C";
+  };
   # a compiled table stamping a `to = "both"` kind, to witness `both` lands on the materialize set.
   compiledBoth = compileEdges {
     kinds = {
@@ -112,9 +123,18 @@ in
       expr = compiled.demand.to;
       expected = "materialize";
     };
-    test-projection-member-kind-to-materialize = {
+
+    # ── a FRAMEWORK structural/resolution kind is `query`, BY DECLARATION at the seed ──
+    # `member` asserts something about the graph; it delivers no content, so it is off the trace. This
+    # is stated in `preRegisteredKinds`, not defaulted — which is why it can be pinned here at all: while
+    # `to` was a default, nothing in the suite pinned it for any framework kind.
+    test-projection-member-kind-to-query = {
       expr = compiled.member.to;
-      expected = "materialize";
+      expected = "query";
+    };
+    test-projection-contains-kind-to-query = {
+      expr = compiled.contains.to;
+      expected = "query";
     };
 
     # ── the materialize filter: keeps `to ∈ { materialize, both }`, EXCLUDES `to = query` ──
@@ -158,6 +178,33 @@ in
         }
       ];
       expected = [ "S" ];
+    };
+
+    # ── WITNESS D (the seed fix, as a unit witness) ──────────────────────────────────────────────────
+    # The discriminating input is the singleton `[ { kind = "contains"; … } ]` handed to the ONE function
+    # this decision changes, at the ONE site `to` is read. Before the seed became total, `contains` had no
+    # declared `to`, `entryOf`'s default made it `materialize`, and the filter KEPT it; now the seed states
+    # `query` and the filter DROPS it.
+    #
+    # The two controls ride in the SAME call, on the SAME predicate — that is what distinguishes "the
+    # filter drops `contains`" from "the filter drops everything". Splitting them into three assertions
+    # would lose exactly that: a filter that dropped its whole input would satisfy a lone `contains` row.
+    #
+    # ⚠ WHAT THIS DOES NOT SHOW, so nobody reads it as more: that no `contains` edge reaches the frozen
+    # materialization trace TODAY is true by POOL SEPARATION — `graphAccessor.edgesAt = deliveryEdgesAt`
+    # and the only other input is `++ demandEdges`, so a query-pool edge cannot reach `materializeFilter`
+    # at all. That holds with or without this change, and nothing in this design can demonstrate a parity
+    # divergence. What the witness shows is that the separation now holds BY DECLARATION as well.
+    test-projection-witness-d-contains-dropped-controls-kept = {
+      expr = markersOf compiled [
+        containsEdge
+        demandEdge
+        unlabeledEdge
+      ];
+      expected = [
+        "D"
+        "U"
+      ];
     };
   };
 }

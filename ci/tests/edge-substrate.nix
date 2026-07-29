@@ -661,22 +661,52 @@ in
       expected = [ "edge" ];
     };
 
-    # ── den.edges: the edge-kind registry (spec §2.2) ──
+    # ── den.edges: the edge-kind registry (spec §2.2/§7) ──
     # the framework pre-registers the kinds with their strata (contains/include/kindOf structural;
     # member/reach/reach-suppress resolution; nest/defer output; demand — the demand-stratum live kind
-    # demand's toEdges stamps).
-    test-edges-preregistered-strata = {
-      expr = edgeKinds.preRegisteredStrata;
+    # demand's toEdges stamps) AND their projection targets. The seed row is TOTAL — both fields stated,
+    # neither defaulted — so this assertion pins the `to` column that nothing pinned while it was a
+    # default: a kind is `materialize` iff it delivers content, so the structural/resolution vocabulary
+    # is `query` and only the output/demand kinds ride the materialization trace.
+    test-edges-preregistered-kinds = {
+      expr = edgeKinds.preRegisteredKinds;
       expected = {
-        contains = "structural";
-        include = "structural";
-        kindOf = "structural";
-        member = "resolution";
-        reach = "resolution";
-        reach-suppress = "resolution";
-        nest = "output";
-        defer = "output";
-        demand = "demand";
+        contains = {
+          stratum = "structural";
+          to = "query";
+        };
+        include = {
+          stratum = "structural";
+          to = "query";
+        };
+        kindOf = {
+          stratum = "structural";
+          to = "query";
+        };
+        member = {
+          stratum = "resolution";
+          to = "query";
+        };
+        reach = {
+          stratum = "resolution";
+          to = "query";
+        };
+        reach-suppress = {
+          stratum = "resolution";
+          to = "query";
+        };
+        nest = {
+          stratum = "output";
+          to = "materialize";
+        };
+        defer = {
+          stratum = "output";
+          to = "materialize";
+        };
+        demand = {
+          stratum = "demand";
+          to = "materialize";
+        };
       };
     };
     # the framework's own `output` stratum enters through the den.strata insertion mechanism.
@@ -688,9 +718,11 @@ in
         };
       };
     };
-    # a bare registry (no user kinds) compiles the 8 framework rows with the §2.2 field defaults. A framework
-    # kind defaults `to = "materialize"` (§7): only the den.relations desugar overrides it to `query` — a
-    # framework resolution kind is on-trace by default.
+    # a bare registry (no user kinds) compiles the framework rows with the §2.2 field defaults for every
+    # field the seed does NOT state. `stratum` and `to` come from the seed row, not from a default:
+    # `reach` is a resolution kind, so it carries `to = "query"` (§7 — it asserts something about the
+    # graph rather than delivering content). The user-surface `raw.to or "materialize"` default is
+    # witnessed by `test-projection-user-kind-to-materialize` instead.
     test-edges-compile-defaults = {
       expr =
         let
@@ -708,7 +740,7 @@ in
         inverse = null;
         closure = false;
         stratum = "resolution";
-        to = "materialize";
+        to = "query";
       };
     };
     # a user kind merges beside the framework rows (both present in the compiled table).
