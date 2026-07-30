@@ -13,7 +13,11 @@
 #   • BINDINGS RIDE THE TUPLE: the containment tuple's bindings reach the target root's ctx (the accessGroups
 #     twin).
 #   • CELL IDS UNCHANGED: the user cell keys `user:<n>@host:<h>` (no literal triples), env never a coordinate.
-{ denHoag, ... }:
+{
+  lib,
+  denHoag,
+  ...
+}:
 let
   inherit (denHoag) declare sel;
 
@@ -149,15 +153,24 @@ let
       ];
     };
 
-  # host→env BACK-EDGE — the mutual-containTo CYCLE half (paired with envToHost: env contains host
-  # contains env). A native fixture CAN author this (the compat arm cannot — its source coordinate
-  # strictly ascends the acyclic schema topology); the chain walk must abort NAMED
-  # (errors.containmentCycle), never hang. Record-form + `selects = ["host"]` keeps it off the
-  # user cell (which inherits the `host` coord); detected via the unconditional probe (no tag needed).
+  # host→env BACK-EDGE — the POLICY route's attempt at a mutual `containTo` (env contains host contains
+  # env), and the proof that it cannot get there. `containmentOf`'s source-slice check forces every
+  # policy-route containment edge to descend the schema STRICTLY, from an instance of the target kind's
+  # schema parent to the target; a back-edge into the parentless `env` from a source of kind `host` names
+  # a parent kind `env` does not have, so it is refused at that gate (§2.5b) before any edge is minted.
+  # The policy route therefore cannot author a containment CYCLE at all — the source-kind gate sits
+  # upstream of the cycle guard, and the one route that reaches the guard is `den.attach`, which builds
+  # `sourceSlice` directly (the attach fleets below).
+  #
+  # `emits`/`binds` are declared because the policy CODOMAIN is required: omitting either aborts at policy
+  # registration, which would make this fixture abort for a reason that never touches containment at all.
+  # Record-form + `selects = ["host"]` keeps it off the user cell (which inherits the `host` coord).
   hostToEnvBack =
     { config, ... }:
     {
       config.den.policies.host-to-env = {
+        emits = [ "member" ];
+        binds = [ ];
         gate.host = false;
         selects = [ "host" ];
         fn = ctx: [
@@ -205,8 +218,8 @@ let
   envNoContain = (denHoag.mkDen (base ++ [ envOnlyLayer ])).den;
   # (D) NO containment tuples, NO layers — the native identity path (containmentRelations = { }).
   native = (denHoag.mkDen base).den;
-  # (E) the CYCLE fleet — envToHost + the host→env back-edge (mutual containTo).
-  cyclic =
+  # (E) the BACK-EDGE fleet — envToHost + the host→env back-edge, refused at the §2.5b source-kind gate.
+  withBackEdge =
     (denHoag.mkDen (
       base
       ++ [
@@ -215,7 +228,51 @@ let
         envOnlyLayer
       ]
     )).den;
-  forceMem = den: (builtins.tryEval (builtins.deepSeq (rsOf den).app.value.mem true)).success;
+
+  # ── (F) THE `den.attach` ROUTE: the only one that can author a containment CYCLE ──────────────────────
+  # A SELF-PARENT kind is a kind-level loop of length one, and native attachment derives `sourceSlice`
+  # from the entity's ref rather than through the policy route's source-kind gate — so two instances
+  # naming each other close a real containment loop. Demanded through `resolved-settings`, the same
+  # settings-chain ancestor walk this suite's containment tuples feed: on a cyclic topology that walk must
+  # abort NAMED, never hang and never truncate silently to a visited-guarded prefix.
+  peerOpt = _: {
+    options.peer = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+    };
+  };
+  attachFleet =
+    nodes:
+    (denHoag.mkDen [
+      (
+        { config, ... }:
+        {
+          config.den.schema.node = {
+            parent = "node";
+            imports = [ peerOpt ];
+          };
+          config.den.attach.node.ref = "peer";
+          config.den.node = nodes;
+          config.den.aspects.app.settings.mem.default = 0;
+          config.den.include = [
+            {
+              at = config.den.node.a;
+              aspects = [ config.den.aspects.app ];
+            }
+          ];
+        }
+      )
+    ]).den;
+  attachCycle = attachFleet {
+    a.peer = "b";
+    b.peer = "a";
+  };
+  # Identical but for the closing edge: `b` names no parent, so the relation is the single edge `a <- b`
+  # and the same walk runs to completion.
+  attachAcyclic = attachFleet {
+    a.peer = "b";
+    b = { };
+  };
 
   cellCoordDims = den: sortStr (builtins.attrNames (builtins.head den.cells));
 in
@@ -328,19 +385,46 @@ in
       expected = [ "default" ];
     };
 
-    # ── CYCLE GUARD (loud-error discipline): a mutual containTo (env contains host contains env) makes
-    #    the settings-chain ancestor walk revisit a path node — it aborts NAMED (errors.containmentCycle),
-    #    never hangs. Non-vacuous companion: the SAME fleet WITHOUT the back-edge (envWithContain) forces
-    #    the identical chain walk CLEAN — the abort is caused by the cycle, not the containment relation. ──
-    test-containment-cycle-aborts-loud = {
-      expr = {
-        cyclic = forceMem cyclic;
-        acyclicCompanion = forceMem envWithContain;
+    # ── SOURCE-KIND GATE (§2.5b), the policy route's containment ceiling: a back-edge into the parentless
+    #    `env` from a source of kind `host` asserts a parent kind the target does not have, so it aborts
+    #    NAMED at the source-slice check. Pinned as the MESSAGE, naming both the source kind it saw and the
+    #    absent expected kind: a bare tryEval-success boolean is satisfied by ANY abort — including the
+    #    policy-registration abort this fixture produced while its `emits`/`binds` were undeclared, which
+    #    never reached containment at all.
+    #
+    #    This is also why NO policy-route fixture can witness a containment cycle: the gate below admits
+    #    only strict `parent(K) -> K` descent of the acyclic schema, so a policy-emitted edge set is
+    #    acyclic by construction and the cycle guard downstream of it is unreachable from here. The cycle
+    #    is witnessed on the `den.attach` route instead (the next two arms).
+    #
+    #    Non-vacuous companion, already green above: `test-env-slice-present-with-containment` forces the
+    #    identical chain walk on the SAME fleet without the back-edge and resolves clean, so the abort is
+    #    caused by the back-edge and not by the containment relation. ──
+    test-back-edge-source-kind-aborts-named = {
+      expr = builtins.deepSeq (rsOf withBackEdge).app.value.mem "unreached";
+      expectedError = {
+        type = "ThrownError";
+        msg = "from a source of kind `host`, but that target's schema parent kind is «none»";
       };
-      expected = {
-        cyclic = false;
-        acyclicCompanion = true;
+    };
+
+    # ── CYCLE GUARD (loud-error discipline) ON THE ROUTE THAT CAN REACH IT: mutual `den.attach` refs
+    #    between two instances of a self-parent kind make the settings-chain ancestor walk revisit a node
+    #    already on its path, and it aborts NAMED rather than hanging or truncating. Pinned by message so
+    #    a malformed fixture's unrelated abort cannot satisfy it. ──
+    test-attach-cycle-settings-chain-aborts-named = {
+      expr = builtins.deepSeq (attachCycle.structural.eval.get "node:a" "resolved-settings") "unreached";
+      expectedError = {
+        type = "ThrownError";
+        msg = "containment-relation ancestor chain revisits node";
       };
+    };
+    # THE POSITIVE CONTROL, on the same demand at the same node: the fleet differing ONLY in the closing
+    # edge resolves its settings. An attach route that emitted nothing, or a walk that aborted on every
+    # containment topology, fails here — so the abort above cannot be a fixture that built no relation.
+    test-attach-acyclic-settings-chain-resolves = {
+      expr = (attachAcyclic.structural.eval.get "node:a" "resolved-settings").app.value.mem;
+      expected = 0;
     };
   };
 }
