@@ -213,6 +213,17 @@ let
         declaredClassNames = builtins.attrNames (den.classes or { });
         quirkChannelNames = builtins.attrNames (den.quirks or { });
       } (den.aspects or { });
+      # A channel REF is self-identifying: `den.quirks.<x>` stamped with its own attr key, so a v1 module's
+      # `pipe.from den.quirks.<x>` (the ref form, the alternative to the bare name string) carries the
+      # channel name the pipe constructor reads off it (`pipeNameOrRef.name`, policy-verbs.nix) — v1's own
+      # `den.quirks` option apply (denful/den modules/options.nix:143,
+      # `mapAttrs (name: v: v // { inherit name; })`). The OVERLAP half of that apply is NOT reproduced here:
+      # a class/channel key collision is a NAMED definition-time error at compile (`errors.quirkClassOverlap`),
+      # not an assert on a read. This is the channel analogue of the aspects arm above — identity
+      # materialized at the READ site, off the key that already carries it, so the channel REGISTRATION keeps
+      # deriving its name from the attr key alone (concern-quirks `channelDeclOf`) and no second source of
+      # channel identity enters the compile input.
+      quirks = builtins.mapAttrs (name: q: q // { inherit name; }) (den.quirks or { });
     };
 
   # R1 legacy binding — bind `_module.args.den` to the NAVIGATION view. A `host.hasAspect den.aspects.<path>`

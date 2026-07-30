@@ -795,59 +795,60 @@ in
     #     };
     #   }
     # );
-    # BLOCKED-WSB (pipe run-wiring gap, same root cause as the PARKED-DIVERGENCE cases in this
-    # file — here the raw/untransformed pool makes the CONSUMER's own accessor throw):
-    # `attribute 'name' missing` — `pipe.from den.quirks.firewall […]` (quirk-REF form, not a string) expects the compat pipe constructor's `pipeNameOrRef.name` (lib/compat/policy-verbs.nix:101) to resolve; den-hoag's `den.quirks.<x>` declaration does not carry an injected `.name` field the way v1's quirk-ref apply function does.
-    # # pipe.from accepts a quirk ref (den.quirks.firewall) instead of a string.
-    # # The ref has a `name` field injected by the apply function.
-    # test-pipe-from-ref = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.firewall = {
-    #       description = "Firewall port declarations";
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [
-    #         den.aspects.producer
-    #         den.aspects.consumer
-    #       ];
-    #     };
-    #
-    #     den.aspects.producer = {
-    #       firewall = [
-    #         80
-    #         443
-    #       ];
-    #     };
-    #
-    #     den.aspects.consumer = {
-    #       nixos =
-    #         { firewall, lib, ... }:
-    #         {
-    #           networking.hostName = lib.concatMapStringsSep "-" toString firewall;
-    #         };
-    #     };
-    #
-    #     # Use ref syntax: den.quirks.firewall instead of string "firewall".
-    #     den.policies.filter-high =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from den.quirks.firewall [
-    #           (pipe.filter (p: p > 100))
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.filter-high ];
-    #
-    #     expr = igloo.networking.hostName;
-    #     expected = "443";
-    #   }
-    # );
+    # pipe.from accepts a quirk REF (`den.quirks.firewall`) in place of the name string; the ref carries
+    # its own `name` (the navigation view's stamp, flake-module.nix `annotatedViewNav`), which is what the
+    # pipe constructor reads. RED for the deriving-stage cause the armed `pipe.filter`/`transform`/`fold`/
+    # `for`/`as` cases above carry, NOT for the ref form: a deriving stage or a delivery route in a policy
+    # BODY is a fleet-compose commitment (`compose commitment` abort, declarations.nix `isSiteMarkData`),
+    # so the body must declare it as data in `ops` and emit only per-node site marks.
+    test-pipe-from-ref = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.firewall = {
+          description = "Firewall port declarations";
+        };
+
+        den.aspects.igloo = {
+          includes = [
+            den.aspects.producer
+            den.aspects.consumer
+          ];
+        };
+
+        den.aspects.producer = {
+          firewall = [
+            80
+            443
+          ];
+        };
+
+        den.aspects.consumer = {
+          nixos =
+            { firewall, lib, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" toString firewall;
+            };
+        };
+
+        # Use ref syntax: den.quirks.firewall instead of string "firewall".
+        den.policies.filter-high =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from den.quirks.firewall [
+              (pipe.filter (p: p > 100))
+            ])
+          ];
+
+        den.default.includes = [ den.policies.filter-high ];
+
+        expr = igloo.networking.hostName;
+        expected = "443";
+      }
+    );
 
     # pipe.as renames pipe output to a different quirk name.
     test-pipe-as-basic = denTest (
