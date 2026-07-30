@@ -57,6 +57,7 @@ let
     {
       config.den.policies.claim-rack = {
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { zone, ... }:
           [
@@ -80,6 +81,7 @@ let
       config.den.policies.drop-victim = {
         selects = [ "rack" ];
         emits = [ "suppress" ];
+        suppresses = [ "victim" ];
         fn =
           { rack, ... }:
           builtins.seq rack [ (declare.suppress { name = "victim"; }) ];

@@ -87,9 +87,19 @@ let
     __isPolicy = true;
     inherit name fn;
   };
-  droidExcluder = policyRef "drop-user-to-host-on-droid" (
-    { host, ... }: if (host.class or null) == "droid" then [ (exclude userToHostRef) ] else [ ]
-  );
+  droidExcluder =
+    policyRef "drop-user-to-host-on-droid" (
+      { host, ... }: if (host.class or null) == "droid" then [ (exclude userToHostRef) ] else [ ]
+    )
+    // {
+      # ★ THE SUPPRESSION CODOMAIN IS DECLARED HERE BECAUSE RECOVERY CANNOT REACH IT, and the reason is
+      # the same one that put this policy in the exclude-family NAME SET rather than letting a probe find
+      # it: the body is VALUE-CONDITIONAL, so a sentinel fire takes the `else` branch and observes no
+      # `suppress` at all. The name set declares THAT the policy suppresses; only the policy can declare
+      # WHOM. Recovering `[ ]` here would be an under-declared negative edge — an edge the stratification
+      # never saw — which is exactly what the firing-time codomain check refuses at the emission.
+      suppresses = [ "user-to-host" ];
+    };
 
   # (1)-(3): the corpus-shaped value-conditional excluder — its codomain is declared by the compat
   # exclude-family name set (exclude-family-names.nix), so the pre-pass dispatches it with real ctx.

@@ -30,11 +30,17 @@
 #     emission faithfully. A slice-DEPENDENT producer (a multi-level chain where a root consumes a slice to
 #     compute a DEEPER root's binding) is the demand-stratification ceiling the general case routes through
 #     gen-resolve `buildSchedule` — corpus/fixture-zero here.
-#   • DELIVER — fire every root against its decls PLUS its own transpose slice (the demand read), keeping
-#     the CELL tuples (`containTo = null`) + the per-root SUPPRESSION set. A consuming resolve policy
-#     (env-users reading `accessGroups`; the synthetic rack policy reading `authToken`) sees its slice here,
-#     exactly where it fires, and emits CELL tuples — those are NOT fed back into `containmentBindings`, so
-#     there is no cycle (the map is produced only by containment-emitters that don't themselves consume it).
+#   • DELIVER — fire at every LOCUS a root becomes, against that locus's decls PLUS its OWN transpose
+#     slice (the demand read), keeping the CELL tuples (`containTo = null`) + the per-locus SUPPRESSION
+#     set. A consuming resolve policy (env-users reading `accessGroups`; the synthetic rack policy reading
+#     `authToken`) sees its slice here, exactly where it fires, and emits CELL tuples — those are NOT fed
+#     back into `containmentBindings`, so there is no cycle (the map is produced only by
+#     containment-emitters that don't themselves consume it).
+#     ★ THE LOCUS, NOT THE BARE ROOT, IS THE FIRING SITE. A target claimed by N sources is N NODES of one
+#     parent each, carrying N DIFFERENT binding slices; a single firing at the bare id has no well-defined
+#     slice to read and silently reads the empty one. Per node each slice is total, so the firing goes
+#     where the fact lives. COLLECT keeps its one-per-bare-root firing because it is what PRODUCES the
+#     attachments — the loci do not exist until it has run.
 #
 # OPEN-ITEM RESOLUTIONS (verified against the codebase before build):
 #   (a) PRE-PASS CTX = node decls (a root is parentless, so its `inherited-context` = its own decls, the
@@ -112,7 +118,8 @@ let
   #                              SOURCE coordinate, the target root's containment ANCESTOR — the
   #                              settings-chain env slice, read by resolved-settings.nix).
   #   • `suppressions`         — a nodeId -> [ policyName ] map (#72: the exclude family's `suppress`
-  #                              emissions at each root), injected onto the emitting root's decls as the
+  #                              emissions at each LOCUS, fired in stratification rank order so a
+  #                              negated read sees a COMPLETE predicate), injected onto that node's decls as the
   #                              typed `suppressedPolicies` slot (default.nix scopeRoots) which the
   #                              `suppressed-policies` inherited attribute (gen-scope inheritSet) carries
   #                              down the P-edge subtree, delivering v1's scope+descendants suppression.
@@ -134,15 +141,25 @@ let
       scopeRoots,
       registries,
       resolveIndex,
-      # The EXCLUDE-FAMILY feed (#72, candidate A — ledger u21), likewise indexed: the structural-group
-      # rules that can emit `suppress`. Dispatched at the SAME roots/ctx as the resolve family in the
-      # DELIVER firing, collecting per-root SUPPRESSION SETS — v1's `policy.exclude <policy>` constraint
-      # registration (pin 11866c16 fx/handlers/dispatch-policies.nix:15-33: name-keyed at the emitting
-      # scope, consulted scope+ancestors ⇒ descendants inherit, siblings isolated per #613). The caller
-      # injects each set onto its root's decls (the typed `suppressedPolicies` slot), which the
+      # The EXCLUDE-FAMILY feed (#72, candidate A — ledger u21) as a RULE LIST rather than a pre-applied
+      # index: the structural-group rules that can emit `suppress`. It arrives un-indexed because the
+      # firing is STRATIFIED — one pass per rank class of the policy dependency graph — so the selection
+      # is built per class here rather than once over the whole feed. v1's `policy.exclude <policy>`
+      # constraint registration (pin 11866c16 fx/handlers/dispatch-policies.nix:15-33: name-keyed at the
+      # emitting scope, consulted scope+ancestors ⇒ descendants inherit, siblings isolated per #613). The
+      # caller injects each set onto its root's decls (the typed `suppressedPolicies` slot), which the
       # `suppressed-policies` inherited attribute (gen-scope inheritSet) delivers with the v1 semantics.
-      # Default: an index over the empty feed → `suppressions = { }` → byte-identical.
-      excludeIndex ? (_: [ ]),
+      # Default: an empty feed → `suppressions = { }` → byte-identical.
+      excludeRules ? [ ],
+      # The by-kind selection CONSTRUCTOR (`concernPolicies.indexByKind kinds`), applied here once per
+      # rank class. Threaded rather than rebuilt so the exclude feed's selection is the same expression
+      # every other feed's is.
+      indexFeed ? (_: (_: [ ])),
+      # policy name -> its RANK in the stratification (concern-policies `policyRank`): the position of
+      # the policy's cluster in the condensation's reverse-topological order. It spans EVERY declared
+      # policy, not just the exclude feed, because the stratification is a property of the whole
+      # declaration graph; the feed is the projection of it that fires, joined by the rule's `identity`.
+      policyRank ? { },
       # kindName -> its schema PARENT kind name, or null for a top-level kind (`ent.meta.<k>.parent`,
       # scalar per kind). The admissible source kind for a containment target of kind K is exactly
       # `kindParent K`, which is what makes the source-kind check total.
@@ -201,7 +218,6 @@ let
         builtins.filter keep acts;
       # Each call site NAMES the feed it selects from and the emission it keeps.
       fireAt = fireFeedAt resolveIndex declare.isResolveFamily;
-      fireExcludeAt = fireFeedAt excludeIndex declare.isSuppress;
 
       isContainment = a: (a.containTo or null) != null;
 
@@ -330,8 +346,11 @@ let
       attachmentsOf = nid: prelude.unique (containEdges nid);
 
       # minted node id -> merged bindings. Keyed by NODE ID, not by target: at N≥2 the target no
-      # longer names a node, and both consumers (`deliverCtxOf` below, and the decls fold at the
-      # call site) index by node id under an `or { }`, so a target-keyed map would miss silently.
+      # longer names a node, and every consumer (`ctxAt` below, and the decls fold at the call site)
+      # indexes by node id under an `or { }`, so a target-keyed map would miss silently rather than
+      # loudly. That silence is why the reader had to move to the locus as well as the writer: a map
+      # keyed at the node and read at the bare id yields the EMPTY slice, which is byte-identical to
+      # "this node has no bindings".
       #
       # The partition is by (target, SOURCE), which is what retires the cross-source merge: each
       # minted node carries only the bindings of the source that minted it. Two rules survive it:
@@ -420,57 +439,120 @@ let
         builtins.mapAttrs (tid: _: attachmentsOf tid) byTarget
       );
 
-      # The DELIVER ctx: base decls extended by the target's OWN transpose slice (the demand read). Delivered
-      # exactly where the root fires, so a consuming resolve policy sees its binding at its firing scope.
-      deliverCtxOf = id: baseCtxOf id // (containmentBindings.${id} or { });
+      # THE LOCUS SET of a pre-pass root: the nodes that root BECOMES. This pass iterates the BARE ids
+      # `structuralNodes` mints (built with no attachments), while `containmentBindings` is keyed by the
+      # MINTED node ids — so a rule reading a per-node fact must fire at the locus, not at the bare id. A
+      # bare id names no node once its target is claimed by more than one source. `mintedIdsOf` is the one
+      # rule for that expansion; spelling it inline here would be a second one.
+      lociOf = id: mintedIdsOf id (attachmentsOf id);
 
-      # DELIVER (cells) — the bare (`containTo == null`) `member` emissions at every root become CELL tuples.
-      # A5: emitted at a membership-independent root → `via.membershipDerived = false` (fleet.nix's
-      # disciplineOk passes it through); `via` names the emitting policy + scope for provenance.
+      # The ctx a root's rule fires against AT ONE LOCUS: the root's own decls (a property of the
+      # un-multiplied root — every node it mints shares its kind and its declarations) extended by THAT
+      # LOCUS'S slice of the containment bindings. The slice map is already partitioned per (target,
+      # source) by construction, so the per-node ctx exists; the firing simply goes to where it lives.
+      # At N≤1 the locus IS the bare id and this is byte-identical to reading the bare slice.
+      ctxAt = id: locus: baseCtxOf id // (containmentBindings.${locus} or { });
+
+      # DELIVER (cells) — the bare (`containTo == null`) `member` emissions become CELL tuples, fired ONCE
+      # PER LOCUS against that locus's own ctx. A5: emitted at a membership-independent root →
+      # `via.membershipDerived = false` (fleet.nix's disciplineOk passes it through).
+      #
+      # ★ N FIRES, NOT ONE FIRING LABELLED N TIMES, and the difference is the content rather than the
+      # mechanism. A suppression set does not depend on which node it lands at, so it may be computed once
+      # and filed at each locus. A tuple's COORDS are computed FROM the ctx, and the ctx differs per
+      # locus, so the body must actually run at each one. The shared principle is the locus; the mechanism
+      # is not shared.
+      #
+      # ★ COLLECT stays ONE PER BARE ROOT, deliberately: it is what PRODUCES the attachments, so the loci
+      # do not exist yet when it runs. The asymmetry is the claim, not an omission.
+      #
+      # `via.scope` is the LOCUS. It has exactly one reader — fleet.nix's `disciplineOk`, inside the
+      # `errors.memberAtCell` abort text — and at a multiplied target a bare id there names no node, so
+      # the message would be wrong. `via` is projected away at the product (`byDims` groups on the coord
+      # NAMES and the relation is built from `t.coords`), so recording the locus cannot change the fleet.
       tuples = prelude.concatMap (
         id:
-        map (a: {
-          inherit (a) coords;
-          via = {
-            policy = a.__policy or null;
-            scope = id;
-            membershipDerived = false;
-          };
-        }) (builtins.filter (a: !(isContainment a)) (fireAt scopeRoots.${id}.type id (deliverCtxOf id)))
+        prelude.concatMap (
+          locus:
+          map (a: {
+            inherit (a) coords;
+            via = {
+              policy = a.__policy or null;
+              scope = locus;
+              membershipDerived = false;
+            };
+          }) (builtins.filter (a: !(isContainment a)) (fireAt scopeRoots.${id}.type id (ctxAt id locus)))
+        ) (lociOf id)
       ) ids;
 
-      # DELIVER (suppressions) — the exclude family fired with the SAME slice-extended ctx. A value-
-      # conditional excluder taking its false branch emits nothing (the corpus's droid-gated route exclude
-      # suppresses only at droid-class roots).
+      # DELIVER (suppressions) — the exclude family fired PER LOCUS, in RANK ORDER.
       #
-      # Keyed by minted NODE ID, for the reason `containmentBindings` above is: the fold runs over THIS
-      # pass's root ids, which are bare because `structuralNodes` is built with no attachments, while the
-      # consumer indexes the MAIN run's roots, which ARE attachment-built. At N≥2 the bare id names no node
-      # there, and the consumer's test is a bare `?` membership — so a target-keyed map would not miss
-      # loudly, it would simply find nothing and deliver no suppression at all.
+      # THE PROGRAM this computes (Apt, Blair & Walker 1988, "Stratified Programs"):
+      #   fires(P, n)      <- gate(P, n) AND NOT suppressed(P, n)
+      #   suppressed(Q, n) <- fires(P, m) AND emits-suppress(P, Q) AND contains*(m, n)
+      # The `contains*` arm is a POSITIVE same-stratum read of `suppressed` (the `suppressed-policies`
+      # inheritSet unions self with ancestors), which Definition 3's condition 1 (p. 96) admits. Only the
+      # `NOT suppressed` occurrence is negative, and only it is governed by condition 2 — a negated
+      # literal's definition must sit STRICTLY BELOW the stratum of the rule reading it.
       #
-      # Unlike the bindings, the set is NOT partitioned by source: the excluder fires once, at the single
-      # un-multiplied pre-pass root, against a ctx that predates the multiplication. Every node that root
-      # mints is that same root at a different attachment, so each carries the whole set. At N≤1
-      # `mintedIdsOf` is the singleton of the bare id, so this is a relabelling onto the same key —
-      # byte-identical.
-      suppressions = prelude.foldl' (
-        acc: id:
+      # ★★ WHY THE ORDER IS THE WHOLE POINT. Firing the feed once, against a ctx carrying no
+      # `suppressedPolicies`, evaluates the negative literal against the EMPTY extension of the very
+      # relation being computed. That is ONE application of T_P, where the standard model is a PER-STRATUM
+      # fixpoint, M_i = T_{P_i}↑ω(M_{i-1}) (p. 108). The two agree exactly when the suppression graph has
+      # depth ≤ 1 and diverge above it: on the acyclic chain A⊢¬B, B⊢¬C the one-shot answer realizes B's
+      # suppression of C even though B is itself suppressed — a WRONG MODEL ON STRATIFIED INPUT, which no
+      # cycle guard could catch because there is no cycle. Rank-ordered firing is the fixpoint: a policy at
+      # rank k fires against the set contributed by ranks strictly below k, which is condition 2 discharged
+      # by the schedule rather than by an accident of when the ctx was built.
+      #
+      # The rank comes from the condensation of the SIGNED policy dependency graph (concern-policies
+      # `policyRank`); the acyclicity that makes it a stratification at all is decided there, at
+      # registration, before any rule fires.
+      #
+      # Keyed by minted NODE ID because each firing FILES AT ITS OWN LOCUS: the ctx is that locus's slice,
+      # so the fact is a per-node fact and the node is where it belongs. There is no bare→minted
+      # translation step left to get wrong — production and consumption share one key space. At N≤1 the
+      # locus is the bare id, so this is byte-identical.
+      suppressions =
         let
-          suppressed = map (a: a.name) (fireExcludeAt scopeRoots.${id}.type id (deliverCtxOf id));
-          keys = mintedIdsOf id (attachmentsOf id);
+          excludeNames = map (r: r.identity) excludeRules;
+          rankOf = n: policyRank.${n} or 0;
+          maxRank = prelude.foldl' (
+            a: n:
+            let
+              v = rankOf n;
+            in
+            if v > a then v else a
+          ) 0 excludeNames;
+          # The feed's rank class, as RULES: ranking spans every declared policy, firing spans the exclude
+          # feed, and the two are joined by the compiled rule's `identity`.
+          classAt = k: builtins.filter (r: rankOf r.identity == k) excludeRules;
+          step =
+            acc: k:
+            let
+              fireClassAt = fireFeedAt (indexFeed (classAt k)) declare.isSuppress;
+            in
+            prelude.foldl' (
+              a: id:
+              prelude.foldl' (
+                a': locus:
+                let
+                  ctx = ctxAt id locus // {
+                    suppressedPolicies = a'.${locus} or [ ];
+                  };
+                  fired = map (x: x.name) (fireClassAt scopeRoots.${id}.type id ctx);
+                in
+                if fired == [ ] then
+                  a'
+                else
+                  a'
+                  // {
+                    ${locus} = prelude.unique ((a'.${locus} or [ ]) ++ fired);
+                  }
+              ) a (lociOf id)
+            ) acc ids;
         in
-        if suppressed == [ ] then
-          acc
-        else
-          acc
-          // builtins.listToAttrs (
-            map (k: {
-              name = k;
-              value = suppressed;
-            }) keys
-          )
-      ) { } ids;
+        if excludeRules == [ ] then { } else prelude.foldl' step { } (prelude.range 0 maxRank);
     in
     # Every product of this pass carries the containment cycle guard, by construction: the record is
     # written once and `guarded` is applied across it, so an export added here is guarded because it is

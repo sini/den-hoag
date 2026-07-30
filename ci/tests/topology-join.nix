@@ -60,6 +60,7 @@ let
     {
       config.den.policies.env-to-host = {
         emits = [ "member" ];
+        binds = [ "grant" ];
         fn =
           { env, ... }:
           [
@@ -81,6 +82,7 @@ let
     {
       config.den.policies.env-to-cluster = {
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { env, ... }:
           [

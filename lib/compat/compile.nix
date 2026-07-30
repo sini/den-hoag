@@ -133,9 +133,68 @@ let
   # from the ungated body makes the question unaskable rather than merely unlikely, and removes an
   # accidental dependence on `gateSuppression`'s fail-open `or [ ]` default (so tightening that default
   # later cannot silently break codomain recovery).
-  familyStamps = ref: ungated: {
-    emits = emitsFor (ref.emits or null) (ref.name or null) ungated.gate ungated.fn;
-  };
+  # THE REFINED CODOMAINS (`declare.codomainRows`), stamped beside `emits` and by the SAME rule: a
+  # DECLARATION on the v1 ref wins, and only an undeclared one is recovered — read off the SAME sentinel
+  # fire, through the row's own `keysOf`. So the shim's opt-out property survives unchanged: a v1 record
+  # declaring its codomains is never fired at a sentinel at all, and a record that must be fired is fired
+  # ONCE for every codomain it owes rather than once per field.
+  #
+  # ★ THE RECOVERY IS NON-AUTHORITATIVE, exactly as `emits`' is, and that is what makes it safe to state
+  # a codomain the shim inferred. A body whose sentinel branch emits no `member` recovers `binds = [ ]` —
+  # an EMPTY HEAD, a legal declaration — and if a real firing then binds a key, `errors.bindsUndeclared`
+  # aborts NAMED at that emission instead of letting a positive dependency edge the stratification never
+  # saw exist in silence. Under-recovery is therefore LOUD, never a quiet unsoundness.
+  #
+  # ⚠ AND A DECLARED CODOMAIN IS REQUIRED WHEN RECOVERY IS OFF. `emitsFor`'s no-recovery arm aborts on an
+  # undeclared `emits`; a record declaring `emits` while omitting the field one of those kinds owes is the
+  # same undeclared codomain one level finer, so it takes the same abort rather than a silent fire.
+  # ★★ THE KEY SET IS STATIC AND THE VALUES ARE LAZY, and that split is forced rather than stylistic.
+  # A key set conditioned on `emits` has to FORCE `emits` to be decided, and `emits` is precisely the
+  # field whose recovery fires a body — so a conditional stamp turns every compiled record into a fired
+  # one. A consumer that compiles a fleet WITHOUT registering it (the surface suites project the compiled
+  # spine and never reach `policyMessage`) then pays a fire it never asked for, and the shim's documented
+  # recovery ceiling makes some of those fires UNCATCHABLE: a body bare-accessing a required coord fails
+  # on a missing attribute, which `tryEval` cannot catch.
+  #
+  # Stamping both fields with values that consult `emits` only when READ inverts that: at registration
+  # `policyMessage` has already forced `emits` for its own earlier guards, so reading a codomain there
+  # costs nothing new and can introduce no failure the codomain-less path did not already have; and a
+  # record nobody registers is never fired at all.
+  codomainStamps =
+    ref: ungated: emits:
+    let
+      rows = declare.codomainRows;
+      named = if (ref.name or null) == null then "«unnamed»" else ref.name;
+      recovered =
+        if !policyRecovery then
+          errors.policyCodomainUndeclared named
+        else
+          declare.codomainsOf (
+            policyRecover.recoverDecls { inherit sentinelFields; } named ungated.gate ungated.fn
+          );
+    in
+    builtins.listToAttrs (
+      map (k: {
+        name = rows.${k}.declaredIn;
+        # A DECLARATION on the v1 ref wins outright — the shim's opt-out, which is also the only way to
+        # state a codomain a sentinel fire cannot reach (a value-conditional body takes its false branch
+        # at the sentinel and emits nothing). Otherwise: the kinds this policy does not emit get the
+        # EMPTY HEAD, and the ones it does are read off the fire through the row's own `keysOf`.
+        value =
+          ref.${rows.${k}.declaredIn}
+            or (if builtins.elem k emits then recovered.${rows.${k}.declaredIn} or [ ] else [ ]);
+      }) (builtins.attrNames rows)
+    );
+
+  familyStamps =
+    ref: ungated:
+    let
+      emits = emitsFor (ref.emits or null) (ref.name or null) ungated.gate ungated.fn;
+    in
+    {
+      inherit emits;
+    }
+    // codomainStamps ref ungated emits;
 
   # THE DYNAMIC-ATTACHMENT ABSENCE, said rather than implied. A record with no entity-kind formal keeps
   # its DYNAMIC attachment and must reach every node — which is `selects = null`, NOT `[ ]`. The omission
@@ -1185,9 +1244,19 @@ let
       # `familyStamps` for why the two must not be the same value.
       mintFleetWide =
         name: ungated: gated:
-        gated
-        // {
+        let
           emits = emitsFor (policies.${name}.emits or null) name ungated.gate ungated.fn;
+          # A v1 policy value is a RECORD or a bare `ctx:` closure; only the record can carry a declared
+          # codomain, and a closure has no field to read one from. Normalising to a record here keeps the
+          # ref shape one thing for `codomainStamps` — the alternative is a second shape test inside it.
+          ref = (if builtins.isAttrs policies.${name} then policies.${name} else { }) // {
+            inherit name;
+          };
+        in
+        gated
+        // codomainStamps ref ungated emits
+        // {
+          inherit emits;
           # DECLARATION BEATS DERIVATION, and the absence is the thing being decided. `selectsFromSchema`
           # encodes "a v1 policy fires only where its schema INCLUDES it" — true of a v1 USER policy, and
           # false of a shim-synthesised AMBIENT global, which has no includes entry because it is not a v1

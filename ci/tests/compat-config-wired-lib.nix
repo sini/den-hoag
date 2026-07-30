@@ -89,6 +89,7 @@ let
       __isPolicy = true;
       selects = [ "host" ];
       emits = [ "member" ];
+      binds = [ ];
       fn =
         { host, ... }:
         [

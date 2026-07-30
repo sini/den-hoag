@@ -105,6 +105,7 @@ let
     {
       config.den.policies.grant-token = {
         emits = [ "member" ];
+        binds = [ "authToken" ];
         fn =
           { zone, ... }:
           [
@@ -127,6 +128,7 @@ let
     {
       config.den.policies.grant-token-r2 = {
         emits = [ "member" ];
+        binds = [ "authToken" ];
         fn =
           { zone, ... }:
           [
@@ -157,6 +159,7 @@ let
         # present, so firing it at a value-less context observes nothing. Declared, it is in the pre-pass's
         # resolve-family feed by derivation.
         emits = [ "member" ];
+        binds = [ ];
         fn =
           ctx:
           if (ctx.authToken or null) != null then
@@ -238,6 +241,10 @@ let
     {
       config.den.policies.grant-two = {
         emits = [ "member" ];
+        binds = [
+          "tokenA"
+          "tokenB"
+        ];
         fn =
           { zone, ... }:
           [
@@ -270,6 +277,7 @@ let
     {
       config.den.policies.grant-bare = {
         emits = [ "member" ];
+        binds = [ "bareToken" ];
         fn =
           { zone, ... }:
           builtins.seq zone [
@@ -292,6 +300,7 @@ let
     {
       config.den.policies.grant-ambiguous = {
         emits = [ "member" ];
+        binds = [ "t" ];
         fn =
           { zone, ... }:
           [
@@ -316,6 +325,7 @@ let
     {
       config.den.policies.grant-crosskind = {
         emits = [ "member" ];
+        binds = [ "t" ];
         fn =
           { zone, ... }:
           builtins.seq zone [
@@ -390,6 +400,7 @@ let
     {
       config.den.policies.bad-member = {
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { blade, ... }:
           [
@@ -405,6 +416,7 @@ let
     {
       config.den.policies.bad-contain = {
         emits = [ "member" ];
+        binds = [ "x" ];
         fn =
           { blade, ... }:
           [

@@ -69,6 +69,7 @@ let
   envThrowRec = {
     __isPolicy = true;
     emits = [ "member" ];
+    binds = [ ];
     name = "env-fanout";
     fn =
       { environment, ... }:

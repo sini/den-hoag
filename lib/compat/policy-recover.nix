@@ -37,8 +37,35 @@ let
   # body doing `elem g accessGroups` would see a SET and throw "expected a list but found a set", which
   # `tryEval` does not catch).
   requiredCoordsOf = condition: builtins.filter (n: !condition.${n}) (builtins.attrNames condition);
+
+  # THE FIRE ITSELF, named once. `recoverEmits` is a projection of it, and so is the REFINED-codomain
+  # recovery (`suppresses`/`binds`, compile.nix `codomainStamps`): a codomain that names dependency EDGES
+  # rather than kinds is read off the SAME declarations by the same table's `keysOf`, so the shim fires a
+  # body at most once whatever it has to recover. Splitting the fire per field would fire a body N times
+  # for one static property and give the recoveries a way to disagree with each other.
+  recoverDecls =
+    { sentinelFields }:
+    name: gate: fn:
+    let
+      # A universal entry stand-in: passes the identity law (it carries `id_hash`) so a body forwarding
+      # ctx entries into constructors succeeds without touching any real registry.
+      probeEntry = {
+        id_hash = "«sentinel»";
+        name = "«sentinel»";
+      }
+      // sentinelFields;
+      try = builtins.tryEval (
+        let
+          a = fn (prelude.genAttrs (requiredCoordsOf gate) (_: probeEntry));
+        in
+        builtins.deepSeq a a
+      );
+    in
+    if !try.success then errors.policyCodomainUnrecoverable name else try.value;
 in
 {
+  inherit recoverDecls;
+
   # `recoverEmits { sentinelFields; declaredEmits; } name gate fn` → the codomain for one v1 policy.
   #
   # The GATE is passed in rather than read off `fn`, and that is not an optimisation. A compiled v1 policy's
@@ -52,23 +79,5 @@ in
     if declaredEmits ? ${name} && declaredEmits.${name} != [ ] then
       declaredEmits.${name}
     else
-      let
-        # A universal entry stand-in: passes the identity law (it carries `id_hash`) so a body forwarding
-        # ctx entries into constructors succeeds without touching any real registry.
-        probeEntry = {
-          id_hash = "«sentinel»";
-          name = "«sentinel»";
-        }
-        // sentinelFields;
-        try = builtins.tryEval (
-          let
-            a = fn (prelude.genAttrs (requiredCoordsOf gate) (_: probeEntry));
-          in
-          builtins.deepSeq a a
-        );
-      in
-      if !try.success then
-        errors.policyCodomainUnrecoverable name
-      else
-        prelude.unique (map declare.kindOf try.value);
+      prelude.unique (map declare.kindOf (recoverDecls { inherit sentinelFields; } name gate fn));
 }

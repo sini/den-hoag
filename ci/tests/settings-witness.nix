@@ -290,6 +290,7 @@ let
     {
       config.den.policies.env-to-host = {
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { env, ... }:
           [
@@ -309,6 +310,7 @@ let
     {
       config.den.policies.env-to-cluster = {
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { env, ... }:
           [
@@ -428,6 +430,7 @@ let
     {
       config.den.policies.org-to-env = {
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { org, ... }:
           [
@@ -447,6 +450,7 @@ let
     {
       config.den.policies.env-to-host = {
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { env, ... }:
           [

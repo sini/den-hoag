@@ -265,6 +265,85 @@ let
       actions.suppress { inherit name; };
   isSuppress = a: kindOf a == "suppress";
 
+  # ── THE REFINED CODOMAINS: the declaration kinds that create a DEPENDENCY EDGE ────────────────────
+  #
+  # `emits` names the declaration KINDS a body may produce. TWO of those kinds do more than produce a
+  # fact — they create an edge in the policy dependency graph, and an edge has to be known BEFORE the
+  # graph is decided:
+  #
+  #   `suppress`  a NEGATIVE edge — the named policy's gate consults, negatedly, the set this one
+  #               contributes. Codomain: `suppresses :: [ PolicyName ]`.
+  #   `member`    POSITIVE edges — a containment binding is read by every policy destructuring its key.
+  #               Codomain: `binds :: [ BindingKey ]`.
+  #
+  # Each is REQUIRED exactly when its kind is in `emits`, and REJECTED when it is not, carrying the same
+  # ruling `emits` carries: an empty codomain is an EMPTY HEAD, not an absent rule. `suppresses = [ ]`
+  # is a legal value — a rule that may fire and name nobody; an OMITTED `suppresses` is not, because the
+  # stratification is decided from the declared graph, and a graph execution can still extend decides
+  # nothing (Apt, Blair & Walker 1988, "Stratified Programs", Lemma 1, p. 97).
+  #
+  # ★ ONE TABLE, KEYED BY KIND, WITH THREE READERS. Three sites need the (kind ↔ field) pairing and each
+  # needs a different projection of it: registration decides required-vs-spurious from the field name;
+  # the firing check reads an emission's keys through `keysOf` and tests them against the declared list;
+  # the v1 lowering shim recovers the codomain from the same sentinel fire it already uses for `emits`,
+  # which is `keysOf` again over recovered declarations. Written per-site that pairing is three edits
+  # per added kind, and forgetting one is not a compile error — it is a check that silently does not
+  # run, which is the failure mode this whole surface exists to remove. Stated ONCE the desync is
+  # unrepresentable, and a kind with no row is unchecked BY DECLARATION rather than by omission.
+  #
+  # It lives HERE, in the declaration vocabulary, because it is a property OF the kinds: `keysOf` is the
+  # inverse of the constructor directly above it, and a row that drifted from its constructor would be
+  # the same defect one level down.
+  codomainRows = {
+    suppress = {
+      declaredIn = "suppresses";
+      type = "policy names";
+      # `suppress { name }` names exactly one policy.
+      keysOf = a: [ a.name ];
+      fail = errors.suppressesUndeclared;
+      missing =
+        name:
+        "den.policies: `${name}` emits `suppress` but declares no `suppresses` - the suppression codomain is REQUIRED. `suppresses = [ ]` (an EMPTY HEAD) is a legal value; an omitted `suppresses` is not, because the stratification is decided from the DECLARED graph and a graph that can be extended by execution decides nothing";
+      spurious =
+        name:
+        "den.policies: `${name}` declares `suppresses` but does not emit `suppress` - a suppression codomain without a suppression head names a dependency the rule cannot create";
+    };
+    member = {
+      declaredIn = "binds";
+      type = "binding keys";
+      # Only a `containTo`-marked member carries a binding slice; a CELL tuple's `bindings` is `{ }` by
+      # the constructor above, so an emitter of cell tuples only declares `binds = [ ]`.
+      keysOf = a: builtins.attrNames (a.bindings or { });
+      fail = errors.bindsUndeclared;
+      missing =
+        name:
+        "den.policies: `${name}` emits `member` but declares no `binds` - the BINDING codomain is REQUIRED. A containment binding is a POSITIVE dependency of every policy that destructures it, and Apt-Blair-Walker Lemma 1 (p. 97) forbids a cycle containing a negative edge, not a cycle: the positive edges must be known before the check. `binds = [ ]` (a member that carries no bindings) is a legal value; an omitted `binds` is not";
+      spurious =
+        name:
+        "den.policies: `${name}` declares `binds` but does not emit `member` - only a `containTo`-marked member carries a binding slice";
+    };
+  };
+
+  # The recovered codomains for ONE set of declarations — the projection every reader shares. Given the
+  # declarations a body produced (a sentinel fire, where the codomain is recovered) it returns the fields
+  # those declarations imply, and ONLY for kinds actually emitted, so the required-iff rule and the
+  # recovery agree by construction rather than by two authors keeping step.
+  codomainsOf =
+    decls:
+    let
+      rowFor =
+        k:
+        let
+          row = codomainRows.${k};
+          hits = builtins.filter (a: kindOf a == k) decls;
+        in
+        if hits == [ ] then
+          { }
+        else
+          { ${row.declaredIn} = prelude.unique (prelude.concatMap row.keysOf hits); };
+    in
+    prelude.foldl' (acc: k: acc // rowFor k) { } (builtins.attrNames codomainRows);
+
   # `configure { of, set }` — resolution: set values on a target entry.
   configure =
     { of, set }:
@@ -411,6 +490,8 @@ actions
     isResolveFamily
     suppress
     isSuppress
+    codomainRows
+    codomainsOf
     resolveFamilyKinds
     isMemberWrapper
     importEdgesOf

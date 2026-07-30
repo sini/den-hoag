@@ -190,6 +190,7 @@ let
       dispatch
       declare
       errors
+      graph
       ;
     strataScope = strataScopeLib;
   };
@@ -1046,20 +1047,22 @@ let
       # promised law): a policy-emitted bare `member` at a membership-independent root routes into the
       # fleet. `prePass` also carries `containmentBindings` (a targetNodeId -> merged-bindings transpose map
       # from every `containTo`-marked member), folded onto the target roots' decls (`scopeRoots`, below) so
-      # the main run's inherited-context threads them, AND `containmentAncestors` (targetNodeId -> [ ancestor
-      # slice ]), threaded to resolved-settings for the settings-chain env slice (§3c-UNIFIED, byte-neutral
-      # when unset). THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` +
+      # the main run's inherited-context threads them. ⚠ It also carries `containmentAncestors`
+      # (targetNodeId -> [ ancestor slice ]), which has ZERO CONSUMERS: the settings chain keeps its own
+      # accessor over `containmentRelations` and never reads this map. It was built for the §3c-UNIFIED
+      # settings-chain env slice and the claim that it is threaded there is not true of this tree — stated
+      # rather than left standing, because a comment asserting a consumer that does not exist is the shape
+      # that lets a dead export look load-bearing. THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` +
       # `containmentBindings = { }`, so `membershipTuples`/`scopeRoots` are byte-identical to the pre-R1
       # values. The pre-pass reads `structuralNodes` (structural, un-injected) + `policiesRules` — neither
       # depends on `membershipTuples`/`theFleet`/the classification, so no cycle.
       #
-      # ★ THE CTX THIS PASS FIRES AGAINST IS A NODE'S OWN DECLS, and at a MULTIPLIED target that is all it
-      # is: `deliverCtxOf` extends `baseCtxOf` with `containmentBindings.${id}`, whose keys are MINTED,
-      # while this pass iterates the BARE ids `structuralNodes` mints (built with no attachments). At N≥2
-      # the `or { }` therefore yields the empty slice silently rather than the node's bindings. That
-      # keying is a separate, still-open defect on the tuple fire; widening the root set here widens the
-      # population at which it can occur without changing it in kind. Stated here because the widening is
-      # visible from this site and the mis-keyed read is not.
+      # ★ THE CTX THIS PASS FIRES AGAINST IS A NODE'S OWN DECLS PLUS THAT NODE'S OWN BINDING SLICE, and
+      # the second half is why the firing goes per LOCUS rather than per bare id. `containmentBindings`
+      # is keyed by MINTED node id while this pass iterates the BARE ids `structuralNodes` mints (built
+      # with no attachments), so a read at the bare id yields the empty slice at N≥2 — silently, because
+      # an empty slice is byte-identical to "this node has no bindings". Both DELIVER firings therefore
+      # enumerate the loci a root becomes (`mintedIdsOf`) and fire at each against its own slice.
       prePass = stagedResolution.runPrePass {
         scopeRoots = structuralNodes;
         inherit (ent) registries;
@@ -1071,10 +1074,15 @@ let
         # NATIVE ATTACHMENT (route 2) — the `den.attach` rows, verbatim. A fleet declaring none passes
         # `{ }` and the pre-pass emits nothing synthetic, so its five products are byte-identical.
         nativeAttach = ent.config.den.attach;
-        # The EXCLUDE-FAMILY feed (#72, candidate A): dispatched at the same roots/ctx for `suppress`
-        # collection — v1's policy.exclude constraint registration (pin fx/handlers/dispatch-policies
-        # .nix:15-33), rendered as pre-pass suppression sets. Empty for an exclude-free fleet → inert.
-        excludeIndex = indexFeed policiesRules.excludeFamily;
+        # The EXCLUDE-FAMILY feed (#72, candidate A) — as a RULE LIST plus the selection constructor,
+        # because the pass fires it in RANK ORDER and builds one selection per rank class. v1's
+        # policy.exclude constraint registration (pin fx/handlers/dispatch-policies.nix:15-33), rendered
+        # as pre-pass suppression sets. Empty for an exclude-free fleet → inert.
+        excludeRules = policiesRules.excludeFamily;
+        inherit indexFeed;
+        # The stratification, decided once at registration over the SIGNED policy dependency graph. The
+        # pass reads it as the firing order that makes a negated read see a COMPLETE predicate.
+        inherit (policiesRules) policyRank;
         # The schema parent kind of each kind (scalar per kind), for the containment source-kind check.
         kindParent = k: (ent.meta.${k} or { }).parent or null;
         inherit mintedRootId mintedIdsOf;

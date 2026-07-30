@@ -90,6 +90,7 @@ let
         };
         selects = [ "box" ];
         emits = [ "member" ];
+        binds = [ ];
         fn =
           { box, ... }:
           [

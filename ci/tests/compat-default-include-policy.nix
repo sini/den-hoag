@@ -39,6 +39,12 @@ let
   dropRec = {
     __isPolicy = true;
     name = "drop-user-to-host-on-droid";
+    # ★ THE SUPPRESSION CODOMAIN IS DECLARED, for the same reason the name set declares the KIND: the
+    # body is value-conditional, so the sentinel fire takes the `else` branch and observes no `suppress`
+    # at all. The name set says THAT this policy suppresses; only the policy can say WHOM, and a
+    # recovered `[ ]` here would be a negative dependency edge the stratification never saw — which the
+    # firing-time codomain check refuses at the emission rather than admitting silently.
+    suppresses = [ "target-route" ];
     fn =
       { host, ... }:
       if host.class == "droid" then

@@ -100,6 +100,7 @@ let
       {
         config.den.policies.grant = {
           emits = [ "member" ];
+          binds = [ "t" ];
           fn =
             { zone, ... }:
             [

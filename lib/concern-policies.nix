@@ -5,7 +5,9 @@
 # A policy value is a RECORD. It DECLARES the facts the kernel schedules on rather than having them
 # recovered by firing its body against a fabricated context:
 #
-#   { emits :: [Kind]; fn :: ctx -> [Decl]; selects ? null; gate ? functionArgs fn; ops ? [ ]; }
+#   { emits :: [Kind]; fn :: ctx -> [Decl]; selects ? null; gate ? functionArgs fn; ops ? [ ];
+#     suppresses :: [PolicyName]  (iff emits contains `suppress`)
+#     binds      :: [BindingKey]  (iff emits contains `member`) }
 #
 # EMITS is the declaration CODOMAIN — the closed set of declaration-kind tags the body may produce
 # (declarations.nix `groups`). It is REQUIRED, and it is CHECKED at every firing, so it is a CONTRACT
@@ -78,6 +80,7 @@
   declare,
   errors,
   strataScope,
+  graph,
 }:
 let
   # The SEEDED strata config (§B2): the compiled stratum order with the stratum→ctx-key-groups map EMPTY
@@ -122,6 +125,46 @@ let
     in
     if groups == [ ] then builtins.head declare.strata else builtins.head groups;
 
+  # THE REFINED CODOMAINS (`declare.codomainRows`): the required-iff rule, over every row. `emits` names
+  # the declaration KINDS a body may produce; a row's field names the DEPENDENCY EDGES one of those kinds
+  # creates, which the stratification below must know BEFORE it decides anything. The table is the
+  # declaration vocabulary's — one statement, read here for registration, at `conformingProduce` for
+  # firing, and by the v1 lowering shim for recovery.
+  #
+  # Reads `emits` only after the chain below has validated it as a list of known kinds, so no row can
+  # read a field an earlier guard has not established.
+  codomainMessage =
+    name: v: emits:
+    let
+      checkKind =
+        k:
+        let
+          row = declare.codomainRows.${k};
+          declared = builtins.elem k emits;
+          present = v ? ${row.declaredIn};
+        in
+        if declared && !present then
+          row.missing name
+        else if present && !(builtins.isList v.${row.declaredIn}) then
+          "den.policies: `${name}`.${row.declaredIn} must be a LIST of ${row.type}, got ${
+            builtins.typeOf v.${row.declaredIn}
+          }"
+        # SPURIOUS IS ABOUT A NON-EMPTY CODOMAIN, and the check's own justification is why. The harm it
+        # names is a codomain that "names a dependency the rule cannot create" — an edge asserted by a
+        # policy with no head to create it. An EMPTY codomain asserts no edge at all, so the harm does
+        # not apply to it, and refusing `[ ]` here would contradict the empty-head ruling `emits` already
+        # carries one level up: a declaration that the rule binds nothing is TRUE of a rule that emits no
+        # `member`, not a mis-declaration of it.
+        else if !declared && present && v.${row.declaredIn} != [ ] then
+          row.spurious name
+        else
+          null;
+      offenders = builtins.filter (m: m != null) (
+        map checkKind (builtins.attrNames declare.codomainRows)
+      );
+    in
+    if offenders == [ ] then null else builtins.head offenders;
+
   # policyMessage — the DEFINITION-TIME validator as a VALUE (`null` = clean, else the FIRST named
   # message), so every named contract here is CI-testable: Nix cannot recover a throw's TEXT from a caught
   # evaluation, so a validator that returns its message is the only form a test can assert on.
@@ -157,10 +200,111 @@ let
         else if siteMarkOps != [ ] then
           "den.policies: `${name}`.ops carries a SITE-MARK-only pipeOp - site marks are per-node emission data fired WHERE the policy fires, so they belong in the body's emission, not in the fleet-wide compose seed. `ops` carries only ctx-independent commitments (a derived-channel DAG or a delivery route)"
         else
-          null;
+          codomainMessage name v emits;
       offenders = builtins.filter (m: m != null) (prelude.mapAttrsToList checkOne policies);
     in
     if offenders == [ ] then null else builtins.head offenders;
+
+  # ── THE SIGNED POLICY DEPENDENCY GRAPH ───────────────────────────────────────────────────────────
+  #
+  # Over POLICY NAMES, and SIGNED, which is Lemma 1's own shape rather than a specialisation of it. Edge
+  # direction is the paper's: `p -> q` means p's definition REFERS TO q.
+  #
+  #   NEGATIVE  q -> p   for each p, each q in suppresses(p)
+  #             (q's firing consults, negatedly, the set p contributed — the gate reads `suppressedPolicies`)
+  #   POSITIVE  p -> q   when formals(p) INTERSECT binds(q) is non-empty
+  #             (p's body destructures a binding key q emitted)
+  #
+  # BOTH FAMILIES ARE REQUIRED. Checking only the negative subgraph would be sound solely if no
+  # suppressor could read a binding; a suppressor CAN, and then the cycle `q --neg--> p --pos--> q` is a
+  # cycle containing a negative edge one of whose two edges is positive, and so invisible to a check over
+  # the negative subgraph alone.
+  #
+  # ★ THE DOMAIN IS `policies`, THE DECLARATION ATTRSET, not a compiled feed. `suppresses` and `binds`
+  # are DECLARATION fields validated over exactly this attrset, and a stratification decided from
+  # declarations must range over every declaration. Compiling first and filtering to the suppress
+  # emitters would truncate the node set to the suppressors, at which point no `binds` declaration is in
+  # the graph at all, every positive edge is vacuous, and a negative edge to a pure member-emitter cannot
+  # even be enumerated — a correct expression over a domain narrower than its own quantifier.
+  #
+  # ⚠ THE DIRECTION OF APPROXIMATION, stated because it is not exact. `posOf` is a GLOBAL NAME test: any
+  # policy destructuring a formal that ANY policy declares in `binds` gets a positive edge, with no
+  # reachability scoping. Common keys (`host`, `name`, `token`) therefore link policies that can never
+  # meet, merging clusters and pushing a legitimate BETWEEN-cluster negative edge INSIDE one. So the
+  # approximation is FINER — it over-rejects, never over-admits, which is the safe direction for a
+  # soundness guard. Scoping the edge needs a per-(policy, node) reachability relation that does not
+  # exist at registration, and inventing one here would be a new position rather than a check. The
+  # repairing discipline is the abort's: it prints the whole cluster, so a false rejection is legible and
+  # is repaired by renaming a binding key or splitting a codomain, never by relaxing the check.
+  signedGraph =
+    { policies, formalsOf }:
+    let
+      names = builtins.attrNames policies;
+      suppressesOf = p: policies.${p}.suppresses or [ ];
+      bindsOf = q: policies.${q}.binds or [ ];
+      negOf = q: builtins.filter (p: builtins.elem q (suppressesOf p)) names;
+      # The positive family is empty unless SOMETHING declares a binding key, so the producers are
+      # enumerated first and the reader side is consulted only if that set is non-empty. This is the same
+      # set either way — a `q` with `binds = [ ]` can satisfy no membership test — but it keeps a fleet
+      # with no binding producers from having to know any policy's formals at all, which matters because
+      # `formalsOf` reads a gate and a gate is the one part of a compiled rule that a generated policy may
+      # not be able to produce.
+      posOf =
+        p:
+        let
+          producers = builtins.filter (q: q != p && bindsOf q != [ ]) names;
+        in
+        if producers == [ ] then
+          [ ]
+        else
+          let
+            fs = formalsOf p;
+          in
+          builtins.filter (q: builtins.any (f: builtins.elem f (bindsOf q)) fs) producers;
+    in
+    {
+      nodes = names;
+      negEdges = q: negOf q;
+      edges = n: (negOf n) ++ (posOf n);
+    };
+
+  # THE CHECK, at REGISTRATION, and the RANK it returns. Lemma 1 (p. 97) AS STATED: reject iff some
+  # NEGATIVE edge has both endpoints in one cluster. A negative edge inside a cluster is precisely a cycle
+  # through a negative edge; a negative edge BETWEEN clusters is the ordinary stratified case, and a
+  # purely POSITIVE cycle is ADMITTED — Definition 3's condition 1 (p. 96) permits same-stratum positive
+  # reads, so rejecting one would be over-strict rather than safe.
+  #
+  # `graph.condensation` IS the paper's cluster construction: `sccOf` is Definition 12's cluster map
+  # (p. 112) and `bottomUp` is a reverse-topological order over the quotient, which by Lemma 11(2)
+  # (p. 113 — every stratum of every stratification is a union of clusters) is the FINEST stratification,
+  # the one every other factors through. So stratifiability is DECIDED in graph time rather than searched
+  # for, and the cluster order IS the stratification. A longest-path rank would not do: it has no fixed
+  # point on a cycle, and positive cycles are legal here.
+  #
+  # The returned rank is a position in that order. A policy at rank k fires against the suppression set
+  # contributed by ranks strictly below k — literally M_i = T_{P_i}↑ω(M_{i-1}) (p. 108), with the
+  # clusters as the strata, rather than the ONE application of T_P a single un-ordered pass computes.
+  stratifyOrThrow =
+    { policies, formalsOf }:
+    let
+      g = signedGraph { inherit policies formalsOf; };
+      cond = graph.condensation { inherit (g) edges nodes; };
+      bad = builtins.concatMap (
+        q: builtins.filter (p: cond.sccOf p == cond.sccOf q) (g.negEdges q)
+      ) g.nodes;
+    in
+    if bad != [ ] then
+      errors.negativeCycle (builtins.head bad) (cond.members (cond.sccOf (builtins.head bad)))
+    else
+      builtins.listToAttrs (
+        prelude.concatMap (
+          i:
+          map (m: {
+            name = m;
+            value = i;
+          }) (cond.members (builtins.elemAt cond.bottomUp i))
+        ) (builtins.genList (i: i) (builtins.length cond.bottomUp))
+      );
 
   # THE SELECTION, once per feed: one filtered list per SCHEMA kind, each preserving the feed's OWN ORDER.
   # Dispatch order determines emission order and therefore merge order, so a bucket-concatenation index
@@ -250,8 +394,17 @@ let
       # it is in the feed by derivation and "emitted but untagged" is unrepresentable). The `pipeOp` arm is
       # the body end of the compose-commitment boundary whose other end is `policyMessage`'s ops law. One
       # attrset membership test per emitted declaration, on a list already being materialised.
+      #
+      # THE SAME LAW ONE LEVEL FINER, for the two kinds that create dependency EDGES. The registration
+      # check decides the stratification from the DECLARED graph; without a firing-time check a body
+      # could name a policy or bind a key outside its declaration, and the graph the check read would
+      # stop being the graph the program has — which makes the registration messages false rather than
+      # merely incomplete. Both checks ride THIS map, in the arm that already computed the kind, and both
+      # read their row from `declare.codomainRows`, so the kind→field pairing has one statement rather than two.
+      # VACUOUS FOR A RULE THAT NEVER FIRES, and that is sound: a rule that does not fire creates no edge
+      # either, so the declared graph stays the graph the program has.
       conformingProduce =
-        name: emits: baseProduce: id: ctx:
+        name: declaredCodomains: emits: baseProduce: id: ctx:
         let
           admitted = prelude.genAttrs emits (_: true);
         in
@@ -259,13 +412,23 @@ let
           a:
           let
             k = declare.kindOf a;
+            stamped = a // {
+              __policy = name;
+            };
           in
           if !(admitted ? ${k}) then
             errors.emitsUndeclared name k emits
           else if k == "pipeOp" && !(declare.isSiteMarkData a) then
             errors.opsInBody name
+          else if declare.codomainRows ? ${k} then
+            let
+              row = declare.codomainRows.${k};
+              declared = declaredCodomains.${row.declaredIn} or [ ];
+              undeclared = builtins.filter (x: !(builtins.elem x declared)) (row.keysOf a);
+            in
+            if undeclared != [ ] then row.fail name (builtins.head undeclared) declared else stamped
           else
-            a // { __policy = name; }
+            stamped
         ) (baseProduce id ctx);
 
       # ONE policy compiles to ONE rule — TOTALLY, with no arm that compiles to none. `group` is stamped
@@ -295,18 +458,30 @@ let
             selects = selectsOf v;
             ops = opsOf v;
             identity = name;
-            produce = conformingProduce name emits (projectedBase group base.produce);
+            produce = conformingProduce name v emits (projectedBase group base.produce);
           })
         ];
 
       # Registration rejection is forced BEFORE any rule exists, so a malformed surface is refused at its
       # own boundary rather than at whichever consumer first forces a rule.
       registration = policyMessage policies;
+      # THE STRATIFICATION, decided once per fleet from the declarations alone. Ordered AFTER
+      # `registration` and forced with it: it reads the two codomain fields that check is what validates,
+      # so deciding a graph from declarations nothing has established would be a checker reading a domain
+      # nothing guarantees. `formalsOf` reads the reader side of a positive edge off the surface that
+      # already defines it — `gateOf` is the same expression the dispatch presence-gate uses — rather
+      # than re-deriving it.
+      policyRank = stratifyOrThrow {
+        inherit policies;
+        formalsOf = n: builtins.attrNames (gateOf policies.${n});
+      };
       rules =
         if registration != null then
           errors.policyRegistration registration
         else
-          prelude.concatMap (name: compileOne name policies.${name}) (builtins.attrNames policies);
+          builtins.seq policyRank (
+            prelude.concatMap (name: compileOne name policies.${name}) (builtins.attrNames policies)
+          );
 
       # Every feed is a set-membership test on the DECLARED codomain. The name-keyed knobs that supplied
       # these by hand (`den.resolveFamilyNames`, `den.excludeFamilyNames`, `den.producesByName`) have no
@@ -326,6 +501,12 @@ let
       # The EXCLUDE-FAMILY feed (#72): the structural-group rules that can emit `suppress`. The staged
       # pre-pass dispatches ONLY these for suppression collection; empty for an exclude-free fleet.
       excludeFamily = builtins.filter (r: r.group == "structural" && emitsAny r [ "suppress" ]) rules;
+      # THE RANK, name-keyed and spanning EVERY declared policy — not only the exclude feed. The
+      # stratification is a property of the whole declaration graph; the exclude feed is the projection
+      # of it that fires, joined back by the compiled rule's `identity`. Handing out the ranked set
+      # rather than a pre-filtered one is what keeps the firing a projection of the check's domain
+      # instead of its definition.
+      inherit policyRank;
       # The fleet-wide compose commitments, DECLARED. No firing, no probe: a ctx-independent commitment
       # read from a body by firing it was recovering a constant the record can simply carry.
       pipeOps = prelude.concatMap (r: r.ops) rules;

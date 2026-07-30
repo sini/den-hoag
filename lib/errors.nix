@@ -238,6 +238,34 @@ in
     policyName: kind: emits:
     fail "declaration codomain" "policy `${policyName}` produced a `${kind}` declaration, which is not in its declared `emits` = [ ${builtins.concatStringsSep " " emits} ]. The codomain is a CONTRACT checked at every firing, not an annotation: either add `${kind}` to `emits` or stop producing it";
 
+  # THE TWO REFINED CODOMAINS, and why `emits` alone does not discharge them. `emits` names the
+  # declaration KINDS a body may produce; these name the DEPENDENCY EDGES those declarations create.
+  # The policy dependency graph is decided ONCE, at registration, BEFORE any rule fires (Apt, Blair &
+  # Walker 1988, "Stratified Programs", Lemma 1, p. 97: a program is stratified iff its dependency graph
+  # has no cycle containing a negative edge). An edge a body introduces at firing time is an edge that
+  # decision never saw, so the declared graph would not be the graph the program has and the decision
+  # would range over a domain nothing guarantees. These two aborts are what make the declaration true.
+  suppressesUndeclared =
+    policyName: target: suppresses:
+    fail "suppression codomain" "policy `${policyName}` produced a `suppress` naming `${target}`, which is not in its declared `suppresses` = [ ${builtins.concatStringsSep " " suppresses} ]. The codomain is a CONTRACT checked at every firing: the stratification is decided from the DECLARED graph before any rule fires, so an edge introduced by a body is an edge the check never saw (Apt, Blair & Walker 1988, Lemma 1, p. 97)";
+
+  bindsUndeclared =
+    policyName: key: binds:
+    fail "binding codomain" "policy `${policyName}` emitted a `member` binding `${key}`, which is not in its declared `binds` = [ ${builtins.concatStringsSep " " binds} ]. A binding is a POSITIVE dependency edge of every policy that destructures it, and the stratification check reads those edges from the declaration, so a key bound only at runtime is an edge the check never saw";
+
+  # THE STRATIFICATION ABORT. Not named for suppression: the cycle may run through POSITIVE binding
+  # edges, and Definition 3's condition 1 (p. 96) ADMITS a purely positive cycle — same-stratum positive
+  # reads are legal, so rejecting one would be over-strict rather than safe. What is forbidden is a cycle
+  # containing a NEGATIVE edge (Lemma 1, p. 97), which is exactly a negative edge whose two endpoints
+  # share a cluster of the condensation (Definition 12, p. 112; Lemma 11(2), p. 113, makes the cluster
+  # condensation the finest stratification, so the decision is a graph computation rather than a search).
+  # The whole cluster is printed because the cluster, not the edge, is the actionable unit: the positive
+  # edge family is a GLOBAL name test, so a cluster may be larger than the author expects, and the repair
+  # is to rename a binding key or split a codomain — never to relax the check.
+  negativeCycle =
+    suppressor: cluster:
+    fail "stratification (ABW Lemma 1)" "the policy dependency graph has a cycle through the NEGATIVE edge contributed by `${suppressor}` — the mutually-dependent cluster is [ ${builtins.concatStringsSep " " cluster} ]. A suppression edge is a negated read and a binding edge is a positive one; Apt, Blair & Walker (1988), `Stratified Programs`, Lemma 1, p. 97, admits cycles of positive edges and forbids any cycle containing a negative one, so the program has no stratification. Break the cluster by removing one `suppresses` entry or one `binds`/formal pairing";
+
   # The compose-commitment boundary (declarations.nix `isSiteMarkData`). A DERIVED-channel DAG or a
   # delivery route seeds the ONE fleet gen-pipe compose BEFORE the eval, so it is declared as data in
   # `ops`; only per-node SITE MARKS are emitted from a body.

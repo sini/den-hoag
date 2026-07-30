@@ -31,6 +31,7 @@ let
       enroll = {
         __isPolicy = true;
         emits = [ "member" ];
+        binds = [ ];
         fn = { rack, ... }: [
           (R.to "blade" {
             blade = {
@@ -59,6 +60,7 @@ let
       grant = {
         __isPolicy = true;
         emits = [ "member" ];
+        binds = [ ];
         fn = { zone, ... }: [
           (R.to "rack" {
             rack = {
@@ -145,6 +147,7 @@ let
       {
         config.den.policies.grant = {
           emits = [ "member" ];
+          binds = [ "authToken" ];
           fn =
             { zone, ... }:
             [
@@ -193,7 +196,16 @@ let
   # codomain violation caught at the EMITTING SITE, which is where the hazard moved when the untagged
   # guard retired. The pair is the negative control: same body, two declarations, opposite outcomes.
   untaggedDen = (denHoag.mkDen (base ++ [ (enrollMod { emits = [ "enrich" ]; }) ])).den; # mis-declared → loud
-  taggedDen = (denHoag.mkDen (base ++ [ (enrollMod { emits = [ "member" ]; }) ])).den; # declared → benign
+  taggedDen =
+    (denHoag.mkDen (
+      base
+      ++ [
+        (enrollMod {
+          emits = [ "member" ];
+          binds = [ ];
+        })
+      ]
+    )).den; # declared → benign
   forceRackDecls =
     den:
     (builtins.tryEval (builtins.deepSeq (den.structural.eval.get "rack:r1" "declarations") true))
@@ -269,7 +281,16 @@ let
       };
     };
   untaggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { emits = [ "enrich" ]; }) ])).den; # mis-declared → loud
-  taggedKIDen = (denHoag.mkDen (base ++ [ (enrollKIMod { emits = [ "member" ]; }) ])).den; # declared → benign
+  taggedKIDen =
+    (denHoag.mkDen (
+      base
+      ++ [
+        (enrollKIMod {
+          emits = [ "member" ];
+          binds = [ ];
+        })
+      ]
+    )).den; # declared → benign
 in
 {
   flake.tests.compat-resolve = {
