@@ -207,10 +207,41 @@ let
   capturedShadow =
     (builtins.head (builtins.filter (a: a.__action == "configure") shadowResolution)).set.seen;
 
-  # (f) A4 strip regression — the cell's enriched-context must not leak the reserved `__containment`
-  # coordinate-root aid (the resolution-only visibility key stripped in inherited-context).
-  denClean = (denHoag.mkDen fx.base).den;
-  cellEnriched = denClean.structural.eval.get "user:alice@host:axon" "enriched-context";
+  # (f) A4 strip regression — the generic binding context must not leak the machinery keys the
+  # inherited-context `extract` strips (structural.nix attribute 1).
+  #
+  # RE-ARMED. This guarded `__containment`, the cell's coordinate-root visibility aid; the
+  # coordinate-payload cutover deleted that key from the cell mint outright, so the assertion survived
+  # as one nothing could violate. The strip list now holds exactly two keys, and only one of them can
+  # be on a den-hoag node's `decls`: `__edges` is gen-scope's OWN reserved key, written by its
+  # `buildNodes`, which den-hoag never calls — it mints its own nodes (`build-roots.nix`, `fleet.nix`),
+  # so nothing puts `__edges` there. `suppressedPolicies` IS written: `default.nix` folds the staged
+  # pre-pass' per-root suppression set onto that root's `decls`, and it must stay out of the generic
+  # context because it rides its OWN inherited carrier (`suppressed-policies`, attribute 1s) and is
+  # re-injected at the dispatch alone. So this is the same invariant on the only key that can still
+  # break it, and the control below proves the key is really there to be stripped.
+  suppressMod = {
+    config.den.policies = {
+      # the suppression TARGET — a declared policy for the suppressor to name.
+      quiet = {
+        emits = [ ];
+        fn = _ctx: [ ];
+      };
+      # the exclude family (`group == "structural"` and `emits` ∋ `suppress`, concern-policies.nix).
+      # Its gate is the `host` binding, so it fires at every host root and the pre-pass records a
+      # suppression there.
+      hush = {
+        emits = [ "suppress" ];
+        suppresses = [ "quiet" ];
+        fn =
+          { host, ... }:
+          builtins.seq host [ (declare.suppress { name = "quiet"; }) ];
+      };
+    };
+  };
+  denSuppress = (denHoag.mkDen (fx.base ++ [ suppressMod ])).den;
+  suppressRootDecls = builtins.attrNames denSuppress.scopeRoots."host:axon".decls;
+  cellEnriched = denSuppress.structural.eval.get "user:alice@host:axon" "enriched-context";
 in
 {
   flake.tests.b2-two-stratum = {
@@ -304,9 +335,15 @@ in
       expected = "OWN";
     };
 
-    # (f) — the A4 strip holds: enriched-context never exposes the reserved `__containment` key.
-    test-enriched-context-no-containment = {
-      expr = cellEnriched ? __containment;
+    # (f) — the A4 strip holds. CONTROL first: the emitting root's decls genuinely carry the key, so
+    # the assertion below has something to strip…
+    test-suppression-lands-on-root-decls = {
+      expr = builtins.elem "suppressedPolicies" suppressRootDecls;
+      expected = true;
+    };
+    # …and the cell's enriched-context does not carry it — the strip is what makes the difference.
+    test-enriched-context-no-suppressed-policies = {
+      expr = cellEnriched ? suppressedPolicies;
       expected = false;
     };
   };

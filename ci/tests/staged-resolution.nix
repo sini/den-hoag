@@ -98,8 +98,9 @@ let
   # ── the RESOLUTION policies (the two-phase corpus shape, synthetic) ──────────────────────────────────
   # zone phase: a CONTAINMENT member to an EXISTING rack (§3c-UNIFIED, `relate` dissolved), carrying
   # `authToken` (a tuple-carried binding) + recording zone as rack's containment ancestor. Fires at zone
-  # roots only (the `zone` coord is absent at rack roots and — being a stripped `__coords` entry — at blade
-  # cells). Single-group structural (the probe emits a `member`). `containTo = "rack"` marks the target coord.
+  # roots only (the `zone` coord is absent at rack roots and — a cell's decls carry its own dim bindings,
+  # never a coordinate cache, since the coordinate-payload cutover — at blade cells). Single-group
+  # structural (the probe emits a `member`). `containTo = "rack"` marks the target coord.
   zoneRelateMod =
     { config, ... }:
     {

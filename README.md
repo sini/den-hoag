@@ -123,6 +123,16 @@ guards scan whole files with `gen-prelude`'s backtracking-free `hasInfix` (nixpk
 The library core (`lib/**`) is nixpkgs-lib-free — it uses `gen-prelude` for list/attr/string
 helpers. Only `ci/tests/**` may use nixpkgs `lib`.
 
+**Payload-key deletion discipline.** When a migration deletes a key from a node's `decls` (or from any
+other payload a test can read), sweep that key's consumers for ABSENCE-ASSERTING checks before
+concluding the red set is unchanged. A check that asserts a key is absent from a context becomes
+vacuous the moment the key can no longer exist — and the suite reports vacuous as a pass, so an
+unchanged red set is evidence of nothing. Grep the deleted key across `lib/ ci/ parity/` with a
+positive control on the same instrument in the same run (a key that DID survive, e.g. `__entry`), then
+decide each hit: retire it with a comment naming what discharges the invariant now, or re-arm it
+against a key that can still violate it. Deleting a vacuous check silently is the one wrong move — a
+retired check and a vacuous one look identical in the count and are different in the graph.
+
 **Pin-bump discipline.** `ci/` and `parity/` pin this tree via `path:..`, and their locks carry
 FLATTENED transitive copies of the root's inputs — a root pin bump does NOT propagate to them.
 After changing any root `flake.lock` pin, re-resolve both in the same commit:

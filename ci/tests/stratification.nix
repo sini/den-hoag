@@ -200,11 +200,36 @@ let
   denNoFire = (denHoag.mkDen (fleetBase ++ [ noFireMod ])).den;
   rsNoFire = denNoFire.structural.eval.get cellId "resolved-settings";
 
-  # ── a `configure` policy destructuring the reserved `__coords` key never fires (reserved-key
-  #    invariant, symmetric with `__containment`) — the cell's coordinate cache is graph machinery,
-  #    stripped from every policy-dispatch context (inherited-context `removeAttrs`), so it is never a
-  #    ctx key and the policy's canTake guard is never satisfied. Completes the reserved-key set.
-  coordsMod =
+  # ── the policy-dispatch gate is a PRESENCE gate over ctx, and the reserved `__` shape is not one of
+  #    its inputs ─────────────────────────────────────────────────────────────────────────────────────
+  # RETIRED HERE: a `configure` policy destructuring `__coords`, which asserted that the cell's
+  # coordinate cache never reaches a policy-dispatch context. The coordinate-payload cutover deleted
+  # `__coords` and `__containment` from the cell mint outright — a node's position is a query over the
+  # `contains` pool, not a payload it carries — so the key that check guarded against can no longer
+  # exist, and the assertion became one no fleet could violate.
+  #
+  # NOTHING REPLACES IT AS A RESERVED-KEY CHECK, because the law it claimed — reserved keys are graph
+  # machinery, stripped from every policy-dispatch context — is false, and was already false when it was
+  # written. `__entry` is reserved-shaped, is in the dispatch context at every node, and a policy
+  # destructuring it FIRES; that is what the second arm below pins. Re-arming on a reserved-shaped but
+  # unknown key would only restate the first arm under a name claiming a reserved-key law, since an
+  # unknown `__key` and an unknown plain key are admitted alike.
+  #
+  # What survives is the gate itself. `gateOf v = v.gate or (builtins.functionArgs v.fn)`
+  # (concern-policies.nix) is discharged by gen-dispatch's `fromFunctionMatch`, which admits a rule iff
+  # every REQUIRED formal is a key of ctx. The two arms are one controlled experiment with the reserved
+  # shape held constant, so presence is the only variable: absent ⇒ never fires, present ⇒ fires. The
+  # second arm is the first's positive control — without it a dispatch that fired nothing at all would
+  # read as a pass, which is the failure mode that made the retired check worth replacing rather than
+  # deleting.
+  pwn = config: [
+    (denHoag.declare.configure {
+      of = config.den.aspects.app;
+      set.level = "pwned";
+    })
+  ];
+  gateMod =
+    policyFn:
     { config, ... }:
     {
       config.den.aspects.app = {
@@ -219,18 +244,16 @@ let
       ];
       config.den.policies.wouldConfigure = {
         emits = [ "configure" ];
-        fn =
-          { __coords, ... }:
-          [
-            (denHoag.declare.configure {
-              of = config.den.aspects.app;
-              set.level = "pwned";
-            })
-          ];
+        fn = policyFn config;
       };
     };
-  denCoords = (denHoag.mkDen (fleetBase ++ [ coordsMod ])).den;
-  rsCoords = denCoords.structural.eval.get cellId "resolved-settings";
+  rsOf =
+    mod: ((denHoag.mkDen (fleetBase ++ [ mod ])).den).structural.eval.get cellId "resolved-settings";
+  # `__notAKey` is reserved-SHAPED and unknown to both node mints (`build-roots.nix` writes
+  # `{ <kind>; __entry; }`, `fleet.nix` writes `{ <parentDim>; <leafDim>; __entry; }`) ⇒ never a ctx key.
+  rsGateAbsent = rsOf (gateMod (config: { __notAKey, ... }: pwn config));
+  # `__entry` is reserved-SHAPED and IS a ctx key at every node — the same two mints write it.
+  rsGatePresent = rsOf (gateMod (config: { __entry, ... }: pwn config));
 in
 {
   flake.tests.stratification = {
@@ -297,14 +320,29 @@ in
       expected = [ "default" ];
     };
 
-    # ── reserved `__coords` policy destructure never fires (symmetric with __containment) ──
-    test-coords-policy-never-fires = {
-      expr = rsCoords.app.value.level;
+    # ── the dispatch gate is a presence gate; the reserved `__` shape is not a gate input ──
+    # A gate key ABSENT from ctx ⇒ the rule never fires…
+    test-gate-absent-key-never-fires = {
+      expr = rsGateAbsent.app.value.level;
       expected = "info";
     };
-    test-coords-policy-no-policy-layer = {
-      expr = map (e: e.rendered) rsCoords.app.provenance.level;
+    test-gate-absent-key-no-policy-layer = {
+      expr = map (e: e.rendered) rsGateAbsent.app.provenance.level;
       expected = [ "default" ];
+    };
+    # …and the same rule keyed on a PRESENT ctx key fires. This is the pair's positive control: it
+    # reddens in the same run if dispatch stopped firing, so the arm above cannot pass vacuously. It is
+    # also the measurement that retired the `__coords` check — a reserved key does reach the context.
+    test-gate-present-reserved-key-fires = {
+      expr = rsGatePresent.app.value.level;
+      expected = "pwned";
+    };
+    test-gate-present-reserved-key-policy-layer = {
+      expr = map (e: e.rendered) rsGatePresent.app.provenance.level;
+      expected = [
+        "default"
+        "policy"
+      ];
     };
   };
 }
