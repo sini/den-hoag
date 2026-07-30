@@ -13,6 +13,13 @@
 #     BEFORE it replaces the emission. Driven on the `class-fold-subtree` fixture (nixos host + 3 hm cells
 #     each emitting a define-user-shaped nixos slice), reached through `fleet.den.output.{projectClass,
 #     classSubtreeAt}`.
+#   • THE RELOCATION INPUT (real fleet, the anchor's NON-TRIVIAL input): the two sides of the anchor are
+#     not the same function — `classSubtreeAt` reads `class-seeds`, which APPLIES the node's relocation
+#     relation Ρ(n) (`reroute`); `projectClass` reads `classSliceOf` over reach, the RAW extraction. On a
+#     relocation-FREE fleet Ρ(n) = ∅, so both sides answer the same for the trivial reason that neither
+#     computes a relocation, and the equality is satisfied by an input that cannot distinguish them. This
+#     plane declares a relocation over content that arrives BY REACH, which is the input class on which
+#     the two sides CAN differ.
 #   • SYNTHETIC (stub reach, the edge-replacement proofs): `projectClass` is `concatMap (n: map (e: e.module)
 #     (classSliceOf n class)) (reach id)`, so GIVEN a reach list it is a pure class-slice fold — reach's own
 #     edge-following (opt-in / structural-descendant / class-scope) is proven in reach-graph.nix. Here we
@@ -67,6 +74,87 @@ let
   ];
   igloo = "host:igloo";
   out = anchorFleet.den.output;
+
+  # ── RELOCATION fixture: an env/host/user topology carrying the anchor's non-trivial input ────────────
+  #    The user CELL holds the `home-manager` content and the HOST holds the `nixos` content, so the
+  #    cell's slice arrives at the host's projection BY REACH (reach's structural-descendant component) —
+  #    the arrival path `class-relocation`'s synthetic `self` cannot produce, since it drives the seed
+  #    query at one node and never builds a reach.
+  #    NATIVE `mkDen`: `reroute` is a resolution verb of the native declaration vocabulary with no v1
+  #    spelling (the v1 effect translation emits `edge`/`drop`/`suppress`/`member`/`delivery` only), so
+  #    the compat surface the fleet above uses cannot author this input at all.
+  relocationSchema.config.den.schema = {
+    env.parent = null;
+    host.parent = "env";
+    user.parent = "host";
+  };
+  relocationInstances.config.den = {
+    env.prod = { };
+    host.axon = { };
+    user.alice = { };
+  };
+  relocationMembership =
+    { config, ... }:
+    {
+      config.den.membership = [
+        {
+          coords = {
+            env = config.den.env.prod;
+            host = config.den.host.axon;
+          };
+        }
+        {
+          coords = {
+            host = config.den.host.axon;
+            user = config.den.user.alice;
+          };
+        }
+      ];
+    };
+  relocationClassing.config.den.contentClass = {
+    host = "nixos";
+    user = "home-manager";
+  };
+  relocationContent =
+    { config, ... }:
+    {
+      config.den.aspects.hostc.nixos.tag = "nixos-host";
+      config.den.aspects.acct.home-manager.tag = "hm-alice";
+      config.den.include = [
+        {
+          at = config.den.host.axon;
+          aspects = [ config.den.aspects.hostc ];
+        }
+        {
+          at = config.den.user.alice;
+          aspects = [ config.den.aspects.acct ];
+        }
+      ];
+    };
+  # Ρ(n) = { home-manager → nixos }, declared at every scope carrying the `host` coordinate — the
+  # PROJECTING host and the descendant cell whose slice reach delivers to it.
+  relocationMod.config.den.policies.relocate-hm = {
+    emits = [ "reroute" ];
+    fn =
+      { host, ... }:
+      [
+        (denHoag.declare.reroute {
+          from = denHoag.classes.home-manager;
+          to = denHoag.classes.nixos;
+        })
+      ];
+  };
+  relocationBase = [
+    relocationSchema
+    relocationInstances
+    relocationMembership
+    relocationClassing
+    relocationContent
+  ];
+  # the CONTROL twin — the same fleet with the relocation declaration REMOVED, nothing else.
+  relocationFreeOut = (denHoag.mkDen relocationBase).den.output;
+  relocatedOut = (denHoag.mkDen (relocationBase ++ [ relocationMod ])).den.output;
+  axon = "host:axon";
 in
 {
   flake.tests.projection = {
@@ -123,6 +211,66 @@ in
         "nixos-pol"
         "nixos-tux"
       ];
+    };
+
+    # ══ THE RELOCATION INPUT — the anchor equality on an input whose two sides CAN differ ═══════════════
+    # The rows above hold on a fleet whose relocation relation is EMPTY, where `class-seeds`' source order
+    # for every channel is `[ c ]` — the identity — so `classSubtreeAt` and `projectClass` agree without
+    # either one expressing a relocation. The equality is a property of the two functions only on an input
+    # that declares one: content whose channel has an outgoing relocation comes to rest at the target, so
+    # the SOURCE channel holds nothing and the TARGET channel carries the moved slice. `classSubtreeAt`
+    # folds each scope's `class-seeds` and therefore answers the relocated content; `projectClass` folds
+    # `classSliceOf` straight over reach and answers the raw content. THE EQUIVALENCE HOLDS ONLY WHEN THE
+    # PROJECTION APPLIES THE RELOCATION RELATION — this input exhibits the divergence.
+
+    # (i) CONTROL, in the same run: the SAME fleet with no relocation declared agrees on both channels, so
+    #     the rows below measure the relocation and not the fixture's own shape (native mkDen, the
+    #     cell-under-host reach) — a fixture that diverged for a structural reason would fail here too.
+    test-anchor-relocation-free-control = {
+      expr = {
+        home-manager =
+          relocationFreeOut.projectClass axon "home-manager"
+          == relocationFreeOut.classSubtreeAt axon "home-manager";
+        nixos =
+          relocationFreeOut.projectClass axon "nixos" == relocationFreeOut.classSubtreeAt axon "nixos";
+      };
+      expected = {
+        home-manager = true;
+        nixos = true;
+      };
+    };
+
+    # (ii) THE ANCHOR EQUALITY on the relocation input, stated as the two SIDES so the failure carries the
+    #      value diff. `nixos` is route-free on this native fleet (it declares no delivery edge at all), so
+    #      the route-remap delta is `[ ]` on both channels and the decomposition is the EXACT equality of
+    #      the (b) row above.
+    test-anchor-projectClass-eq-classSubtreeAt-under-relocation = {
+      expr = {
+        home-manager = relocatedOut.projectClass axon "home-manager";
+        nixos = relocatedOut.projectClass axon "nixos";
+      };
+      expected = {
+        home-manager = relocatedOut.classSubtreeAt axon "home-manager";
+        nixos = relocatedOut.classSubtreeAt axon "nixos";
+      };
+    };
+
+    # (iii) the same claim against ABSOLUTE content, so the equality above cannot be satisfied by two sides
+    #       broken alike: the cell's `hm-alice` slice comes to rest at the host's `nixos` projection (after
+    #       the host's own content, the target's own seeds coming first), and `home-manager` — a channel
+    #       with an outgoing relocation — projects nothing.
+    test-anchor-projectClass-relocated-content = {
+      expr = {
+        home-manager = builtins.concatMap tags (relocatedOut.projectClass axon "home-manager");
+        nixos = builtins.concatMap tags (relocatedOut.projectClass axon "nixos");
+      };
+      expected = {
+        home-manager = [ ];
+        nixos = [
+          "nixos-host"
+          "hm-alice"
+        ];
+      };
     };
 
     # ══ SYNTHETIC — the class-slice projection over a stub reach list (edge-replacement proofs) ═════════
