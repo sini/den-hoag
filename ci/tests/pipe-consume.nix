@@ -114,9 +114,19 @@ in
       expected = 3;
     };
     # …and every derived channel is the gen-pipe derived form rooted on the base channel (`feat.<op>.…`).
+    # Non-emptiness is asserted in the SAME expression as the quantifier, because `all p [ ]` is TRUE: over
+    # an empty `derivedAdded` the naming property certifies itself, so this test would report green on the
+    # exact compose delta — none at all — that `test-derived-channels-consumed` exists to catch. The two
+    # halves are forced together, so the names property can only pass on channels that were really added.
     test-derived-channel-names = {
-      expr = builtins.all (c: builtins.substring 0 5 c == "feat.") derivedAdded;
-      expected = true;
+      expr = {
+        anyDerived = derivedAdded != [ ];
+        allRootedOnBase = builtins.all (c: builtins.substring 0 5 c == "feat.") derivedAdded;
+      };
+      expected = {
+        anyDerived = true;
+        allRootedOnBase = true;
+      };
     };
     # a pipe-FREE fleet's compose carries no derived channel — only the base quirk + the demand channel.
     test-no-pipe-no-derived = {
