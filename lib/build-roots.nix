@@ -27,6 +27,19 @@ let
     bareId: parents: parent:
     if builtins.length parents <= 1 then bareId else "${bareId}@${parent}";
 
+  # THE bare→minted EXPANSION, and the only definition of it: which NODES a bare id becomes.
+  # `mintedRootId` answers "which node is this one"; this answers "which nodes are there at all",
+  # and the two stay separate for the same reason `parents` and `parent` do — `buildRoots` needs
+  # the per-node parent, every key-space consumer needs only the set.
+  #
+  # TOTAL over bare ids: an unattached target becomes exactly itself. That clause is what lets a
+  # call site drop its own empty-list arm, which is the half that was being respelled — the same
+  # `if parents == [ ] then [ id ] else map …` stood at three sites in three files, agreeing by
+  # coincidence rather than by construction. The argument `mintedRootId` already carries one level
+  # down ("the two cannot drift") is the argument for this one.
+  mintedIdsOf =
+    bareId: parents: if parents == [ ] then [ bareId ] else map (mintedRootId bareId parents) parents;
+
   # roots = a list of root KIND names; every instance of each becomes one scope root per attachment
   # (exactly one when it has none, or one).
   buildRoots =
@@ -113,6 +126,7 @@ in
   inherit
     buildRoots
     mintedRootId
+    mintedIdsOf
     parseParent
     isCellNode
     ;

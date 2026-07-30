@@ -155,6 +155,9 @@ let
       # this pass keys bindings at the node that will carry them, `buildRoots` mints that node, and
       # one definition is what keeps the two from drifting.
       mintedRootId,
+      # …and its SET form (`build-roots.nix mintedIdsOf`), for the keyings that need every node a
+      # bare id becomes rather than one of them. Threaded for the same reason.
+      mintedIdsOf,
     }:
     let
       # The containment-target index spans EVERY registry kind (a containTo target may be a root outside the
@@ -371,36 +374,51 @@ let
       # keeps its own accessor: it reads `containmentRelations`, a slice map, not these emission records.)
       # Empty slices are dropped FIRST: a bindings-only emission names no source, so it contributes no
       # edge — the same filter `containmentAncestors` applies, and what keeps the id rule off an empty slice.
-      containEdges =
+      #
+      # PRIVATE. Every reader outside this pair goes through `containEdges` below, which is the same walk
+      # behind the cycle guard; the raw form exists so the guard's OWN walk does not re-enter it.
+      rawContainEdges =
         nid:
         map (e: ancNodeId e.sourceSlice) (
           builtins.filter (e: e.sourceSlice != { }) (byTarget.${nid} or [ ])
         );
+
+      # THE CONTAINMENT CYCLE GUARD, at the PRODUCT boundary rather than on a demand path.
+      #
+      # A cyclic `containTo` topology becomes a cyclic P graph, and the inherit/ancestor walks are
+      # visited-guarded — they would TERMINATE, silently truncating the chain, where the settings walk
+      # aborts loud. Silent truncation is the worse failure, so the cyclic walk must never form.
+      #
+      # ONE check, computed once and forced by every product this pass returns (`mapAttrs` over the export
+      # record below), so MEMBERSHIP IN THE RECORD IMPLIES GUARDING. Guarding each export by a separate
+      # application would leave a future export unguarded by default: an invariant maintained in N places
+      # desyncs at N+1, and the enumeration being correct today is exactly what makes that silent. Placing
+      # it on an accessor is not enough either — `containmentAncestors` reads `byTarget` directly and never
+      # calls the accessor, so a consumer of the ancestors map would walk a cyclic topology past it.
+      #
+      # `mapAttrs` preserves per-value laziness, so a fleet that reads none of the five still pays nothing,
+      # and a fleet that reads one pays the check once. Cost is bounded: id strings only.
+      cycleChecked =
+        let
+          cyclic = graph.cycles {
+            edges = rawContainEdges;
+            nodes = builtins.attrNames byTarget;
+          };
+        in
+        if cyclic != [ ] then errors.containmentCycle (builtins.head cyclic) else null;
+      guarded = x: builtins.seq cycleChecked x;
+      containEdges = nid: guarded (rawContainEdges nid);
 
       # target -> the node ids that contain it, deduped. NOT a single parent: scope parentage is a
       # partial function, so a target claimed by N sources is expressed as N NODES of one parent each
       # (`buildRoots`), never as one node of N parents. Reading several attachments here is therefore
       # the normal case, not an error — what would be an error is collapsing them onto one node.
       # A target whose emissions are all bindings-only contributes no attachment and drops out, the
-      # same filter `containmentAncestors` applies.
-      # CYCLE GUARD, inside this thunk so a fleet that never reads the map pays nothing, and raised
-      # before any attachment is yielded: a cyclic `containTo` topology becomes a cyclic P graph, and
-      # the inherit/ancestor walks are visited-guarded — they would TERMINATE, silently truncating the
-      # chain, where the settings walk aborts loud. Silent truncation is the worse failure. Cost is
-      # bounded: id strings only.
-      containmentAttachments =
-        let
-          cyclic = graph.cycles {
-            edges = containEdges;
-            nodes = builtins.attrNames byTarget;
-          };
-        in
-        if cyclic != [ ] then
-          errors.containmentCycle (builtins.head cyclic)
-        else
-          prelude.filterAttrs (_: parents: parents != [ ]) (
-            builtins.mapAttrs (tid: _: attachmentsOf tid) byTarget
-          );
+      # same filter `containmentAncestors` applies. The cycle guard is no longer written here: it is
+      # forced by every export (see `cycleChecked`), so this map cannot be the one path that carries it.
+      containmentAttachments = prelude.filterAttrs (_: parents: parents != [ ]) (
+        builtins.mapAttrs (tid: _: attachmentsOf tid) byTarget
+      );
 
       # The DELIVER ctx: base decls extended by the target's OWN transpose slice (the demand read). Delivered
       # exactly where the root fires, so a consuming resolve policy sees its binding at its firing scope.
@@ -426,7 +444,7 @@ let
       # suppresses only at droid-class roots).
       #
       # Keyed by minted NODE ID, for the reason `containmentBindings` above is: the fold runs over THIS
-      # pass's root ids, which are bare because `prePassScopeRoots` is built with no attachments, while the
+      # pass's root ids, which are bare because `structuralNodes` is built with no attachments, while the
       # consumer indexes the MAIN run's roots, which ARE attachment-built. At N≥2 the bare id names no node
       # there, and the consumer's test is a bare `?` membership — so a target-keyed map would not miss
       # loudly, it would simply find nothing and deliver no suppression at all.
@@ -434,13 +452,13 @@ let
       # Unlike the bindings, the set is NOT partitioned by source: the excluder fires once, at the single
       # un-multiplied pre-pass root, against a ctx that predates the multiplication. Every node that root
       # mints is that same root at a different attachment, so each carries the whole set. At N≤1
-      # `mintedRootId` returns the bare id, so this is a relabelling onto the same key — byte-identical.
+      # `mintedIdsOf` is the singleton of the bare id, so this is a relabelling onto the same key —
+      # byte-identical.
       suppressions = prelude.foldl' (
         acc: id:
         let
           suppressed = map (a: a.name) (fireExcludeAt scopeRoots.${id}.type id (deliverCtxOf id));
-          parents = attachmentsOf id;
-          keys = if parents == [ ] then [ id ] else map (mintedRootId id parents) parents;
+          keys = mintedIdsOf id (attachmentsOf id);
         in
         if suppressed == [ ] then
           acc
@@ -454,7 +472,10 @@ let
           )
       ) { } ids;
     in
-    {
+    # Every product of this pass carries the containment cycle guard, by construction: the record is
+    # written once and `guarded` is applied across it, so an export added here is guarded because it is
+    # a member, not because someone remembered to wrap it.
+    builtins.mapAttrs (_: guarded) {
       inherit
         tuples
         containmentBindings

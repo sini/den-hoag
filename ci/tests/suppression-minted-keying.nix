@@ -1,4 +1,4 @@
-# The pre-pass SUPPRESSION map's KEY SPACE. `runPrePass` iterates `prePassScopeRoots`, which is built
+# The pre-pass SUPPRESSION map's KEY SPACE. `runPrePass` iterates `structuralNodes`, which is built
 # with no attachments, so its ids are always the bare `kind:name`. The consumer is a MEMBERSHIP TEST over
 # `baseScopeRoots`, which IS built with `prePass.containmentAttachments` — so at N≥2 attachments the id it
 # indexes with is the MINTED `kind:name@parent` and a bare-keyed map simply misses. No error, no warning:

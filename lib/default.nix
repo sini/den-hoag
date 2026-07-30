@@ -336,6 +336,7 @@ let
   inherit (buildRootsLib)
     buildRoots
     mintedRootId
+    mintedIdsOf
     parseParent
     isCellNode
     ;
@@ -1019,24 +1020,27 @@ let
       candidateKinds = builtins.filter (
         k: !(builtins.elem k parentKinds) && ent.meta.${k}.parent != null
       ) allKinds;
-      # NON-candidate kinds are ROOTS regardless of the membership-derived verdict (the parent-chain kinds
-      # + standalone roots). They carry every resolve-family policy the corpus includes (its five are all
-      # flake/fleet/environment/host includes — `den.resolveFamilyNames`), and their root set is membership-
-      # INDEPENDENT.
-      nonCandidateKinds = builtins.filter (k: !(builtins.elem k candidateKinds)) allKinds;
-
-      # THE STAGING THAT BREAKS THE CYCLE (design note §3b). Naive "cellKinds ← tuples ← pre-pass ← roots ←
-      # cellKinds" is circular. Instead the pre-pass reads a root set fixed BEFORE classification
-      # (`prePassScopeRoots`, over the STRUCTURAL non-candidates), derives the membership tuples, and the
-      # classification reads those tuples' DIM SIGNATURES afterward. IDENTITY: for every fleet whose
-      # candidates are ALL targeted (each native/synthetic fixture) `nonCandidateKinds == rootScopeKinds`,
-      # so this pre-pass input is BYTE-IDENTICAL to the pre-R3 one (`baseScopeRoots` over `rootScopeKinds`);
-      # only a multi-candidate topology with an UNtargeted candidate (the corpus's `cluster`) differs, and
-      # only in the MAIN-run classification (the pre-pass never sees the difference).
-      prePassRootKinds = nonCandidateKinds;
-      prePassScopeRoots = buildRoots {
+      # THE STRUCTURAL UNIVERSE (§3b's dim-signature law, and the ordering §3b does NOT state).
+      # `structuralNodes` is every instance of every declared kind — a function of `ent.registries`
+      # alone. The pre-pass fires there, so its input depends on no membership, no classification
+      # and no attachment, and the classification below reads the resulting tuples' DIM SIGNATURES
+      # (coord attr NAMES, never values — §3b's "no new fixpoint", which holds).
+      #
+      # THE ORDERING THAT REMAINS, and it is not §3b's: node IDENTITY is a function of the
+      # containment relation (`mintedRootId` multiplies a target claimed by N sources into N nodes,
+      # because scope parentage is a partial function — Néron et al. 2015 §2.2). So `contains` is
+      # computed at the structural stratum over `structuralNodes`, and the delivered population is
+      # minted from it. This is an ordering in the ATTRSET SPINE, not in any value: a demand-driven
+      # attribute defers a VALUE at a known key and cannot defer WHICH KEYS EXIST, which is why
+      # laziness does not remove it.
+      #
+      # ⇒ EVERY id this pass produces is BARE; every node it becomes may be MINTED. `mintedIdsOf`
+      # (build-roots.nix) is the one rule for that expansion, and a site spelling it inline is a
+      # site that will drift. Rules that read PER-NODE facts fire at the minted LOCUS, not at the
+      # bare id — a bare id names no node once the target multiplies.
+      structuralNodes = buildRoots {
         inherit (ent) registries;
-        roots = prePassRootKinds;
+        roots = allKinds;
       };
       # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED CELL tuples (Task 4, A5's
       # promised law): a policy-emitted bare `member` at a membership-independent root routes into the
@@ -1046,10 +1050,18 @@ let
       # slice ]), threaded to resolved-settings for the settings-chain env slice (§3c-UNIFIED, byte-neutral
       # when unset). THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` +
       # `containmentBindings = { }`, so `membershipTuples`/`scopeRoots` are byte-identical to the pre-R1
-      # values. The pre-pass reads `prePassScopeRoots` (structural, un-injected) + `policiesRules` — neither
+      # values. The pre-pass reads `structuralNodes` (structural, un-injected) + `policiesRules` — neither
       # depends on `membershipTuples`/`theFleet`/the classification, so no cycle.
+      #
+      # ★ THE CTX THIS PASS FIRES AGAINST IS A NODE'S OWN DECLS, and at a MULTIPLIED target that is all it
+      # is: `deliverCtxOf` extends `baseCtxOf` with `containmentBindings.${id}`, whose keys are MINTED,
+      # while this pass iterates the BARE ids `structuralNodes` mints (built with no attachments). At N≥2
+      # the `or { }` therefore yields the empty slice silently rather than the node's bindings. That
+      # keying is a separate, still-open defect on the tuple fire; widening the root set here widens the
+      # population at which it can occur without changing it in kind. Stated here because the widening is
+      # visible from this site and the mis-keyed read is not.
       prePass = stagedResolution.runPrePass {
-        scopeRoots = prePassScopeRoots;
+        scopeRoots = structuralNodes;
         inherit (ent) registries;
         # The resolve-family feed (concern-policies) — the structural-group rules whose DECLARED codomain
         # contains `member` — already selected by node kind. Dispatching only these keeps the pre-pass from
@@ -1065,7 +1077,7 @@ let
         excludeIndex = indexFeed policiesRules.excludeFamily;
         # The schema parent kind of each kind (scalar per kind), for the containment source-kind check.
         kindParent = k: (ent.meta.${k} or { }).parent or null;
-        inherit mintedRootId;
+        inherit mintedRootId mintedIdsOf;
       };
       membershipTuples = ent.config.den.membership ++ prePass.tuples;
 
@@ -1080,13 +1092,10 @@ let
       # an ordinary ROOT. The corpus's `cluster` (childless under environment, but NO tuple names it — its
       # k8s content is read off the cluster ROOT entity) stays a root; `user` (named by the `{ host; user }`
       # tuples) becomes the leaf, exactly where membership says so — with zero kind-name literals.
-      # EDGE (corpus-zero, documented loud): a resolve-family policy included ON a candidate kind would
-      # dispatch NOWHERE — the pre-pass runs over non-candidates. The main-run guard (attributes/
-      # structural.nix) still catches a resolve-family emission at a TARGETED candidate's cell
-      # (`memberAtCell`) and an UNtagged/undetected one at any root (`resolveFamilyUntagged`); the ONLY
-      # unguarded sliver is a FEED policy (in `den.resolveFamilyNames`) firing at an UNtargeted-candidate
-      # root — it would double-fire benignly yet route nothing. Unreachable for the corpus: its five feed
-      # policies are all flake/fleet/environment/host includes, never a cluster/user include.
+      # DISPATCH IS TOTAL OVER THE SCHEMA: the pre-pass fires at every instance of every declared kind, so a
+      # resolve-family or exclude-family policy included on ANY kind dispatches. The classification here
+      # decides which nodes the MAIN run keeps as roots; it no longer decides which nodes a policy can fire
+      # at, and a kind's inclusion set is therefore not silently conditioned on its topological position.
       cellKinds = builtins.filter (k: builtins.elem k tupleDimKinds) candidateKinds;
       rootScopeKinds = builtins.filter (k: !(builtins.elem k cellKinds)) allKinds;
 
@@ -1155,15 +1164,15 @@ let
       };
 
       # The BASE root scope nodes (un-injected) — the MAIN run's roots, over the membership-derived
-      # `rootScopeKinds` (non-candidates ∪ UNtargeted candidates, e.g. the corpus's cluster). Distinct from
-      # `prePassScopeRoots` (non-candidates only): an untargeted candidate is a root the main run reads but
-      # the pre-pass did NOT (no resolve-family policy fires there — see the classification edge note).
+      # `rootScopeKinds` (everything the classification did not make a CELL kind). Distinct from
+      # `structuralNodes`, which spans the WHOLE schema: a targeted candidate is an instance the pre-pass
+      # fires at and the main run materialises as a cell under its parent, never as a root here.
       baseScopeRoots = buildRoots {
         inherit (ent) registries;
         roots = rootScopeKinds;
         # Root parentage is edge-delivered: the pre-pass's containment attachments become scope P
         # edges here. A target with several attachments mints one node per attachment, so this is
-        # also where multiplication happens. `prePassScopeRoots` above deliberately stays
+        # also where multiplication happens. `structuralNodes` above deliberately stays
         # attachment-free — it is built BEFORE the pre-pass that derives them.
         attachments = prePass.containmentAttachments;
       };
@@ -1233,8 +1242,8 @@ let
 
       # Resolve a `link` target entry to the scope NODES whose enriched-context feeds §B3
       # linked-context. Entity -> node is one-to-MANY: a multi-attached root mints one node per
-      # attachment, so this yields a LIST and the id rule is the same `mintedRootId` `buildRoots`
-      # mints with — one owner, so the index cannot name a node that was never built. The index is
+      # attachment, so this yields a LIST and the expansion is the same `mintedIdsOf` `buildRoots`
+      # mints through — one owner, so the index cannot name a node that was never built. The index is
       # over the entity registries (not scope nodes), so this stays demand-safe. Cell targets resolve
       # through the edge stratum in Task 4 (absent here).
       entryNodeIndex = prelude.foldl' (
@@ -1244,13 +1253,12 @@ let
           let
             e = ent.registries.${kindName}.${name};
             bareId = "${kindName}:${name}";
-            parents = prePass.containmentAttachments.${bareId} or [ ];
           in
           acc'
           // {
             ${e.id_hash} = {
               kind = kindName;
-              nodeIds = if parents == [ ] then [ bareId ] else map (p: mintedRootId bareId parents p) parents;
+              nodeIds = mintedIdsOf bareId (prePass.containmentAttachments.${bareId} or [ ]);
             };
           }
         ) acc (builtins.attrNames ent.registries.${kindName})

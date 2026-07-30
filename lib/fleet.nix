@@ -12,7 +12,7 @@ let
   # THE attached-root id rule, taken from the module that owns it rather than re-derived: a pair must
   # name the node `buildRoots` actually minted, and sharing the rule is what makes that true by
   # construction instead of by two spellings happening to agree.
-  inherit (import ./build-roots.nix { inherit prelude; }) mintedRootId;
+  inherit (import ./build-roots.nix { inherit prelude; }) mintedRootId mintedIdsOf;
 
   # THE cell id rule, and the only definition of it. `cellChildrenFor` mints cells with it and the
   # containment producer spells child ids with it, so the two agree because they share the rule rather
@@ -199,12 +199,7 @@ let
       childIdOf = containmentChildId { inherit cellKinds attachments; };
       # the parent coordinate's NODE ids — a parent claimed by several sources is several nodes, and the
       # containment holds under each of them.
-      parentNodeIdsOf =
-        parentBareId:
-        let
-          parents = attachments.${parentBareId} or [ ];
-        in
-        if parents == [ ] then [ parentBareId ] else map (p: mintedRootId parentBareId parents p) parents;
+      parentNodeIdsOf = parentBareId: mintedIdsOf parentBareId (attachments.${parentBareId} or [ ]);
       mk =
         parentKind: parentName: childKind: childName:
         map (parentId: {
