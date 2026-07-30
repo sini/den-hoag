@@ -29,55 +29,54 @@ in
 {
   flake.tests.den-pipe = {
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as pipe-policy.nix test-pipe-filter — only
-    # pipe.expose/collect/collectAll are wired into den.channelGather; pipe.expose's OWN wiring is
-    # itself the gap here, see below): v1 expected "vim"; den-hoag actual "" (pipe.expose not wired for consumption — tux's user-scope emit never ascends to the host).
-    # # User pipe data exposed to host scope via pipe.expose.
-    # test-pipe-expose-basic = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.prefs = {
-    #       description = "User preferences";
-    #     };
-    #
-    #     # User aspect produces pipe data.
-    #     den.aspects.tux = {
-    #       prefs = [
-    #         { editor = "vim"; }
-    #       ];
-    #     };
-    #
-    #     # Host aspect consumes pipe data (should see exposed user data).
-    #     den.aspects.igloo = {
-    #       includes = [ den.aspects.host-consumer ];
-    #     };
-    #
-    #     den.aspects.host-consumer = {
-    #       nixos =
-    #         { prefs, ... }:
-    #         {
-    #           networking.hostName = lib.concatMapStringsSep "-" (p: p.editor) prefs;
-    #         };
-    #     };
-    #
-    #     den.policies.expose-prefs =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "prefs" [
-    #           pipe.expose
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.expose-prefs ];
-    #
-    #     expr = igloo.networking.hostName;
-    #     expected = "vim";
-    #   }
-    # );
+    # Witnesses the expose ascent under the user-under-host shape: tux's user-scope `prefs`
+    # emit rises to igloo's host-scope consumer, which reads it as ordinary channel content.
+    # User pipe data exposed to host scope via pipe.expose.
+    test-pipe-expose-basic = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.prefs = {
+          description = "User preferences";
+        };
+
+        # User aspect produces pipe data.
+        den.aspects.tux = {
+          prefs = [
+            { editor = "vim"; }
+          ];
+        };
+
+        # Host aspect consumes pipe data (should see exposed user data).
+        den.aspects.igloo = {
+          includes = [ den.aspects.host-consumer ];
+        };
+
+        den.aspects.host-consumer = {
+          nixos =
+            { prefs, ... }:
+            {
+              networking.hostName = lib.concatMapStringsSep "-" (p: p.editor) prefs;
+            };
+        };
+
+        den.policies.expose-prefs =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "prefs" [
+              pipe.expose
+            ])
+          ];
+
+        den.default.includes = [ den.policies.expose-prefs ];
+
+        expr = igloo.networking.hostName;
+        expected = "vim";
+      }
+    );
 
     # PARKED-DIVERGENCE (same pipe run-wiring gap as pipe-policy.nix test-pipe-filter — only
     # pipe.expose/collect/collectAll are wired into den.channelGather; pipe.expose's OWN wiring is
@@ -139,185 +138,186 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as pipe-policy.nix test-pipe-filter — only
-    # pipe.expose/collect/collectAll are wired into den.channelGather; pipe.expose's OWN wiring is
-    # itself the gap here, see below): v1 expected [ 80 8080 ]; den-hoag actual [ 80 ] (host-local port present; tux's exposed 8080 never ascends).
-    # # Exposed data merges with host-local pipe data.
-    # test-pipe-expose-with-local = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.quirks.ports = {
-    #       description = "Port declarations";
-    #     };
-    #
-    #     # User aspect produces user-level ports.
-    #     den.aspects.tux = {
-    #       ports = [ 8080 ];
-    #     };
-    #
-    #     # Host aspect produces host-level ports AND consumes.
-    #     den.aspects.igloo = {
-    #       includes = [ den.aspects.port-consumer ];
-    #       ports = [ 80 ];
-    #     };
-    #
-    #     den.aspects.port-consumer = {
-    #       nixos =
-    #         { ports, lib, ... }:
-    #         {
-    #           networking.firewall.allowedTCPPorts = lib.sort (a: b: a < b) ports;
-    #         };
-    #     };
-    #
-    #     den.policies.expose-ports =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "ports" [
-    #           pipe.expose
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.expose-ports ];
-    #
-    #     # Host consumer sees both host-local (80) and exposed user (8080).
-    #     expr = igloo.networking.firewall.allowedTCPPorts;
-    #     expected = [
-    #       80
-    #       8080
-    #     ];
-    #   }
-    # );
+    # Witnesses the expose ascent merging with a host-local emit: igloo's consumer reads its own
+    # `ports` contribution alongside the one that ascended from tux's user scope.
+    # Exposed data merges with host-local pipe data.
+    test-pipe-expose-with-local = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.quirks.ports = {
+          description = "Port declarations";
+        };
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as pipe-policy.nix test-pipe-filter — only
-    # pipe.expose/collect/collectAll are wired into den.channelGather; pipe.expose's OWN wiring is
-    # itself the gap here, see below): v1 expected "fish-zsh"; den-hoag actual "" (neither user's exposed shells reach the host).
-    # # Exposed data from multiple users merges in host scope.
-    # test-pipe-expose-multi-user = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo = {
-    #       users.tux = { };
-    #       users.pingu = { };
-    #     };
-    #     den.quirks.shells = {
-    #       description = "Shell preferences";
-    #     };
-    #
-    #     den.aspects.tux = {
-    #       shells = [ "zsh" ];
-    #     };
-    #     den.aspects.pingu = {
-    #       shells = [ "fish" ];
-    #     };
-    #
-    #     den.aspects.igloo = {
-    #       includes = [ den.aspects.shell-consumer ];
-    #     };
-    #
-    #     den.aspects.shell-consumer = {
-    #       nixos =
-    #         { shells, lib, ... }:
-    #         {
-    #           networking.hostName = lib.concatStringsSep "-" (lib.sort (a: b: a < b) shells);
-    #         };
-    #     };
-    #
-    #     den.policies.expose-shells =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "shells" [
-    #           pipe.expose
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.expose-shells ];
-    #
-    #     # Host sees shells from both users.
-    #     expr = igloo.networking.hostName;
-    #     expected = "fish-zsh";
-    #   }
-    # );
+        # User aspect produces user-level ports.
+        den.aspects.tux = {
+          ports = [ 8080 ];
+        };
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as pipe-policy.nix test-pipe-filter — only
-    # pipe.expose/collect/collectAll are wired into den.channelGather; pipe.expose's OWN wiring is
-    # itself the gap here, see below): v1 expected { pinguHost = "pingu-secret"; hostCount = "2"; }; den-hoag actual { pinguHost = "nixos"; hostCount = "0"; } (sibling isolation itself is moot — expose never ascends at all, so the host gathers nothing and pingu falls back to the class default hostname).
-    # # Exposed data is NOT visible to sibling scopes — only parent.
-    # test-pipe-expose-sibling-isolation = denTest (
-    #   { den, igloo, ... }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo = {
-    #       users.tux = { };
-    #       users.pingu = { };
-    #     };
-    #     den.quirks.secrets = {
-    #       description = "User secrets";
-    #     };
-    #
-    #     # tux exposes secrets
-    #     den.aspects.tux = {
-    #       secrets = [ { key = "tux-secret"; } ];
-    #     };
-    #
-    #     # pingu also has secrets and a consumer — should NOT see tux's exposed data
-    #     den.aspects.pingu = {
-    #       includes = [ den.aspects.pingu-consumer ];
-    #       secrets = [ { key = "pingu-secret"; } ];
-    #     };
-    #
-    #     den.aspects.pingu-consumer = {
-    #       nixos =
-    #         { secrets, lib, ... }:
-    #         {
-    #           # pingu should only see its own local secret, not tux's exposed one
-    #           networking.hostName = lib.concatMapStringsSep "-" (s: s.key) secrets;
-    #         };
-    #     };
-    #
-    #     # Host consumer should see both (via expose)
-    #     den.aspects.igloo = {
-    #       includes = [ den.aspects.host-consumer ];
-    #     };
-    #
-    #     den.aspects.host-consumer = {
-    #       nixos =
-    #         { secrets, lib, ... }:
-    #         {
-    #           networking.domain = toString (builtins.length secrets);
-    #         };
-    #     };
-    #
-    #     den.policies.expose-secrets =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [
-    #         (pipe.from "secrets" [
-    #           pipe.expose
-    #         ])
-    #       ];
-    #
-    #     den.default.includes = [ den.policies.expose-secrets ];
-    #
-    #     expr = {
-    #       # pingu sees only its own secret (sibling isolation)
-    #       pinguHost = igloo.networking.hostName;
-    #       # host sees both via expose
-    #       hostCount = igloo.networking.domain;
-    #     };
-    #     expected = {
-    #       pinguHost = "pingu-secret";
-    #       hostCount = "2";
-    #     };
-    #   }
-    # );
+        # Host aspect produces host-level ports AND consumes.
+        den.aspects.igloo = {
+          includes = [ den.aspects.port-consumer ];
+          ports = [ 80 ];
+        };
+
+        den.aspects.port-consumer = {
+          nixos =
+            { ports, lib, ... }:
+            {
+              networking.firewall.allowedTCPPorts = lib.sort (a: b: a < b) ports;
+            };
+        };
+
+        den.policies.expose-ports =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "ports" [
+              pipe.expose
+            ])
+          ];
+
+        den.default.includes = [ den.policies.expose-ports ];
+
+        # Host consumer sees both host-local (80) and exposed user (8080).
+        expr = igloo.networking.firewall.allowedTCPPorts;
+        expected = [
+          80
+          8080
+        ];
+      }
+    );
+
+    # Witnesses the expose ascent fanning in: both users under igloo ascend their `shells` emit,
+    # and the host consumer reads the union.
+    # Exposed data from multiple users merges in host scope.
+    test-pipe-expose-multi-user = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo = {
+          users.tux = { };
+          users.pingu = { };
+        };
+        den.quirks.shells = {
+          description = "Shell preferences";
+        };
+
+        den.aspects.tux = {
+          shells = [ "zsh" ];
+        };
+        den.aspects.pingu = {
+          shells = [ "fish" ];
+        };
+
+        den.aspects.igloo = {
+          includes = [ den.aspects.shell-consumer ];
+        };
+
+        den.aspects.shell-consumer = {
+          nixos =
+            { shells, lib, ... }:
+            {
+              networking.hostName = lib.concatStringsSep "-" (lib.sort (a: b: a < b) shells);
+            };
+        };
+
+        den.policies.expose-shells =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "shells" [
+              pipe.expose
+            ])
+          ];
+
+        den.default.includes = [ den.policies.expose-shells ];
+
+        # Host sees shells from both users.
+        expr = igloo.networking.hostName;
+        expected = "fish-zsh";
+      }
+    );
+
+    # EXPECTED FAILURE, and the same assertion carries its own control: hostCount = "2" shows the
+    # expose ascent working — both users' `secrets` reach the host consumer. pinguHost is the
+    # defect: it measures "pingu-secret-tux-secret" rather than "pingu-secret" because pingu's
+    # user-scope consumer is evaluated at the HOST node, so it reads the host's pool instead of
+    # pingu's own. Cross-class binding-site delivery, not a gather defect; the fix is upstream of
+    # this file.
+    # Exposed data is NOT visible to sibling scopes — only parent.
+    test-pipe-expose-sibling-isolation = denTest (
+      { den, igloo, ... }:
+      {
+        den.hosts.x86_64-linux.igloo = {
+          users.tux = { };
+          users.pingu = { };
+        };
+        den.quirks.secrets = {
+          description = "User secrets";
+        };
+
+        # tux exposes secrets
+        den.aspects.tux = {
+          secrets = [ { key = "tux-secret"; } ];
+        };
+
+        # pingu also has secrets and a consumer — should NOT see tux's exposed data
+        den.aspects.pingu = {
+          includes = [ den.aspects.pingu-consumer ];
+          secrets = [ { key = "pingu-secret"; } ];
+        };
+
+        den.aspects.pingu-consumer = {
+          nixos =
+            { secrets, lib, ... }:
+            {
+              # pingu should only see its own local secret, not tux's exposed one
+              networking.hostName = lib.concatMapStringsSep "-" (s: s.key) secrets;
+            };
+        };
+
+        # Host consumer should see both (via expose)
+        den.aspects.igloo = {
+          includes = [ den.aspects.host-consumer ];
+        };
+
+        den.aspects.host-consumer = {
+          nixos =
+            { secrets, lib, ... }:
+            {
+              networking.domain = toString (builtins.length secrets);
+            };
+        };
+
+        den.policies.expose-secrets =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [
+            (pipe.from "secrets" [
+              pipe.expose
+            ])
+          ];
+
+        den.default.includes = [ den.policies.expose-secrets ];
+
+        expr = {
+          # pingu sees only its own secret (sibling isolation)
+          pinguHost = igloo.networking.hostName;
+          # host sees both via expose
+          hostCount = igloo.networking.domain;
+        };
+        expected = {
+          pinguHost = "pingu-secret";
+          hostCount = "2";
+        };
+      }
+    );
 
     # Cross-host backend collection via pipe.collect.
     test-pipe-collect = denTest (
@@ -1059,73 +1059,72 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE (pipe run-wiring gap, see pipe-policy.nix — pipe.expose is unwired, so the
-    # user→host leg of this chain never fires): v1 expected "alice@iceberg,tux@igloo" (expose
-    # THEN fleet-collect); den-hoag actual "" (igloo's host consumer gathers nothing — expose
-    # never ascends tux's/alice's user-scope emit to their hosts in the first place).
-    # # CLAIM UNDER TEST (syncthing replicateHome §3): a USER-scope emit,
-    # # pipe.expose'd up to its host, then visible to a FLEET collectAll on a PEER
-    # # host — expose (user→host) THEN host rebroadcast THEN fleet collect.
-    # # TRUE  → igloo's host consumer sees its OWN exposed user (tux@igloo) AND
-    # #         iceberg's exposed user (alice@iceberg).
-    # # FALSE (adversarial-review claim) → igloo sees only tux@igloo.
-    # test-expose-then-fleet-collect = denTest (
-    #   {
-    #     den,
-    #     igloo,
-    #     lib,
-    #     ...
-    #   }:
-    #   {
-    #     den.hosts.x86_64-linux.igloo.users.tux = { };
-    #     den.hosts.x86_64-linux.iceberg.users.alice = { };
-    #
-    #     den.quirks.peer-dev = {
-    #       description = "per-user device records";
-    #     };
-    #
-    #     # ONLY user aspects emit — isolates the user→host→fleet path (no host emit).
-    #     den.aspects.tux = {
-    #       peer-dev = [ { who = "tux@igloo"; } ];
-    #     };
-    #     den.aspects.alice = {
-    #       peer-dev = [ { who = "alice@iceberg"; } ];
-    #     };
-    #
-    #     # user scope: expose each user's emit up to its host.
-    #     den.policies.expose-peer-dev =
-    #       { host, user, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ pipe.expose ]) ];
-    #     den.default.includes = [ den.policies.expose-peer-dev ];
-    #
-    #     # host scope: fleet-collect peer-dev across all hosts.
-    #     den.policies.collect-peer-dev =
-    #       { host, ... }:
-    #       let
-    #         inherit (den.lib.policy) pipe;
-    #       in
-    #       [ (pipe.from "peer-dev" [ (pipe.collectAll ({ host, ... }: true)) ]) ];
-    #     den.schema.host.includes = [ den.policies.collect-peer-dev ];
-    #
-    #     den.aspects.igloo = {
-    #       includes = [ den.aspects.peer-consumer ];
-    #     };
-    #     den.aspects.peer-consumer = {
-    #       nixos =
-    #         { peer-dev, lib, ... }:
-    #         {
-    #           networking.domain = lib.concatStringsSep "," (lib.sort (a: b: a < b) (map (p: p.who) peer-dev));
-    #         };
-    #     };
-    #
-    #     expr = igloo.networking.domain;
-    #     # rebroadcast WORKS → both; FAILS → "tux@igloo" only.
-    #     expected = "alice@iceberg,tux@igloo";
-    #   }
-    # );
+    # Witnesses the two-leg chain: a user-scope emit ascends to its host via pipe.expose, the host
+    # rebroadcasts it, and a fleet collectAll on a peer host sees it — so igloo's consumer reads
+    # both its own exposed user and iceberg's.
+    # CLAIM UNDER TEST (syncthing replicateHome §3): a USER-scope emit,
+    # pipe.expose'd up to its host, then visible to a FLEET collectAll on a PEER
+    # host — expose (user→host) THEN host rebroadcast THEN fleet collect.
+    # TRUE  → igloo's host consumer sees its OWN exposed user (tux@igloo) AND
+    #         iceberg's exposed user (alice@iceberg).
+    # FALSE (adversarial-review claim) → igloo sees only tux@igloo.
+    test-expose-then-fleet-collect = denTest (
+      {
+        den,
+        igloo,
+        lib,
+        ...
+      }:
+      {
+        den.hosts.x86_64-linux.igloo.users.tux = { };
+        den.hosts.x86_64-linux.iceberg.users.alice = { };
+
+        den.quirks.peer-dev = {
+          description = "per-user device records";
+        };
+
+        # ONLY user aspects emit — isolates the user→host→fleet path (no host emit).
+        den.aspects.tux = {
+          peer-dev = [ { who = "tux@igloo"; } ];
+        };
+        den.aspects.alice = {
+          peer-dev = [ { who = "alice@iceberg"; } ];
+        };
+
+        # user scope: expose each user's emit up to its host.
+        den.policies.expose-peer-dev =
+          { host, user, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ pipe.expose ]) ];
+        den.default.includes = [ den.policies.expose-peer-dev ];
+
+        # host scope: fleet-collect peer-dev across all hosts.
+        den.policies.collect-peer-dev =
+          { host, ... }:
+          let
+            inherit (den.lib.policy) pipe;
+          in
+          [ (pipe.from "peer-dev" [ (pipe.collectAll ({ host, ... }: true)) ]) ];
+        den.schema.host.includes = [ den.policies.collect-peer-dev ];
+
+        den.aspects.igloo = {
+          includes = [ den.aspects.peer-consumer ];
+        };
+        den.aspects.peer-consumer = {
+          nixos =
+            { peer-dev, lib, ... }:
+            {
+              networking.domain = lib.concatStringsSep "," (lib.sort (a: b: a < b) (map (p: p.who) peer-dev));
+            };
+        };
+
+        expr = igloo.networking.domain;
+        # rebroadcast WORKS → both; FAILS → "tux@igloo" only.
+        expected = "alice@iceberg,tux@igloo";
+      }
+    );
 
     # ALTERNATIVE shape: a HOST-scope emit that maps over host.users, one record
     # per user (entity context only — no expose). If host emits are fleet-collectable
