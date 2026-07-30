@@ -129,6 +129,9 @@ _: {
       __pipeStage = "to";
       inherit aspects;
     };
+    # The target is the channel NAME string. v1's quirk-REF form lives on `from` above and nowhere else —
+    # `as` stores the value unexamined, exactly as v1 does; `pipe.nix` `stageOp` is where a non-string
+    # target is refused rather than compiled into an unmatchable route.
     as = targetPipeName: {
       __pipeStage = "as";
       inherit targetPipeName;

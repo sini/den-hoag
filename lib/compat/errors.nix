@@ -108,6 +108,22 @@ in
     kind:
     fail "pipe stage (C3)" "unknown v1 pipe stage `${kind}` — the shim compiles §2.4 (filter/transform/fold/for, to/as, append/expose/broadcast/collect/collectAll/withProvenance)";
 
+  # A v1 `pipe.as` whose target is not the channel NAME string — in practice a quirk REF, the form
+  # `pipe.from` accepts. The ref affordance is `from`'s ALONE: v1 resolves `pipeNameOrRef.name` in the
+  # `from` constructor (pin 7f11ba14 nix/lib/policy-effects.nix:300) and at no other pipe verb, while `as`
+  # stores `targetPipeName` unexamined (:331-333). Its one consumer compares that value to a channel name
+  # by equality (`getAsTarget e == pipeName`, fx/assemble-pipes.nix:506,989) and an attrset never equals a
+  # string, so under v1 a ref target selects no pipe, delivers nothing, and says nothing. The shim refuses
+  # instead — identical acceptance to v1 for every target v1 routes, LOUD where v1 drops the data.
+  pipeAsTargetNotAName =
+    got:
+    fail "pipe stage (C3)" "`pipe.as` takes the target channel NAME as a string, got ${builtins.typeOf got}${
+      if builtins.isAttrs got && builtins.isString (got.name or null) then
+        " — a quirk ref for `${got.name}`; write `pipe.as \"${got.name}\"`"
+      else
+        ""
+    }. The ref form belongs to `pipe.from`, which resolves it to `.name`; `as` matches its target against the channel name by string equality, so a non-string target routes nothing";
+
   # THE F6 CEILING (catalog v33, ruled): a CONFIG-DEPENDENT (config/osConfig-demanding, deferred)
   # channel emission gathered by a CROSS-SCOPE collect/collectAll. den-hoag resolves a deferred
   # contribution at ITS producing scope's terminal (decision #27) — for a COLLECTED contribution the

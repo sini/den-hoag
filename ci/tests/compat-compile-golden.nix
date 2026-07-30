@@ -163,6 +163,22 @@ let
   derivePipeOp = builtins.head ((denCompat.compile pipeFx.derivePipe).policies.shapeMetric.fn { });
   deliverToOp = builtins.head ((denCompat.compile pipeFx.deliverToPipe).policies.routePorts.fn { });
   deliverAsOp = builtins.head ((denCompat.compile pipeFx.deliverAsPipe).policies.renameRaw.fn { });
+  # `deliverAsPipe` with the target written as a quirk REF — the `den.quirks.<name>` navigation shape, an
+  # attrset carrying its own `name` (flake-module.nix `annotatedViewNav`). Built through the fixture's own
+  # v1-mirror constructor, so the stage record is the one v1's `pipe.as` produces for a ref argument.
+  asRefFixture = {
+    quirks.raw.description = "raw stream";
+    quirks.shaped.description = "renamed target stream";
+    policies.renameRaw = _ctx: [
+      (pipeFx.pipe.from "raw" [
+        (pipeFx.pipe.as {
+          description = "renamed target stream";
+          name = "shaped";
+        })
+      ])
+    ];
+  };
+  asRefOp = builtins.head ((denCompat.compile asRefFixture).policies.renameRaw.fn { });
   sitePipeOp = builtins.head ((denCompat.compile pipeFx.sitePipe).policies.gatherPeers.fn { });
   siteMark = k: builtins.head (builtins.filter (m: m.__pipeMark == k) sitePipeOp.marks);
 
@@ -457,6 +473,20 @@ in
     test-pipe-as-route-to = {
       expr = (builtins.head deliverAsOp.routes).to.id;
       expected = "shaped";
+    };
+    # A quirk REF at `pipe.as` is refused BY NAME. v1 resolves the ref form at `pipe.from` only and matches
+    # an `as` target against the channel name by string equality, so a ref there would route nothing; the
+    # shim would build a route whose `to` end carries an attrset id, which no channel id can resolve
+    # against. `test-pipe-as-route-to` directly above is the positive control on the same accessor: the
+    # NAME string still reaches `routes.to.id`, so this refusal is about the target's SHAPE and nothing
+    # else. Forcing `routes` runs `compilePipe`'s role filter, so a fixture that reached no `as` branch
+    # would yield `[ ]` and report an uncaught-nothing failure rather than passing vacuously.
+    test-pipe-as-ref-target-refused = {
+      expr = builtins.length asRefOp.routes;
+      expectedError = {
+        type = "ThrownError";
+        msg = "takes the target channel NAME as a string";
+      };
     };
 
     # ── §2.4 site stages: append/expose/broadcast/collect/collectAll/withProvenance → inert markers ─

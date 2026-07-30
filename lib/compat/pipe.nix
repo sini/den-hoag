@@ -160,12 +160,23 @@ let
       # move: every contribution of THIS pipe's derived terminal is delivered to the target channel
       # (`select = passAll`). Carried as a DELIVER intent; `compilePipe` builds the gen-pipe `route` record
       # (rooted at the derived terminal, so a preceding transform/filter/fold is applied before delivery).
-      {
-        role = "deliver";
-        kind = "as";
-        select = passAll;
-        target = stage.targetPipeName;
-      }
+      #
+      # The target is the channel NAME. v1's quirk-REF form (`pipeNameOrRef.name`) is `pipe.from`'s alone;
+      # `as` stores the value unexamined and its consumer matches it against a channel name by string
+      # EQUALITY, so a ref there selects no pipe and silently delivers nothing. Here it would reach
+      # `channelRef` below and build a route whose `to` end carries an ATTRSET id — a stub no channel id
+      # can resolve against. Refused at the RECORD position so `compilePipe`'s `byRole` filter, which
+      # forces `.role` on every compiled stage, forces the check at compile rather than leaving it on the
+      # lazy `target` field where nothing downstream need ever demand it.
+      if !(builtins.isString stage.targetPipeName) then
+        errors.pipeAsTargetNotAName stage.targetPipeName
+      else
+        {
+          role = "deliver";
+          kind = "as";
+          select = passAll;
+          target = stage.targetPipeName;
+        }
     else if k == "append" then
       # append a literal value at the policy's scope (den v1 `policy-effects.nix:316`; run at
       # `assemble-pipes.nix:287-288` — `values ++ [ (seed stage.value) ]`, re-tagged to the current scope).
