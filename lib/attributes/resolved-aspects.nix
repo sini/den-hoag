@@ -119,10 +119,10 @@ let
   # the parametric evaluation LAZILY (a `__isWrappedFn` aspect is invoked with ctx, a static submodule passes
   # through); `edges` reads the RESOLVED payload's `includes`, so a parametric aspect's successors exist only
   # post-invocation. `emit` receives BOTH the pre-resolution frame and the resolved payload — the node is
-  # `{ key; content }` (bare, no provenance marker) plus the additive `sharedFoldKey` dedup discriminator.
-  # Returns { nodes; seen } with seen ⊇ seen0 (monotone).
+  # `{ key; content }` (bare, no provenance marker) plus the additive `sharedFoldKey` dedup discriminator
+  # and the resolving `scope`. Returns { nodes; seen } with seen ⊇ seen0 (monotone).
   forwardExpand =
-    ctx: seen0: aspectList:
+    scopeId: ctx: seen0: aspectList:
     graph.expandPreorder {
       roots = aspectList;
       key = keyOf;
@@ -136,6 +136,15 @@ let
         # unaffected). Computed from the PRE-resolution `aspect` + `ctx` (force-free); the reach +
         # classSubtreeAt folds dedup a genuinely-shared host+user aspect on it.
         sharedFoldKey = sharedFoldKeyOf aspect ctx (keyOf aspect);
+        # THE RESOLVING SCOPE — the node under whose `ctx` this aspect was evaluated. A node travels: a
+        # descendant cell's aspects enter its host's `reach` (the structural-subtree component below) and
+        # an edge-reached node enters from its target scope, so by the time a consumer holds the node the
+        # producing scope is no longer implied by WHERE it is read. Carried here because this is the one
+        # place it is known without a second walk. Read by the terminal assembly, which binds a class
+        # module against ITS OWN scope's pool rather than the building terminal's (output-modules.nix
+        # `bindAtSourceScope`) — v1's "a scope's consumer sees its own scope's pipe value". A cross-scope
+        # shared aspect deduped to the host's copy carries the HOST's scope, matching v1's collapse.
+        scope = scopeId;
       };
     };
 
@@ -472,7 +481,7 @@ in
         ownEntry = (self.node id).decls.__entry or null;
 
         roots = directAspectsFor ownEntry ++ policyEdgeAspects resolutionActs;
-        seed = forwardExpand ctx (constraintSeen resolutionActs) roots;
+        seed = forwardExpand id ctx (constraintSeen resolutionActs) roots;
 
         ancestorSeen = ancestorResolvedKeys self id;
         nbIndex = indexByNeededBy;
@@ -517,7 +526,7 @@ in
                 # Drop the `_onlyCless` keys from the forwardExpand INPUT so its own seen-skip (:119) does not
                 # re-skip the carrier we just un-filtered. Only the input is narrowed.
                 _expandSeen = removeAttrs prev.seen (builtins.filter _onlyCless (builtins.attrNames prev.seen));
-                expanded = forwardExpand ctx _expandSeen (nbExtras ++ guardExtras);
+                expanded = forwardExpand id ctx _expandSeen (nbExtras ++ guardExtras);
               in
               {
                 # UNION-BACK (monotone ascent, file-head stratification law): `_expandSeen ⊊ prev.seen`, so a

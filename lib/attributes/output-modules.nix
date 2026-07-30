@@ -733,7 +733,17 @@ let
   # projecting scope contributes the guard-gated remap of each reached node's class-D slice, placed at `at`,
   # into the class-C projection. A native fleet emits no route ⇒ `routeRemapFor id class == [ ]` ⇒
   # `projectClass` is byte-identical to the base (identity — the anchor + all Phase 1/2/3 witnesses green).
-  projectClass =
+  # `projectClassScoped` is `projectClass` carrying each slice's BINDING SITE — the scope whose ctx
+  # resolved the aspect the slice came from (`n.scope`, stamped at resolution, resolved-aspects.nix
+  # `forwardExpand`). Reach draws a descendant cell's aspects into its host's projection, so a projected
+  # module's origin scope is NOT the projecting `id`, and the terminal needs it to bind the module against
+  # the right pool (`bindAtSourceScope`). The route/forward remap layers are stamped with the PROJECTING
+  # scope: a remapped slice's arg environment is the route's own concern (`placeRemapped` already threads
+  # `bindingsAt srcScope` through its nested eval, and the `at = [ ]` / eval-time-guard arms take the
+  # terminal's), so re-binding them here would double-apply that transform. A node with no stamp (a
+  # synthetically-constructed reach, ci/tests/_lib/projection-harness.nix) reads as the projecting scope —
+  # the pre-stamp behaviour.
+  projectClassScoped =
     id: class:
     let
       reach = result.get id "reach";
@@ -742,12 +752,24 @@ let
       # `forwardModulesFor` — so a live forward SOURCE materializes (collectable) instead of aborting. `{ }`
       # on every non-forward node ⇒ byte-identical.
       exempt = forwardSourceClassesOf reach;
+      atProjectingScope = m: {
+        module = m;
+        scope = id;
+      };
     in
     prelude.concatMap (
-      n: builtins.seq (assertKeysRegistered exempt n) (map (e: e.module) (classSliceOf exempt n class))
+      n:
+      builtins.seq (assertKeysRegistered exempt n) (
+        map (e: {
+          inherit (e) module;
+          scope = n.scope or id;
+        }) (classSliceOf exempt n class)
+      )
     ) reach
-    ++ routeRemapFor exempt id class
-    ++ forwardModulesFor reach exempt class;
+    ++ map atProjectingScope (routeRemapFor exempt id class)
+    ++ map atProjectingScope (forwardModulesFor reach exempt class);
+
+  projectClass = id: class: map (e: e.module) (projectClassScoped id class);
 
   # The per-class TERMINAL assembly (spec §3/§4, Phase 2 Task 3 — THE PIVOT). Projection over `reach`
   # REPLACES the v1 emission model: `terminalModulesAt id class = projectClass id class` (the class-`C`
@@ -757,7 +779,9 @@ let
   #     the anchor proved projectClass == classSubtreeAt byte-identically on own+descendant content), and
   #   • the cross-class delivery emission → reach's positive EDGES (opt-in reach-edge + framework default
   #     edge, class-scoped F9).
-  # Consumed at the three terminal reads (`hostModules`/`deltaOf`/`contentIdsOf`). The v1 emission fold
+  # Consumed at the content-presence read (`contentIdsOf`), which needs only emptiness; the two BUILDING
+  # reads (`hostModules`/`deltaOf`) take `projectClassScoped` instead, because they must also know each
+  # slice's binding site. The v1 emission fold
   # (`deliveryModulesAt`/`deliveryModulesChain`) is DELETED; `classSubtreeAt` STAYS as the projection's
   # own-content leaf + the anchor oracle, and `collectedMembersOf` STAYS LIVE (the edge renderer
   # `deliveryEdgesAt` still calls it for the trace).
@@ -1124,11 +1148,68 @@ let
           if cfg == null then [ ] else [ (prelude.nameValuePair key cfg) ]
     ) allNodeIds
   );
+  # ── THE BINDING SITE (v1 own-scope pipe visibility) ────────────────────────────────────────────────
+  # A class module's channel/entity/settings bindings are its DECLARING scope's, not the terminal's that
+  # builds it. Projection draws a descendant CELL's class content up into its host's terminal (reach's
+  # structural component — the `define-user` mechanism), so binding the whole projected slice at the host
+  # handed a user-scope consumer the HOST's pool: a sibling cell's exposed value, gathered at the host,
+  # reached a consumer that must see only its own emission plus what it inherits (v1 binds a scope's
+  # consumer to THAT scope's pipe value; `channelBindingsAt <cell>` is exactly that value — the cell's own
+  # emissions folded with its ancestors' received collections, siblings excluded by construction).
+  #
+  # A FOREIGN-scope module is bound HERE, against `bindingsAt` its own scope, and reaches the terminal
+  # already applied: gen-bind's partial application returns a plain attrset (fully applied) or a
+  # `setFunctionArgs` FUNCTOR, and neither is `builtins.isFunction`, so the terminal's single `wrapAll`
+  # takes its plain-attrset passthrough branch and no module is wrapped twice (the one-wrap law,
+  # output/terminal.nix). An OWN-scope module is left BARE for the terminal to wrap exactly as before.
+  # Mapped in place, never partitioned — the projection's merge_ord order is load-bearing.
+  #
+  # `placeRemapped` is this same law on the ROUTED path (it threads `bindingsAt srcScope` into its nested
+  # eval); this closes the structural half. A fleet whose every projected slice is own-scope (no cell class
+  # content) yields the bare list and an empty validator set — byte-identical to a single terminal wrap.
+  bindAtSourceScope =
+    classCfg: id: entries:
+    let
+      results = map (
+        e:
+        if (e.scope or id) == id then
+          {
+            inherit (e) module;
+            validators = [ ];
+          }
+        else
+          let
+            w = bind.wrapAll {
+              modules = [ e.module ];
+              bindings = bindingsAt e.scope;
+              defaultMergeStrategy = classCfg.defaultMergeStrategy;
+              inherit producerConfigs;
+            };
+          in
+          {
+            module = builtins.head w.modules;
+            inherit (w) validators;
+          }
+      ) entries;
+    in
+    {
+      modules = map (r: r.module) results;
+      # gen-bind's split-return collision validators for the foreign group, under the SAME class toggle the
+      # terminal applies to its own. Each is a bare `args: { warnings = … }` module (no formals ⇒ the
+      # terminal's wrapAll passes it through) and contributes only warnings, so its position is inert.
+      validators = if classCfg.validators then prelude.concatMap (r: r.validators) results else [ ];
+    };
+
   deltaOf =
     name: classCfg: id:
+    let
+      # The share path takes the modules only — it drops gen-bind's collision validators for the terminal
+      # wrap below too, so the foreign group is treated the same way.
+      scoped = bindAtSourceScope classCfg id (projectClassScoped id name);
+    in
     [ freeformAbsorber ]
     ++ (bind.wrapAll {
-      modules = terminalModulesAt id name; # projectClass over reach (Phase 2 Task 3)
+      modules = scoped.modules; # projectClass over reach (Phase 2 Task 3), foreign slices pre-bound
       bindings = bindingsAt id;
       defaultMergeStrategy = classCfg.defaultMergeStrategy;
       inherit producerConfigs;
@@ -1169,16 +1250,24 @@ let
       )
     else
       builtins.listToAttrs (
-        prelude.map (id: {
-          name = id; # the member (scope node) id keys the class-major output map
-          value = classCfg.instantiate {
-            name = id; # the terminal contract's `name` is the member id
-            hostModules = terminalModulesAt id name; # projectClass over reach (Phase 2 Task 3)
-            inherit classCfg;
-            bindings = bindingsAt id;
-            inherit producerConfigs; # CHORAG §5.1 producer-scoped config-thunk map (the fixpoint knot)
-          };
-        }) contentIds
+        prelude.map (
+          id:
+          let
+            # projectClass over reach (Phase 2 Task 3), each foreign-scope slice pre-bound at its own
+            # scope; the terminal's own `wrapAll` binds the rest against this member.
+            scoped = bindAtSourceScope classCfg id (projectClassScoped id name);
+          in
+          {
+            name = id; # the member (scope node) id keys the class-major output map
+            value = classCfg.instantiate {
+              name = id; # the terminal contract's `name` is the member id
+              hostModules = scoped.modules ++ scoped.validators;
+              inherit classCfg;
+              bindings = bindingsAt id;
+              inherit producerConfigs; # CHORAG §5.1 producer-scoped config-thunk map (the fixpoint knot)
+            };
+          }
+        ) contentIds
       )
   ) classesByName;
 in

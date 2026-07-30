@@ -242,12 +242,11 @@ in
       }
     );
 
-    # EXPECTED FAILURE, and the same assertion carries its own control: hostCount = "2" shows the
-    # expose ascent working — both users' `secrets` reach the host consumer. pinguHost is the
-    # defect: it measures "pingu-secret-tux-secret" rather than "pingu-secret" because pingu's
-    # user-scope consumer is evaluated at the HOST node, so it reads the host's pool instead of
-    # pingu's own. Cross-class binding-site delivery, not a gather defect; the fix is upstream of
-    # this file.
+    # The assertion carries its own control: hostCount = "2" is the expose ASCENT (both users' `secrets`
+    # reach the host consumer), pinguHost the BINDING SITE. pingu's consumer is a user-scope class module
+    # that the projection draws up into the host's terminal, so it must still be bound against pingu's own
+    # pool (`bindAtSourceScope`, lib/attributes/output-modules.nix) — bound at the host it would read the
+    # host's gathered pool and measure "pingu-secret-tux-secret".
     # Exposed data is NOT visible to sibling scopes — only parent.
     test-pipe-expose-sibling-isolation = denTest (
       { den, igloo, ... }:
