@@ -39,6 +39,40 @@ let
         ];
     };
   };
+  injectMod =
+    { config, ... }:
+    {
+      config.den.policies.injector = {
+        emits = [ "inject" ];
+        fn =
+          { host, ... }:
+          [
+            (declare.inject {
+              class = denHoag.classes.nixos;
+              module = {
+                tag = "injected";
+              };
+            })
+          ];
+      };
+    };
+  injFleet = denCompat.mkDen (base ++ [ injectMod ]);
+  rerouteModCfg =
+    { config, ... }:
+    {
+      config.den.policies.relocate-hm = {
+        emits = [ "reroute" ];
+        fn =
+          { host, ... }:
+          [
+            (declare.reroute {
+              from = denHoag.classes.home-manager;
+              to = denHoag.classes.nixos;
+            })
+          ];
+      };
+    };
+  cfgFleet = denCompat.mkDen (base ++ [ rerouteModCfg ]);
   fleet = denCompat.mkDen (base ++ [ rerouteMod ]);
   out = fleet.den.output;
   igloo = "host:igloo";
@@ -115,6 +149,32 @@ in
     };
     test-eval-attrs = {
       expr = builtins.attrNames fleet.den.structural.eval;
+      expected = "SHOW";
+    };
+    # POSITIVE CONTROL: does ANY resolution policy fire on this compat fleet?
+    test-inject-acts = {
+      expr = map (a: a.__action or "?") (
+        (injFleet.den.structural.eval.get igloo "declarations").actions.resolution or [ ]
+      );
+      expected = "SHOW";
+    };
+    test-inject-nixos-tags = {
+      expr = builtins.concatMap tags (injFleet.den.output.classSubtreeAt igloo "nixos");
+      expected = "SHOW";
+    };
+    # same reroute policy, authored through the `{ config, ... }:` form.
+    test-cfg-acts = {
+      expr = map (a: a.__action or "?") (
+        (cfgFleet.den.structural.eval.get igloo "declarations").actions.resolution or [ ]
+      );
+      expected = "SHOW";
+    };
+    test-cfg-hm-project = {
+      expr = builtins.concatMap tags (cfgFleet.den.output.projectClass igloo "home-manager");
+      expected = "SHOW";
+    };
+    test-cfg-hm-subtree = {
+      expr = builtins.concatMap tags (cfgFleet.den.output.classSubtreeAt igloo "home-manager");
       expected = "SHOW";
     };
   };
