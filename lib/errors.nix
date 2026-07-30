@@ -140,6 +140,18 @@ in
   # left to `builtins.head`'s bare out-of-bounds.
   containmentSliceEmpty = fail "containment source slice (§2.5c)" "the source-slice id rule was asked for the node id of an EMPTY slice, which names no source; an empty slice is a bindings-only emission and carries no attachment, so it must be filtered out before its id is taken";
 
+  # Two registry entries share one `id_hash`, so the containment-target index cannot name the node
+  # either of them denotes. gen-schema's content address puts the KIND first, so entries of different
+  # kinds cannot collide; entries of ONE kind collide only when an instance pins `_identity.keys` to a
+  # key set that excludes the injected `name`, making two distinct instances content-identical. Whichever
+  # entry the index kept, the other's `containTo` target would resolve to a node that is not its own —
+  # a silent re-key. Names both entries and the identity remedy.
+  rootIndexCollision =
+    hash: nodeIds:
+    fail "containment-target index" "registry entries ${
+      builtins.concatStringsSep " and " (map (n: "`${n}`") nodeIds)
+    } share the identity hash `${hash}`, so the containment-target index cannot say which node it names; entries of one kind share a content address only when `_identity.keys` pins an identity that excludes the entry's `name`, so widen those keys (or drop the pin and let identity reflect `name`) rather than letting one entry silently take the other's node id";
+
   # A `link` whose target entity resolves to SEVERAL scope nodes. Linked-context binds one context
   # per target KIND, so a multi-attached target leaves no defensible choice: the node ids differ only
   # by which attachment minted them, and silently taking one is last-wins under another name. Abort

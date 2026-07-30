@@ -94,18 +94,46 @@ let
   # entry.id_hash -> "kind:name" scope-node id, over ALL registry kinds (a `containTo` target denotes an
   # existing ROOT node — possibly a kind we do NOT fire at, e.g. the corpus's `cluster`). The flat root id
   # convention matches buildRoots (`"${kind}:${name}"`). This is the transpose's target-keying index.
+  #
+  # ONE traversal that allocates the index once. The nested `acc // { … }` fold this replaces rebuilt
+  # the ENTIRE accumulator per entry — `//` copies every binding it carries — so building an index of
+  # n entries copied O(n²) bindings, and the traversal spans every registry kind (including the ones
+  # the pre-pass never fires at, which is where the entry count actually grows). `listToAttrs` walks
+  # the pair list once and allocates the attrset once.
+  #
+  # THE ORDER PRECONDITION THE SWAP CARRIES: `listToAttrs` keeps the FIRST binding of a repeated key
+  # where the fold kept the LAST, so the two forms agree only while `id_hash` is injective over the
+  # indexed entries. It is injective ACROSS KINDS BY CONSTRUCTION: gen-schema content-addresses an
+  # instance as `sha256("<kind>|<k>=<v>|…")` over its sorted identity keys (`hashIdentity`,
+  # gen-schema/lib/identity.nix) and the KIND NAME is the preimage's first field, so two entries of
+  # different kinds cannot share a hash without a sha256 collision. WITHIN one kind it holds only
+  # CONDITIONALLY: the `name` option gen-schema injects per instance is a reflected identity key, so
+  # distinct entries normally hash distinctly — but an instance pinning `_identity.keys` replaces
+  # reflection wholesale and may omit `name`, letting two instances be content-identical. That case is
+  # not a choice between first and last: EITHER answer silently gives one entry the other's node id.
+  # So the index refuses it by name instead of resolving it by traversal order — the collision is
+  # detected by comparing the pair count to the key count, which costs one length compare and no copy.
   rootNodeIndex =
     { registries, rootKinds }:
-    prelude.foldl' (
-      acc: kind:
-      prelude.foldl' (
-        acc': name:
-        let
-          e = registries.${kind}.${name};
-        in
-        acc' // { ${e.id_hash} = "${kind}:${name}"; }
-      ) acc (builtins.attrNames registries.${kind})
-    ) { } rootKinds;
+    let
+      pairs = prelude.concatMap (
+        kind:
+        map (name: {
+          name = registries.${kind}.${name}.id_hash;
+          value = "${kind}:${name}";
+        }) (builtins.attrNames registries.${kind})
+      ) rootKinds;
+      index = builtins.listToAttrs pairs;
+      # Only reached once a collision is known to exist, so the grouping cost is on the abort path.
+      collidingHash = builtins.head (
+        builtins.filter (h: builtins.length (byHash.${h}) > 1) (builtins.attrNames byHash)
+      );
+      byHash = builtins.groupBy (p: p.name) pairs;
+    in
+    if builtins.length pairs == builtins.length (builtins.attrNames index) then
+      index
+    else
+      errors.rootIndexCollision collidingHash (map (p: p.value) byHash.${collidingHash});
 
   # runPrePass — the transpose carrier. Returns { tuples; containmentBindings; containmentAncestors;
   # suppressions }:
