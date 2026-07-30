@@ -285,6 +285,7 @@ let
         schema
         aspects
         merge
+        errors
         ingest
         hasAspect
         ;

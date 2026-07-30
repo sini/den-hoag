@@ -35,6 +35,45 @@ Migrate a concern by rewriting its v1 surface into the native v2 vocabulary (the
 re-running the parity gates after each. Because the native form and the compiled-shim form materialize to the
 same edges + content, each step is a no-op to your fleet's output — the gates prove it.
 
+## BREAKING: an aspect may not be NAMED after a class
+
+This is the one rename den v2 requires of a v1 config, and it is a genuine breaking change rather than a
+cleanup. If you hit it, the shim says so by name:
+
+```
+den-compat: reserved class name (C1): `den.aspects.virtualization.microvm` is included as an aspect at
+`den.aspects.cortex.includes[17]`, but `microvm` names a declared class …
+```
+
+**What it means.** A class name is RESERVED in the aspect tree. An aspect key whose leaf spells a registered
+class — `den.aspects.<anything>.<class>` — is that class's CONTENT, not a nested aspect, and it is so by name
+alone: no inspection of what you put inside it. So `den.aspects.virtualization.microvm` declares microvm
+class content on the `virtualization` aspect, even when you wrote it intending a role named `microvm`.
+
+**Why the shim refuses instead of guessing.** den v1 classified an aspect's keys only when that aspect was
+RESOLVED, so a key like this stayed unclassified — and therefore harmless — as long as nothing included its
+parent. den v2 classifies EAGERLY, by name, at declaration: a name's meaning no longer depends on which
+aspects a given host happens to pull in. The consequence is that `with den.aspects; [ virtualization.microvm ]`
+navigates to a class-content module — a `{ imports = [ … ]; }` bucket with no aspect identity — and an
+`includes` list needs an aspect. Accepting the bucket anyway would re-type its contents as host module
+config and silently drop any quirk channels it emitted, so the shim refuses at the declaration, naming both
+the aspect path and the class it collides with.
+
+**The remedy is a rename**, and it is mechanical: give the aspect a name no class holds. Reference config
+`nix-config` took exactly this route in commit `fddab954` — `den.aspects.virtualization.microvm` became
+`virtualization.microvm-host` (the `den.classes.microvm` registration is untouched), with the matching edits
+at the aspect's other attrpaths and at the one host that included it. The suffix is a convention, not a
+requirement; any non-class name works. If the key really is class content, include its OWNING aspect
+(`den.aspects.virtualization`) rather than the key, or drop the `den.classes.<name>` registration if that
+class was never wanted.
+
+**Where to look in your own config.** Grep your `den.classes` registrations, then grep `den.aspects` for the
+same names as leaf keys. Remember that the registered class set is larger than what you declare yourself: it
+includes den's built-in classes and the v1 battery classes the shim provisions (`wsl`, `maid`, `hjem`,
+`flake-parts`, `os`, `user`, …), so a config that never writes `den.classes` at all can still collide. Two
+sites of this shape are already known across the wider den config corpus — an aspect keyed `aliases` beside a
+declared `den.classes.aliases`, and one keyed `wsl` beside the built-in WSL battery class.
+
 ## `provides` / `forwards` migrate LAST
 
 `provides` and `forwards` are legacy — den v2 has no native equivalent (policies define relationships,

@@ -183,6 +183,31 @@ in
 
   # A class-content COLLAPSE reached include-normalization: an `includes` element whose navigated value was
   # a class-named aspect key carries the gen-aspects classOptions-slot `{ imports = […] }` deferredModule.merge
+  # bucket, never an aspect. THE NAME RESERVATION: a `den.aspects.<path>.<class>` key whose LEAF names a
+  # declared class is CLASS CONTENT by registry membership, so the typed view materializes it as that
+  # class's deferredModule and a `with den.aspects; [ <path>.<class> ]` navigation reaches a keyless module.
+  # Eager name-classification is the declared semantics (it is what makes classification independent of
+  # whether the parent aspect is ever resolved), so the collision is real and the remedy is a RENAME — but
+  # the rename is undiscoverable from the value alone, which carries no aspect name and no class name.
+  # This names both sides at the declaration that authored them. ATTRIBUTION WITHOUT IDENTITY: the collapse
+  # erases the node's `.key`, but `deferredModule.merge` stamps every definition's location
+  # `"<origin>, via option <path>.<class>"` (setDefaultModuleLocation), so the option path — the aspect path
+  # and the colliding class name — survives inside the bucket. The class half is then confirmed by REGISTRY
+  # MEMBERSHIP, never by inspecting the value (the reservation is by NAME).
+  reservedClassInclude =
+    {
+      aspectPath,
+      className,
+      origin,
+      position,
+    }:
+    fail "reserved class name (C1)" "`den.aspects.${aspectPath}.${className}` is included as an aspect at `${position}`, but `${className}` names a declared class — so that key is CLASS CONTENT (the class-name reservation), and navigating it yields the class's module bucket rather than an aspect with identity.${
+      # The origin is the module-system definition location the bucket carries. The compile view re-evaluates
+      # the raw tree in its own eval, so today that is a synthetic marker rather than the corpus file; it is
+      # reported only when it IS a filesystem path, never as a `<placeholder>` masquerading as attribution.
+      if builtins.substring 0 1 origin == "/" then " Declared at ${origin}." else ""
+    } RENAME the aspect key off the class name: `den.aspects.${aspectPath}.${className}` -> e.g. `den.aspects.${aspectPath}.${className}-host` (the v1 -> v2 rename rule; nix-config fddab954 renamed `den.aspects.virtualization.microvm` to `virtualization.microvm-host` beside its `den.classes.microvm`). If the key really IS class content, include its OWNING aspect `den.aspects.${aspectPath}` instead, or drop the `den.classes.${className}` registration";
+
   # PARAMETRIC-ASPECT RESULT — NON-INCLUDE EFFECT IN A LIST (R14 list branch, v1 `mkParametricNext`
   # aspect.nix:72-84). A bare-fn include (`den.schema.<kind>.includes = [ ({ … }: <body>) ]`, a nested
   # bare fn, or an aspect-include bare fn) is a v1 PARAMETRIC ASPECT (`wrapBareFn`), whose `__fn` RESULT is

@@ -21,6 +21,9 @@
   # mounts the SAME facet option modules the aspects concern declares (a `.settings` block is `lazyAttrsOf raw`
   # on the typed nav surface, not freeform-absorbed as a nested aspect).
   merge,
+  # The named definition-time error surface (Law C6) — the ingest-time reserved-class refusal names itself
+  # from here, like every other shim abort.
+  errors,
   compile,
   # The compile core still awaiting its recovery sentinel (`sentinelFields: decls -> compiled`), plus the
   # static sentinel fields it merges the fleet's deep `settings` submodule onto.
@@ -99,13 +102,20 @@ let
   # not shadowed (the collision invariant above). compile grounds the key downstream. The facet vocabulary +
   # the closed-gate flags come from the shared `gatedAspectsType` cnf (the ONE source compile.nix's parametric
   # `gateAspect` also types through).
+  # The class vocabulary the VIEW types against, in the spelling the view uses — the one source shared by
+  # `mkCompileAspectsType` (which turns each of these names into a class channel) and the reserved-class
+  # ingest scan (which reads the same names back out of a collapsed bucket's definition location). Deriving
+  # both from one expression is what keeps the scan's membership test and the collapse it diagnoses from
+  # drifting apart.
+  viewClassNames =
+    declaredClassNames: v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames);
   mkCompileAspectsType =
     {
       declaredClassNames,
       quirkChannelNames,
     }:
     gatedAspectsType.mkClosedAspectsType {
-      classNames = v1SpelledClassNames (compileClassNamesBase ++ declaredClassNames);
+      classNames = viewClassNames declaredClassNames;
       quirkChannels = quirkChannelNames;
     };
   # The v1 class-key SPELLING map (camelCase → grounded class name), the SINGLE source shared with
@@ -241,6 +251,113 @@ let
       config._module.args.den = annotatedViewNav config.den;
     };
 
+  # ── THE RESERVED-CLASS INCLUDE — the class-name reservation's include half, refused AT INGEST. ──────
+  # A `den.aspects.<path>.<class>` key whose LEAF names a declared class is CLASS CONTENT by registry
+  # membership. That classification is EAGER and by NAME, which is what makes it independent of whether the
+  # owning aspect is ever resolved — so the view materializes such a key as the class's `deferredModule`
+  # bucket, and a `with den.aspects; [ <path>.<class> ]` navigation captures a keyless `{ imports = [ … ]; }`:
+  # class content standing where an aspect belongs. gen-aspects refuses that value at its own type
+  # (`rejectBareModuleInclude`, `includesElemType`) and is right to, but it sees only the collapsed value —
+  # no aspect name, no class name — and it refuses wherever the type is first forced, which is arbitrarily
+  # far from the declaration. The collision is authored at INGEST, where the aspect key and the
+  # `den.classes.<name>` registration are both in hand, so the shim names both sides here instead.
+  #
+  # THE SCAN READS THE RAW TREE, and it must: reading the element off the TYPED tree IS the merge that
+  # throws, so no check downstream of the typing is reachable for this shape. Its domain is `includes` LISTS
+  # only. It descends the keys that can HOLD an aspect node — never a class body, a channel value, or a
+  # facet, by the same key vocabulary the typing itself uses (see `isNamespaceKey`) — and forces an include
+  # element no further than the `imports`/`_file` reads need.
+  v1StructuralKeysSet = (import ./key-classification.nix { }).structuralKeysSet;
+  # The collapse erases the node's `.key`, but not its provenance: `deferredModule.merge` stamps every
+  # definition's location `"<origin>, via option <path>.<class>"` (setDefaultModuleLocation), so the option
+  # path — the aspect path AND the colliding class name — is still readable off the bucket. The leaf is then
+  # confirmed by CLASS MEMBERSHIP against the view's own vocabulary, so the diagnosis stays a name test with
+  # no value inspection; a bare module whose location names no declared class is a different shape, is left
+  # to gen-aspects, and is unchanged here.
+  reservedClassOfInclude =
+    classNames: ref:
+    if
+      !(builtins.isAttrs ref && ref ? imports && builtins.isList ref.imports && ref.imports != [ ])
+    then
+      null
+    else
+      let
+        file = (builtins.head ref.imports)._file or null;
+        via = if builtins.isString file then builtins.match "(.*), via option (.*)" file else null;
+        path = if via == null then null else builtins.match "(.*)\\.([^.]+)" (builtins.elemAt via 1);
+      in
+      if path == null || !(builtins.elem (builtins.elemAt path 1) classNames) then
+        null
+      else
+        {
+          className = builtins.elemAt path 1;
+          aspectPath = builtins.elemAt path 0;
+          origin = builtins.elemAt via 0;
+        };
+  # `reservedClassIncludeScan cnf` → `{ aspects; schema; }`, each a `seq`-able check (null, or the throw).
+  # `den.aspects.<path>.includes` is walked (an aspect tree); `den.schema.<kind>.includes` is the OTHER
+  # include surface — flat per kind, never a tree — so it is checked directly.
+  reservedClassIncludeScan =
+    {
+      classNames,
+      quirkChannelNames,
+    }:
+    let
+      checkList =
+        site: refs:
+        prelude.imap0 (
+          i: ref:
+          let
+            hit = reservedClassOfInclude classNames ref;
+          in
+          if hit == null then
+            null
+          else
+            errors.reservedClassInclude (hit // { position = "${site}.includes[${toString i}]"; })
+        ) (if builtins.isList refs then refs else [ ]);
+      forceAll = xs: builtins.foldl' (acc: x: builtins.seq x acc) null xs;
+      # A NAMESPACE child: not a class body, not a channel value, not den-internal, not a v1 structural key —
+      # EXCEPT the two v1 provides SLOTS. `provides` and its `_` alias are "structural" because the pipeline
+      # owns the slot, not because the slot holds facet data: what lives under them is aspect nodes with
+      # their own `includes` (the corpus writes literal `_` namespaces, e.g. adda's `shells._.<role>`), so
+      # the walk descends them. On the `compileFull` path the legacy desugar has already hoisted `provides`
+      # children to the top level; on the bare `compile` path it has not, and the slot is the only way in.
+      providesSlots = [
+        "provides"
+        "_"
+      ];
+      isNamespaceKey =
+        k:
+        builtins.elem k providesSlots
+        || !(
+          prelude.hasPrefix "__" k
+          || v1StructuralKeysSet ? ${k}
+          || builtins.elem k classNames
+          || builtins.elem k quirkChannelNames
+        );
+      walk =
+        path: node:
+        if !(builtins.isAttrs node) then
+          null
+        else
+          forceAll (
+            checkList "den.aspects.${builtins.concatStringsSep "." path}" (node.includes or null)
+            ++ map (k: walk (path ++ [ k ]) node.${k}) (
+              builtins.filter isNamespaceKey (builtins.attrNames node)
+            )
+          );
+    in
+    {
+      aspects = name: node: walk [ name ] node;
+      schema =
+        v1Schema:
+        forceAll (
+          prelude.mapAttrsToList (
+            kind: decl: forceAll (checkList "den.schema.${kind}" (decl.includes or null))
+          ) (if builtins.isAttrs v1Schema then v1Schema else { })
+        );
+    };
+
   # `evalV1Raw` — the compat two-eval read-back: `config.den` with its aspects RAW (class bodies unwalked).
   # The v1→v1 LEGACY DESUGARS (`desugarLegacy`: provides/forwards/defaults) run on THIS raw tree (they read
   # raw `provides`/`schema.<kind>.includes`, which must NOT be freeform-absorbed by typing). The SINGLE TYPED
@@ -252,14 +369,30 @@ let
     .config.den;
   # `typeAspects v1Den` — run the (post-desugar) RAW aspect tree through the compile view: compile
   # consumes deferredModule class buckets + native `.key`. Applied in `compileFull` AFTER the legacy desugars.
+  # The reserved-class refusal rides HERE (not inside `typedCompileTree`, whose other caller is the
+  # navigation view the scan itself reads through): each typed top-level aspect is `seq`'d behind the scan of
+  # its OWN raw subtree, so the refusal precedes the first force of that node's `includes` list — which is
+  # the merge that would otherwise throw gen-aspects' anonymous message — while an untouched aspect stays
+  # unscanned and a fixture that never resolves still never aborts.
   typeAspects =
     v1Den:
+    let
+      rawAspects = v1Den.aspects or { };
+      declaredClassNames = builtins.attrNames (v1Den.classes or { });
+      quirkChannelNames = builtins.attrNames (v1Den.quirks or { });
+      scan = reservedClassIncludeScan {
+        classNames = viewClassNames declaredClassNames;
+        inherit quirkChannelNames;
+      };
+    in
     v1Den
     // {
-      aspects = typedCompileTree {
-        declaredClassNames = builtins.attrNames (v1Den.classes or { });
-        quirkChannelNames = builtins.attrNames (v1Den.quirks or { });
-      } (v1Den.aspects or { });
+      aspects = builtins.mapAttrs (
+        name: node:
+        builtins.seq (scan.schema (v1Den.schema or { })) (
+          builtins.seq (scan.aspects name (rawAspects.${name} or null)) node
+        )
+      ) (typedCompileTree { inherit declaredClassNames quirkChannelNames; } rawAspects);
     };
 
   # `evalV1` — the PUBLIC read-back (the native-identity suite): the NAVIGATION view, so a navigated

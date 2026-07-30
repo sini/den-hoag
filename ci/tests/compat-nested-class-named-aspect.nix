@@ -13,7 +13,11 @@
 #   (3) end-to-end: a nested aspect under a legal (non-class) name, explicitly included at the host, delivers
 #       its `nixos` half to the host terminal;
 #   (4) the delivered per-user hm content carries NO class-keyed record (`nixos`/`os` absent inside
-#       home-manager.users.<u>).
+#       home-manager.users.<u>);
+#   (5) the reservation's INCLUDE half: a class-named key navigated and included AS an aspect is refused at
+#       INGEST by the named `errors.reservedClassInclude`, which reports the aspect path, the colliding class
+#       and the rename remedy — paired with the control that a bare module carrying no class-named definition
+#       location is NOT claimed by that scan and still meets gen-aspects' generic type guard.
 { denCompat, nixpkgsLib, ... }:
 let
   inherit (denCompat) route;
@@ -133,15 +137,16 @@ let
   userHmHasClassKeys = (userHmTux ? nixos) || (userHmTux ? os) || (userHmTux ? darwin);
 
   # LOUD RESERVATION-INCLUDE (Option 5 name-reservation): a class-named container navigated + INCLUDED as
-  # an aspect. `microvm` names a registered class, so `aspects.virtualization.microvm` is CLASS CONTENT by
-  # registry membership; navigating it off the `den` legacy binding (the typed navigation view, the
-  # `with den.aspects; …` include surface) collapses it to a keyless `{ imports = … }` deferredModule (a
-  # gen-aspects classOptions slot, no aspect `.key`/`.name` identity). Including that value AS an aspect
-  # fires the loud reservation error (`errors.reservedClassInclude`) at the include boundary — a message-
-  # refinement of the misdirected §2.2 child-key abort, on an input that already threw there. (`config.den`
-  # would read the RAW pre-typed value — `{ nixos … }`, no collapse — which is NOT what a v1 `with
-  # den.aspects` navigation produces; the `den` module arg is bound to the navigation view, flake-module.nix
-  # bindLegacyEnv.)
+  # an aspect — the fddab954-era corpus shape (`den.aspects.virtualization.microvm` beside
+  # `den.classes.microvm`, included at hosts/cortex.nix). `microvm` names a registered class, so
+  # `aspects.virtualization.microvm` is CLASS CONTENT by registry membership; navigating it off the `den`
+  # legacy binding (the typed navigation view, the `with den.aspects; …` include surface) collapses it to a
+  # keyless `{ imports = … }` deferredModule (a gen-aspects classOptions slot, no aspect `.key`/`.name`
+  # identity). Including that value AS an aspect fires `errors.reservedClassInclude` AT INGEST
+  # (flake-module.nix `typeAspects`), naming the aspect path, the colliding class, the include position and
+  # the rename remedy. (`config.den` would read the RAW pre-typed value — `{ nixos … }`, no collapse — which
+  # is NOT what a v1 `with den.aspects` navigation produces; the `den` module arg is bound to the navigation
+  # view, flake-module.nix bindLegacyEnv.)
   throws = e: !(builtins.tryEval (builtins.deepSeq e true)).success;
   redFleet = denCompat.mkDen [
     (
@@ -160,6 +165,21 @@ let
     )
   ];
   redTerm = redFleet.den.output.systems.nixos.${igloo}.modules or [ ];
+  # THE PAIRED CONTROL for the reserved-class scan's DOMAIN: a HAND-WRITTEN bare module at an include
+  # position. It is the same `{ imports = [ … ]; }` shape, but it is not a class-content collapse, so it
+  # carries no `", via option <path>.<class>"` definition location and the scan declines to claim it —
+  # gen-aspects' own generic guard still catches it at the type. Without this row every assertion about the
+  # named error would be consistent with the scan firing on EVERY bare module and inventing the attribution.
+  plainModuleFleet = denCompat.mkDen [
+    {
+      den = {
+        hosts.x86_64-linux.igloo.class = "nixos";
+        aspects.roled.includes = [ { imports = [ { } ]; } ];
+        schema.host.includes = [ "roled" ];
+      };
+    }
+  ];
+  plainModuleTerm = plainModuleFleet.den.output.systems.nixos.${igloo}.modules or [ ];
 in
 {
   flake.tests.compat-nested-class-named-aspect = {
@@ -213,13 +233,44 @@ in
     };
     # (5) LOUD reservation-include: a class-named aspect (`virtualization.microvm`, `microvm` ∈ classes)
     #     navigated and included AS an aspect collapses to a keyless `{ imports = … }` class-content module →
-    #     the closed aspect type REJECTS it (`includesElemType` `rejectBareModuleInclude`, gen-aspects G-c),
-    #     the type-native guardrail. The homegrown CI asserter has no message-text channel (no `expectedError`),
-    #     so assert the THROW; the green nested-include siblings above prove the guard does NOT fire on a legit
-    #     non-class nested include (no false-positive).
+    #     the declaration is REFUSED. The green nested-include siblings above prove the refusal does NOT fire
+    #     on a legit non-class nested include (no false-positive).
     test-reserved-class-named-include-throws-loud = {
       expr = throws redTerm;
       expected = true;
+    };
+    # (5a) …and the refusal is the NAMED ingest error, not gen-aspects' anonymous type guard. It names BOTH
+    #      sides of the collision — the aspect path that collapsed and the class whose name it took — plus the
+    #      include position that triggered it. Nix aborts at the first throw, so pinning THIS message on the
+    #      same expression is what establishes that the ingest scan runs first and the type-level
+    #      `rejectBareModuleInclude` is unreachable for this shape.
+    test-reserved-class-include-names-both-sides = {
+      expr = redTerm;
+      expectedError = {
+        type = "ThrownError";
+        msg = "`den.aspects.virtualization.microvm` is included as an aspect at `den.aspects.rolec.includes";
+      };
+    };
+    # (5b) …and it carries the REMEDY, which is the whole reason the error exists: eager name-classification
+    #      makes this a rename requirement for every downstream config, and a refusal that does not say so
+    #      leaves the author to reverse-engineer the collision from a type error.
+    test-reserved-class-include-names-the-rename-remedy = {
+      expr = redTerm;
+      expectedError = {
+        type = "ThrownError";
+        msg = "RENAME the aspect key off the class name";
+      };
+    };
+    # (5c) THE DOMAIN CONTROL: a hand-written bare module at an include position is NOT claimed by the
+    #      reserved-class scan (it has no class-named definition location) and still meets gen-aspects'
+    #      generic guard. This is the positive control that the named error above is scoped by the class-name
+    #      test rather than firing on every `{ imports = … }`.
+    test-plain-bare-module-include-keeps-the-generic-guard = {
+      expr = plainModuleTerm;
+      expectedError = {
+        type = "ThrownError";
+        msg = "includes element is a bare module";
+      };
     };
   };
 }
