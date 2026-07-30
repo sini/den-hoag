@@ -211,11 +211,11 @@ let
     (builtins.tryEval (builtins.deepSeq (den.structural.eval.get "rack:r1" "declarations") true))
     .success;
 
-  # ── R2 TAG-PROPAGATION witnesses (blocker #2): the corpus wires its resolve policies via
+  # ── R2 CODOMAIN-PROPAGATION witnesses (blocker #2): the corpus wires its resolve policies via
   #    `den.schema.<kind>.includes`, so compile keys them SYNTHETICALLY (`__kindInclude__<kind>__policy__<i>`)
-  #    and concern-policies' `name ∈ resolveFamilyNames` NEVER matches. compile.nix therefore stamps
-  #    `__resolveFamily` on an include policy whose SOURCE REF's v1 name is in the tag set — the ONLY path
-  #    for a kind-include resolve policy to reach the staged pre-pass's resolve-family feed. The synthetic
+  #    and no name-keyed lookup on the compiled key can ever match. compile.nix therefore matches the tag
+  #    set at the SOURCE REF's v1 name and folds `member` into that policy's DECLARED codomain — the ONLY
+  #    path for a kind-include resolve policy to reach the staged pre-pass's resolve-family feed. The synthetic
   #    corpus-shape in miniature: a VALUE-CONDITIONAL member emitter wired onto rack via `rack.includes`.
   mkKI =
     policyName:
@@ -491,11 +491,11 @@ in
       expected = true;
     };
 
-    # ── (6) R2 TAG PROPAGATION through KIND-INCLUDE compilation (blocker #2). A resolve policy wired via
-    #    `den.schema.<kind>.includes` whose v1 name ∈ the tag set gets `__resolveFamily` stamped on its
-    #    synthetic-keyed compiled record → it reaches the pre-pass resolve-family feed. A name NOT in the
-    #    set gets NO stamp → absent from the feed (the synthetic key never matches the name-based check).
-    # The `__resolveFamily` STAMP sub-assertion is retired with the stamp: feed membership is a
+    # ── (6) R2 CODOMAIN PROPAGATION through KIND-INCLUDE compilation (blocker #2). A resolve policy wired
+    #    via `den.schema.<kind>.includes` whose v1 name ∈ the tag set has `member` folded into its DECLARED
+    #    codomain → it reaches the pre-pass resolve-family feed. A name NOT in the set declares no
+    #    resolve-family kind → absent from the feed.
+    # This once read a `__resolveFamily` STAMP, retired with the stamp: feed membership is a
     # set-membership test on the declared codomain, so there is no tag to observe on the record. The
     # PROPERTY the test protects — that a kind-include resolve policy reaches the pre-pass feed, and one
     # that is not a resolve emitter does not — is unchanged and is what remains asserted here.

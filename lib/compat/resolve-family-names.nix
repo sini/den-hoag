@@ -15,8 +15,8 @@
 # here, naming the corpus's resolve-emitting policies (§3c-UNIFIED —
 # every one compiles to a `member`, `relate` dissolved: a registry-LESS cell target → a bare cell tuple; a
 # registry-BACKED root target → a `containTo` CONTAINMENT tuple carrying bindings + a containment ancestor)
-# (census
-# nix-config @ b0b20769, modules/den/policies/):
+# (census MEASURED at nix-config b0b20769, modules/den/policies/ — a historical measurement, not a claim
+# about the corpus pin the fleet currently tracks):
 #   • env-users       (users.nix:107)     — resolve.to "user"        → CELL member (host→user cell)
 #   • env-to-hosts    (fleet.nix:42)      — resolve.to "host"        → CONTAINMENT member (env→host, accessGroups)
 #   • env-to-clusters (clusters.nix:22)   — resolve.to "cluster"     → CONTAINMENT member (env→cluster; NO cross-join)

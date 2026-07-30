@@ -14,7 +14,8 @@
 # (`errors.emitsUndeclared`); a `suppress` naming a policy outside a declared `suppresses` takes the same
 # abort one level finer (`errors.suppressesUndeclared`).
 #
-# Census (nix-config @ b0b20769, the ONE policy-exclude emitter):
+# Census MEASURED at nix-config b0b20769 (the ONE policy-exclude emitter at that pin) — a historical
+# measurement, not a claim about the corpus pin the fleet currently tracks:
 #   • drop-user-to-host-on-droid (modules/den/batteries/nix-on-droid.nix:98-104) —
 #     `policy.exclude den.policies.user-to-host` at droid-class hosts (v1's suppression of the os-user
 #     route where droid lacks the `users` option; registered at `den.default.includes`, :117).

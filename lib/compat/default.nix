@@ -140,17 +140,16 @@ let
     # authoring an `os`/`user` bucket type-throws on the parametric gate while the static path admits it. The
     # names are already grounded (no v1 spelling). Severing `legacy.defaults` drops the module ⇒ `or [ ]`.
     builtinClasses = builtins.attrNames denHoag.classes ++ (legacy.defaults.registeredClasses or [ ]);
-    # THE R2 RESOLVE-FAMILY TAG SET (`den.resolveFamilyNames`) — the SINGLE source shared with
-    # flake-module's `resolveFamilyModule`, so the kind-include compilation stamps `__resolveFamily` on a
-    # synthetic-keyed include policy whose source ref is a corpus resolve policy (else the pre-pass feed is
-    # empty and the corpus resolve chain never fires).
+    # THE R2 RESOLVE-FAMILY TAG SET (`den.resolveFamilyNames`) — the SINGLE source compile folds into a
+    # compiled policy's DECLARED codomain (`declaredEmitsOf`), matched at the source ref's v1 name because
+    # a kind-include policy's compiled key is synthetic (else the pre-pass feed is empty and the corpus
+    # resolve chain never fires).
     resolveFamilyNames = import ./resolve-family-names.nix;
     # THE #72 EXCLUDE-FAMILY TAG SET (`den.excludeFamilyNames`) — the twin knob's single source
-    # (exclude-family-names.nix), shared with flake-module's excludeFamilyModule.
+    # (exclude-family-names.nix), folded the same way and contributing `suppress`.
     excludeFamilyNames = import ./exclude-family-names.nix;
     # THE DECLARED-STRATUM PRODUCED-KIND MAP (`den.producesByName`) — single source produces-by-name.nix,
-    # shared with flake-module's producesModule; the include-arm stamp for a value-conditional policy
-    # wired via a kind-include (its compiled key is synthetic).
+    # the third input to that same fold, naming a value-conditional policy's kinds outright.
     producesByName = import ./produces-by-name.nix;
   };
   # `mkCompile feat` — the per-feature compile: bakes the two desugar-arm gates from the wiring's feature

@@ -4,9 +4,10 @@
 # siblings isolated per #613), rendered as the SECOND staged pre-pass family (the R1 pattern reused):
 #   • compile.nix's exclude arm → `declare.suppress { name }` for a NAMED policy target (the class-B
 #     stub RETIRED; a NAMELESS target keeps a named abort — excludeOfPolicyNameless);
-#   • the exclude-family feed (concern-policies `__excludeFamily` — detected by probe or declared via
-#     `den.excludeFamilyNames`, compat/exclude-family-names.nix) dispatched by the pre-pass with real
-#     ctx (staged-resolution.nix), producing per-root SUPPRESSION SETS;
+#   • the exclude-family feed (concern-policies `excludeFamily` — the structural-group rules whose
+#     DECLARED codomain contains `suppress`; `den.excludeFamilyNames`, compat/exclude-family-names.nix,
+#     is what supplies that codomain for a value-conditional excluder no fire can classify) dispatched by
+#     the pre-pass with real ctx (staged-resolution.nix), producing per-root SUPPRESSION SETS;
 #   • the sets ride the emitting root's decls (the typed `suppressedPolicies` slot, default.nix
 #     scopeRoots) — the `suppressed-policies` inherited attribute (gen-scope inheritSet) carries them
 #     self ∪ ancestors to descendants;
@@ -23,9 +24,9 @@
 #       suppression, not the fixture shape, removes it);
 #   (4) the DETECTED (unconditional) path — an excluder emitting unconditionally is probe-DETECTED into
 #       the feed without any name-set entry, suppressing fleet-wide;
-#   (5) the DOUBLE-FIRE posture — a value-conditional excluder outside the family name set declares its
-#       own codomain, so it is in the feed by derivation and its main-run `suppress` is the benign
-#       double-fire rather than a silent drop needing a guard;
+#   (5) the CODOMAIN VIOLATION — an excluder whose body emits `suppress` while its declaration names
+#       another kind registers CLEAN and aborts NAMED at the emitting site, which is where the hazard the
+#       retired untagged guard used to catch now surfaces;
 #   (6) NAMELESS target — a policy-record exclude without a name aborts NAMED.
 { denCompat, denHoag, ... }:
 let
@@ -170,7 +171,6 @@ in
         n = 0;
       };
     };
-    # (5) the double-fire guard: a non-family value-conditional excluder's main-run suppress is LOUD.
     # (5) RETARGETED. This pinned `excludeFamilyUntagged`, which is RETIRED — not relaxed. Feed membership
     # is now a set-membership test on the DECLARED codomain, so a `suppress` emitter has declared that kind
     # and is in the exclude feed BY DERIVATION; "emitted but untagged" became unrepresentable rather than
@@ -180,12 +180,13 @@ in
     # aborts at the emitting site as `emitsUndeclared`. That is what this test pins, so the coverage
     # survives the guard that used to carry it.
     #
-    # ★ DEPENDENCY, stated because the derivation is not yet unconditional: this reasoning holds for a
-    # DECLARED codomain. A compat-minted policy's codomain is RECOVERED by firing, and a recovery that
-    # yields `[ ]` compiles to no rule at all (`compileOne`), on which path a `suppress` emitter would
-    # vanish with no abort — the same silent drop the retired guard existed to catch. Recovery is
-    # ungated as of the `policy-recover.nix` layering fix; do not treat this derivation as total for
-    # recovered codomains until an empty RECOVERY is as loud as a throwing one.
+    # ★ DEPENDENCY, restated because the derivation now reaches further than it once did — but not all the
+    # way. A compat-minted policy's codomain is RECOVERED by firing, and a recovery that yields `[ ]` is an
+    # EMPTY HEAD rather than an absent rule (`compileOne` is total; `groupOf` assigns the empty codomain the
+    # bottom stratum), so the rule still fires and a `suppress` it emits violates that codomain by the same
+    # law this test pins. What does NOT follow is OBSERVABILITY: `conformingProduce` checks per EMISSION,
+    # inside `produce`, so the abort rides the emitting node's declarations — this test forces them
+    # (`eval.get … "declarations"`), and a consumer that reads only topology need never force them at all.
     test-undeclared-suppress-aborts-at-emission = {
       expr = {
         # a body emitting `suppress` outside its declared codomain aborts NAMED at the firing…

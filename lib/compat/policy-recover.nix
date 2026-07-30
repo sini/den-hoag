@@ -12,12 +12,14 @@
 #       NOT an empty result: it aborts NAMED, naming the policy and the declared escape. So the kernel
 #       probe's collapse of "threw and was swallowed" into "emitted nothing" cannot recur.
 #       ★ THE CLAIM STOPS THERE, DELIBERATELY. "Emitted nothing" and "returned `[ ]` for some other
-#       reason" still reach ONE branch, and that branch compiles to no rule. The only such other reason
-#       today would be a per-node DISPATCH gate answering in the recovery's place, and the caller removes
-#       that possibility structurally by recovering from the UNGATED body (compile.nix `familyStamps` /
-#       `mintFleetWide`) — a codomain is a static property of a body, so no dispatch concern belongs in
-#       its derivation. That is a property of the CALLER's layering, not of this function, and a reader
-#       must not read (2) as covering it: a `[ ]` reaching here is taken at face value.
+#       reason" still reach ONE branch, and that branch recovers an EMPTY codomain — an empty HEAD, so the
+#       rule fires, and a body that genuinely emits then violates a codomain this function invented for it.
+#       The only such other reason would be a per-node DISPATCH gate answering in the recovery's place, and
+#       the caller removes that possibility structurally by recovering from the UNGATED body (compile.nix
+#       `familyStamps` / `mintFleetWide`) — a codomain is a static property of a body, so no dispatch
+#       concern belongs in its derivation. That is a property of the CALLER's layering, not of this
+#       function, and a reader must not read (2) as covering it: a `[ ]` reaching here is taken at face
+#       value.
 #   (3) OPT-OUT BY DECLARATION. A v1 fleet whose codomain is declared is never fired at a sentinel at all.
 #
 # HONEST CEILING, unchanged in kind from the kernel probe but now confined and avoidable: `tryEval`

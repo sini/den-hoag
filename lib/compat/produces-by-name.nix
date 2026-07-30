@@ -2,15 +2,12 @@
 # `den.producesByName` knob, the `resolveFamilyNames` twin. It names the VALUE-CONDITIONAL corpus
 # policies whose declared produced-kind family lets `dispatch.deriveGroup` stamp the rule's `group` at
 # DEFINITION time, so concern-policies compiles ONE declared rule per policy instead of the blind
-# per-stratum `mkExpanded` fan (the fire-and-observe holdover, retired for these). Consumed by TWO
-# callers that must agree:
-#   • flake-module.nix `producesModule` — sets `config.den.producesByName`, which default.nix threads to
-#     concern-policies; a policy authored DIRECTLY under `den.policies.<name>` matches by attr KEY (the
-#     v1 name), so its `name ∈ producesByName` lookup carries the declared kinds.
-#   • compile.nix `producesStamp` — a resolve/include policy wired via `den.schema.<kind>.includes`
-#     compiles to a SYNTHETIC key (`__kindInclude__<kind>__policy__<i>`), which the name lookup NEVER
-#     catches. compile stamps `__produces = producesByName.<name>` on a compiled include policy whose
-#     SOURCE REF's v1 name is in this map (the same posture as `resolveFamilyStamp`).
+# per-stratum `mkExpanded` fan (the fire-and-observe holdover, retired for these). default.nix threads it
+# into compile.nix, where `declaredEmitsOf` folds it into the compiled policy's DECLARED codomain — this
+# map is the arm that names the kinds OUTRIGHT, where the resolve/exclude name sets each imply one. The
+# lookup is on the SOURCE REF's v1 name and never on the compiled attr key: a policy wired via
+# `den.schema.<kind>.includes` compiles to a SYNTHETIC key (`__kindInclude__<kind>__policy__<i>`) that no
+# name-keyed lookup could ever catch.
 #
 # WHY COMPAT OWNS IT. A v1 corpus body is an OPAQUE closure — Nix cannot statically read which
 # `declare.*` constructor it calls, and a value-conditional body emits NOTHING at the value-less stratum
@@ -20,8 +17,9 @@
 # single-group (probe-EMITTING) corpus policies are NOT mapped here — their produced kinds are a FREE
 # by-product of the compose-seed probe they already run.
 #
-# THE FIVE VALUE-CONDITIONAL CORPUS POLICIES (census nix-config @fddab954, modules/den/policies/), each
-# SINGLE-stratum (none genuinely spans strata, so each maps to ONE declared rule):
+# THE FIVE VALUE-CONDITIONAL CORPUS POLICIES (census MEASURED at nix-config fddab954,
+# modules/den/policies/ — a historical measurement, not a claim about the corpus pin the fleet currently
+# tracks), each SINGLE-stratum (none genuinely spans strata, so each maps to ONE declared rule):
 #   • env-to-hosts     (fleet.nix:42)     — resolve.to "host" + instantiate → member + spawn (both structural)
 #   • env-to-clusters  (clusters.nix:22)  — resolve.to "cluster"             → member (structural)
 #   • env-users        (users.nix:107)    — resolve.to "user"                → member (structural)
@@ -70,9 +68,11 @@
   homeLinux-to-hm = [ "delivery" ];
   # Its DARWIN twin, identical in shape (`home-platform.nix` — both are `lib.optional (hasSuffix …
   # host.system) (route {…})`). Both are VALUE-conditional on `host.system`, so both emit nothing at a
-  # sentinel whose system matches neither suffix: undeclared, the codomain recovers EMPTY and the policy
-  # compiles to no rule at all. Declaring the linux arm without the darwin one left the corpus's darwin
-  # hosts silently unrouted.
+  # sentinel whose system matches neither suffix: undeclared, the codomain recovers EMPTY. Under the kernel
+  # of the day that compiled to no rule at all, and declaring the linux arm without the darwin one left the
+  # corpus's darwin hosts silently unrouted. An empty codomain is now an empty HEAD and the rule fires, so
+  # the entry's job is no longer to prevent a deletion but to keep the recovered codomain TRUE: without it
+  # the `delivery` this body really emits would abort against the empty head it was handed.
   homeDarwin-to-hm = [ "delivery" ];
   # ★ A LIVE CORPUS DROP, closed. `nixpkgs-overlays.nix:20` is VALUE-conditional on
   # `host.settings.core.users.home-manager-shared.useGlobalPkgs`, which is false at a sentinel built from

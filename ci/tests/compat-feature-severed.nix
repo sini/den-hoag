@@ -423,10 +423,10 @@ let
     .success;
 
   # ── familyStamps (class b): mkCompile name-sets → `[ ]` + OMIT the resolve/exclude seam modules, ATOMIC ──
-  # (b) the TWO gate sites, each with its own park. resolve half = the COMPILE-side stamp (the mkCompile bake):
-  # a resolve policy wired via a kind-include whose source ref's v1 name ∈ resolveFamilyNames gets
-  # `__resolveFamily` stamped ON its synthetic-keyed compiled record — ON the bake carries the corpus set ⇒
-  # stamped; OFF the bake collapses to `[ ]` ⇒ unstamped (the pre-pass feed goes empty).
+  # (b) the TWO gate sites, each with its own park. resolve half = the COMPILE-side fold (the mkCompile bake):
+  # a resolve policy wired via a kind-include whose source ref's v1 name ∈ resolveFamilyNames has `member`
+  # folded into its DECLARED codomain — ON the bake carries the corpus set ⇒ declared, and it reaches the
+  # pre-pass feed; OFF the bake collapses to `[ ]` ⇒ no codomain is declared for it.
   kiResolveFixture = {
     schema = {
       zone.parent = null;
@@ -459,9 +459,11 @@ let
     );
   # exclude half = the SEAM-module omit (`den.excludeFamilyNames`): the corpus value-conditional excluder
   # (`drop-user-to-host-on-droid` ∈ exclude-family-names.nix) fires a `suppress` at the droid host — ON the
-  # seam names it ⇒ the pre-pass feed consumes it ⇒ benign double-fire; OFF the seam is omitted ⇒ `[ ]` ⇒ its
-  # main-run suppress is untagged ⇒ `errors.excludeFamilyUntagged` NAMED throw (catchable). ON/OFF collapse
-  # ATOMICALLY (both the bake and the seam) — a lone-site collapse desyncs the two `den.*FamilyNames` writers.
+  # seam names it ⇒ `suppress` is in its declared codomain ⇒ the pre-pass feed consumes it ⇒ benign
+  # double-fire; OFF the seam is omitted ⇒ `[ ]` ⇒ no codomain is declared, the value-conditional body
+  # recovers an EMPTY one at the sentinel, and its main-run `suppress` violates that codomain ⇒ NAMED throw
+  # (catchable). ON/OFF collapse ATOMICALLY (both the bake and the seam) — a lone-site collapse desyncs the
+  # two `den.*FamilyNames` writers.
   userToHostRef = {
     __isPolicy = true;
     name = "user-to-host";
@@ -803,7 +805,7 @@ in
       expected = false;
     };
     # (b) resolve half = the mkCompile bake site — ON a kind-include resolve policy whose ref name ∈ the set
-    # gets `__resolveFamily` stamped; OFF the bake collapses to `[ ]` ⇒ unstamped (the pre-pass feed empties).
+    # has `member` folded into its declared codomain; OFF the bake collapses to `[ ]` ⇒ none is declared.
     test-familyStamps-resolve-stamp-on = {
       expr = resolveStampOf full;
       expected = true;
@@ -820,8 +822,9 @@ in
       expected = false;
     };
     # (b) exclude half = the seam-module omit site — ON the corpus excluder's main-run `suppress` is benign
-    # (the seam names it ⇒ the pre-pass feed consumed it); OFF the seam is `[ ]` ⇒ `excludeFamilyUntagged`
-    # NAMED throw. The two sites collapse ATOMICALLY (a lone-site collapse desyncs the two writers).
+    # (the seam names it ⇒ `suppress` is declared ⇒ the pre-pass feed consumed it); OFF the seam is `[ ]` ⇒
+    # the recovered codomain is empty and the same `suppress` violates it ⇒ NAMED throw. The two sites
+    # collapse ATOMICALLY (a lone-site collapse desyncs the two writers).
     test-familyStamps-exclude-benign-on = {
       expr = excludeFamilyParks full;
       expected = false;

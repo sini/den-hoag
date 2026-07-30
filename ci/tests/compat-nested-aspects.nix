@@ -229,9 +229,9 @@ let
     name = "user-aspect-auto-include";
     # DECLARED because the body is VALUE-conditional: it emits only where `rawAspects` has a key matching
     # this host/user pair, so at a sentinel whose names are `«sentinel»` it emits nothing. An undeclared
-    # codomain would recover EMPTY and the policy would compile to no rule at all — silently, with the
-    # symptom appearing as missing cell content rather than as a missing policy. The emission is an aspect
-    # `include`, which translates to an `edge`.
+    # codomain would recover EMPTY — an empty HEAD, so the rule still fires, and the aspect `include` this
+    # body really emits would then abort against a codomain it never declared. The emission translates to
+    # an `edge`.
     emits = [ "edge" ];
     fn =
       { host, user, ... }:

@@ -35,26 +35,24 @@
   # boundary for parametric content. Returns the desugared aspect unchanged (a validation seq, byte-neutral).
   mkGateAspect,
   # THE RESOLVE-FAMILY TAG SET (user-delivery R2 REQUIREMENT 2, `den.resolveFamilyNames`) — threaded HERE
-  # so the KIND-INCLUDE / DEFAULT-INCLUDE policy arms can stamp `__resolveFamily = true` on a compiled
-  # include policy whose SOURCE REF's v1 name is in the set. A resolve policy wired via
-  # `den.schema.<kind>.includes` compiles to a SYNTHETIC key, so concern-policies' `name ∈ resolveFamilyNames`
-  # match never catches it (its key is not the v1 name) — the stamp is the ONLY path for the corpus's five
-  # kind-include resolve policies to reach the staged pre-pass's resolve-family feed. The names are a v1
-  # CORPUS FACT (the SINGLE source is compat/resolve-family-names.nix, shared with flake-module's
-  # `resolveFamilyModule`); native callers pass `[ ]` (the default), byte-identical. ZERO NEW corpus
-  # knowledge beyond the existing knob — compile matches the SAME set the knob carries.
+  # so `declaredEmitsOf` below can fold it into a compiled policy's DECLARED codomain: a name in this set
+  # contributes `"member"` to that policy's `emits`. The match is on the SOURCE REF's v1 name, because a
+  # resolve policy wired via `den.schema.<kind>.includes` compiles to a SYNTHETIC key that no name-keyed
+  # lookup could ever catch, and the corpus's five resolve policies all ride kind-includes. The names are a
+  # v1 CORPUS FACT (the SINGLE source is compat/resolve-family-names.nix); native callers pass `[ ]` (the
+  # default), byte-identical. ZERO NEW corpus knowledge beyond the existing knob.
   resolveFamilyNames ? [ ],
   # THE EXCLUDE-FAMILY TAG SET (#72, candidate A — `den.excludeFamilyNames`, the resolveFamilyNames
-  # twin; single source compat/exclude-family-names.nix). Same posture: the include-arm stamp is the
-  # only path for a corpus excluder wired through an include (its compiled key is synthetic).
+  # twin; single source compat/exclude-family-names.nix). Same posture and the same fold: a name here
+  # contributes `"suppress"`, matched at the source ref because a corpus excluder wired through an include
+  # has a synthetic compiled key.
   excludeFamilyNames ? [ ],
   # THE PRODUCED-KIND MAP (declared-stratum, `den.producesByName`, single source compat/produces-by-name.nix)
-  # — the resolveFamilyNames twin as a `name → [kind]` MAP. Threaded HERE so the kind-include arms stamp
-  # `__produces = producesByName.<name>` on a compiled include policy whose SOURCE REF's v1 name is a key
-  # (the corpus's value-conditional resolve/include policies ride kind-includes → synthetic keys, so the
-  # name-based lookup in concern-policies never catches them — the stamp is the only path). The declared
-  # produced-kind family lets `dispatch.deriveGroup` stamp the rule's group at definition time, retiring
-  # the fire-and-observe blind fan for these. Native callers pass `{ }` (the default), byte-identical.
+  # — the resolveFamilyNames twin as a `name → [kind]` MAP, folded by the same `declaredEmitsOf` but naming
+  # the kinds OUTRIGHT rather than implying one. Matched at the source ref for the same synthetic-key
+  # reason. A declared produced-kind family lets `dispatch.deriveGroup` stamp the rule's group at
+  # definition time, retiring the fire-and-observe blind fan for these. Native callers pass `{ }` (the
+  # default), byte-identical.
   producesByName ? { },
   # The recovery sentinel (formerly the `den.probeSentinelFields` kernel option). It configures the SHIM's
   # codomain recovery, and its own header always said the field NAMES live consumer-side; moving it here
