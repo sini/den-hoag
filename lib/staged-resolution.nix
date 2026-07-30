@@ -9,9 +9,10 @@
 #   • CONTAINMENT BINDINGS (was `relate`): env/host roots are independent parentless scope roots with NO
 #     cross-node data path. A `member` with `containTo = <root-kind>` carries (a) ctx `bindings` the target
 #     root's ctx folds — for the resolution feed-forward AND the main run's inherited-context — AND (b) its
-#     SOURCE coordinate as the target root's containment ANCESTOR (the env→host / env→cluster edge, fed to
-#     the settings-chain env slice, resolved-settings.nix). It NEVER becomes a product cell — that is what
-#     kills the cross-join (a sibling registry-backed root like `cluster` stays a root, never a cell).
+#     SOURCE coordinate as the target root's containment PARENT (the env→host / env→cluster edge), which is
+#     what `containmentAttachments` renders and what `buildRoots` mints the target's nodes against. It NEVER
+#     becomes a product cell — that is what kills the cross-join (a sibling registry-backed root like
+#     `cluster` stays a root, never a cell).
 #
 # THE CARRIER (kind-generic, corpus-inert): a PER-TARGET binding map, materialized by a groupBy/transpose
 # of every root's `containTo`-marked emissions keyed by TARGET node id — NOT a fold-threaded state
@@ -24,8 +25,8 @@
 #
 # TWO COLLECT/DELIVER FIRINGS (order-independent, no phase schedule):
 #   • COLLECT — fire every root against its OWN decls and transpose the `containTo`-marked emissions by
-#     target node id into `containmentBindings` (target -> merged bindings) + `containmentAncestors`
-#     (target -> [ source slice ]). A containment producer reads its decls + `config.fleet`, never a target
+#     target node id into `containmentBindings` (target -> merged bindings) + `containmentAttachments`
+#     (target -> [ source node id ]). A containment producer reads its decls + `config.fleet`, never a target
 #     slice (the single-level feed the corpus exercises), so firing it against base decls captures its
 #     emission faithfully. A slice-DEPENDENT producer (a multi-level chain where a root consumes a slice to
 #     compute a DEEPER root's binding) is the demand-stratification ceiling the general case routes through
@@ -135,22 +136,23 @@ let
     else
       errors.rootIndexCollision collidingHash (map (p: p.value) byHash.${collidingHash});
 
-  # runPrePass — the transpose carrier. Returns { tuples; containmentBindings; containmentAncestors;
+  # runPrePass — the transpose carrier. Returns { tuples; containmentBindings; containmentAttachments;
   # suppressions }:
-  #   • `tuples`               — the derived CELL membership tuples (∪ with static `den.membership` at the
-  #                              call site), from bare (`containTo = null`) `member` emissions.
-  #   • `containmentBindings`  — a targetNodeId -> merged-bindings map (a `containTo`-marked `member`'s
-  #                              `bindings`, transposed by target), demand-read into the target roots' ctx
-  #                              (the DELIVER firing) AND folded onto their decls for the main run.
-  #   • `containmentAncestors` — a targetNodeId -> [ sourceSlice ] map (a `containTo`-marked `member`'s
-  #                              SOURCE coordinate, the target root's containment ANCESTOR — the
-  #                              settings-chain env slice, read by resolved-settings.nix).
-  #   • `suppressions`         — a nodeId -> [ policyName ] map (#72: the exclude family's `suppress`
-  #                              emissions at each LOCUS, fired in stratification rank order so a
-  #                              negated read sees a COMPLETE predicate), injected onto that node's decls as the
-  #                              typed `suppressedPolicies` slot (default.nix scopeRoots) which the
-  #                              `suppressed-policies` inherited attribute (gen-scope inheritSet) carries
-  #                              down the P-edge subtree, delivering v1's scope+descendants suppression.
+  #   • `tuples`                 — the derived CELL membership tuples (∪ with static `den.membership` at the
+  #                                call site), from bare (`containTo = null`) `member` emissions.
+  #   • `containmentBindings`    — a minted nodeId -> merged-bindings map (a `containTo`-marked `member`'s
+  #                                `bindings`, transposed by target and partitioned per attaching source),
+  #                                demand-read into the target roots' ctx (the DELIVER firing) AND folded
+  #                                onto their decls for the main run.
+  #   • `containmentAttachments` — a targetNodeId -> [ source node id ] map (a `containTo`-marked `member`'s
+  #                                SOURCE coordinate rendered as an id): the containment PARENT edge, which
+  #                                `buildRoots` mints the target's nodes against.
+  #   • `suppressions`           — a nodeId -> [ policyName ] map (#72: the exclude family's `suppress`
+  #                                emissions at each LOCUS, fired in stratification rank order so a
+  #                                negated read sees a COMPLETE predicate), injected onto that node's decls as the
+  #                                typed `suppressedPolicies` slot (default.nix scopeRoots) which the
+  #                                `suppressed-policies` inherited attribute (gen-scope inheritSet) carries
+  #                                down the P-edge subtree, delivering v1's scope+descendants suppression.
   #
   #   scopeRoots     = the BASE (un-injected) root scope nodes { id; type; parent; decls } (buildRoots).
   #   registries     = the entity registries; the containment-target index spans ALL registry kinds (a
@@ -295,17 +297,15 @@ let
       # ── NATIVE ATTACHMENT (route 2) ────────────────────────────────────────────────────────────────
       # Synthetic containment emissions derived from `den.attach`, in the SAME record shape a policy
       # emission lowers to (`{ tid; bindings; sourceSlice }`). They are concatenated into
-      # `containmentEmissions` — UPSTREAM of `byTarget` — deliberately: `byTarget` is the pre-image of all
-      # five products this pass returns (bindings, ancestors, edges, attachments, and the cycle guard over
-      # them), so one emission reaches every one of them. Injecting further down, at the caller's
-      # `attachments` map, would supply the parent edge while leaving the ancestor slice and the ctx/decls
-      # fold without the fact — an attachment whose inheritance silently does not exist.
+      # `containmentEmissions` — UPSTREAM of `byTarget` — deliberately: `byTarget` is the pre-image of
+      # every product this pass derives from containment (bindings, edges, attachments, and the cycle
+      # guard over them), so one emission reaches every one of them. Injecting further down, at the
+      # caller's `attachments` map, would supply the parent edge while leaving the ctx/decls fold without
+      # the fact — an attachment whose inheritance silently does not exist.
       #
       # ADDITIVE, not a replacement: a fleet that also attaches by policy emits the same fact twice, and
       # `attachmentsOf` (below) dedups the rendered ids, so the target keeps ONE attachment and its bare
-      # node id. `containmentAncestors` does NOT dedup, so a doubly-emitted fact yields a repeated ancestor
-      # slice there — harmless for the ancestor WALK (gen-graph visits first-occurrence) but the reason the
-      # settings chain is measured rather than assumed.
+      # node id.
       #
       # `bindings = { }`: a native attachment asserts containment only. Policy attachments that also bind
       # context (the corpus's `accessGroups`) keep doing so through their own emission.
@@ -410,17 +410,11 @@ let
         )
       );
 
-      # target -> [ sourceSlice ] (emission order). A parentless-root target's emission has an empty source
-      # slice, contributing no ancestor; a bucket of only-empty slices drops out (no ancestor key created).
-      containmentAncestors = prelude.filterAttrs (_: slices: slices != [ ]) (
-        builtins.mapAttrs (_: es: builtins.filter (s: s != { }) (map (e: e.sourceSlice) es)) byTarget
-      );
-
       # Containment-edge accessor over the transpose: a node id -> the ids of the sources that contain it.
       # LOCAL to this pass and needing no threading — `byTarget` is already in hand here. (The settings walk
       # keeps its own accessor: it reads `containmentRelations`, a slice map, not these emission records.)
       # Empty slices are dropped FIRST: a bindings-only emission names no source, so it contributes no
-      # edge — the same filter `containmentAncestors` applies, and what keeps the id rule off an empty slice.
+      # edge — which is what keeps the id rule off an empty slice.
       #
       # PRIVATE. Every reader outside this pair goes through `containEdges` below, which is the same walk
       # behind the cycle guard; the raw form exists so the guard's OWN walk does not re-enter it.
@@ -440,11 +434,11 @@ let
       # record below), so MEMBERSHIP IN THE RECORD IMPLIES GUARDING. Guarding each export by a separate
       # application would leave a future export unguarded by default: an invariant maintained in N places
       # desyncs at N+1, and the enumeration being correct today is exactly what makes that silent. Placing
-      # it on an accessor is not enough either — `containmentAncestors` reads `byTarget` directly and never
-      # calls the accessor, so a consumer of the ancestors map would walk a cyclic topology past it.
+      # it on the accessor is not enough either — a product may read `byTarget` directly without ever
+      # calling `containEdges`, and would then walk a cyclic topology past the guard.
       #
-      # `mapAttrs` preserves per-value laziness, so a fleet that reads none of the five still pays nothing,
-      # and a fleet that reads one pays the check once. Cost is bounded: id strings only.
+      # `mapAttrs` preserves per-value laziness, so a fleet that reads none of the exports still pays
+      # nothing, and a fleet that reads one pays the check once. Cost is bounded: id strings only.
       cycleChecked =
         let
           cyclic = graph.cycles {
@@ -461,7 +455,7 @@ let
       # (`buildRoots`), never as one node of N parents. Reading several attachments here is therefore
       # the normal case, not an error — what would be an error is collapsing them onto one node.
       # A target whose emissions are all bindings-only contributes no attachment and drops out, the
-      # same filter `containmentAncestors` applies. The cycle guard is no longer written here: it is
+      # same filter `rawContainEdges` applies. The cycle guard is no longer written here: it is
       # forced by every export (see `cycleChecked`), so this map cannot be the one path that carries it.
       containmentAttachments = prelude.filterAttrs (_: parents: parents != [ ]) (
         builtins.mapAttrs (tid: _: attachmentsOf tid) byTarget
@@ -589,7 +583,6 @@ let
       inherit
         tuples
         containmentBindings
-        containmentAncestors
         containmentAttachments
         suppressions
         ;

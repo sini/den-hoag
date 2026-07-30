@@ -1047,15 +1047,11 @@ let
       # promised law): a policy-emitted bare `member` at a membership-independent root routes into the
       # fleet. `prePass` also carries `containmentBindings` (a targetNodeId -> merged-bindings transpose map
       # from every `containTo`-marked member), folded onto the target roots' decls (`scopeRoots`, below) so
-      # the main run's inherited-context threads them. ⚠ It also carries `containmentAncestors`
-      # (targetNodeId -> [ ancestor slice ]), which has ZERO CONSUMERS: the settings chain keeps its own
-      # accessor over `containmentRelations` and never reads this map. It was built for the §3c-UNIFIED
-      # settings-chain env slice and the claim that it is threaded there is not true of this tree — stated
-      # rather than left standing, because a comment asserting a consumer that does not exist is the shape
-      # that lets a dead export look load-bearing. THE IDENTITY PATH: a fleet with ZERO resolution emissions gives `tuples = [ ]` +
-      # `containmentBindings = { }`, so `membershipTuples`/`scopeRoots` are byte-identical to the pre-R1
-      # values. The pre-pass reads `structuralNodes` (structural, un-injected) + `policiesRules` — neither
-      # depends on `membershipTuples`/`theFleet`/the classification, so no cycle.
+      # the main run's inherited-context threads them. THE IDENTITY PATH: a fleet with ZERO resolution
+      # emissions gives `tuples = [ ]` + `containmentBindings = { }`, so `membershipTuples`/`scopeRoots`
+      # are byte-identical to the pre-R1 values. The pre-pass reads `structuralNodes` (structural,
+      # un-injected) + `policiesRules` — neither depends on `membershipTuples`/`theFleet`/the
+      # classification, so no cycle.
       #
       # ★ THE CTX THIS PASS FIRES AGAINST IS A NODE'S OWN DECLS PLUS THAT NODE'S OWN BINDING SLICE, and
       # the second half is why the firing goes per LOCUS rather than per bare id. `containmentBindings`
