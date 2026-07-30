@@ -8,8 +8,9 @@
 #                    inert while a sibling member builds; forcing the poisoned member itself aborts (the
 #                    probe is not vacuous). The shared core forces every member's cheap PROJECTION, never
 #                    a delta.
-#   no fleet flag  — a source tripwire: neither the class-share build nor the output stratum names a
-#                    fleet-global share toggle; the decision reads `classCfg.share.core` (per class).
+#   no fleet flag  — a source tripwire over the WHOLE kernel (scan set DERIVED from the tree): no kernel
+#                    file names a fleet-global share toggle; the decision reads `classCfg.share.core`
+#                    (per class), asserted present at the one stratum that makes it.
 {
   denHoag,
   denHoagSrc,
@@ -146,9 +147,17 @@ let
   buildsBlade =
     (builtins.tryEval (builtins.deepSeq denProbe.output.systems.nixos.${bladeId} true)).success;
 
-  # ── source tripwire: no fleet-global share toggle in the class-share build or the output stratum ──
+  # ── source tripwire: no fleet-global share toggle anywhere in the kernel ──
+  # SCAN DOMAIN — this is a COVERAGE CLAIM, not a targeted probe, so the domain is TOTAL: every kernel
+  # file, DERIVED from the tree by `_lib/core-files.nix` (the same set boundary.nix, zero-machinery.nix
+  # and end-to-end.nix scan). The claim being made is an ABSENCE — "no fleet-global toggle exists" — and
+  # a hand-listed domain cannot carry one: a toggle introduced in an unlisted file leaves this test GREEN,
+  # because a scan set that omits a file is indistinguishable from a scan set over which that file is
+  # clean. The two strata that actually read the decision are MEMBERS of this set, not the whole of it,
+  # and their membership is asserted below rather than assumed.
   read = f: builtins.readFile "${denHoagSrc}/lib/${f}";
-  scanned = [
+  scanned = import ./_lib/core-files.nix { inherit denHoagSrc nixpkgsLib; };
+  decisionStrata = [
     "output/class-share.nix"
     "attributes/output-modules.nix"
   ];
@@ -167,6 +176,9 @@ let
     in
     map (tok: "${f}:${tok}") (builtins.filter (tok: genPrelude.hasInfix tok t) fleetFlagTokens)
   ) scanned;
+  # By contrast this is a PRESENCE claim about ONE named stratum — the file that makes the per-class
+  # decision — so naming it is the content of the assertion, not a coverage gap. Deriving this domain
+  # would WEAKEN it to "some kernel file reads `classCfg.share.core`", which is a different proposition.
   perClassRead = genPrelude.hasInfix "classCfg.share.core" (read "attributes/output-modules.nix");
 in
 {
@@ -214,9 +226,16 @@ in
     };
 
     # ── no fleet flag (source tripwire) ──
-    # neither the class-share build nor the output stratum names a fleet-global share toggle.
+    # NO kernel file names a fleet-global share toggle, over the tree-derived total scan set.
     test-no-fleet-global-toggle = {
       expr = fleetFlagOffenders;
+      expected = [ ];
+    };
+    # …and that scan set is non-vacuous where it matters: the two strata that read the share decision are
+    # IN the derived domain. An absence claim over an empty or drifted domain reads as success, so the
+    # domain is pinned by the files it must contain rather than by the count it happens to have.
+    test-scan-domain-covers-decision-strata = {
+      expr = builtins.filter (f: !(builtins.elem f scanned)) decisionStrata;
       expected = [ ];
     };
     # the decision is read PER CLASS (`classCfg.share.core`), never a fleet switch.
