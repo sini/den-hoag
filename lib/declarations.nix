@@ -294,6 +294,12 @@ let
   # It lives HERE, in the declaration vocabulary, because it is a property OF the kinds: `keysOf` is the
   # inverse of the constructor directly above it, and a row that drifted from its constructor would be
   # the same defect one level down.
+  #
+  # The three message builders per row differ in ARITY because they fire at different moments. `missing`
+  # and `spurious` are REGISTRATION messages, raised over the declaration attrset, where the key IS the
+  # policy's identity — one name. `fail` is a FIRING abort, raised over a compiled record that may have
+  # been minted by a lowering under a synthesized key, so it takes `originName` (the name the record was
+  # authored under, or `null`) BEFORE that key and renders both.
   codomainRows = {
     suppress = {
       declaredIn = "suppresses";

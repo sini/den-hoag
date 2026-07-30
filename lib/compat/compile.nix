@@ -191,6 +191,14 @@ let
     in
     {
       inherit emits;
+      # THE NAME THE COMPILED KEY LOST. These arms register their record under a SYNTHETIC attr key: the
+      # aspect-include arm embeds the v1 name in it, the kind-include arm's is positional and carries no
+      # trace of it. A firing-time abort naming only that key names nothing the corpus author wrote —
+      # which is the same reason `emitsFor` keys its codomain lookup at the REF's v1 name. This carries
+      # the same name onto the record so the diagnostics can read it (one optional field; the kernel
+      # learns no compile vocabulary from it). `null` for a nameless ref — a bare-fn include has no v1
+      # name to state — and the message then renders by the compiled key alone.
+      originName = ref.name or null;
     }
     // codomainStamps ref ungated emits;
 

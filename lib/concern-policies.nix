@@ -404,9 +404,16 @@ let
       # VACUOUS FOR A RULE THAT NEVER FIRES, and that is sound: a rule that does not fire creates no edge
       # either, so the declared graph stays the graph the program has.
       conformingProduce =
-        name: declaredCodomains: emits: baseProduce: id: ctx:
+        name: record: emits: baseProduce: id: ctx:
         let
           admitted = prelude.genAttrs emits (_: true);
+          # THE NAME AN AUTHOR CAN ACT ON, when the registration key is not it. A record minted by a
+          # LOWERING is registered under a synthesized key and states, in `originName`, the name it was
+          # authored under; a natively-authored policy carries no such field and its key IS that name.
+          # The kernel neither parses the key nor learns what synthesized it — it reads one optional
+          # field and hands both names to the message builder, which decides the rendering. Read on the
+          # abort path ONLY, so a conforming firing forces neither the field nor the record.
+          originName = record.originName or null;
         in
         map (
           a:
@@ -417,16 +424,16 @@ let
             };
           in
           if !(admitted ? ${k}) then
-            errors.emitsUndeclared name k emits
+            errors.emitsUndeclared originName name k emits
           else if k == "pipeOp" && !(declare.isSiteMarkData a) then
-            errors.opsInBody name
+            errors.opsInBody originName name
           else if declare.codomainRows ? ${k} then
             let
               row = declare.codomainRows.${k};
-              declared = declaredCodomains.${row.declaredIn} or [ ];
+              declared = record.${row.declaredIn} or [ ];
               undeclared = builtins.filter (x: !(builtins.elem x declared)) (row.keysOf a);
             in
-            if undeclared != [ ] then row.fail name (builtins.head undeclared) declared else stamped
+            if undeclared != [ ] then row.fail originName name (builtins.head undeclared) declared else stamped
           else
             stamped
         ) (baseProduce id ctx);

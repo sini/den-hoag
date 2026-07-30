@@ -25,6 +25,18 @@ let
       label
       + builtins.concatStringsSep ", " (map (k: "`${k}` (written by `${whoWrote k}`)") keys)
       + remedy;
+  # A policy's rendered identity. A rule minted by a LOWERING is registered under a synthesized attr
+  # key — positional for some families, so the v1 name is not recoverable from it at all — and a
+  # diagnosis naming only that key names nothing its author wrote. Such a record states the name it was
+  # authored under (`originName`) and BOTH are printed: the author's name to act on, the synthesized key
+  # because that is what the compiled surface is indexed by. A natively-authored policy has no origin —
+  # its key IS that name — and renders by the key alone, exactly as before.
+  policyIdent =
+    originName: policyName:
+    if originName == null || originName == policyName then
+      "`${policyName}`"
+    else
+      "`${originName}` (compiled as `${policyName}`)";
   renderScope =
     coords:
     if coords == null || coords == { } then
@@ -247,8 +259,8 @@ in
   # the body: a mis-declared codomain aborts LOUD at the emitting site instead of mis-routing the rule
   # silently. Names the policy, the offending kind and the declared codomain.
   emitsUndeclared =
-    policyName: kind: emits:
-    fail "declaration codomain" "policy `${policyName}` produced a `${kind}` declaration, which is not in its declared `emits` = [ ${builtins.concatStringsSep " " emits} ]. The codomain is a CONTRACT checked at every firing, not an annotation: either add `${kind}` to `emits` or stop producing it";
+    originName: policyName: kind: emits:
+    fail "declaration codomain" "policy ${policyIdent originName policyName} produced a `${kind}` declaration, which is not in its declared `emits` = [ ${builtins.concatStringsSep " " emits} ]. The codomain is a CONTRACT checked at every firing, not an annotation: either add `${kind}` to `emits` or stop producing it";
 
   # THE TWO REFINED CODOMAINS, and why `emits` alone does not discharge them. `emits` names the
   # declaration KINDS a body may produce; these name the DEPENDENCY EDGES those declarations create.
@@ -258,12 +270,12 @@ in
   # decision never saw, so the declared graph would not be the graph the program has and the decision
   # would range over a domain nothing guarantees. These two aborts are what make the declaration true.
   suppressesUndeclared =
-    policyName: target: suppresses:
-    fail "suppression codomain" "policy `${policyName}` produced a `suppress` naming `${target}`, which is not in its declared `suppresses` = [ ${builtins.concatStringsSep " " suppresses} ]. The codomain is a CONTRACT checked at every firing: the stratification is decided from the DECLARED graph before any rule fires, so an edge introduced by a body is an edge the check never saw (Apt, Blair & Walker 1988, Lemma 1, p. 97)";
+    originName: policyName: target: suppresses:
+    fail "suppression codomain" "policy ${policyIdent originName policyName} produced a `suppress` naming `${target}`, which is not in its declared `suppresses` = [ ${builtins.concatStringsSep " " suppresses} ]. The codomain is a CONTRACT checked at every firing: the stratification is decided from the DECLARED graph before any rule fires, so an edge introduced by a body is an edge the check never saw (Apt, Blair & Walker 1988, Lemma 1, p. 97)";
 
   bindsUndeclared =
-    policyName: key: binds:
-    fail "binding codomain" "policy `${policyName}` emitted a `member` binding `${key}`, which is not in its declared `binds` = [ ${builtins.concatStringsSep " " binds} ]. A binding is a POSITIVE dependency edge of every policy that destructures it, and the stratification check reads those edges from the declaration, so a key bound only at runtime is an edge the check never saw";
+    originName: policyName: key: binds:
+    fail "binding codomain" "policy ${policyIdent originName policyName} emitted a `member` binding `${key}`, which is not in its declared `binds` = [ ${builtins.concatStringsSep " " binds} ]. A binding is a POSITIVE dependency edge of every policy that destructures it, and the stratification check reads those edges from the declaration, so a key bound only at runtime is an edge the check never saw";
 
   # THE STRATIFICATION ABORT. Not named for suppression: the cycle may run through POSITIVE binding
   # edges, and Definition 3's condition 1 (p. 96) ADMITS a purely positive cycle — same-stratum positive
@@ -292,8 +304,8 @@ in
   # Until that is redesigned, a body carrying a derived/route pipeOp aborts HERE rather than being
   # silently dropped from a seed that never received it. Do not work around this in the shim.
   opsInBody =
-    policyName:
-    fail "compose commitment" "policy `${policyName}` produced a `pipeOp` declaration carrying a derived-channel DAG or a delivery route from its BODY. Those seed the ONE fleet gen-pipe compose before the eval and are ctx-independent by contract, so they are declared as data in `ops`; only per-node SITE MARKS are emitted from the body";
+    originName: policyName:
+    fail "compose commitment" "policy ${policyIdent originName policyName} produced a `pipeOp` declaration carrying a derived-channel DAG or a delivery route from its BODY. Those seed the ONE fleet gen-pipe compose before the eval and are ctx-independent by contract, so they are declared as data in `ops`; only per-node SITE MARKS are emitted from the body";
 
   # Registration rejection, at an explicit boundary rather than as a throw deep inside a dispatch. The
   # message is produced as a VALUE by `policyMessage` (Nix's `tryEval` cannot capture a throw's text, so a
