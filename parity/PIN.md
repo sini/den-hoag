@@ -5,7 +5,16 @@ exact frozen den v1 reference rev the parity harness pins, and re-validates the 
 against that rev + the corpus pin — so the promoted-fixture list (§7.3) and Task 5's forward-tier
 scope rest on grep-confirmed reality, not on the pre-pin survey.
 
-## Frozen v1 pin
+## v1 oracle pin
+
+> **CURRENT — `denful/den @ 7f11ba14`** (full `7f11ba1494052fd3ac52c1342915bcb52ba08f07`), subject
+> `fix: keep same-username homes on different hosts distinct (#641)`. Advanced from the #623 freeze by
+> the **owner directive of 2026-07-30** recorded in the bump section at the foot of this file. The pin
+> is still a DELIBERATE pin — it tracks no branch and moves only by recorded ruling — but it is no
+> longer the #623 freeze, and the "the oracle must not move under the shim" reasoning below is
+> **superseded** for this bump.
+
+### Superseded: the original freeze (in force 2026-07-06 → 2026-07-30)
 
 - **Rev:** `denful/den @ 11866c16` — full: `11866c167f5b4408149a4914966ae1a050054358`
 
@@ -41,9 +50,12 @@ scope rest on grep-confirmed reality, not on the pre-pin survey.
 
 ## Corpus pin
 
-- **Rev:** `github:sini/nix-config @ b0b207693ce66fb57acf2bb09cf9549e1dbddec7` (INTERIM — see the
-  `parity/flake.nix` note; the real harness migrates to a synthetic self-contained corpus, a tracked
-  follow-up).
+- **Rev (CURRENT, 2026-07-30):** `github:sini/nix-config @ 425f1d3b2fcc2c5547ee593a8cb74d5d61192626`
+  — advanced by the same owner directive; see the bump section at the foot of this file.
+- **Rev (superseded, 2026-07-07 → 2026-07-30):** `github:sini/nix-config @ b0b207693ce66fb57acf2bb09cf9549e1dbddec7`
+
+Still INTERIM either way — see the `parity/flake.nix` note; the real harness migrates to a synthetic
+self-contained corpus, a tracked follow-up.
 
 ## §2.6 corpus survey — re-validated 2026-07-06
 
@@ -167,9 +179,129 @@ item-4 n=1 crossing gives direct evidence in the right direction — the shim's 
 BYTE-IDENTICAL (drvPath) to v1's for a single-host fixture. Full #624/#625 verification is the corpus arm at
 the ship-gate (multi-user hosts), where the per-cell keying is actually exercised.
 
-**Pin-bump material.** The frozen pin is 11866c16 (== #623). Decision at ship-gate: stay at #623 vs advance
+**Pin-bump material.** *(SUPERSEDED 2026-07-30 — the owner ruled the other way; the recommendation below is
+kept as the reasoning that was on the table, not as current guidance. See the bump section that follows.)*
+The frozen pin is 11866c16 (== #623). Decision at ship-gate: stay at #623 vs advance
 past #627/#624. Evidence in hand: (a) the P1 edge-trace ledger (residual-n scope-model boundary is the v2
 model, not a shim defect); (b) the P2 n=1 drv-hash parity (byte-identical); (c) den-hoag's per-cell keying
 makes the #624 bug class structurally absent. Recommendation leans STAY at #623 for the frozen parity oracle
 (it predates #624/#627 by design — the oracle must not move under the shim); advance the CORPUS pin
 separately if the corpus needs post-#624 fixes, re-running P2 to confirm the drv-hash still holds.
+
+## 2026-07-30 — OWNER-DIRECTED PIN BUMP (both oracles advanced)
+
+**The ruling.** Owner directive, 2026-07-30: *"We should bump both nix-config and the den target, as both
+contain bugfixes that will aid in correctness validation."* This OVERRIDES, for this bump, (a) the
+frozen-oracle never-bump rule and (b) this file's own C9 item-6 recommendation to STAY at #623 and advance
+only the corpus pin. The override is the owner's to make; the superseded recommendation is retained above
+rather than deleted, so the reasoning that was on the table stays legible.
+
+| Pin | From | To |
+| --- | --- | --- |
+| `den-v1` | `11866c16` (#623) | `7f11ba1494052fd3ac52c1342915bcb52ba08f07` (#641) |
+| `corpus` | `b0b20769` | `425f1d3b2fcc2c5547ee593a8cb74d5d61192626` |
+
+Both targets re-verified against `git ls-remote … main` at execution time — each was the live branch tip,
+so no drift between the directive and the applied rev. Sole pin site: the two inline-rev urls in
+`parity/flake.nix`. `ci/flake.nix` carries neither input (measured, with a positive control on the same
+instrument in the same run: `den-v1|corpus|nix-config|denful/den` → 0 hits, `nixpkgs|gen` → hits).
+
+### Oracle deltas
+
+**den — 7 commits**, six of them fixes; these are the correctness bugfixes the directive cites:
+
+- `3932adf` fix: derive class-content emit ctx from authoritative scope state (#624)
+- `1614f6f` fix: preserve source entity binding in forward fallback (#627)
+- `84b5149` docs: fixed typo in custom-classes documentation (#630) — *not a fix*
+- `b7bebde` fix: surface spawn-projected quirk emits at the requesting scope (#625)
+- `2fcac84` fix: surface the requesting scope's own quirk emits into host-aspects
+- `99cc0c5` fix: fan class-module entity args over scope descendants (#629) (#634)
+- `7f11ba1` fix: keep same-username homes on different hosts distinct (#641)
+
+`99cc0c5` **is a verified ancestor** of `7f11ba14` (`git merge-base --is-ancestor` → true), so this bump
+SUBSUMES the declared-but-unlanded `11866c16 → 99cc0c5` bump; that separate bump is moot.
+
+**corpus — 43 commits**, 31 touching `modules/den/**`. Predominantly MCP/tooling and fleet-config churn
+(`gen-lsp-mcp` packaging, ACL/VPN rules, telemetry). The den-shape-relevant ones are the overlay
+restructuring (`e34fdc16` nixpkgs-overlays quirk, `ce3e8fb8`, `f84965f7`), `1b81470c` useGlobalPkgs +
+user-overlay projection, and `fddab954` renaming microvm/home-manager aspects off a class-name collision.
+None of these touch the constructs the parity censuses gate on (verified below).
+
+### Dev-time dep surface at the new den rev — VERIFIED INTACT
+
+Every file and binding this file enumerates is present and contract-shaped at `7f11ba14`. Measured by
+dumping each path with `git show <rev>:<path>` to a file and grepping the file (piped `git show | grep`
+has failed clean in this repo), with a clean positive/negative control pair on the same instrument
+(`edgeSortKey` → 3, `zzzNotARealBindingXyz` → 0).
+
+**8 of the 10 dep-surface files are BYTE-IDENTICAL across the bump** — including, critically,
+`edges/edge.nix` and `edges/parity.nix`, the two the harness imports directly as source. So the
+`T | P | S | M` sort key and `assertEdgeParity`'s `{ matched; missingFromActual; extraInActual; parity; }`
+record are unchanged *by construction*, not merely by grep. `policy-effects.nix` (deliver/route/provide),
+the `forward.nix` trio, `provide.nix` (`mkSelfProvideInclude`) and `content-util.nix` (`applyProvide`) are
+likewise byte-identical.
+
+The two that changed:
+
+- `edges/materialize-unified.nix` (+2, −0): threads one additional `scopeEntityKind` field through the
+  two existing `inherit` lists. Purely additive; `materializeUnified`/`exposeEdges` unchanged.
+- `fx/resolve.nix` (+191, −83): the bulk of the #634/#641 work. The edgeTrace family survives with its
+  shape intact — `productionEdgeTrace` still a `sortEdges (…)`, `edgeTrace = productionEdgeTrace`, and
+  `legacyEdgeTrace` still present as the P7 negative control.
+
+### §2.6 census re-validation at the new corpus rev
+
+Both corpus revs were exported (`git archive`) and measured with the **same instrument in the same run**,
+rather than comparing against the numbers recorded above — so "unchanged" is a measurement, not a memory.
+The instrument reproduces this file's original 480-`.nix`-file count at the old rev exactly, which
+validates it. (New rev: 500 `.nix` files.)
+
+| Census | Old rev | New rev | Verdict |
+| --- | --- | --- | --- |
+| `batteries.forward` sites | 0 | **0** | unchanged (control `batteries.` → 11 / 13) |
+| `policy.route` sites | 4 | **4** | unchanged — the `home-platform.nix` tier-1 triple + the `devshell.nix` adapter-bearing route |
+| `provides.` declarations | 0 | **0** | unchanged — the C4 corpus-dead claim HOLDS (control `provide` → 81 / 78) |
+| tier-2 NTA forward consumer | none | **none** | OQ2 stays CLOSED (control `policy.` → 33 / 35) |
+| entity-derivation mechanisms | instantiate 6, microvm-guests 8 | **6 / 8** | unchanged |
+| host class survey | patch darwin-by-system, slab `class="droid"`, rest classless | **identical** | unchanged; host file set identical |
+
+Two findings worth recording beyond the counts:
+
+- `modules/den/classes/home-platform.nix` and `modules/den/classes/devshell.nix` are **byte-identical**
+  old→new. The route census is therefore stable in SHAPE, not just in count: the triple is still
+  `path = [ ]` with no `adaptArgs` (tier-1 static), and the devshell route still carries
+  `adaptArgs = { config, ... }: config.allModuleArgs`.
+- `modules/den/batteries/nix-on-droid.nix:67` contains a `forwardPathFn`, which the OQ2 predicate above
+  does not match. It is **not** an OQ2 re-opener: it is an argument to `den.lib.home-env.makeHomeEnv`
+  (v1 `nix/lib/home-env.nix` consumes it as `intoPath`, the deliver/route surface — the same shape the hm
+  and hjem batteries use), NOT the `forward`/`forwardTo`/`__complexForward` NTA-spawning surface. It is
+  also present unchanged at the OLD pin, so it cannot be a source of movement either way.
+
+**No re-opened questions.** OQ2 stays closed; the C4 desugar stays corpus-dead.
+
+### Suite outcomes
+
+- **parity: 71/71, exit 0 — ZERO movement.** Before and after logs were diffed at per-test granularity
+  (name + status, sorted); the result sets are IDENTICAL. There is nothing to attribute: no test moved,
+  so no oracle delta needs to account for one.
+- **ci: 2020/2040, exit 1, the same 20 non-pass** — exactly the recorded baseline, i.e. INVARIANT, as
+  required (ci consumes neither pin). The 20 are the known parked set: 2 `compat-*`, 13 `den-pipe`,
+  5 `pipe-consume`.
+- **P2 n=1 drv-hash smoke (`parity/ship-gate.nix`): `allEqual = true`.** All three comparisons are
+  BYTE-IDENTICAL across the arms at the new pins — base `nixosConfigurations.igloo`, the M2.5
+  emitting-channel host, and the silent-channel totality host. The drv-hash parity therefore SURVIVES an
+  oracle that now includes #624/#634/#641 — the fixes that reshape class-content emit ctx, class-module
+  entity-arg fanout, and same-username home keying. That is a substantive corroboration of this file's
+  standing claim that the #624 bug class is structurally absent on the v2 arm, not merely a re-pass.
+
+### Lock hygiene
+
+Targeted update only (`nix flake lock --update-input den-v1 --update-input corpus`). The resulting
+`parity/flake.lock` diff was checked **path-wise, not node-key-wise** — nix renumbers suffixed duplicate
+node keys (`gen-merge_10` etc.) when a subtree re-resolves, so a key-keyed diff reports ~67 spurious
+"out-of-scope" moves. Resolving each root input's closure to canonical paths instead: **401 changed paths,
+400 under `corpus/` and 1 under `den-v1/`, and NONE outside those two subtrees.** The sibling top-level
+pins `gen`, `nixpkgs`, `den-v2` and `home-manager` are byte-identical. The §4.4 invariant still holds:
+`home-manager`'s `nixpkgs` resolves to the same node as the top-level `nixpkgs` (`nixpkgs_20`). The large
+`corpus/` count is the corpus's own transitive lock re-resolving from the new rev — unavoidable when the
+corpus input itself moves, and entirely inside its subtree.

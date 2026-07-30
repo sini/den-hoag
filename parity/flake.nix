@@ -4,12 +4,17 @@
   inputs = {
     gen.url = "github:sini/gen";
     den-v2.url = "path:.."; # this tree (its `.compat` output)
-    den-v1.url = "github:denful/den/11866c16"; # the FROZEN pin (parity/PIN.md)
-    # INTERIM corpus pin (owner decision dated 2026-07-07, the compat-phase start): frozen at the
-    # then-current nix-config main so parity diffs are
-    # reproducible during the compat build; bump deliberately at ship-gate. FOLLOW-UP (tracked):
-    # the real harness migrates to a SYNTHETIC self-contained corpus (no live-fleet coupling).
-    corpus.url = "github:sini/nix-config/b0b207693ce66fb57acf2bb09cf9549e1dbddec7";
+    # The v1 oracle pin (parity/PIN.md). Frozen at `11866c16` (#623) from 2026-07-06; ADVANCED to
+    # `7f11ba14` by owner directive 2026-07-30 — the #624/#627/#625/#634/#641 correctness fixes aid
+    # correctness validation, which outweighs holding the oracle still. Still a deliberate pin, not a
+    # follows-main: it moves only by recorded ruling.
+    den-v1.url = "github:denful/den/7f11ba1494052fd3ac52c1342915bcb52ba08f07";
+    # INTERIM corpus pin. Frozen 2026-07-07 (the compat-phase start) at the then-current nix-config
+    # main `b0b20769` so parity diffs stay reproducible during the compat build; ADVANCED to
+    # `425f1d3b` by the same 2026-07-30 owner directive (the corpus carries bugfixes the correctness
+    # validation needs). Bump deliberately, never by `nix flake update`. FOLLOW-UP (tracked): the real
+    # harness migrates to a SYNTHETIC self-contained corpus (no live-fleet coupling).
+    corpus.url = "github:sini/nix-config/425f1d3b2fcc2c5547ee593a8cb74d5d61192626";
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
     # home-manager — the v1 hm battery's `getModule` reaches `inputs.home-manager."${host.class}Modules"`;
     # the CONTENT arm (P2 cross-pipeline live + the fleet drv-hash ship-gate) forces it. THE INVARIANT (§4.4):
