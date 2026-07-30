@@ -37,9 +37,12 @@ let
   # passing routing assertion IS a field-presence proof. At the value-less stratum probe the sentinel
   # `system = "«probe»"` makes `hasPrefix` false → clean expansion (the fleet building proves it).
   # ★ DECLARED, and it must be. This body is VALUE-conditional on `host.system`, so firing it at a
-  # value-less sentinel emits nothing — and an empty RECOVERED codomain compiles to no rule at all, which
-  # would delete the policy silently rather than aborting. The declaration is what keeps a
-  # value-conditional emitter alive; `selects = null` keeps it unconstrained (it is registered here, not
+  # value-less sentinel emits nothing, and an undeclared codomain would RECOVER as `[ ]`. That is an EMPTY
+  # HEAD, not an absent rule: `compileOne` is total and `groupOf` assigns an empty codomain the BOTTOM
+  # stratum, so the rule still compiles and still fires — and the first real `edge` emission is then
+  # checked against that empty codomain and aborts NAMED at the emitting site
+  # (`conformingProduce` → `errors.emitsUndeclared`). The declaration is what lets a value-conditional
+  # emitter ROUTE rather than abort; `selects = null` keeps it unconstrained (it is registered here, not
   # selected through any `includes` list).
   markPolicy =
     mkPolicy "mark-aarch64" (
