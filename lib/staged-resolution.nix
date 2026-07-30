@@ -424,12 +424,34 @@ let
       # DELIVER (suppressions) — the exclude family fired with the SAME slice-extended ctx. A value-
       # conditional excluder taking its false branch emits nothing (the corpus's droid-gated route exclude
       # suppresses only at droid-class roots).
+      #
+      # Keyed by minted NODE ID, for the reason `containmentBindings` above is: the fold runs over THIS
+      # pass's root ids, which are bare because `prePassScopeRoots` is built with no attachments, while the
+      # consumer indexes the MAIN run's roots, which ARE attachment-built. At N≥2 the bare id names no node
+      # there, and the consumer's test is a bare `?` membership — so a target-keyed map would not miss
+      # loudly, it would simply find nothing and deliver no suppression at all.
+      #
+      # Unlike the bindings, the set is NOT partitioned by source: the excluder fires once, at the single
+      # un-multiplied pre-pass root, against a ctx that predates the multiplication. Every node that root
+      # mints is that same root at a different attachment, so each carries the whole set. At N≤1
+      # `mintedRootId` returns the bare id, so this is a relabelling onto the same key — byte-identical.
       suppressions = prelude.foldl' (
         acc: id:
         let
           suppressed = map (a: a.name) (fireExcludeAt scopeRoots.${id}.type id (deliverCtxOf id));
+          parents = attachmentsOf id;
+          keys = if parents == [ ] then [ id ] else map (mintedRootId id parents) parents;
         in
-        if suppressed == [ ] then acc else acc // { ${id} = suppressed; }
+        if suppressed == [ ] then
+          acc
+        else
+          acc
+          // builtins.listToAttrs (
+            map (k: {
+              name = k;
+              value = suppressed;
+            }) keys
+          )
       ) { } ids;
     in
     {
