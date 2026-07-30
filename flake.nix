@@ -61,30 +61,18 @@
         flake = inputs.gen-flake.lib;
       };
       # den-compat (L4) — the den v1 compatibility shim + the two-sided parity harness, on top of the
-      # assembled `lib`. `denHoag` = the four-concern API (this flake's `lib`); the shim reaches every
-      # gen substrate lib through den-hoag vocabulary and needs only `schema` (id_hash at ingestion)
-      # and `edge` (inert legacy records + the frozen trace schema) directly.
-      compat = import ./lib/compat {
+      # assembled `lib`. Wired through `lib/compat/wiring.nix` — the ONE construction the standalone
+      # `default.nix` entry goes through too, so the shim's dep list cannot drift between the two roots
+      # (each per-dep rationale lives there, at the single construction).
+      compat = import ./lib/compat/wiring.nix {
         denHoag = lib;
         prelude = inputs.gen-prelude.lib;
         schema = inputs.gen-schema.lib;
-        # gen-merge's mkOption/types — for the compile/nav view's shared facet keySemantics (settings facet).
         merge = inputs.gen-merge.lib;
-        # gen-aspects — the aspect TAG owner. The shim calls `aspects.wrapFn` to wrap a v1 bare-fn aspect
-        # include (which bypasses the option-type merge under R10 raw-absorption) into den-hoag's
-        # `__isWrappedFn` functor — the same wrap the type applies to native guard fns. Injected directly
-        # (like `schema`/`edge`), not reached through `denHoag`.
         aspects = inputs.gen-aspects.lib;
-        # gen-graph — the ordered preorder-fold calculus (`foldPreorder`). The compat aspect-include
-        # reachability walk routes through it (a graph traversal expressed as gen's primitive, not a
-        # hand-rolled recursion), the same substrate the resolved-aspects forward-expansion rides.
         graph = inputs.gen-graph.lib;
         edge = inputs.gen-edge.lib;
-        # gen-edge's core primitives (`edgeSortKey`/`renderName`/`traceEntryOf`) — the frozen trace
-        # renderer the parity harness renders BOTH arms into. gen-edge's public lib deliberately keeps
-        # these internal (it exposes `trace`, which uses them), so the harness imports the frozen core
-        # by source path — the SAME dev-time pattern the parity flake uses for den v1's `edge.nix`.
-        edgeCore = import "${inputs.gen-edge}/lib/core.nix" { prelude = inputs.gen-prelude.lib; };
+        edgeSrc = inputs.gen-edge;
       };
 
       # `mkCrossNixos nixpkgs` — build the `nixos` class's real-system terminal from a consumer-supplied

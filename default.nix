@@ -61,15 +61,16 @@ in
 # rides on it). Bare-lib consumers (`(import ./default.nix).mkDen`) are unaffected.
 lib
 // {
-  compat = import ./lib/compat {
+  compat = import ./lib/compat/wiring.nix {
     denHoag = lib;
     inherit
       prelude
       schema
       aspects
       merge
+      graph
       edge
       ;
-    edgeCore = import "${fetch "gen-edge"}/lib/core.nix" { inherit prelude; };
+    edgeSrc = fetch "gen-edge";
   };
 }
