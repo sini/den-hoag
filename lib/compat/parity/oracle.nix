@@ -523,7 +523,7 @@ let
   # ── §4.4 content-gate record (`contentGate`, P2 FLEET drv-hash) — the SHIP-GATE mechanism ──────────────
   # `contentGate { corpus }` → per-configuration `{ configuration; v1DrvPath; shimDrvPath; equal; diffHint; }`:
   # the toplevel `.drvPath` under the frozen v1 pin vs under den v2 + shim, eval-time (sandbox-safe, no store
-  # build — the v1 Task-14 gate mechanism), both arms pinning identical inputs except the den input. A `corpus`
+  # build — v1's own eval-time gate mechanism), both arms pinning identical inputs except the den input. A `corpus`
   # entry supplies the two toplevel THUNKS (`v1Toplevel` / `shimToplevel`); the full nix-config fleet run is
   # DEV-TIME (the honest note — the one arm that cannot run purely in den-hoag's own CI: it evaluates the real
   # corpus flake and crosses nixpkgs/nix-darwin). CI runs the cross-pipeline synthetics + a representative subset.

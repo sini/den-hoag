@@ -173,7 +173,7 @@ in
     # (1) the parent-targeted cell-fired forward reaches the HOST terminal: the cell's hm content lands
     #     nested at home-manager.users.tux in the host's built modules.
     #
-    # PHASE 4 DELIVERED (the #10 hm-user-detect descendant-driven route, Task 2): `terminalModulesAt =
+    # DELIVERED by the #10 hm-user-detect descendant-driven route: `terminalModulesAt =
     # projectClass`, and the HOST projecting `nixos` gathers the cell-fired `appendToParent` route from its
     # DESCENDANT cell (`parentTargetedRoutesAt`, output-modules.nix) — the cell's `home-manager` slice remaps
     # to `nixos` at `[ home-manager users tux ]`. So the cell's forwarded hm content NOW reaches the host

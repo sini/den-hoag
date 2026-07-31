@@ -1,7 +1,7 @@
 # Fleet graph — the registries become gen-product factors, restricted by membership to
 # the sparse sub-product of cells that actually exist (Law A5). Membership tuples come
-# from `member` declarations (Task 3) and functional dim assignments; Task 1 feeds them as
-# fixture data through `den.membership`. Every algorithm here is a gen-product call;
+# from `member` declarations and functional dim assignments, fed as fixture data
+# through `den.membership`. Every algorithm here is a gen-product call;
 # membership grouping is `gen-prelude.groupBy` (A1 wiring, not machinery).
 {
   prelude,
@@ -72,7 +72,7 @@ let
       entryOf = id: byHash.${id};
     };
 
-  # dims = the ordered list of dimension kinds (declared by den.linearization; see Task 6).
+  # dims = the ordered list of dimension kinds (declared by den.linearization).
   # membershipTuples = [ { coords = { <dim> = <entry>; }; via ? null; } ] from member declarations +
   #   functional assignments (idempotent: gen-product restrict dedups by cellId).
   mkFleet =
@@ -85,8 +85,8 @@ let
       # A5 discipline: `member` is accepted only at membership-independent nodes. A tuple
       # whose `via` marks a membership-derived emitting scope aborts, naming policy +
       # scope. Folded (not mapped) so the abort forces at fleet construction, not only on
-      # enumeration. `via.membershipDerived` is the caller's classifier verdict (Task 3);
-      # Task 1 raises the abort.
+      # enumeration. `via.membershipDerived` is the caller's classifier verdict; fleet
+      # construction raises the abort.
       disciplineOk = prelude.foldl' (
         acc: t:
         let

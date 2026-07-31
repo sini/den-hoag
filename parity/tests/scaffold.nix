@@ -1,7 +1,7 @@
-# parity/scaffold — the dual-den-input resolution gate (Task 0). Proves the harness flake resolves
+# parity/scaffold — the dual-den-input resolution gate. Proves the harness flake resolves
 # BOTH arms and both expose the surface the differential consumes: the frozen v1 arm exposes the
 # byte-contract edge surface (`edgeSortKey` + `assertEdgeParity`), and the den-hoag arm exposes
-# `compat.parity`. The actual v1-vs-hoag diff (P1–P8) lands from Task 7; this just closes the loop
+# `compat.parity`. The actual v1-vs-hoag diff (P1–P8) rides the wired harness; this closes the loop
 # so every later harness task has a working TDD flake.
 {
   lib,

@@ -44,15 +44,15 @@
       # den v1's FROZEN fx edge surface — the byte contract both harness arms render into. `edge.nix`
       # (`edgeSortKey`, the T|P|S|M sort key + S/T constructors) and `edges/parity.nix`
       # (`assertEdgeParity`) are `{ lib }`-only, so the harness imports them directly against the
-      # pinned source; the full oracle (`edgeTrace` via `exposeEdges`) needs a den eval and lands in
-      # Task 7. `den-v1.lib` itself is a `{ lib, config, inputs }` FUNCTION, not this surface — hence
+      # pinned source; the full oracle (`edgeTrace` via `exposeEdges`) needs a den eval, so it rides
+      # the wired harness below. `den-v1.lib` itself is a `{ lib, config, inputs }` FUNCTION — hence
       # the direct source import rather than `den-v1.lib`.
       denV1 = {
         edge = import "${den-v1}/nix/lib/aspects/fx/edges/edge.nix" { lib = nixpkgsLib; };
         parity = import "${den-v1}/nix/lib/aspects/fx/edges/parity.nix" { lib = nixpkgsLib; };
       };
 
-      # The fully-wired two-sided harness (Task 7). `denCompat.parity` ships the PURE pieces (the frozen
+      # The fully-wired two-sided harness. `denCompat.parity` ships the PURE pieces (the frozen
       # schema + the oracle BUILDERS); the parity flake is the only place with BOTH dev-time arms in scope,
       # so it applies the v1 builder (`mkV1`) to the frozen den v1 flake + nixpkgs and hands the tests a
       # ready `{ schema; traceHoag; traceV1; traceV1Legacy; fixtures; golden; }`. Every P-suite reads this
@@ -83,7 +83,7 @@
           # The entity-scope normalizer + its id_hash predicate, for the schema-guard suite's direct
           # mis-map test (a colon-bearing non-entity name must pass through unmapped).
           inherit (P.oracle) hoagNormName isIdHash nonEntityNameMap;
-          # The content oracle (Task 8): the §4.4 cross-pipeline content record (P2 synthetics), the §4.6
+          # The content oracle: the §4.4 cross-pipeline content record (P2 synthetics), the §4.6
           # class-share sub-gate (P8), and the §4.4 fleet drv-hash mechanism (P2 ship-gate). Each is the
           # BUILDER partially applied with the dev-time arms in scope, exactly like traceHoag/traceV1.
           crossPipelineRecords = P.oracle.crossPipelineRecords {
@@ -91,7 +91,7 @@
             inherit v1arm;
           };
           coreGate = P.oracle.coreGate { inherit denCompat; };
-          # The §P3 permutation regression (Task 9): declaration-order-independence of the shim + fold.
+          # The §P3 permutation regression: declaration-order-independence of the shim + fold.
           permutationGate = P.oracle.permutationGate { inherit denCompat nixpkgsLib; };
           inherit (P.oracle) contentGate canonHash;
           # C9 item-4 live content arms (the ship-gate mechanism at n=1): BOTH arms cross to a real NixOS

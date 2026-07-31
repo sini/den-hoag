@@ -4,7 +4,7 @@
 # at delivery depth. Census (b0b20769): 13 reads, all `host.hasAspect`, all delivery-depth nixos bodies.
 #
 # THE LAW. v1 stamps a SHARED projected `hasAspect` onto every entity-kind ctx binding at the consuming
-# scope (pin schema.nix:88-96), membership = `refKey ref ∈ pathSet`; under A-IDENT (Task 3) `refKey` is a
+# scope (pin schema.nix:88-96), membership = `refKey ref ∈ pathSet`; under A-IDENT `refKey` is a
 # SINGLE native-`.key` lookup + a NAMED throw for a keyless ref (never a silent false), surface
 # class-invariant (`{ __functor; forClass; forAnyClass; }`). THE DISSOLUTION: den-hoag has no re-key
 # machinery — a node's resolved-aspects (attribute 7) IS the projected set, so the surface is a pure lookup
@@ -263,7 +263,7 @@ in
       };
     };
 
-    # ── W-throw: a ref with no native `.key` ⇒ a NAMED throw (never a silent false). Task 3: the guard is
+    # ── W-throw: a ref with no native `.key` ⇒ a NAMED throw (never a silent false). The guard is
     #    now "carries `.key`"; a shapeless ref (`{ foo = 1; }`) still self-announces LOUD. ────────────────
     test-w-throw-unresolvable-ref = {
       expr =

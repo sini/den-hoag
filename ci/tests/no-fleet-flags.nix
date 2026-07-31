@@ -1,4 +1,4 @@
-# Task 10 (A10) — class-share is PER-CLASS and PER-CELL lazy, NO global fleet switch (spec §2.10, Law
+# Class-share (A10) is PER-CLASS and PER-CELL lazy, NO global fleet switch (spec §2.10, Law
 # A17). Three proofs:
 #   per-class      — in ONE fleet eval a `share.core = true` class (nixos) is built through the gen-class
 #                    tier-2 path while a sibling `share.core = false` class (home-manager) is not. The

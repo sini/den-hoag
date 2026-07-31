@@ -1,6 +1,6 @@
 # compat-deliver-matrix (C3) — the `deliver` surface (+ the permanent `route`/`provide` sugar) desugars
 # to den-hoag `delivery` DECLARATIONS (`declare.delivery`, resolution stratum), cell-by-cell over v1's
-# `adaptArgs × path × verbatim × guard` matrix (v1 Task-17's authoritative cell mapping:
+# `adaptArgs × path × verbatim × guard` matrix (v1's authoritative cell mapping:
 # `policy-effects.nix` fields, `edges/route.nix` classifyRoute + `edges/provides.nix` providesEdges
 # modes). Declaration-in/declaration-out (Law C2): the declaration is inert INTENT (resolved class
 # registrations + placement); the gen-edge record is rendered from it at the FIRING NODE by

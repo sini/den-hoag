@@ -1,5 +1,5 @@
 # compat-legacy-rules (R-set, spec §10) — one test group per legacy-surface rule R1–R9, each citing its
-# rule number + den v1 source (frozen pin 11866c16). This is Task 7.5's per-rule acceptance: every rule
+# rule number + den v1 source (frozen pin 11866c16). This is the per-rule acceptance: every rule
 # has an implementation confined to lib/compat/ (+legacy/), a witness-map row (parity/fixtures/
 # witness-map.nix `ruleWitnesses`), and ≥1 test here. The L3/L5 default-fold CONVERGENCE the R-set drives
 # is pinned by the parity suites (parity-structural / the golden); this suite pins the per-rule mechanics.

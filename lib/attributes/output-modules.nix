@@ -102,7 +102,7 @@
   # `applyPipeEffects` REPLACES the consumed value); multiple policies on one base concatenate,
   # per-policy from the base values. Native default = `{ }` (no untargeted deriving pipe) ⇒ identity.
   derivedBaseNames ? { },
-  # THE ONE per-aspect class-slice extraction (Task 2, `attributes/class-modules.nix classSliceOf`, threaded
+  # THE ONE per-aspect class-slice extraction (`attributes/class-modules.nix classSliceOf`, threaded
   # through `attributesLib.mkClassSlice` with the discovered `classifyKey`). `classSliceOf aspect class`
   # returns that aspect's `class`-C bucket contribution as `[ { module; shared; } ]` (0 or 1) — `projectClass`
   # maps `.module` (bare, the classSubtreeAt anchor). Native default reproduces the bucket read locally but is
@@ -112,7 +112,7 @@
     _: _: _:
     [ ]
   ),
-  # §2.2 TOTALITY assertion (Task 3, `class-modules.nix assertKeysRegistered`). Forces classification of every
+  # §2.2 TOTALITY assertion (`class-modules.nix assertKeysRegistered`). Forces classification of every
   # non-`_` content key of a REACHED aspect (abort NAMED on a genuinely unregistered typo key); `projectClass`
   # runs it per reached aspect so a typo cannot silently vanish on the drv path (spec §2.2 ruling 2026-07-14).
   # Native default is the no-op identity (standalone callers without the extraction skip the totality check).
@@ -229,7 +229,7 @@ let
   #
   # Source arm mirrors v1: a class source collects the `from` class at the firing scope; a MODULE source
   # (provide) collects the TARGET class (edges/provides.nix:121 — the provided module rides the target
-  # scope's own bucket). SUBTREE COLLECTION (#62c, the flagged Task 5): `members = [ id ] ++ scope.descendants
+  # scope's own bucket). SUBTREE COLLECTION (#62c): `members = [ id ] ++ scope.descendants
   # result id` — a host-fired forward/route edge gathers the firing scope's class content AND its descendant
   # cells' (the home-manager.users half: a user cell's home-manager content, delivered at the host terminal).
   # gen-edge isolates each cell as its own edge-root (`isolatedAt`), so this explicit member list is how the
@@ -323,7 +323,7 @@ let
             scope = id;
             class = (if d.module != null then d.targetClass else d.sourceClass).name;
             # #62c + #74a — the firing scope's ANCESTOR CHAIN (v1's rootModules, outermost first) PLUS
-            # itself PLUS its descendant cells (Task 5): a host-fired route gathers the user cells'
+            # itself PLUS its descendant cells: a host-fired route gathers the user cells'
             # class content; a cell-fired forward gathers its HOST's bucket first (§10). Root-fired ⇒
             # ancestors = [ ] ⇒ the pre-#74 members exactly. This is the TRACE render — it emits edge
             # IDENTITY (the members LIST, `[host, cell]`); the built content is projection's concern
@@ -341,15 +341,15 @@ let
     in
     map renderDelivery (deliveriesAt id);
 
-  # ── Route class-remap (Phase 4 Task 1, spec §5 (b) — the CONTENT transform layer) ───────────────────
+  # ── Route class-remap (spec §5 (b) — the CONTENT transform layer) ───────────────────────────────────
   # A ROUTE is a class→class CONTENT transform on the projected view (NOT a reachability edge — that is
   # the §2 reach model). `routesAt id` LOWERS the firing scope's `delivery` declarations (the SAME
   # resolution actions `deliveriesAt` reads for the trace) to a class-remap record `{ from; to; at; guard }`
   # readable by `projectClass`. `from`/`to` are the source/target CLASS NAMES (the `deliveryEdgesAt` source
   # arm: a MODULE source (provide) collects the TARGET class, a CLASS source (route) collects `from`), `at`
   # is the placement path, `guard` the v1 eval-time closure (or null). `lowerRoute` renders ONE delivery to
-  # that record (shared by the OWN-scope routes below and the descendant-driven parent-targeted routes,
-  # Task 2). A native fleet emits no delivery ⇒ `[ ]` ⇒ the route-remap is `++ [ ]` (additive identity —
+  # that record (shared by the OWN-scope routes below and the descendant-driven parent-targeted routes).
+  # A native fleet emits no delivery ⇒ `[ ]` ⇒ the route-remap is `++ [ ]` (additive identity —
   # `projectClass` byte-identical to the base). A `__dropped` delivery (null target) never reaches here
   # (`deliveriesAt` skips it, exactly as for the trace).
   lowerRoute = d: {
@@ -357,9 +357,9 @@ let
     to = d.targetClass.name;
     at = d.path;
     guard = d.guard or null;
-    # The ARG-ENVIRONMENT closure (Task 3, bucket c) — carried straight through to the terminal crossing
+    # The ARG-ENVIRONMENT closure (bucket c) — carried straight through to the terminal crossing
     # (today the trace records only its PRESENCE as a boolean; the CLOSURE must reach the eval boundary).
-    # `null` ⇒ no arg-env transform (the ordinary content route, Tasks 1/2 — the wrapper is identity).
+    # `null` ⇒ no arg-env transform (the ordinary content route — the wrapper is identity).
     adaptArgs = d.adaptArgs or null;
     # Parent-targeted (v1 appendToParent) — the route delivers to the containment PARENT (arm 2). Carried so
     # the ensure-target-path seed (remapOver) fires ONLY on a parent-targeted route, excluding the flake-scope
@@ -369,11 +369,11 @@ let
 
   # `routesAt id` = the class-remaps of the OWN-scope routes fired at `id` — the deliveries that target the
   # firing scope ITSELF. An `appendToParent` delivery is EXCLUDED here (it targets the containment parent;
-  # the HOST gathers it via `parentTargetedRoutesAt`, Task 2) so a cell-fired parent-targeted route is
+  # the HOST gathers it via `parentTargetedRoutesAt`) so a cell-fired parent-targeted route is
   # remapped ONCE, at the host, never doubled at the cell.
   routesAt = id: map lowerRoute (builtins.filter (d: !(d.appendToParent or false)) (deliveriesAt id));
 
-  # ── #10 hm-user-detect — the DESCENDANT-DRIVEN parent-targeted route (Phase 4 Task 2, spec §5 (b/d)) ──
+  # ── #10 hm-user-detect — the DESCENDANT-DRIVEN parent-targeted route (spec §5 (b/d)) ──────────────────
   # A cell-fired `appendToParent` route (the v1 hm-user-detect forward: `homeManager → host.class` at
   # `[ home-manager users <u> ]`, emitted by the home-manager battery at every (user,host) cell) targets the
   # CONTAINMENT PARENT root (the host), not the firing cell — so the HOST, projecting its class, gathers these
@@ -441,16 +441,16 @@ let
   # tasks place per-cell home-manager.users.<u> content at, #10/#15). Pure attrset assembly (A1).
   inherit (nest) placeSlice;
 
-  # ── The ARG-ENVIRONMENT crossing hook (Phase 4 Task 3, spec §5 (c) — the HARD bucket) ────────────────
+  # ── The ARG-ENVIRONMENT crossing hook (spec §5 (c) — the HARD bucket) ────────────────────────────────
   # A route carrying `adaptArgs` (`{config,...}: config.allModuleArgs` for #15 devshell→flake-parts) rewrites
   # the terminal EVAL-TIME arg environment, and/or an EVAL-TIME `guard` gates content at the crossing.
-  # `projectClass` stays a pure CONTENT projection (Task 1 placed the slice); the arg-env/guard transform
+  # `projectClass` stays a pure CONTENT projection (the route class-remap placed the slice); the arg-env/guard transform
   # rides ON that placed module as a FUNCTION-MODULE fired at the terminal `evalModules` crossing (where
   # `args`/`config`/`options` exist). Three shapes (`id` = the projecting scope, for guard classification):
   #
   #   (1) NO adaptArgs AND no eval-time guard → IDENTITY (the placed slice verbatim). A pure-content route,
   #       or a route whose only guard is CONTENT-TIME (already gated at projection by `guardHolds`), evals
-  #       plain — byte-identical to Tasks 1/2.
+  #       plain — byte-identical to the base projection.
   #   (2) adaptArgs, NO eval-time guard → the arg-env FUNCTION-MODULE `args: { imports = [ placed ];
   #       _module.args = adaptArgs args; }` (v1 `nestWithAdaptArgs`) — injects the adapted args every SIBLING
   #       module reads. No guard gates imports, so no fixpoint cycle.
@@ -694,11 +694,11 @@ let
   # leg's source is a DESCENDANT cell, so it carries its OWN per-cell exemption.
   routeRemapFor =
     exempt: id: class:
-    # (1) OWN-scope routes fired at `id` (Task 1) — the source node set is `reach id`.
+    # (1) OWN-scope routes fired at `id` — the source node set is `reach id`.
     prelude.concatMap (
       route: if route.to == class && guardHolds route id then remapOver exempt id route else [ ]
     ) (routesAt id)
-    # (2) DESCENDANT-DRIVEN parent-targeted routes (Task 2, #10 hm-user-detect) — a cell-fired
+    # (2) DESCENDANT-DRIVEN parent-targeted routes (#10 hm-user-detect) — a cell-fired
     #     `appendToParent` route targeting THIS host: the SOURCE is the descendant cell (`sourceScope`), so
     #     the cell's class-`from` (`home-manager`) slice remaps to `class` (`nixos`) at the route's per-cell
     #     `at` (`[ home-manager users <u> ]`). `reach sourceScope` = the cell's OWN subtree (no host edge),
@@ -712,30 +712,30 @@ let
         [ ]
     ) (parentTargetedRoutesAt id);
 
-  # ── projectClass (Phase 2 Task 2, spec §1/§3): the class-slice PROJECTION over `reach` ───────────────
+  # ── projectClass (spec §1/§3): the class-slice PROJECTION over `reach` ───────────────────────────────
   # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
   # reach's canonical order (own-subtree → descendant cells → default edges → opt-in edges — the merge_ord
-  # Task 5 pins). Each reach node's `content` is already ctx-resolved at ITS OWN scope (the P-PROJECT
+  # order spec §1 pins). Each reach node's `content` is already ctx-resolved at ITS OWN scope (the P-PROJECT
   # closure resolves per-provider), so the slice is ctx-correct across scopes. `classSliceOf` is THE ONE
   # extraction the `class-modules` buckets use (0/1 `{ module; shared }` per aspect); `.module` strips to the
   # bare deferredModule.
   #
-  # THE ANCHOR (Task 2 subsume proof): for a node with NO reach edges, reach = its OWN scope subtree
-  # (`[ id ] ++ scope.descendants`, Task 1) and `projectClass id class == classSubtreeAt id class`
-  # byte-identically — projection reproduces the fold on own-content BEFORE it replaces the emission (Task 3).
+  # THE ANCHOR (the subsume proof): for a node with NO reach edges, reach = its OWN scope subtree
+  # (`[ id ] ++ scope.descendants`) and `projectClass id class == classSubtreeAt id class`
+  # byte-identically — projection reproduces the fold on own-content BEFORE it replaces the emission.
   # `reach` single-visit-dedups by A-IDENT key, so an aspect reachable twice contributes its slice ONCE.
-  # CONSUMED by `terminalModulesAt` (Task 3, below) — projection is now the terminal's content source.
+  # CONSUMED by `terminalModulesAt` (below) — projection is now the terminal's content source.
   # §2.2 TOTALITY (ruling 2026-07-14): each reached aspect's non-`_` keys are ALL classified
   # (`assertKeysRegistered`, forced via `seq`) before its projected-class slice is taken — a genuinely
   # unregistered typo key on a REACHABLE aspect aborts NAMED (never silently vanishes on the drv path,
   # the §5 content-loss failure that `classSliceOf class` alone — classifying only the projected key —
   # would let through). Totality covers reached content (edges/descendants), not just the own node.
   #
-  # ROUTE CLASS-REMAP (Phase 4 Task 1, spec §5 (b)). The base class-slice projection over `reach` PLUS the
+  # ROUTE CLASS-REMAP (spec §5 (b)). The base class-slice projection over `reach` PLUS the
   # additive route-remap layer (`routeRemapFor`): a route `{ from=D; to=C; at; guard }` lowered at the
   # projecting scope contributes the guard-gated remap of each reached node's class-D slice, placed at `at`,
   # into the class-C projection. A native fleet emits no route ⇒ `routeRemapFor id class == [ ]` ⇒
-  # `projectClass` is byte-identical to the base (identity — the anchor + all Phase 1/2/3 witnesses green).
+  # `projectClass` is byte-identical to the base (identity — the anchor + every projection witness green).
   # `projectClassScoped` is `projectClass` carrying each slice's BINDING SITE — the scope whose ctx
   # resolved the aspect the slice came from (`n.scope`, stamped at resolution, resolved-aspects.nix
   # `forwardExpand`). Reach draws a descendant cell's aspects into its host's projection, so a projected
@@ -774,12 +774,12 @@ let
 
   projectClass = id: class: map (e: e.module) (projectClassScoped id class);
 
-  # The per-class TERMINAL assembly (spec §3/§4, Phase 2 Task 3 — THE PIVOT). Projection over `reach`
+  # The per-class TERMINAL assembly (spec §3/§4 — THE PIVOT). Projection over `reach`
   # REPLACES the v1 emission model: `terminalModulesAt id class = projectClass id class` (the class-`C`
   # slice of every aspect in `reach id`, canonical merge_ord). This subsumed BOTH halves of the old
-  # `classSubtreeAt id class ++ deliveryModulesAt id class` emission model (both DELETED in Phase 3):
-  #   • the same-class subtree fold (`classSubtreeAt`) → reach's STRUCTURAL-DESCENDANT component (Task 1;
-  #     the anchor proved projectClass == classSubtreeAt byte-identically on own+descendant content), and
+  # `classSubtreeAt id class ++ deliveryModulesAt id class` emission model (both since DELETED):
+  #   • the same-class subtree fold (`classSubtreeAt`) → reach's STRUCTURAL-DESCENDANT component (the
+  #     anchor proved projectClass == classSubtreeAt byte-identically on own+descendant content), and
   #   • the cross-class delivery emission → reach's positive EDGES (opt-in reach-edge + framework default
   #     edge, class-scoped F9).
   # Consumed at the content-presence read (`contentIdsOf`), which needs only emptiness; the two BUILDING
@@ -796,7 +796,7 @@ let
   # descendant subtree PLUS that cross-class delivery — NOT the subtree alone. The other two producers named
   # by §Phase-2 are still absent: `reach-suppress` is a declared resolution kind (declarations.nix) that no
   # fleet produces, and the framework default edge carrying baseline home content is unproduced, so the
-  # corpus emits neither. Full-fleet byte/functional validation is Phase 6. Projection keeps its SYNTHETIC
+  # corpus emits neither. Full-fleet byte validation is the parity harness's. Projection keeps its SYNTHETIC
   # witnesses here (ci/tests/projection.nix drives the edges through a synthetic reach graph — the
   # complete-reach semantics witnesses: spicetify-once, intel-both, define-user nixos@host+hm@cell), which
   # cover edge shapes no corpus producer authors yet.
@@ -1214,7 +1214,7 @@ let
     in
     [ freeformAbsorber ]
     ++ (bind.wrapAll {
-      modules = scoped.modules; # projectClass over reach (Phase 2 Task 3), foreign slices pre-bound
+      modules = scoped.modules; # projectClass over reach, foreign slices pre-bound
       bindings = bindingsAt id;
       defaultMergeStrategy = classCfg.defaultMergeStrategy;
       inherit producerConfigs;
@@ -1226,7 +1226,7 @@ let
   #   • share.core = true  → the A10 gen-class tier-2 path: partition members by class entry id_hash,
   #       compose the class-invariant core once, byte-gate each member (loud on divergence — A18), and
   #       build via `applyCoreFixed`. The shared core forces every member's PROJECTION, never their DELTAS.
-  #   • share.core = false → the ordinary terminal crossing (`classCfg.instantiate`, Task 9), unchanged.
+  #   • share.core = false → the ordinary terminal crossing (`classCfg.instantiate`), unchanged.
   systems = prelude.mapAttrs (
     name: classCfg:
     let
@@ -1258,7 +1258,7 @@ let
         prelude.map (
           id:
           let
-            # projectClass over reach (Phase 2 Task 3), each foreign-scope slice pre-bound at its own
+            # projectClass over reach, each foreign-scope slice pre-bound at its own
             # scope; the terminal's own `wrapAll` binds the rest against this member.
             scoped = bindAtSourceScope classCfg id (projectClassScoped id name);
           in
@@ -1285,7 +1285,7 @@ in
     systems
     deferredToThunk
     lowerDefer
-    # Phase 2 Task 2/3: the class-slice projection over `reach` (now the terminal's content source via
+    # The class-slice projection over `reach` (now the terminal's content source via
     # `terminalModulesAt = projectClass`) + the `classSubtreeAt` down-fold it subsumes, both exposed so the
     # ANCHOR witness (`projectClass id class == classSubtreeAt id class` on a no-edge node) compares them.
     projectClass

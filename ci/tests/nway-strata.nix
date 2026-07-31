@@ -3,7 +3,7 @@
 # gen-resolve's resolve as `strataOrder`, so the schedule's partition assert is N-way (not the shipped
 # 2-way structural<resolution). This suite proves: (1) the compiled order flows into structural.schedule
 # without a false violation; (2) strataChain maps a claim-kind precedence onto a dense insert chain (the
-# N-way ENGINE acceptance of such an order is proven generically in gen-resolve's schedule tests, Task 1).
+# N-way ENGINE acceptance of such an order is proven generically in gen-resolve's schedule tests).
 # Header is exactly resolution-refound.nix's — ci specialArgs provides `denHoag` (NOT `resolve`; gen-resolve.lib
 # is not injected, so a `resolve` formal would eval-error the whole suite). See REFERENCE.md / spec §11.
 {
@@ -67,7 +67,7 @@ in
     };
     # B2: compiled order places the chain strictly-below-ascending between resolution and collection —
     # so a `route` production reads database/secret/connect (all strictly-below); the N-way engine
-    # (Task 1) accepts exactly that direction and rejects the reverse. NB: `declare.compileStrata` is the
+    # accepts exactly that direction and rejects the reverse. NB: `declare.compileStrata` is the
     # RAW seed [structural resolution collection demand] + the claimChain inserts ONLY — it does NOT apply
     # the framework `output` insert (that merges only at default.nix's fleet-level compiledStrata). So NO
     # trailing "output" here (unlike fleet.den.strata in test-compiled-order-nway).

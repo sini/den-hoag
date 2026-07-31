@@ -124,7 +124,7 @@ let
 
   # den-hoag's output classes — the class-separated content buckets on every aspect, and the
   # class-tag vocabulary for quirk contributions (§2.5). The full class registry (wrap/instantiate/
-  # share) is Task 6/A10; Task 5 needs only class ENTRIES to tag with, built here from the class
+  # share) is A10; the class-tag vocabulary needs only class ENTRIES, built here from the class
   # names with a stable identity (id_hash) so gen-pipe's duck-typed entry comparison and den's
   # cross-class discipline both key off a real identity (Law A2), never a bare string.
   classNames = [
@@ -198,7 +198,7 @@ let
 
   # The STAGED ROOT-RESOLUTION pre-pass (design note 2026-07-11 §2/§3(ii), slice R1): the kind-ordered
   # dispatch over ROOT nodes, run BEFORE the fleet product, that routes policy-emitted MEMBERSHIP into the
-  # fleet (the deferred Task 4) and folds RELATION-carried bindings into target roots' ctx. Pure gen-
+  # fleet (A5's promised member routing) and folds RELATION-carried bindings into target roots' ctx. Pure gen-
   # prelude + gen-dispatch wiring over the `declare` vocabulary; consumed per-mkDen below (`prePass`).
   stagedResolution = import ./staged-resolution.nix {
     inherit
@@ -416,8 +416,8 @@ let
     entityName: intoAttr:
     intoAttr == [ ] || builtins.elemAt intoAttr (builtins.length intoAttr - 1) == entityName;
 
-  # mkDen assembles the four concerns; Tasks 1–11 extend it. Task 1: entity registries
-  # (gen-schema) + the fleet restricted product (gen-product). Task 2: scope roots +
+  # mkDen assembles the four concerns: entity registries
+  # (gen-schema) + the fleet restricted product (gen-product), then scope roots + the
   # structural stratum (attributes 1–6) over gen-resolve/gen-scope.
   mkDen =
     userModules0:
@@ -471,10 +471,10 @@ let
         kindNames = builtins.attrNames denMeta;
       };
 
-      # den-managed module: the fleet membership channel. Task 1 bootstrap surface — the
-      # fixture sets these tuples directly. Task 3 dispatches `member` declarations (they land in
+      # den-managed module: the fleet membership channel. The bootstrap surface — a
+      # fixture sets these tuples directly. `member` declarations dispatch into
       # the `declarations` attribute's structural group); routing them back into this membership
-      # channel is part of the Task 4 P-tree/edge wiring.
+      # channel is the staged pre-pass's (staged-resolution.nix, A5).
       membershipDecl = {
         options.den.membership = merge.mkOption {
           type = merge.types.listOf merge.types.raw;
@@ -1047,7 +1047,7 @@ let
         inherit (ent) registries;
         roots = allKinds;
       };
-      # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED CELL tuples (Task 4, A5's
+      # Fleet membership = STATIC `den.membership` ∪ the staged pre-pass's DERIVED CELL tuples (A5's
       # promised law): a policy-emitted bare `member` at a membership-independent root routes into the
       # fleet. `prePass` also carries `containmentBindings` (a targetNodeId -> merged-bindings transpose map
       # from every `containTo`-marked member), folded onto the target roots' decls (`scopeRoots`, below) so
@@ -1253,7 +1253,7 @@ let
       # attachment, so this yields a LIST and the expansion is the same `mintedIdsOf` `buildRoots`
       # mints through — one owner, so the index cannot name a node that was never built. The index is
       # over the entity registries (not scope nodes), so this stays demand-safe. Cell targets resolve
-      # through the edge stratum in Task 4 (absent here).
+      # through the edge stratum (absent here).
       entryNodeIndex = prelude.foldl' (
         acc: kindName:
         prelude.foldl' (
@@ -1891,7 +1891,7 @@ let
             _: _: _:
             { }
           );
-        # THE ONE per-aspect class-slice extraction + §2.2 totality assertion (Task 2/3), built with the
+        # THE ONE per-aspect class-slice extraction + §2.2 totality assertion, built with the
         # discovered `classifyKey` so `projectClass` (the reach-based projection) and the `class-modules`
         # buckets share exactly one extraction — the ANCHOR `projectClass == classSubtreeAt` on a no-edge
         # node is that equivalence — and `projectClass` enforces the unregistered-key totality abort.
@@ -1908,11 +1908,11 @@ let
 
       # The narrow accessor (A10, §2.8) at any scope node: `aspects.<name> = { present; settings; }`,
       # over the FINAL eval (`structural.eval`). Consumed as the `aspects` module arg at output
-      # assembly (Task 9); exposed here so the settings/cross-aspect surface is readable standalone.
+      # assembly; exposed here so the settings/cross-aspect surface is readable standalone.
       aspectsAt = attributesLib.mkNarrowAccessor ent.config.den.aspects structural.eval;
 
       # The fleet channel outputs — one gen-pipe.run over the neron traversal, for the class-relative
-      # read (concernQuirks.consumeAt) at output assembly (Task 6). `.at pos` selects any position; it
+      # read (concernQuirks.consumeAt) at output assembly. `.at pos` selects any position; it
       # is the same run attribute 11 (received-collections) computes per node inside the schedule.
       # DRIFT NOTE: this traversal adapter MUST stay identical to attribute 11's (lib/attributes/
       # collections.nix received-collections) — both are assembled from the same three
@@ -2692,7 +2692,7 @@ let
         inherit settingsLayers aspectsAt;
         # The demand concern surface (§B): the registered kind set (downward-only DAG), the single
         # fleet resolveAll result ({ resources; wiring; trace; }), and its resources/wiring rendered as
-        # inert gen-edge records — these join the fleet edge set Task 9 materializes.
+        # inert gen-edge records — these join the fleet edge set materialization consumes (A15).
         demandKinds = demandKindSet;
         inherit demandResolution demandEdges;
         # The output stratum (attribute 12, Law A15): the gen-edge fold (`graphAccessor`/`outputFor`/

@@ -1,4 +1,4 @@
-# Phase 6.2a projection witness (spec §7.1 / §6.2a — host-aspects opt-in → class-scoped reach-edge).
+# Projection witness (spec §7.1 / §6.2a — host-aspects opt-in → class-scoped reach-edge).
 #
 # The v1 corpus `host-aspects` battery opts a (user,host) CELL into its HOST's home-manager aspects. Under
 # projection this is a class-scoped `reach-edge` from the cell to its host root: an opted-in cell REACHES the

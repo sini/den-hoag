@@ -1,4 +1,4 @@
-# Task 9 (A9) — edge materialization + class-modules + the terminal crossing (spec §2.10, Law A15).
+# Edge materialization (A9) + class-modules + the terminal crossing (spec §2.10, Law A15).
 # Over an env/host/user fleet where hosts produce the `nixos` class and user cells `home-manager`:
 #
 #   A15 output completeness — `config(root) = materialize (toposort (edgesFor { graph, root }))` with

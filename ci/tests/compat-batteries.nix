@@ -12,7 +12,7 @@
 #        (nested bare fns wrapped, nested `homeManager` grounded to `home-manager`).
 #   (2) the twelve batteries (seven corpus + five coverage) provisioned at `config.den.batteries.<name>`
 #       (lib/compat/batteries.nix).
-#   (3) host-aspects — its `{ __isPolicy; fn }` include fires a REAL `den.lib.policy.spawn` (Task 3).
+#   (3) host-aspects — its `{ __isPolicy; fn }` include fires a REAL `den.lib.policy.spawn`.
 #   (4) surface-totality ACCEPTS a `den.batteries` key (inert-by-reference, like `reservedKeys`).
 {
   genPrelude,
@@ -148,7 +148,7 @@ let
     "import-tree"
   ];
 
-  # ── (3) host-aspects: its `{ __isPolicy; fn }` include fires a real spawn (Task 3 resolves the ctor). ─
+  # ── (3) host-aspects: its `{ __isPolicy; fn }` include fires a real spawn (the ctor resolves). ────────
   haPolicy = builtins.head bat.host-aspects.includes;
   haSpawn = builtins.head (
     haPolicy.fn {

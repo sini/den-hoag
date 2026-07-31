@@ -1,4 +1,4 @@
-# Task 11 (A11) — the end-to-end acceptance fleet: the whole four-concern assembly composed through one
+# The end-to-end acceptance fleet (A11): the whole four-concern assembly composed through one
 # `mkDen` over the full r2 fleet (`_fixtures/fleet.nix` `acceptance`), all 18 laws holding together, and
 # `nixosConfigurations` crossing to REAL NixOS systems. This is the integration capstone: every earlier
 # suite pins ONE law over a minimal fixture; this one pins them TOGETHER over a fleet that exercises

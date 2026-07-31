@@ -165,9 +165,9 @@ let
   policyEdgeAspects =
     resolutionActs: map (a: a.aspect) (builtins.filter (a: a.__action == "edge") resolutionActs);
 
-  # ── The reachability edge model (Phase 1, spec §2). Mirrors policyEdgeAspects/constraintSeen: pure
+  # ── The reachability edge model (spec §2). Mirrors policyEdgeAspects/constraintSeen: pure
   #    reads over a node's `resolutionActs`, filtered on `__action`. Unread by any consumer yet (additive
-  #    — Phase 2's projection engine consumes them). ──
+  #    — the projection engine consumes them). ──
 
   # Outgoing POSITIVE reachability edges declared at this node. Each is `{ target; classFilter ? null }` —
   # target resolves to another node whose resolved aspects enter reach(S), optionally restricted to one
@@ -316,7 +316,7 @@ let
       builtins.filter (n: !(dropped ? ${n.key}) && !(contentlessShadowed n)) nodes
     );
   # A resolved-aspect node `n` passes an edge's class filter iff the filter is null (all classes) OR the
-  # aspect's content carries the class key `C` (Phase 1's dep-free class predicate — the Phase-2 projection
+  # aspect's content carries the class key `C` (a dep-free class predicate — the projection
   # engine folds in the full `classifyKey` class/setting discrimination). A nixos-only host aspect has no
   # `home-manager` key ⇒ a `home-manager`-scoped edge excludes it (F9 no over-reach).
   passesClassFilter = classFilter: n: classFilter == null || (n.content or { }) ? ${classFilter};
@@ -329,16 +329,16 @@ in
 
   # reach(id): the P-PROJECT per-scope single-visit resolved-aspect closure (spec §1/§2). The OWN/structural
   # component is the scope SUBTREE (`[ id ] ++ scope.descendants self id` — own node then descendant cells,
-  # subsuming v1's `classSubtreeAt` down-fold, Task 1) FIRST, then each POSITIVE reach-edge's target resolved
+  # subsuming v1's `classSubtreeAt` down-fold) FIRST, then each POSITIVE reach-edge's target resolved
   # aspects (class-filtered), transitively
   # over the target's own edges; dedup by A-IDENT key (single-visit, PER this traversal — NOT global, so
   # distinct scopes each run their own). The bare-key dedup applies to the EDGE closure + WITHIN a node ONLY:
   # the structural-subtree component preserves PER-PROVIDER multiplicity (distinct descendant scopes are
   # distinct ctx-eval results — the three cells' `acct` → three nodes, spec §1 refined 2026-07-14), keeping it
   # byte-identical to `classSubtreeAt`. Accumulates as a LIST, dedup preserving first occurrence (own-first
-  # order — the merge_ord canonical order Task 5 pins). Acyclic along the edge DAG (a target-id visited-set
+  # order — the merge_ord canonical order spec §1 pins). Acyclic along the edge DAG (a target-id visited-set
   # guards a cycle); reuses the ancestorResolvedKeys top-down `self.get target "..."` cross-scope read.
-  # NEGATIVE-EDGE SUPPRESSION (Task 4): each node's positive edges minus the edges its held reach-suppress
+  # NEGATIVE-EDGE SUPPRESSION: each node's positive edges minus the edges its held reach-suppress
   # declarations remove (`when` true for the node's scope), matched by edge identity = `target`.
   reach = resolve.attr {
     name = "reach";
@@ -356,7 +356,7 @@ in
 
         # NEGATIVE-EDGE SUPPRESSION (spec §2 F3-exclude / u21). The suppressed-EDGE set at a node: the
         # `target`s named by every reach-suppress declaration whose scope predicate `when` HOLDS for the
-        # node's scope (`self.node nid`). Phase-1 EDGE IDENTITY is the edge's `target` (a positive edge is
+        # node's scope (`self.node nid`). EDGE IDENTITY is the edge's `target` (a positive edge is
         # identified by the node it reaches; `reach-suppress.edge` names that target) — no separate edge-id
         # field yet. A suppress whose `when` is false contributes nothing (the positive edge survives).
         suppressedTargetsAt =
@@ -384,7 +384,7 @@ in
         # rather than class buckets), each node contributing its `self.get nid "resolved-aspects"`. This is how
         # a host reaches its descendant CELLS' aspect nodes (the `define-user` nixos@host-from-cell mechanism).
         # `scope.descendants` reads `self.get nid "children"` (declared in readsAttrs) — the lazy id spine,
-        # top-down over the containment DAG, so no cycle. The class filter is a PROJECTION concern (Task 2),
+        # top-down over the containment DAG, so no cycle. The class filter is a PROJECTION concern,
         # NOT applied here — reach returns ALL reachable nodes.
         #
         # PER-PROVIDER MULTIPLICITY (spec §1 single-visit refined 2026-07-14, THE ANCHOR ruling). The
@@ -394,7 +394,7 @@ in
         # `acct` aspect resolve to `users.users.{amy,pol,tux}`, three nodes sharing the A-IDENT key but NOT one
         # node). A bare-key collapse here would be the u24-class content-loss §5 warns of. This makes reach's
         # structural component BYTE-IDENTICAL to `classSubtreeAt`'s `concatMap ([id] ++ descendants)` (the
-        # Task-2 anchor). The single-visit / bare-key dedup law applies to the EDGE closure + WITHIN a node
+        # projection anchor). The single-visit / bare-key dedup law applies to the EDGE closure + WITHIN a node
         # ONLY (own-node dedup is upstream in `applyConstraints`; each descendant's list is already key-unique).
         #
         # EDGE-DEDUP SEEDING: the structural keys STILL seed the `foldReach` item keyset (`seen0`), so the EDGE
@@ -403,11 +403,11 @@ in
         # node — spec §3). Own-subtree wins per merge_ord (it is folded first). `seen` is a set (union of all
         # structural keys); the `nodes` list keeps the FULL structural sequence (multiplicity preserved there).
         #
-        # CANONICAL merge_ord ORDER (spec §1, Task 5 — LOAD-BEARING for order-semantic content: the zsh
+        # CANONICAL merge_ord ORDER (spec §1 — LOAD-BEARING for order-semantic content: the zsh
         # ZSH_HIGHLIGHT_HIGHLIGHTERS multiset, persistence entry order — ledger u24). The result list is
         # accumulated OWN-SUBTREE FIRST (own node's forwardExpand order, then each descendant's, in
         # `scope.descendants` order), THEN the edges of `edgesAt id` in precedence order (default edges <
-        # opt-in edges). Do NOT reorder these folds — the Phase-2 class-slice merge depends on this sequence.
+        # opt-in edges). Do NOT reorder these folds — the class-slice merge depends on this sequence.
         subtreeIds = [ id ] ++ scope.descendants self id;
         structuralNodesRaw = prelude.concatMap (nid: self.get nid "resolved-aspects") subtreeIds;
         # CROSS-SCOPE SHARED-ASPECT DEDUP (v1 `wrapPerScope` `dedupByKey (m: m.key)`, resolve.nix:43-66 @ pin

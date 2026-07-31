@@ -1,6 +1,6 @@
-# Task 2 — B1 single-writer enrichment (Law A3) + the cross-enrichment convergence of the
+# B1 single-writer enrichment (Law A3) + the cross-enrichment convergence of the
 # `gen-scope.circular` re-dispatch enrich fixpoint. Drives the REAL structural equations over a
-# hand-built root, with enrich rules supplied directly (policy compilation is Task 3); no fleet
+# hand-built root, with enrich rules supplied directly (no policy compilation); no fleet
 # needed, so `fleetChildren` spawns nothing. Also pins the grounded attribute names.
 { denHoag, ... }:
 let

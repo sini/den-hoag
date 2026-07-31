@@ -542,8 +542,8 @@ in
   # byte-identical (the batteriesModule precedent).
   inherit (flakeModuleWiring) builtinsModule;
   flakeModule = flakeModuleWiring.flakeModule;
-  # parity — the two-sided harness (frozen edge schema + the v1/hoag oracle + firstDivergent triage),
-  # Task 7. `schema` is fully self-contained; `oracle.traceHoag` needs only this tree; `oracle.mkV1` is a
+  # parity — the two-sided harness (frozen edge schema + the v1/hoag oracle + firstDivergent triage).
+  # `schema` is fully self-contained; `oracle.traceHoag` needs only this tree; `oracle.mkV1` is a
   # function of the dev-time-only harness inputs (den v1 flake + nixpkgs) the `parity/` flake supplies.
   parity = import ./parity { inherit denHoag prelude edgeCore; };
 }

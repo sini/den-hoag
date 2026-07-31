@@ -1,4 +1,4 @@
-# compat/core BOUNDARY tripwire (Task 8 M1 item v) — the PERMANENT STRUCTURAL encoding of the
+# compat/core BOUNDARY tripwire — the PERMANENT STRUCTURAL encoding of the
 # "coupling we had before" lesson: den-hoag core must not KNOW about the den-compat shim. Three
 # mechanical guards over the source text (the zero-machinery.nix `readFile` token-scan precedent —
 # a tripwire, not a proof; its value is bluntness):
@@ -116,7 +116,7 @@ let
   #                             the source kinds its `interpret` seam can carry.
   #   `interpret`             — the `den.interpret` raw OPTION is a core SEAM surface (see the seam list
   #                             below), not shim vocabulary.
-  #   bare `provides`/`forwards` — English verbs ("a policy body forwards its ctx", "Task 2 provides the
+  #   bare `provides`/`forwards` — English verbs ("a policy body forwards its ctx", "ingestion provides the
   #                             builder"); the SHIM surfaces are caught by `forwardTo` + `self-provide`.
   #   `compatibleWith`/`compatible`/`compatibility` — the §4.3 render `compatibleWith` field + its prose;
   #                             a real product-face predicate, not the shim. It happens to contain the

@@ -135,7 +135,7 @@ in
 
   # resources → provider-target edges (a terminal output sink per (kind, resource key)); wiring →
   # consumer-target edges (the subject's instantiation root). Pure gen-edge record construction — the
-  # edges are INERT (Task 9's edge toposort + materialization consumes them); both lists join the
+  # edges are INERT (the edge toposort + materialization consumes them); both lists join the
   # fleet edge set (attribute 12).
   toEdges =
     resolution:

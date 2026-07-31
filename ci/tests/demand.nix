@@ -1,4 +1,4 @@
-# Task 8 (A8) — the demand channel + gen-demand resolution → gen-edge constructors. Exercises the
+# The demand channel (A8) + gen-demand resolution → gen-edge constructors. Exercises the
 # k8s-style cascade (`database` desugars into `secret` + `connect`) end to end over a real fleet:
 #
 #   cascade / termination — a downward-only kind DAG (database `below` secret+connect) quiesces in
@@ -9,7 +9,7 @@
 #     position; sorted node id across the fleet) IS resolveAll's intake, so trace.demands is
 #     BYTE-IDENTICAL when the order-significant `den.membership` list is permuted.
 #   toEdges — resources become provider-target (output-sink) edges, wiring becomes consumer-target
-#     (subject-root) edges; both are inert gen-edge records (Task 9 materializes them).
+#     (subject-root) edges; both are inert gen-edge records (materialization consumes them).
 #   registration — an upward/cyclic `below` aborts at kind registration (downward-only DAG).
 { denHoag, ... }:
 let
@@ -312,7 +312,7 @@ in
       expr = (builtins.head consumerEdges).target.class;
       expected = "wiring";
     };
-    # every edge sources a direct value (inert; Task 9 materializes).
+    # every edge sources a direct value (inert; materialization consumes it).
     test-edges-are-value-sourced = {
       expr = builtins.all (e: e.source ? value) edges;
       expected = true;

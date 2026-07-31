@@ -1,4 +1,4 @@
-# gen-select scope context over a resolve result (Law E6) + the gen-pipe traversal adapter (Task 5).
+# gen-select scope context over a resolve result (Law E6) + the gen-pipe traversal adapter.
 # The nodes buildRoots and the `children` NTA emit set `decls.__entry = entry` and `type = kindName`,
 # exactly what gen-select's default scope adapter reads (`entryFor` = decls.__entry, kind = node.type).
 # A thin wrapper, no algorithm of its own — the neron ordering lives in gen-scope, the channel fold in

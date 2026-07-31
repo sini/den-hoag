@@ -1,4 +1,4 @@
-# Task 2 — Law A1 zero-machinery source tripwire. den-hoag writes only wiring glue; every
+# Law A1 zero-machinery source tripwire. den-hoag writes only wiring glue; every
 # algorithm is a named lib call. This scans the lib source text for the hand-rolled-machinery
 # markers a review would flag: no `builtins.genericClosure`, no `lib.fix`/`prelude.fix`
 # fixpoint of its own. It is a TRIPWIRE, documented as a reviewer checklist — not a proof

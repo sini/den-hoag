@@ -169,7 +169,7 @@ in
     (structural { inherit policiesIndex fleetChildren linkTarget; })
     // {
       # Only the EQUATION records enter the equations map — `resolved-aspects` (attr 7) and `reach` (the
-      # Phase-1 P-PROJECT closure, a resolve.attr record). The reach-edge/reach-suppress declaration reads
+      # P-PROJECT closure, a resolve.attr record). The reach-edge/reach-suppress declaration reads
       # (`reachEdgesOf`/`reachSuppressOf`) are fully internal (`let`-bound in resolved-aspects.nix, consumed
       # inside `reach`), witnessed through `reach` — never spread here (gen-resolve iterates equation values
       # as sets; a bare helper lambda would break the two-stratum classification).
@@ -238,7 +238,7 @@ in
   # applies it once at the top level (like the narrow accessor).
   mkOutputModules = outputModules;
 
-  # THE ONE per-aspect class-slice extraction + §2.2 totality assertion (Task 2/3), built per-mkDen with the
+  # THE ONE per-aspect class-slice extraction + §2.2 totality assertion, built per-mkDen with the
   # DISCOVERED `classifyKey` and threaded to `mkOutputModules` (so `projectClass` and the `class-modules`
   # buckets share exactly one extraction, and `projectClass` enforces the unregistered-key totality abort
   # over every reached aspect). `classNames` is inert for both (they read only `classifyKey` + `prelude`),

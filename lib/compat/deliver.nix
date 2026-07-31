@@ -87,7 +87,7 @@ let
   # `appendToParent` is LIVE (#53c — v1 route.nix:364 reads it off the route value; the descriptor
   # carries it to `translateDelivery` → `deliveryTargetRootOf`, which resolves the containment-parent
   # target); the remaining fields (collectSubtree/adapterKey) ride through inert — their consumers are
-  # the legacy `forwards` module (Task 5).
+  # the legacy `forwards` module.
   route =
     {
       fromClass,

@@ -18,7 +18,7 @@
 # `fleetChildren self id` = the cell-expansion glue (gen-product enumeration lives in
 # lib/fleet.nix, Law A1). `linkTarget entry` → { kind; nodeIds; } | null resolves a `link` target
 # to the scope NODES whose enriched-context feeds §B3 linked-context — a LIST, because an entity
-# multi-attached to N sources is N nodes (root targets in Task 3; defaults to none so the structural
+# multi-attached to N sources is N nodes (root targets only; defaults to none so the structural
 # stratum runs without link resolution).
 {
   prelude,
@@ -446,9 +446,9 @@ in
       };
   };
 
-  # 5. children — the HOAG NTA: fleet cells materialized under this host node. Task 3 leaves the
-  #    P-tree host-rooted; folding the structural phase's `spawn`/`member` declarations into new
-  #    scope nodes (env-nesting) lands with the resolution stratum in Task 4 (B4a). The
+  # 5. children — the HOAG NTA: fleet cells materialized under this host node. The structural
+  #    stratum leaves the P-tree host-rooted; folding the structural phase's `spawn`/`member`
+  #    declarations into new scope nodes (env-nesting) is the resolution stratum's (B4a). The
   #    enumeration is a gen-product call inside fleetChildren (lib/fleet.nix); this equation is the
   #    Vogt node-spawning seam.
   children = resolve.nta {
@@ -457,10 +457,10 @@ in
   };
 
   # 6. imports — computed I edges from the dispatched declarations: `link` targets (+ collection
-  #    routing, Task 5) via importEdgesOf. `importEdgesOf` yields target ENTRIES; the neron traversal
+  #    routing) via importEdgesOf. `importEdgesOf` yields target ENTRIES; the neron traversal
   #    (gen-scope) walks NODE IDS, so each target is resolved to its scope-node id via `linkTarget`
   #    (a root-kind target maps to its minted root ids; an unresolvable target — e.g. a cell, pending
-  #    the Task 4 edge stratum — drops out). Import edges are a LIST already, so a target resolving to
+  #    the edge stratum — drops out). Import edges are a LIST already, so a target resolving to
   #    several nodes concatenates rather than forcing a choice — unlike linked-context, which binds one
   #    ctx per kind and must abort. Empty until a policy emits a resolving `link`, keeping the neron
   #    chain inert for a link-free fixture.

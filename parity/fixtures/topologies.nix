@@ -23,7 +23,7 @@
   # Plain host + single user with a SELF-NAMED host aspect (`den.aspects.igloo` for host `igloo` — the
   # dominant v1 idiom). v1 renders 6 class-fold/route/forward edges. Post-R5+R3, hoag byte-matches v1 on
   # BOTH host-scoped edges — the producing-class nixos fold (R5 self-provide auto-include) AND the
-  # os→host.class route (R3 ambient os-class battery) — matched 2, extra 0 (Task 8 M1). The 4 residual v1
+  # os→host.class route (R3 ambient os-class battery) — matched 2, extra 0. The 4 residual v1
   # edges (homeManager fold + the 3 USER-scoped edges) are the unported hm battery + the user-as-root vs
   # user-as-cell scope-model boundary (parity/ledger.md).
   plainHostUser = {

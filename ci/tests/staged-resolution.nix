@@ -2,7 +2,7 @@
 # SYNTHETIC CUSTOM KINDS (the genericity pin — ZERO env/host/user names, zero corpus/v1 vocabulary): a
 # three-level containment topology `zone <- rack <- blade` (blade the leaf/cell kind). The pass:
 #
-#   • routes a policy-emitted CELL membership into the fleet (the deferred Task 4 — A5's promised law);
+#   • routes a policy-emitted CELL membership into the fleet (A5's promised member-routing law);
 #   • folds a CONTAINMENT tuple's bindings (source zone -> existing rack, `containTo = "rack"`) into the
 #     target's ctx via a per-target transpose slice, demand-read where the consuming rack policy fires
 #     (`authToken`) AND folded onto the target's decls for the main run;
@@ -544,7 +544,7 @@ in
       expected = false;
     };
 
-    # ── MEMBERSHIP ROUTING (Task 4): the rack policy's leaf-dim `member` emission (r1, b1) ROUTES into the
+    # ── MEMBERSHIP ROUTING: the rack policy's leaf-dim `member` emission (r1, b1) ROUTES into the
     #    fleet and ADDS the b1@r1 cell beside the static b1@r2 — the fleet gained a cell from a POLICY. ──
     test-membership-emission-routes-to-fleet = {
       expr = cellsOf viaPolicy;

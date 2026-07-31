@@ -12,7 +12,7 @@
 #       (`errors.unknownSurfaceKey`), over the read-back config. A typo is caught HERE, never dropped.
 #
 # The witness fixtures are the C7/C8 parity harness's input (each is a real v1 declaration set). This
-# suite exercises the v2 (compat) arm's ACCEPTANCE; the two-arm content/graph diff is Tasks 7–8.
+# suite exercises the v2 (compat) arm's ACCEPTANCE; the two-arm content/graph diff is the parity harness's.
 {
   denCompat,
   denHoagSrc,

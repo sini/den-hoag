@@ -130,7 +130,7 @@ in
     # (1) the resolve.to-derived cell: the ambient emitter fires, the forward parent-targets the host,
     #     and the host's nixos terminal carries home-manager.users.tux with the cell's hm content.
     #
-    # PHASE 4 DELIVERED (the #10 hm-user-detect descendant-driven route, Task 2): terminalModulesAt =
+    # DELIVERED by the #10 hm-user-detect descendant-driven route: terminalModulesAt =
     # projectClass, and the HOST projecting `nixos` gathers the cell-fired `appendToParent` hm-battery route
     # from its DESCENDANT cell (`parentTargetedRoutesAt`) — the resolve.to-derived cell's `home-manager`
     # slice remaps to `nixos` at `[ home-manager users tux ]`. The per-user hm content NOW reaches the host

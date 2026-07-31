@@ -77,7 +77,7 @@ let
   };
   # (clause 3, null-keyspace witness) an otherwise-conformant spawn with keyspace = null AND a source that reads
   # null — the `keyspace != null` guard means two absent keyspaces are NOT a self-read, so clause 3 must NOT
-  # false-positive. Registers clean (a spawn with an unnamed keyspace is the Phase-5 parser's presence concern,
+  # false-positive. Registers clean (a spawn with an unnamed keyspace is a parser presence concern,
   # not law 5's four clauses).
   nullKeyspaceNodes = conformant // {
     keyspace = null;

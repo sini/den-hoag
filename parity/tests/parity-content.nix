@@ -10,7 +10,7 @@
 #     would pass while hoag's DELIVERY of the value diverges — the blind spot P2 closes). This is the
 #     CI-runnable content-parity arm.
 #
-# HONEST CI/SHIP-GATE SPLIT (plan Task 8 note): CI runs the cross-pipeline synthetic hashes + pins the
+# HONEST CI/SHIP-GATE SPLIT: CI runs the cross-pipeline synthetic hashes + pins the
 # hoag-side materialization hash as a regression baseline. The full-fleet drv-hash run is the ship-gate,
 # dev-time against the real corpus. A v1-vs-hoag content divergence on a synthetic is a P2 ledger finding
 # (P6 discipline — classified, never papered over), exactly like the structural suite's matched/extra/missing.

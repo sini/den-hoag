@@ -226,7 +226,7 @@ let
 in
 {
   flake.tests.delivery-ancestor-members = {
-    # ── RETIRED (den-hoag projection, Phase 2 Task 3 — terminalModulesAt = projectClass) ──────────────
+    # ── RETIRED (den-hoag projection — terminalModulesAt = projectClass) ──────────────────────────────
     # test-ancestor-bucket-host-first / test-no-sibling-cross-bleed (below: test-shared-survives-own-drops /
     # test-root-filter-clears-double) tested the #74a ANCESTOR-MEMBER terminal gather + the R-ROOT-FILTER
     # twin (`collectedMembersOf` at the TERMINAL, `filterRootModules`, output-modules.nix): a cell-fired
@@ -271,6 +271,6 @@ in
     # (5) test-shared-survives-own-drops + (6) test-root-filter-clears-double: RETIRED — see the retirement
     #     note above. The shared/own filterRootModules distinction is DELETED under projection (spec §1
     #     Corollary), and the spicetify double dissolves as a single-visit graph property (witnessed at
-    #     ci/tests/projection.nix + reach-graph.nix). Phase 3 deletes the emission machinery these read.
+    #     ci/tests/projection.nix + reach-graph.nix); the emission machinery these read is gone.
   };
 }

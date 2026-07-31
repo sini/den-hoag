@@ -469,7 +469,7 @@ rec {
   specRows = builtins.attrNames rows;
 
   # ── the LEGACY-SURFACE RULES (R-set, spec §10) — one witness row per rule ────────────────────────────
-  # Task 7.5's completeness ledger for the formal gap catalog: each R1–R9 maps to `{ rule; v1Source;
+  # The completeness ledger for the formal gap catalog: each R1–R9 maps to `{ rule; v1Source;
   # decls; note; }` — the rule number, its den v1 citation at the frozen pin (11866c16), a minimal v1
   # declaration set exercising it, and a one-line intent. `ci/tests/compat-legacy-rules.nix` reads this
   # (asserts every rule R1–R9 is present + witnessed) alongside its per-rule semantic tests. Kept SEPARATE

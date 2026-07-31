@@ -134,12 +134,12 @@ let
 in
 {
   flake.tests.terminal-delivery-consumption = {
-    # ── RETIRED (den-hoag projection, Phase 2 Task 3 — terminalModulesAt = projectClass) ──────────────
+    # ── RETIRED (den-hoag projection — terminalModulesAt = projectClass) ──────────────────────────────
     # test-host-rooted-delivery-lands-at-terminal (the #66 os→nixos delivery CONTENT at the terminal) and
     # test-same-class-merge-delivery-aborts (the `errors.sameClassMergeDelivery` guard that lived in the
     # deleted `deliveryModulesChain` terminal gather) both tested the DELETED emission terminal read. The
     # terminal is now `projectClass id class` over `reach`; cross-class delivery (os→nixos) becomes a
-    # positive reach-edge (the Phase-4 forwards/routes transform layer emits it, Phase-5 wires the corpus
+    # positive reach-edge (the forwards/routes transform layer emits it, corpus wiring supplies the
     # producer), and the same-class-merge double it guarded against cannot arise (projection folds each
     # class slice once via single-visit — no fold+delivery double to guard). Projection-level class-slice
     # semantics are witnessed in ci/tests/projection.nix. The IDENTITY + still-LIVE edge-render witnesses

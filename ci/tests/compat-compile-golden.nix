@@ -139,7 +139,7 @@ let
     }
   ];
 
-  # ── §2.4 pipe stage vocabulary (Task 3) ──────────────────────────────────────────────────────────
+  # ── §2.4 pipe stage vocabulary ───────────────────────────────────────────────────────────────────
   # The C1 witness fixtures live in the parity harness (shared with the future P-suites); read through
   # the den-hoag flake source (`path:..`), the same store-path route the zero-machinery source scan uses.
   pipeFx = import "${denHoagSrc}/parity/fixtures/pipe-stages.nix" { };
@@ -313,7 +313,7 @@ in
       expr = builtins.attrNames compiled.classes;
       expected = [ "myclass" ];
     };
-    # channels register `den.quirks.<name>` (Task 3); this fixture declares the `ssh-peers` quirk (required
+    # channels register `den.quirks.<name>`; this fixture declares the `ssh-peers` quirk (required
     # for the closed gate to admit the `ssh-peers` aspect key), so the channel registers with its default
     # ordered-list shape.
     test-channels-has-ssh-peers = {

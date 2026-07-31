@@ -431,7 +431,7 @@ let
   # ── the nest-mode EXECUTION engine seam (lib/nest.nix, §4.2 mode taxonomy) ──
   # `executeNest { row; inner; ctx }` dispatches on the resolved row's DERIVED `mode` and returns that
   # mode's contribution row (the Backpack content-vs-artifact distinction: a content contribution carries
-  # the raw module face, an artifact one carries a render thunk). Task 1 proves the CONTENT arm: the inner's
+  # the raw module face, an artifact one carries a render thunk). The CONTENT arm: the inner's
   # ModulesInfo module list is grafted at the row's `at` path, placed exactly where the fold's nest edge
   # would place it. Reached through the raw-gen-libs seam.
   inherit (denHoag.internal) executeNest;
@@ -513,7 +513,7 @@ let
     kind = "user";
   };
 
-  # ── Task 2 fixtures: value mode + the conversions consult ──
+  # ── value mode + the conversions consult ───────────────────
   # an ARTIFACT-consuming row (consumes SystemInfo → artifact mode): the row a prebuilt `ArtifactRef
   # SystemInfo` value satisfies (value-mode acceptance) and the target of the conversions consult.
   artifactRow =
@@ -573,7 +573,7 @@ let
     payload = [ { __seed = true; } ];
   };
 
-  # ── Task 2 fixtures: the entity-side `artifact` facet + the buckets-empty exclusivity throw ──
+  # ── the entity-side `artifact` facet + the buckets-empty exclusivity throw ───────────────────
   # the pure exclusivity decision fn — an aspect declaring `artifact` (the prebuilt arm) must carry NO
   # non-empty class content key (§4.1: "its class buckets must be empty — declaring both throws named").
   inherit (denHoag.internal) artifactExclusive;
@@ -641,7 +641,7 @@ let
     in
     builtins.deepSeq (out.projectClass "unit:u1" "nixos") true;
 
-  # ── Task 2 fixture: a genuine CROSS-MODULE conversions same-pair collision ──
+  # ── a genuine CROSS-MODULE conversions same-pair collision ──────────────────
   # two modules registering `den.conversions."A->B"` with DIFFERENT `via` → the module system's unique-merge
   # conflict at `den.conversions."SystemInfo->RawModulesInfo".via` (the raw type never last-wins on non-equal
   # records). Forced by compiling the conversions table off the fleet config.
@@ -651,7 +651,7 @@ let
     { config.den.conversions."SystemInfo->RawModulesInfo".via = b: [ b ]; }
   ];
 
-  # ── Task 3 fixtures: artifact + extend modes (render-row consult) ──
+  # ── artifact + extend modes (render-row consult) ───────────────────
   # a compiled render table with FAKE evaluators (the declared-instantiation fakeEval pattern): `arti`
   # renders an artifact via its evaluator + a `face` projection; `artiNoFace` renders with a null face (the
   # eval IS the artifact); `ext` declares the `extendsVia` capability (a fake handle-extender); `extNoCap`
@@ -774,7 +774,7 @@ let
     kind = "host";
   };
 
-  # ── Task 4 fixtures: provide / adapt / defer ──
+  # ── provide / adapt / defer ───────────────────
   # the pure functionArgs binder + the defer executor, reached through the raw-gen-libs seam.
   inherit (denHoag.internal) bindArgs executeDefer;
 
@@ -854,7 +854,7 @@ let
   # `isThunk`/`wrapAll` — the terminal thunk-resolution harness).
   inherit (denHoag.internal) bind lowerDefer;
 
-  # ── Task 5 fixtures: singular arity (both depths) + the laziness sweep ──
+  # ── singular arity (both depths) + the laziness sweep ───────────────────
   # the singular / wiring / definition checks, reached through the raw-gen-libs seam.
   inherit (denHoag.internal) checkSingular checkSingularDefinition;
 

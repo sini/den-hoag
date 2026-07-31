@@ -207,12 +207,12 @@ let
   termOf = f: f.den.output.systems.nixos.${igloo}.modules or [ ];
 in
 {
-  # ── RETIRED (den-hoag projection, Phase 2 Task 3 — terminalModulesAt = projectClass) ────────────────
+  # ── RETIRED (den-hoag projection — terminalModulesAt = projectClass) ────────────────────────────────
   # Every witness here tested the #75a DELIVERY-CHAIN terminal read (`deliveryModulesChain`/
   # `deliveryModulesAt`, output-modules.nix): a route's collected source spliced the cross-class delivery
   # output the TERMINAL gathered at (m, C). The projection pivot REPLACES that emission model — the terminal
   # is now `projectClass id class` over `reach` (positive edges + the structural-descendant subtree), so the
-  # delivery-chain terminal gather is DEAD (Phase 3 deletes `deliveryModulesChain`/`deliveryModulesAt`).
+  # delivery-chain terminal gather is DEAD (`deliveryModulesChain`/`deliveryModulesAt` are gone).
   # The chain semantics these pinned (routed content once-only, base-then-routed order, cycle-aborts,
   # DAG-diamond multiplicity) are subsumed by the reach EDGE closure + single-visit/merge_ord laws,
   # witnessed at the projection level in `ci/tests/projection.nix` (the reach + projectClass witnesses) and

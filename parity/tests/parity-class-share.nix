@@ -12,7 +12,7 @@
 # A deliberately-corrupted core fails the sub-gate LOUDLY, localized to its class (never an
 # `intentional-v2-semantic` ledger row — class-share is a strategy, so any observable diff is a bug-in-hoag).
 #
-# ═══ ITEMS 3 & 4, STATED (parity-watch, plan Task 8) ═══
+# ═══ ITEMS 3 & 4, STATED (parity-watch) ════════════════
 # Tier-2 `applyCoreFixed`'s spine-skip is GEN-MERGE-ONLY. The nixpkgs crossing (`crossNixos` →
 # `terminals.nixosSystem`, and the new `crossDarwin`) cannot `coreShortCircuit`, so it sees IDENTICAL folded
 # input whether the core was spine-skipped or re-merged — **A18 holds TRIVIALLY through the nixpkgs/nix-darwin

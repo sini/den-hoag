@@ -6,7 +6,7 @@
 # Cross-arm entries carry each arm's rendered key list, the assertEdgeParity diff (matched/missing/extra),
 # and each arm's trace hash (P4). `spawnNeg` is the v1-internal P7 negative control's summary.
 #
-# CONVERGENCE STATE (Task 8 M1): den-hoag matches v1 on the HOST-scoped edges — the producing-class
+# CONVERGENCE STATE: den-hoag matches v1 on the HOST-scoped edges — the producing-class
 # nixos fold (R5 self-named-aspect) AND the os→host.class route (R3/R6 ambient batteries, formal-preserving
 # canTake routes). Two residual boundary CLASSES remain, both the (user,host) CELL edge-root of Law A15:
 #   (i)  `missing` — v1's USER-ROOT edges (`root:user:<u>/…`): v1 resolves a user as its OWN instantiation
@@ -57,7 +57,7 @@
     v1Hash = "5c1b4d82045fece9b0289b9396b487fdc0db53183f795476eafec17d57271b8c";
     hoagHash = "5b4ba247089ebbfcfe8a085da4c1251528d71a0b638671f093e4994c1f82ba9f";
   };
-  # quirkChannel — the `seed` aspect rides `schema.host.includes`. Task 4a (single typed tree): host:igloo's
+  # quirkChannel — the `seed` aspect rides `schema.host.includes`. Under the single typed tree, host:igloo's
   # `nixos` producing-class default fold now emits `collected:host:igloo/nixos | merge`, matching v1 (matched
   # 2). The raw class-content walk was DROPPING this edge (an empty raw nixos bucket skipped the fold); the
   # single typed tree gives the class a deferredModule bucket so the fold fires — RE-BASELINED to restore v1
@@ -96,7 +96,7 @@
       "root:host:igloo/nixos | users/users/tux | collected:user:tux@host:igloo/user | nest"
     ];
     v1Hash = "5c1b4d82045fece9b0289b9396b487fdc0db53183f795476eafec17d57271b8c";
-    # Task 4a — re-derived: the hoag edge set gained `collected:host:igloo/nixos` (the L7 restore); the
+    # Re-derived: the hoag edge set gained `collected:host:igloo/nixos` (the L7 restore); the
     # user-as-cell edge (Law A15) added the fourth edge and re-derived the hash.
     hoagHash = "f508f00ad94e4613895f23c560553094402c3949e0aade62287422d87a37320b";
   };

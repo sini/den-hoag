@@ -21,7 +21,7 @@
 }:
 let
   # Kind → stratum grouping (mkActions groups ARE the B2 strata). `collection`'s single kind is
-  # `pipeOp` — the pipe.* op payload rides it; concern-quirks (Task 5) wraps the operators below
+  # `pipeOp` — the pipe.* op payload rides it; concern-quirks wraps the operators below
   # into `pipeOp` declarations.
   # Some kinds ride the mkActions dispatch with the raw `actions.<kind>` constructor (no custom
   # wrapper below), so their contract is stated here at the group site:
@@ -140,7 +140,7 @@ let
   # after `after`, and each subsequent kind after its predecessor, so `compileStrata` yields
   # after < chain[0] < chain[1] < … A production at a later kind may read every earlier kind (the N-way
   # positive-dep rule); the reverse is a schedule violation. This is the B2 mechanism the claim/provide
-  # witness (Phase 5) consumes to turn `route > database > secret > connect` into resolution strata.
+  # witness consumes to turn `route > database > secret > connect` into resolution strata.
   strataChain =
     {
       after,
@@ -515,7 +515,7 @@ actions
   "reach-edge" = reach-edge;
   "reach-suppress" = reach-suppress;
   # pipe.* operators re-exported from gen-pipe (map/filter/fold/scan/over/route/join/tee). They are
-  # content-agnostic dataflow ops and carry no `__action` yet — Task 5's concern-quirks wraps
+  # content-agnostic dataflow ops and carry no `__action` yet — concern-quirks wraps
   # them as `pipeOp` collection declarations. `over` is the whole-list escape hatch (§2.3): used both for
   # a v1-shim `for` (whole-list rewrite) and to prepend the v1 flattenAndExtract (list-emission →
   # per-element contributions) ahead of a deriving chain (`compilePipe`).

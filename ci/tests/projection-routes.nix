@@ -1,9 +1,9 @@
-# Phase 4 Task 1 (den-hoag projection routes/forwards TRANSFORM layer, spec §5 (b)) — the route
+# den-hoag projection routes/forwards TRANSFORM layer (spec §5 (b)) — the route
 # class-remap in `projectClass`.
 #
 # A ROUTE is a class→class CONTENT transform on the projected view (NOT a reachability edge). A route
 # `{ from=D; to=C; at=<path>; guard }` lowered at the projecting scope ADDS, to `projectClass id C`, the
-# guard-gated remap of each REACHED node's class-D slice, placed at `at`. Phase 3 deleted the emission
+# guard-gated remap of each REACHED node's class-D slice, placed at `at`. The emission model is deleted
 # fold, so route content (e.g. home-platform homeLinux→homeManager) was a HOLE; this rebuilds it as a
 # transform ADDITIVE to the base projection (identity when no route targets C).
 #
@@ -90,7 +90,7 @@ let
   # class→class route carries `sourceClass`/`targetClass` entries (`{ name; }`), a `path`, `mode`, and a
   # `guard` closure (or null). `module = null` ⇒ a CLASS source (route case) — `routesAt` reads
   # `from = sourceClass.name`. `appendToParent` (default false) ⇒ the route targets the containment PARENT
-  # root (the #10 hm-user-detect forward — gathered by the host via `parentTargetedRoutesAt`, Task 2).
+  # root (the #10 hm-user-detect forward — gathered by the host via `parentTargetedRoutesAt`).
   # `__action = "delivery"`, not `__dropped`.
   deliveryAct =
     {
@@ -187,7 +187,7 @@ let
     else
       [ ];
 
-  # nixpkgs lib for the Task-3 arg-env witnesses — the REAL evalModules crossing (the terminal), where a
+  # nixpkgs lib for the arg-env witnesses — the REAL evalModules crossing (the terminal), where a
   # projected flake-parts slice reading an adaptArgs-injected arg must resolve. `lib` is den-hoag's ONE
   # sanctioned nixpkgs boundary (mirrors the terminal); the arg-env witnesses cross it explicitly.
   lib = nixpkgsLib;
@@ -259,7 +259,7 @@ in
     # A route `{ from="homeLinux"; to="home-manager"; at=[] }` fired at the projecting scope: for each
     # reached node, its `homeLinux` slice is remapped INTO the `home-manager` projection (flat, at=[]), in
     # projection order, IN ADDITION to the base `home-manager` slices. This fills the LOCALE_ARCHIVE hole
-    # Phase 3 deleted — the exact content the u24/u25 β fight delivered.
+    # deleted with the emission model — the exact content the u24/u25 β fight delivered.
     test-route-homeLinux-to-homeManager-remap = {
       expr =
         let
@@ -430,7 +430,7 @@ in
       };
     };
 
-    # ══ (5) #10 hm-user-detect — DESCENDANT-DRIVEN parent-targeted route (Task 2, spec §5 (b/d)) ══════════
+    # ══ (5) #10 hm-user-detect — DESCENDANT-DRIVEN parent-targeted route (spec §5 (b/d)) ══════════════════
     # A cell-fired `appendToParent` route `{ from="home-manager"; to="nixos"; at=[home-manager users tux] }`
     # targets the containment PARENT (the host), NOT the firing cell. The HOST projecting `nixos` gathers it
     # from its DESCENDANT cell (`parentTargetedRoutesAt`): the cell's `home-manager` slice remaps to `nixos`
@@ -562,9 +562,9 @@ in
       ];
     };
 
-    # ══ (6) #15 devshell adaptArgs — the ARG-ENV crossing hook (Task 3, spec §5 (c) — the HARD bucket) ════
+    # ══ (6) #15 devshell adaptArgs — the ARG-ENV crossing hook (spec §5 (c) — the HARD bucket) ════════════
     # A route `{ from="devshell"; to="flake-parts"; at=[devshells default]; adaptArgs={...}: {pkgs2=...} }`.
-    # projectClass (Task 1) places the devshell slice at `devshells.default` (content half); the arg-env
+    # projectClass places the devshell slice at `devshells.default` (content half); the arg-env
     # wrapper rides that placed module so at the TERMINAL evalModules crossing the slice evaluates WITH the
     # adaptArgs-injected arg, injected INTO the `devshells.default` nested submodule eval (v1 nestWithAdaptArgs).
     # The slice module `{ pkgs2, ... }: config.marker = pkgs2` STRICTLY reads `pkgs2` — an arg ONLY the
@@ -651,8 +651,8 @@ in
     };
 
     # (6c) NO-adaptArgs IDENTITY — a plain content route's placed slice is a PLAIN module (attrset), NOT a
-    #      function-wrapper: non-adaptArgs content evals verbatim (byte-identical to Tasks 1/2, no arg-env
-    #      contamination). The homeLinux→home-manager route (Task 1) places a plain module.
+    #      function-wrapper: non-adaptArgs content evals verbatim (byte-identical to the base projection, no arg-env
+    #      contamination). The homeLinux→home-manager route places a plain module.
     test-route-no-adaptArgs-placed-slice-is-plain = {
       expr =
         let
@@ -839,11 +839,11 @@ in
       };
     };
 
-    # ══ (7) SYNTHESIZE content producer — the interpret/synthesize re-express (Task 4, spec §5 (c)) ═══════
+    # ══ (7) SYNTHESIZE content producer — the interpret/synthesize re-express (spec §5 (c)) ═══════════════
     # A COMPLEX (adapter-bearing) forward re-expressed as a projection CONTENT PRODUCER: `synthesizeProducer
     # spec` COMPOSES a NEW `intoClass` module (adapter + mapModule(sourceModule) + freeform) — DISTINCT from
     # #15's arg-rewrite-on-EXISTING-content. The composed module is a target-class slice; when it carries
-    # `adaptArgs` it is the SAME function-module the Task-3 arg-env crossing produces, so it crosses the
+    # `adaptArgs` it is the SAME function-module the arg-env crossing produces, so it crosses the
     # terminal evalModules boundary identically (the arg-rewrite applies at the crossing). Zero corpus
     # consumers ⇒ fleet-INERT (7b); this synthetic witness is NON-VACUOUS (the produced module carries real
     # content AND reads an adaptArgs-injected arg, resolved at a REAL evalModules crossing).
@@ -874,7 +874,7 @@ in
           # cross via gen-merge's module system (`merge.evalModuleTree`) — den-hoag's OWN module evaluator,
           # the one the inert `flake-parts` collect terminal uses (the composed module carries den-hoag's
           # `freeformMod`, a gen-merge type, so it crosses HERE, not raw nixpkgs lib.evalModules). The
-          # produced function-module fires `_module.args = adaptArgs args` at this crossing (Task-3 seam),
+          # produced function-module fires `_module.args = adaptArgs args` at this crossing (the arg-env seam),
           # so the mapped module's `injected` read resolves and the mapped source content is present.
           ev = merge.evalModuleTree { modules = [ produced.module ]; };
         in

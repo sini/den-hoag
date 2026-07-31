@@ -404,7 +404,7 @@ let
 
   # `resolveClass classRegistry policy name` — a class-name STRING → its registration entry; the string
   # does NOT survive (C6). An unknown name aborts named (the deliver-adjacent §2.3 error, reused for the
-  # class row here). Curried so `compile` hands `deliver` (Task 2) a registry-closed resolver.
+  # class row here). Curried so `compile` hands `deliver` a registry-closed resolver.
   resolveClass =
     classRegistry: policy: name:
     classRegistry.${name} or (errors.unknownClass policy name);

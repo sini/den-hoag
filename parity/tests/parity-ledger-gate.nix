@@ -6,7 +6,7 @@
 # live in parity/ledger.md (the L3/L4/L5 rows + the residual-n note, which absorbs the former residual-o
 # hm-fold), which this gate mirrors.
 #
-# SHIP-GATE SCOPE (honest, per plan Task 8/9): this runs over the SYNTHETIC corpus (the golden). The
+# SHIP-GATE SCOPE (honest): this runs over the SYNTHETIC corpus (the golden). The
 # full-fleet arm — the real nix-config corpus diff ∖ ledger — is the dev-time ship-gate (runbook.md), the
 # one arm that cannot run in den-hoag's own CI (it evaluates the corpus flake + crosses nixpkgs/nix-darwin).
 {
@@ -73,7 +73,7 @@ let
   # family is by definition no longer exercised). Its `match` stays here as documentation of what closed.
   resolvedFamilies = [
     {
-      id = "L4-RESOLVED: v1 host-nixos fold — CLOSED by the single typed tree (Task 4a).";
+      id = "L4-RESOLVED: v1 host-nixos fold — CLOSED by the single typed tree.";
       # Was: v1 always folds host class content, den-hoag only with non-empty content — so a host whose raw
       # `nixos` bucket was EMPTY skipped the fold and DROPPED `collected:host:<h>/nixos | merge` that v1
       # delivers (the quirkChannel `seed` fixture: the seed aspect rides a quirk channel, no nixos content →

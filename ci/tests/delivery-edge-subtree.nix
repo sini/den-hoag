@@ -1,4 +1,4 @@
-# #62c — the DELIVERY-EDGE SUBTREE (the flagged Task 5): a host-fired forward/route delivery's collected
+# #62c — the DELIVERY-EDGE SUBTREE: a host-fired forward/route delivery's collected
 # source gathers the firing scope's class content AND its descendant cells' — `members = [ id ] ++
 # scope.descendants result id` (output-modules.nix `deliveryEdgesAt`). This is the home-manager.users half:
 # a user cell (home-manager, an isolated edge-root) delivers its class content up to its host terminal.

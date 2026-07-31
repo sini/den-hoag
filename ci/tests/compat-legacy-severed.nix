@@ -1,5 +1,5 @@
 # compat-legacy-severed (C5) — legacy SEVERABILITY, both halves. Part 1 (the forwards surface, its two
-# tiers, the `den.interpret.synthesize` seam, and the Law-C5 forwards sentinel) landed in Task 5. Part 2
+# tiers, the `den.interpret.synthesize` seam, and the Law-C5 forwards sentinel) has landed. Part 2
 # (C6, this task) lands the SEVERABILITY PROOF proper: `flakeModuleCore` ALONE and each single-legacy
 # combination leave every NON-LEGACY fixture byte-identical (declaration set + trace) vs the full
 # `flakeModule`; a severed surface's use is a named sentinel abort; and no core/other path IMPORTS a
@@ -18,8 +18,8 @@
 #     definition-time error (Law C5), parallel to the `provides` sentinel.
 #
 # CONTENT DEFERRAL (checked-in TODO, plan §C5): this suite pins the DECLARATION + TRACE half of C5(a)'s
-# byte-identity. The CONTENT half (drv-hash equality of a severed vs full mkDen) rides Task 8's
-# `parity-content` (P2), which needs the two-arm harness to exist first — see parity/tests/ (Task 8).
+# byte-identity. The CONTENT half (drv-hash equality of a severed vs full mkDen) rides
+# `parity-content` (P2), which needs the two-arm harness to exist first — see parity/tests/.
 {
   genPrelude,
   denHoag,
@@ -163,7 +163,7 @@ let
   #    `desugarLegacy` (hence `compileFull` / `mkDen`) differs by which legacy modules are present
   #    (default.nix `mkWiring`). ══════════════════════════════════════════════════════════════════════
   #
-  # AMBIENT-DELTA SCOPING (Task 8 M1): the built-in batteries (legacy/defaults.nix — os-class/os-user)
+  # AMBIENT-DELTA SCOPING: the built-in batteries (legacy/defaults.nix — os-class/os-user)
   # are v1's DEFAULT module set, so under the full flakeModule they add os/user classes + os-to-host /
   # user-to-host policies to EVERY fleet (v1's ambient semantics). That is a REAL severable surface — its
   # own severability is witnessed below (`test-defaults-ambient-*`) — but it is ORTHOGONAL to the
@@ -249,7 +249,7 @@ let
     builtins.all (p: p == builtins.head ps) ps;
 
   # C5(a) TRACE byte-identity — mkDen through a wiring, union the per-root traces (the frozen T|P|S|M
-  # sort-key strings), compare across wirings. (CONTENT / drv-hash defers to Task 8's parity-content.)
+  # sort-key strings), compare across wirings. (CONTENT / drv-hash defers to `parity-content`.)
   v1mod = fx: { config.den = fx; };
   unionTrace =
     result:
@@ -469,7 +469,7 @@ in
 
     # ══ (I) C5(a) TRACE byte-identity — the edge trace is identical with EITHER legacy module removed (and
     #    with BOTH removed, `core`) vs the full flakeModule. Non-vacuous (the route emits real edges).
-    #    CONTENT (drv-hash) byte-identity defers to Task 8's parity-content (the file-header TODO).
+    #    CONTENT (drv-hash) byte-identity defers to `parity-content` (the file-header TODO).
     test-trace-nonvacuous = {
       expr = builtins.length traceFull >= 1;
       expected = true;
@@ -531,7 +531,7 @@ in
       expected = [ "default.nix" ];
     };
 
-    # ══ (L) AMBIENT (defaults) severability (Task 8 M1) — the v1-ambient batteries add os-to-host /
+    # ══ (L) AMBIENT (defaults) severability — the v1-ambient batteries add os-to-host /
     #    user-to-host ONLY when legacy/defaults.nix is present; severing it (flakeModuleCore alone) drops
     #    them. This is the ambient's OWN severability witness (the H/I comparisons hold it constant).
     test-defaults-ambient-present = {

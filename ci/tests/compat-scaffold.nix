@@ -1,8 +1,8 @@
-# compat-scaffold — the den-compat skeleton addressability gate (Task 0). Proves the shim is wired
+# compat-scaffold — the den-compat skeleton addressability gate. Proves the shim is wired
 # into the flake and exposes the shapes every later shim task builds on: `compile` returns the
 # concern-DECLARATION attrset (the five four-concern keys + `include`), and each
-# legacy surface carries its `_denCompat.legacy` tag (so severability is testable from Task 4 onward,
-# C5). The desugar itself lands in Tasks 1–5.
+# legacy surface carries its `_denCompat.legacy` tag (so severability is testable independently,
+# C5). The desugar itself lives in the shim's compile/legacy modules.
 { lib, denCompat, ... }:
 {
   flake.tests.compat-scaffold = {

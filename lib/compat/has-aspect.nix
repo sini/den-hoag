@@ -3,7 +3,7 @@
 # v1 stamps a SHARED projected `hasAspect` onto every entity-kind ctx binding at the CONSUMING scope
 # (pin sg0zid…-source nix/lib/aspects/fx/policy/schema.nix:88-96 — one `mkProjectedHasAspect` answers for
 # the active scope's re-keyed bucket, so `host`/`user`/… all read "is X delivered into THIS scope"). The
-# membership test is `refKey ref ∈ pathSet`; under A-IDENT (Task 3) `refKey` is a SINGLE native-`.key`
+# membership test is `refKey ref ∈ pathSet`; under A-IDENT `refKey` is a SINGLE native-`.key`
 # lookup + a NAMED throw for a keyless ref (never a silent false). The surface is class-invariant
 # (`{ __functor; forClass; forAnyClass; }`).
 #

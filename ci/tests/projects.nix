@@ -1,4 +1,4 @@
-# Task 7 — the `projects` facet (§2.9 / A14, v1 experimental). An aspect P projects settings onto
+# The `projects` facet (§2.9 / A14, v1 experimental). An aspect P projects settings onto
 # OTHER aspects matching a STATIC aspect-schema selector; the projection compiles into `via`-carrying
 # settings layers at P's attachment scope, folded by resolved-settings exactly like a hand-written
 # `via` layer. This golden pins the four A14 laws:

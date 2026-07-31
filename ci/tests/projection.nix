@@ -1,15 +1,15 @@
-# Phase 2 Task 2/3 (den-hoag class-projection over the resolved-aspect graph, spec §1/§3) — projectClass.
+# den-hoag class-projection over the resolved-aspect graph (spec §1/§3) — projectClass.
 #
 # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
 # reach's canonical order (own-subtree → descendant cells → default edges → opt-in edges), each slice via
-# `classSliceOf` (THE ONE extraction the `class-modules` buckets also use). Task 3 CONSUMED it:
+# `classSliceOf` (THE ONE extraction the `class-modules` buckets also use). The terminal CONSUMES it:
 # `terminalModulesAt = projectClass` — projection is now the terminal's content source (the emission model,
-# `classSubtreeAt ++ deliveryModulesAt`, is dead; Phase 3 deletes it).
+# `classSubtreeAt ++ deliveryModulesAt`, is dead and deleted).
 #
 # THREE witness planes:
 #   • THE ANCHOR (real fleet, the subsume proof): for a node with NO reach edges, `reach id` = its OWN scope
-#     subtree (`[id] ++ scope.descendants`, Task 1), so `projectClass id class == classSubtreeAt id class`
-#     byte-identically — projection reproduces the fold (incl. the descendant down-fold Task 1 subsumed)
+#     subtree (`[id] ++ scope.descendants`), so `projectClass id class == classSubtreeAt id class`
+#     byte-identically — projection reproduces the fold (incl. the descendant down-fold it subsumed)
 #     BEFORE it replaces the emission. Driven on the `class-fold-subtree` fixture (nixos host + 3 hm cells
 #     each emitting a define-user-shaped nixos slice), reached through `fleet.den.output.{projectClass,
 #     classSubtreeAt}`.
@@ -160,7 +160,7 @@ in
   flake.tests.projection = {
     # ══ THE ANCHOR — projectClass vs classSubtreeAt on a no-edge node (the subsume proof) ═══════════════
     # A real fleet host with descendant cells but NO reach edges: reach = `[id] ++ scope.descendants`, so the
-    # BASE class-slice projection over reach reproduces the classSubtreeAt SAME-CLASS down-fold. Phase 4
+    # BASE class-slice projection over reach reproduces the classSubtreeAt SAME-CLASS down-fold. The route layer
     # REFINED the invariant: `projectClass id C == classSubtreeAt id C` is EXACT only for a route-FREE class
     # (no route targets C at the projecting scope); a routed class gains the route-remap DELTA
     # (`projectClass ⊇ classSubtreeAt`). The corpus's built-in os→nixos route (mkDen os-class battery) routes
@@ -300,7 +300,7 @@ in
     };
 
     # (b) STRUCTURAL-DESCENDANT (the classSubtreeAt replacement): a reach list = [ host-nixos, define-user ]
-    #     (host own ++ a descendant cell's define-user, as Task-1 reach returns). projectClass "nixos"
+    #     (host own ++ a descendant cell's define-user, as reach returns). projectClass "nixos"
     #     includes the descendant cell's define-user nixos slice.
     test-synthetic-descendant-define-user-nixos = {
       expr =
@@ -351,7 +351,7 @@ in
       ];
     };
 
-    # ══ COMPLETE-REACH projection SEMANTICS (Task 3 — the terminal-content proofs, spec §6 intent) ══════
+    # ══ COMPLETE-REACH projection SEMANTICS (the terminal-content proofs, spec §6 intent) ═══════════════
     #    Drive the REAL reach.compute over a stub with INJECTED opt-in edges, then projectClass —
     #    proving the terminal (terminalModulesAt = projectClass) produces the RIGHT output on a complete
     #    reach (the fleet will match once Phase 5 wires the real corpus edges). These are the outcomes the
@@ -423,7 +423,7 @@ in
     };
 
     # (c) DEFINE-USER SPLIT — ONE parametric multi-class aspect (`define-user`) projects nixos@HOST (via the
-    #     structural-descendant edge, Task 1) AND home-manager@CELL (the cell's own include). One reachable
+    #     structural-descendant edge) AND home-manager@CELL (the cell's own include). One reachable
     #     node, projected per-class-per-scope (spec §2 define-user model): the host's nixos projection carries
     #     the define-user nixos slice; the cell's home-manager projection carries the define-user hm slice.
     test-semantic-define-user-nixos-at-host-hm-at-cell = {

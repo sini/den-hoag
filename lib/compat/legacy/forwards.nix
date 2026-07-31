@@ -6,7 +6,7 @@
 #   TIER-1 (static) — a directly-importable forward: static `intoClass`, static `intoPath`, no adapter
 #     machinery (compile-forward.nix `isSimpleSpec = canDirectImport ∧ ¬needsAdapter ∧ ¬evalConfig`).
 #     Desugars to a plain `deliver` (a collected source → reroute-shaped edge), IDENTICAL to v1's own
-#     tier-1 classification — the shim just calls the public `deliver` surface (Task 2), the same path
+#     tier-1 classification — the shim just calls the public `deliver` surface, the same path
 #     the corpus takes, so severing this module never touches `deliver`.
 #
 #   COMPLEX (adapter-bearing) — a forward that threads args/modules through an adapter (`adaptArgs`,
@@ -36,7 +36,7 @@ let
   inherit (prelude) concatStringsSep isFunction optional;
   id = x: x;
 
-  # tier-1 reuses the shim's public `deliver` surface (Task 2) — a static forward IS a plain route with
+  # tier-1 reuses the shim's public `deliver` surface — a static forward IS a plain route with
   # no adapter. Imported (not passed) so the legacy module depends on the shim core exactly as the corpus
   # does, through the public surface: severing `forwards` leaves `deliver` and its consumers untouched.
   deliverLib = import ../deliver.nix { inherit prelude errors; };
@@ -141,7 +141,7 @@ let
   #    (sourceModule). This is the bucket-(c) CONTENT PRODUCER shape (spec §5) — DISTINCT from #15's
   #    arg-rewrite-on-EXISTING-content: here `adaptArgs` wraps a module the forward SYNTHESIZES, not a
   #    reached-node slice. When `adaptArgs != null` the composed value is the SAME function-module the
-  #    projection arg-env crossing hook (output-modules `argEnvWrap`, Task 3) produces —
+  #    projection arg-env crossing hook (output-modules `argEnvWrap`) produces —
   #    `args: { imports = mods; _module.args = adaptArgs args; }` — so a synthesize producer's module
   #    crosses the terminal `evalModules` boundary IDENTICALLY (v1 nestWithAdaptArgs), the arg-rewrite
   #    applying at the crossing where `args` exist, NOT at composition time. ──────────────────────────────
@@ -175,11 +175,11 @@ let
     in
     composeSynthesize payload.forwardSpec payload.sourceModule;
 
-  # ── synthesizeProducer — the PROJECTION content producer re-expression (Phase 4 Task 4, spec §5 (c),
+  # ── synthesizeProducer — the PROJECTION content producer re-expression (spec §5 (c),
   #    generality). A COMPLEX (adapter-bearing) forward re-expressed as a projection CONTENT PRODUCER: it
   #    yields `{ class; module }` where `module` is the composed intoClass slice (`composeSynthesize`), a
   #    real class-`intoClass` slice contributed at the target — produced at the terminal crossing (the
-  #    composed function-module fires there, reusing Task 3's arg-env seam). This REPLACES the deleted
+  #    composed function-module fires there, reusing the arg-env seam). This REPLACES the deleted
   #    emission-fold path (`interpret.synthesize` was folded by the old `materialize`; the projection model
   #    consumes the producer's module as a target-class slice instead). ZERO corpus consumers (the census
   #    found none — a synthesize forward is generality machinery), so this is fleet-INERT: no fleet emits a
@@ -194,8 +194,8 @@ in
 
   # The forward machinery (the desugar primitives), for the harness + a future forward-using corpus.
   # `synthesizeProducer`/`composeSynthesize` re-express a complex forward as a PROJECTION content producer
-  # (Task 4) — the composed intoClass module rides projectClass as a target-class slice, crossing the
-  # terminal via the Task-3 arg-env seam (generality; zero corpus consumers ⇒ fleet-inert).
+  # — the composed intoClass module rides projectClass as a target-class slice, crossing the
+  # terminal via the arg-env seam (generality; zero corpus consumers ⇒ fleet-inert).
   inherit
     isComplex
     forwardId

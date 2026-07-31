@@ -1,9 +1,9 @@
-# Task 3 — the A2 identity-law surface (spec §7). Every entry-typed declaration constructor
+# The A2 identity-law surface (spec §7). Every entry-typed declaration constructor
 # rejects a "kind:name" scope-string OR a provenance `rendered` display value, taking only a
 # registry entry (carrying id_hash). The check is EAGER, so `builtins.tryEval` over the bare
 # constructor call catches it (no deep force needed). Entry-valued calls succeed and carry the
 # entry through. Entries come from a real built den (host/user/env registries carry id_hash);
-# aspects arrive with the aspect concern (Task 4), so a host entry stands in for `edge` here —
+# aspects arrive with the aspect concern, so a host entry stands in for `edge` here —
 # `edge` only asserts id_hash presence, which every entry satisfies.
 { denHoag, ... }:
 let

@@ -1,10 +1,10 @@
-# Two-stratum partition (Law A4 / r2 §B2) + Task 3's rule-evaluation surface.
+# Two-stratum partition (Law A4 / r2 §B2) + the rule-evaluation surface.
 #
-# Task 2 half — a structural attribute may not demand a resolution attribute. The gen-resolve
+# The SCHEDULE half — a structural attribute may not demand a resolution attribute. The gen-resolve
 # schedule (Vogt gate + stratum assert) is forced at resolve construction, so a violating grammar
 # throws there; the real structural equations are all structural and schedule cleanly.
 #
-# Task 3 half — the compiled policy surface: (a) a policy whose declarations span two strata
+# The POLICY half — the compiled policy surface: (a) a policy whose declarations span two strata
 # aborts naming both kinds/strata (A4); (b) a policy guarded on a channel-named arg never fires
 # (channel names are never ctx keys); (c) forcing a structural attribute at a cell does NOT force
 # the resolution stratum (demand-laziness) — proven by a poison policy whose edge subject throws
@@ -63,7 +63,7 @@ let
     };
   };
 
-  # ── Task 3 — real entries from a policy-free den.
+  # ── real entries from a policy-free den.
   den = (denHoag.mkDen fx.base).den;
   H = den.registries.host.axon;
   U = den.registries.user.alice;
@@ -245,7 +245,7 @@ let
 in
 {
   flake.tests.b2-two-stratum = {
-    # the real Task 2 structural stratum schedules without a stratum/circularity throw.
+    # the real structural stratum schedules without a stratum/circularity throw.
     test-real-structural-schedules = {
       expr = (builtins.tryEval (denHoag.mkDen [ ]).den.structural.schedule).success;
       expected = true;

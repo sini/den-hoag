@@ -107,7 +107,7 @@ in
       ];
     };
 
-    # CONVERGENCE (Task 8 M1): den-hoag byte-matches v1 on BOTH host-scoped edges — the producing-class
+    # CONVERGENCE: den-hoag byte-matches v1 on BOTH host-scoped edges — the producing-class
     # nixos fold (class-content-as-fold-content) AND the os→host.class route (the ambient os-class battery's
     # formal-preserving canTake route). A REGRESSION that drops either match fails here, distinct from the
     # residual user-scope boundary (v1 user-as-root vs den-hoag user-as-cell).

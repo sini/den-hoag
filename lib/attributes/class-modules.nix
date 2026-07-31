@@ -52,7 +52,7 @@ let
   # `m == { }` drop.
   inherit (import ../module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
 
-  # THE ONE per-aspect class-slice extraction (Phase 2 Task 2) so the seed query AND `projectClass`
+  # THE ONE per-aspect class-slice extraction so the seed query AND `projectClass`
   # — the reach-based projection — share EXACTLY one extraction.
   # `classSliceOf aspect class` = the `class`-C contribution of a SINGLE resolved-aspect node
   # (`{ key; content; }`): the aspect's `content.${class}` deferredModule IFF that key is a registered
@@ -284,7 +284,7 @@ let
 in
 {
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, exported for `projectClass`
-  # (output-modules Task 2/3). NEITHER is an equation record — the assembly (attributes/default.nix) selects
+  # (output-modules). NEITHER is an equation record — the assembly (attributes/default.nix) selects
   # the equations below into the equations map and threads these to `mkOutputModules` separately (a bare
   # function would break gen-resolve's two-stratum equation classification if spread into the map).
   inherit

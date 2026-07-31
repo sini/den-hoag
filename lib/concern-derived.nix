@@ -38,7 +38,7 @@ let
           provides = spec.provides or null;
           # `negates` (L4) — the relation kinds this derive reads under NEGATION (§2.3 stratified negation). A NEW
           # optional field, default `[ ]`: INERT on a derive that omits it (both negation guards below skip). The
-          # precursor Phase-5's `exclude`/lockdown consumes.
+          # claim/provide precursor's `exclude`/lockdown consumes.
           negates = spec.negates or [ ];
           strat = if builtins.isString stratum then stratum else "<none>";
           unknownRel = builtins.filter (r: !(builtins.elem r relationNames)) over;

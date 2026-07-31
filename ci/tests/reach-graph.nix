@@ -1,6 +1,6 @@
-# Phase 1 (den-hoag class-projection over the resolved-aspect graph, spec §2) — THE EDGE MODEL.
+# den-hoag class-projection over the resolved-aspect graph (spec §2) — THE EDGE MODEL.
 #
-# Task 1: the edge-DECLARATION reads (`reachEdgesOf`/`reachSuppressOf` in resolved-aspects.nix — pure list
+# The edge-DECLARATION reads (`reachEdgesOf`/`reachSuppressOf` in resolved-aspects.nix — pure list
 # functions over a node's `resolutionActs`, mirroring `policyEdgeAspects` `__action == "edge"` / `constraintSeen`
 # `__action == "drop"`): `reachEdgesOf` filters `reach-edge` → `[ { target; classFilter ? null } ]` (POSITIVE
 # cross-scope edge, class-scoped F9); `reachSuppressOf` filters `reach-suppress` → `[ { edge; when } ]` (NEGATIVE
@@ -11,11 +11,11 @@
 # REAL prelude/resolve/scope/aspects/select, so the module is imported with denHoag.internal deps and
 # `reach.compute self id` is driven against a STUB `self` (the compat-expose-gather.nix mkStub precedent)
 # serving synthetic per-node resolved-aspects/declarations — the traversal witnessed as a pure graph function
-# (no policy vocabulary for reach-edges/suppresses in Phase 1; Phase-5 corpus wiring authors those).
+# (no policy vocabulary for reach-edges/suppresses here; corpus wiring authors those).
 #
-# Witness map: Task 2 = reach closure (identity / class-scope F9 / single-visit / per-scope / transitive);
-# Task 3 = framework default-edge (unset-identity / injection / dedup); Task 4 = suppression (droid both-arms
-# / when-false + mismatch no-op); Task 5 = canonical merge_ord order ([O D P] / provider include-order / stable).
+# Witness map: reach closure (identity / class-scope F9 / single-visit / per-scope / transitive);
+# framework default-edge (unset-identity / injection / dedup); suppression (droid both-arms
+# / when-false + mismatch no-op); canonical merge_ord order ([O D P] / provider include-order / stable).
 {
   denHoag,
   denHoagSrc,
@@ -85,7 +85,7 @@ let
     }
   ];
 
-  # ══ Task 2 — the reach(id) closure. Driven against a STUB `self` (the compat-expose-gather mkStub
+  # ══ the reach(id) closure. Driven against a STUB `self` (the compat-expose-gather mkStub
   #    precedent): a synthetic graph of nodes, each with a `resolved-aspects` list + a `declarations`
   #    resolution stratum carrying reach-edge actions. `reach.compute stub id` is the P-PROJECT reach(S).
   #
@@ -112,7 +112,7 @@ let
   # children = { <childId> = { }; }; }; }.
   # `self.get id "resolved-aspects"` → that node's list; `self.get id "declarations"` → its resolution
   # stratum (the reach-edge acts); `self.get id "children"` → the structural-descendant walk's child map
-  # (Task 1 — `scope.descendants self id` DFS reads it); `self.node id` → a minimal node record (scope for
+  # (`scope.descendants self id` DFS reads it); `self.node id` → a minimal node record (scope for
   # suppress predicates).
   mkStub =
     graph:
@@ -142,7 +142,7 @@ let
 in
 {
   flake.tests.reach-graph = {
-    # ── Task 1 (a) THROUGH reach (reachEdgesOf demoted to internal): the positive-edge read — target +
+    # ── (a) THROUGH reach (reachEdgesOf demoted to internal): the positive-edge read — target +
     #    classFilter (defaulting null), ignoring the `edge`/`drop`/`reach-suppress` acts — is witnessed via
     #    `reach`. A node declaring the mixed `acts` list reaches ONLY its two reach-edge targets: host:igloo
     #    class-scoped to home-manager (its nixos-only aspect EXCLUDED), host:cabin unfiltered (all present).
@@ -174,11 +174,11 @@ in
       };
     };
 
-    # (Task 1 (b) `test-reach-suppress-of` — the direct `reachSuppressOf` `when`-predicate witness — is
-    #  RETIRED here: suppression is now consumed inside `reach` (Task 4), so it is witnessed through `reach`
+    # (Sub-item (b) `test-reach-suppress-of` — the direct `reachSuppressOf` `when`-predicate witness — is
+    #  RETIRED here: suppression is now consumed inside `reach`, so it is witnessed through `reach`
     #  by the suppression-both-arms units below, mirroring the reachEdgesOf demotion.)
 
-    # ── Task 1 (c): additive identity — a node whose declarations carry ONLY non-reach-edge acts (edge/
+    # ── (c) additive identity — a node whose declarations carry ONLY non-reach-edge acts (edge/
     #    drop) follows NO positive edge ⇒ reach = own subtree only (the reachEdgesOf `[ ]` identity, now
     #    read through `reach`). ──
     test-no-edge-decls-identity = {
@@ -212,11 +212,11 @@ in
       };
     };
 
-    # ══ Task 1 (Phase 2) — the STRUCTURAL-DESCENDANT edge (subsumes classSubtreeAt) ═════════════════════
+    # ══ the STRUCTURAL-DESCENDANT edge (subsumes classSubtreeAt) ════════════════════════════════════════
     #    reach's OWN/structural component is now the scope SUBTREE `[ id ] ++ scope.descendants self id`, not
     #    node-local. A host's reach includes its descendant CELLS' resolved-aspect nodes (the define-user
     #    nixos@host-from-cell mechanism, mirrored at the resolved-aspect level). `scope.descendants` reads the
-    #    stub's `children` map (DFS). The class filter is a Task-2 projection concern — reach returns ALL
+    #    stub's `children` map (DFS). The class filter is a projection concern — reach returns ALL
     #    reachable nodes here regardless of class.
 
     # ── (a) DESCENDANT PRESENT + CANONICAL POSITION: a host with a descendant cell → reach host includes the
@@ -299,7 +299,7 @@ in
     };
 
     # ── (d) ALL reachable regardless of CLASS: reach returns descendant nodes irrespective of class — the
-    #    class filter is a Task-2 projection concern, not applied in reach. A host reaches a nixos-only cell
+    #    class filter is a projection concern, not applied in reach. A host reaches a nixos-only cell
     #    aspect AND a home-manager cell aspect alike (no class gate on the structural subtree). ──
     test-structural-descendant-class-agnostic = {
       expr =
@@ -327,7 +327,7 @@ in
       };
     };
 
-    # ══ Task 2 — reach(id) closure witnesses ══════════════════════════════════════════════════════════
+    # ══ reach(id) closure witnesses ═══════════════════════════════════════════════════════════════════
 
     # ── (a) IDENTITY: a node with NO positive edges ⇒ reach id == its own resolved-aspects. ──
     test-reach-identity-no-edges = {
@@ -443,9 +443,9 @@ in
       };
     };
 
-    # ══ Task 4 — negative-edge suppression (reach-suppress, u21 exclude) witnesses ═════════════════════
+    # ══ negative-edge suppression (reach-suppress, u21 exclude) witnesses ══════════════════════════════
     #    A node declares a POSITIVE reach-edge E (→ "host") AND a reach-suppress { edge = "host"; when } —
-    #    edge identity is the TARGET (Phase 1 has no separate edge-id). `when` is evaluated against the
+    #    edge identity is the TARGET (there is no separate edge-id). `when` is evaluated against the
     #    node's scope (`self.node id`). The droid predicate is `host.class == "droid"`. Two nodes share the
     #    SAME decls but differ only in scope (`node.host.class`): the droid arm suppresses E, the non-droid
     #    arm keeps it — asserting BOTH arms from one declaration set.
@@ -521,9 +521,9 @@ in
       expected = true; # E survives both a false-when suppress and a target-mismatch suppress.
     };
 
-    # ══ Task 5 — canonical reach ordering (merge_ord determinism) witnesses ════════════════════════════
+    # ══ canonical reach ordering (merge_ord determinism) witnesses ═════════════════════════════════════
     #    P-PROJECT merge_ord: own-subtree FIRST, then opt-in-edge targets, each provider in include order.
-    #    The Phase-2 class-slice merge relies on this for order-semantic content (the zsh
+    #    The class-slice merge relies on this for order-semantic content (the zsh
     #    ZSH_HIGHLIGHT_HIGHLIGHTERS multiset, persistence entry order — ledger u24).
 
     # ── (a) EXACT ORDER [O P]: a cell with own aspect O and an OPT-IN (declared reach-edge) → provider P.

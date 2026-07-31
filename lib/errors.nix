@@ -1,4 +1,4 @@
-# Named definition-time errors — pure message builders. Tasks 1–11 extend this set.
+# Named definition-time errors — pure message builders.
 # nixpkgs-lib-free: plain `throw`, no prelude needed (add it back only if a future
 # builder genuinely uses a prelude helper).
 let
@@ -54,7 +54,7 @@ in
   # A5 emission discipline: `member` is accepted only at membership-independent scope
   # nodes. A `member` declaration dispatched at a membership-derived node (a fleet cell, or
   # any node beneath one) aborts, naming the policy and the scope. The membership-
-  # derived classification is the caller's (Task 3 declaration-stratum classifier); this
+  # derived classification is the caller's (the declaration-stratum classifier); this
   # builder is the abort it raises.
   memberAtCell =
     policyName: scopeId:
@@ -247,9 +247,9 @@ in
 
   # B2 stratum coherence: a policy whose declarations do not all classify to one STRATUM
   # aborts. Each declaration's stratum is derived from its KIND via the vocabulary's
-  # kind->stratum map (Task 2: enrich -> structural is the whole map; Task 3 extends it), so
-  # the abort names both offending kinds AND their strata. Wired at the declaration classifier
-  # (Task 3); Task 2 provides the builder.
+  # kind->stratum map (enrich -> structural is the base map; the resolution kinds extend it), so
+  # the abort names both offending kinds AND their strata. Wired at the declaration classifier;
+  # this file provides the builder.
   mixedStratum =
     policyName: kindA: stratumA: kindB: stratumB:
     fail "declaration stratum (B2)" "policy `${policyName}` produced declarations of kind `${kindA}` (stratum `${stratumA}`) and kind `${kindB}` (stratum `${stratumB}`); a policy's declarations must all classify to a single stratum";

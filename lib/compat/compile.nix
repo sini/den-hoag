@@ -6,7 +6,7 @@
 #
 # C1 fills four of the five keys — `entities`/`aspects`/`policies`/`classes` — from the non-legacy,
 # non-pipe, non-deliver surface (the structural + resolution vocabulary). `channels` is the pipe stage
-# vocabulary (Task 3); the delivery-edge vocabulary (`deliver`/`route`/`provide`) is Task 2. Ingestion
+# vocabulary; the delivery-edge vocabulary (`deliver`/`route`/`provide`) is `deliver.nix`'s. Ingestion
 # (the C6 identity boundary) is `ingest.nix`; this file consumes its entry-valued output.
 {
   prelude,
@@ -251,7 +251,7 @@ let
   # SOURCE ARM (v1-faithful): a class source → `collected` of the `from` class (edges/route.nix); a
   # MODULE source (provide) → `collected` of the TARGET class (edges/provides.nix:121-122 — the provided
   # module rides the target scope's OWN bucket and is carried by the default fold, hence `mergeHalf =
-  # "default-fold"`). NEVER `synthesize` (that is only v1's __complexForward adapter arm, Task 5) and
+  # "default-fold"`). NEVER `synthesize` (that is only v1's __complexForward adapter arm) and
   # NEVER `value` (v1's frozen sourceKey has no value arm — a value edge could never byte-match, P1).
   # Class-name strings resolve to registrations HERE (C6, unknown → named abort); names never survive on.
   # A NULL-TARGET delivery is a DEFINED NO-OP (materializes to no edge) — the canTake-era value-gate's
@@ -1319,7 +1319,7 @@ let
 
   # den-hoag class registration (§2.4): the `{ wrap; instantiate; share; }` surface. A v1 class decl's
   # den-hoag-shaped keys pass through; v1-battery-specific keys (parentArg/parentPath/…) are delivery
-  # mechanism, consumed by `legacy.forwards` (Task 5), not the class registration.
+  # mechanism, consumed by `legacy.forwards`, not the class registration.
   #
   # LEGACY SURFACE SENTINEL (C5): `forwardTo` must have been stripped by legacy/forwards.nix's desugar
   # (applied by the flakeModule assembly BEFORE compile). If it survives to here the legacy module is

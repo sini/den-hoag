@@ -6,7 +6,7 @@
 #                  `at`-record form `{ at; of; set; via ? null }`, normalized + validated to internal
 #                  den-layer records `{ atCoords; of; set; via }`. (The inline-entity form
 #                  `den.hosts.<h>.settings = [ { of; set } ]` is the SAME record with a single-entity
-#                  `at`; the at-record form is the general surface and the only one Task 6 wires.)
+#                  `at`; the at-record form is the general surface and the only one den wires.)
 #   ref          — re-exported from gen-settings unchanged (§2.8): inert, identity-bearing cross-aspect
 #                  reference data, never a string.
 #

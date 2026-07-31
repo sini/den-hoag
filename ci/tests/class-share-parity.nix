@@ -1,4 +1,4 @@
-# Task 10 (A10) — class-share PARITY + gate authority (spec §2.10, Law A18). Class-share is an
+# Class-share PARITY + gate authority (A10) (spec §2.10, Law A18). Class-share is an
 # IMPLEMENTATION STRATEGY, not semantics: the gen-class tier-2 `applyCoreFixed` spine-skip is
 # byte-identical to the ordinary full merge, authorised ONLY by the byte gate, and it leaves
 # `config(root)` + trace E untouched.

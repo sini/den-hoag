@@ -13,7 +13,7 @@
 # fold (user is never a producing class — hosts produce nixos, user cells produce home-manager). The route
 # is ADAPTER-BEARING (`adaptArgs osConfig`), so — per the forward-tier ruling (PIN.md §Forward-tier) — it
 # is a `policy.route` with an adapt annotation on a COLLECTED edge (NOT a synthesize forward); the shim
-# compiles it through the deliver surface (Task 2).
+# compiles it through the deliver surface.
 #
 # SEVERABLE (Law C5): a pure v1 → v1 desugar in the wiring's legacy set; severed ⇒ the identity (an aspect
 # `user` key then aborts as unknown, R9 — the honest no-op).

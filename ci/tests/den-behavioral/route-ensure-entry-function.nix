@@ -30,8 +30,8 @@ in
     # 'collectSubtree'` — den-hoag's `route` sugar (lib/compat/deliver.nix:87) takes `collectSubtree`
     # only nested under `__extra = { collectSubtree = …; }` (its own comment: "route-internal mechanism
     # fields — collectSubtree/adapterKey/appendToParent"), not as v1's bare top-level kwarg; AND even via
-    # `__extra` the field only "rides through inert — their consumers are the legacy `forwards` module
-    # (Task 5)", so the underlying `collectSubtree` behavior this deadbug exercises is unimplemented
+    # `__extra` the field only "rides through inert — their consumers are the legacy `forwards`
+    # module", so the underlying `collectSubtree` behavior this deadbug exercises is unimplemented
     # either way. Left in place, commented, per the parking rule (never altered to route around the gap).
     # test-empty-route-not-function-regression-route-ensure-entry-function = denTest (
     #   { den, igloo, ... }:

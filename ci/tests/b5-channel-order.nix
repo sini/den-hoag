@@ -1,4 +1,4 @@
-# Task 5 — same-position multi-producer order (Law A12) + declared dedup (B5). Two aspects emit to
+# Same-position multi-producer order (Law A12) + declared dedup (B5). Two aspects emit to
 # the same channel at the same scope; den pins their residual order by PRODUCER IDENTITY, not by the
 # order the aspects/includes were declared in. Over a host that produces the nixos class:
 #

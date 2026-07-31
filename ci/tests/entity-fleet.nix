@@ -1,5 +1,5 @@
-# Task 1 — entity registries + fleet restricted product (Laws A5, partial A6).
-# Task 2 completes A6 coherence (P-chain == containmentChain tree-restriction) now that
+# Entity registries + fleet restricted product (Laws A5, partial A6).
+# A6 coherence (P-chain == containmentChain tree-restriction) completes now that
 # buildRoots + the structural stratum exist, and adds a scope-adapter (Law E6) sanity check.
 { denHoag, nixpkgsLib, ... }:
 let

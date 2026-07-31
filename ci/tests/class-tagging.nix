@@ -1,4 +1,4 @@
-# Task 5 — quirk-channel class tags (Law A13). Over an env/host/user fleet where hosts produce the
+# Quirk-channel class tags (Law A13). Over an env/host/user fleet where hosts produce the
 # `nixos` class and user cells the `home-manager` class (env is class-neutral):
 #
 #   dual inclusion — one aspect emitting to a channel, included at BOTH a host and a user, yields two

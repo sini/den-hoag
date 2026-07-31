@@ -5,7 +5,7 @@
 # an aspect body fell through the `aspectSubmodule` FREEFORM → typed as a NESTED ASPECT (an attrset value
 # gets identity: its own `name`/`key`/`meta`), silently RESHAPING the channel content the collector reads.
 #
-# THE FIX (Shape B, Task 4): den-hoag declares its whole aspect vocabulary through ONE `keySemantics` map
+# THE FIX (Shape B): den-hoag declares its whole aspect vocabulary through ONE `keySemantics` map
 # (`lib/key-semantics.nix`, shared by core `concern-aspects.nix` AND compat `flake-module.nix`). The compat
 # compile view + nav view now declare each fleet `den.quirks` name as `{ category = "channel"; }` — gen-aspects
 # builds a `raw` passthrough option for it, so the channel body rides VERBATIM (never nested). This witness

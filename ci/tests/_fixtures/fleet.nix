@@ -1,8 +1,8 @@
-# Task 1 fixture — three kinds (env, host, user), a handful of instances, a membership
+# Fleet fixture — three kinds (env, host, user), a handful of instances, a membership
 # list — shaped as a `denHoag.mkDen` module list so later tasks extend it in place.
 # Kinds use gen-schema's raw string `parent` form; the den entry-valued
 # `{ parent; contentClass; fields; }` surface compilation lands with the class wiring
-# (Task 2). No aspects yet.
+# No aspects yet.
 let
   schema = {
     config.den.schema = {
@@ -55,7 +55,7 @@ let
     };
 
   # A `member` tuple emitted at a membership-derived scope (A5 violation). The declaration-
-  # stratum classifier (Task 3) sets `membershipDerived`; Task 1 enforces the abort.
+  # stratum classifier sets `membershipDerived`; fleet construction enforces the abort.
   memberAtCell =
     { config, ... }:
     {
@@ -87,7 +87,7 @@ let
         }
       ];
     };
-  # ── the full r2 acceptance fleet (Task 11 / A11) ───────────────────────────────────────────────────
+  # ── the full r2 acceptance fleet (A11) ─────────────────────────────────────────────────────────────
   # env:prod ⊇ { host:igloo, host:web-1 } (both nixos), user:tux on both + user:admin on igloo only,
   # cluster:k3s linking both hosts (a pure link/root kind — no membership tuple, so NOT a product axis).
   # Exercises every concern end to end: aspect radiation (neededBy), the projects facet (gruvbox-theme

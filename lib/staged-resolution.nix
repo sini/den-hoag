@@ -2,7 +2,7 @@
 # mechanism that closes the S1-catalogued gaps under a single pass, with TUPLE-CARRIED BINDINGS
 # (`relate` DISSOLVED — one verb, `member`):
 #
-#   • CELL ROUTING (the codebase's deferred "Task 4"): a bare `member` emitted by a policy landed in the
+#   • CELL ROUTING (A5's deferred member-routing law): a bare `member` emitted by a policy landed in the
 #     structural group but was never routed into the fleet (`membershipTuples` was static `den.membership`
 #     ONLY). A5's law already anticipates policy-emitted membership from membership-independent nodes —
 #     this pass delivers it: a `member` with `containTo = null` (a CELL tuple) becomes a fleet tuple.
