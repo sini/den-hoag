@@ -2,6 +2,11 @@
   "nodes": {
     "den-hoag": {
       "inputs": {
+        "flake-parts": [
+          "den-hoag",
+          "gen-flake",
+          "flake-parts"
+        ],
         "gen-algebra": "gen-algebra",
         "gen-aspects": "gen-aspects",
         "gen-bind": "gen-bind",
@@ -4224,6 +4229,11 @@
     "root": {
       "inputs": {
         "den-hoag": "den-hoag",
+        "flake-parts": [
+          "den-hoag",
+          "gen-flake",
+          "flake-parts"
+        ],
         "gen": "gen",
         "home-manager": "home-manager",
         "nix-darwin": "nix-darwin",

@@ -22,58 +22,59 @@
     gen-pipe.url = "github:sini/gen-pipe";
     gen-flake.url = "github:sini/gen-flake";
 
-    # FORMATTER-ONLY input. The lib/ substrate is nixpkgs-lib-free (ci/tests/zero-machinery +
-    # boundary enforce it) and never imports this; nixpkgs enters the root ONLY to supply the
-    # committed `formatter` output below, so `nix fmt` works at the repo root. The nixos-unstable
-    # tarball matches ci/'s nixpkgs (one nixfmt-rfc-style version across root + CI).
+    # nixpkgs — the committed `formatter` output below (so `nix fmt` works at the repo root; the
+    # nixos-unstable tarball matches ci/'s nixpkgs, one nixfmt-rfc-style version across root + CI) AND
+    # a substrate HOST MATERIAL: `substrate.nix` threads it into gen-flake, whose `terminals.nixosSystem`
+    # is gated on it. The lib/ substrate stays nixpkgs-lib-free (ci/tests/zero-machinery + boundary
+    # enforce it) and never imports this — a host material crosses INTO gen-flake, it does not enter lib/.
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
+
+    # flake-parts — the second substrate HOST MATERIAL, gating gen-flake's `terminals.mkFlakeTerminal`
+    # (the flake-parts crossing den-hoag mints as `internal.mkFlakeTerminal`). Declared as a FOLLOWS of
+    # the tree gen-flake already pins rather than as its own URL: gen-flake is the party that evaluates
+    # it, so its pin is the one that must hold, and the declaration adds no lock node and changes no
+    # resolved revision.
+    flake-parts.follows = "gen-flake/flake-parts";
   };
 
   outputs =
     inputs@{ ... }:
     let
-      lib = import ./lib {
-        prelude = inputs.gen-prelude.lib;
-        algebra = inputs.gen-algebra.lib;
-        types = inputs.gen-types.lib;
-        merge = inputs.gen-merge.lib;
-        schema = inputs.gen-schema.lib;
-        aspects = inputs.gen-aspects.lib;
-        graph = inputs.gen-graph.lib;
-        scope = inputs.gen-scope.lib;
-        resolve = inputs.gen-resolve.lib;
-        select = inputs.gen-select.lib;
-        bind = inputs.gen-bind.lib;
-        dispatch = inputs.gen-dispatch.lib;
-        # gen-class WITH the tier-2 fixed-input kernel injected (gen-merge): `applyCoreFixed` (the A10
-        # class-share build path) requires it; every tier-1 verb works without it. The flake's own
-        # `gen-class.lib` is merge-less (its README §tier-2), so den-hoag re-imports the source with
-        # `merge` — the same wiring the gen hub's `mkGenLibs.class` does.
-        class = import "${inputs.gen-class}/lib" {
-          prelude = inputs.gen-prelude.lib;
-          merge = inputs.gen-merge.lib;
-        };
-        edge = inputs.gen-edge.lib;
-        product = inputs.gen-product.lib;
-        settings = inputs.gen-settings.lib;
-        demand = inputs.gen-demand.lib;
-        pipe = inputs.gen-pipe.lib;
-        flake = inputs.gen-flake.lib;
+      # This root's MATERIALS — a source tree per dep, plus the two host-boundary flake values — handed
+      # to `substrate.nix`, the ONE construction the standalone `default.nix` entry goes through too. No
+      # dep VALUE is named here: a `.lib` output and a root entry are the dep's two published
+      # constructions, and choosing between them per root is what let gen-class reach one root without
+      # its tier-2 kernel. There is no accessor either — omitting a material is a missing REQUIRED
+      # argument to `substrate.nix` and fails at application, naming it.
+      s = import ./substrate.nix {
+        genPreludeSrc = inputs.gen-prelude;
+        genAlgebraSrc = inputs.gen-algebra;
+        genTypesSrc = inputs.gen-types;
+        genMergeSrc = inputs.gen-merge;
+        genSchemaSrc = inputs.gen-schema;
+        genAspectsSrc = inputs.gen-aspects;
+        genGraphSrc = inputs.gen-graph;
+        genScopeSrc = inputs.gen-scope;
+        genResolveSrc = inputs.gen-resolve;
+        genSelectSrc = inputs.gen-select;
+        genBindSrc = inputs.gen-bind;
+        genDispatchSrc = inputs.gen-dispatch;
+        genClassSrc = inputs.gen-class;
+        genEdgeSrc = inputs.gen-edge;
+        genProductSrc = inputs.gen-product;
+        genSettingsSrc = inputs.gen-settings;
+        genDemandSrc = inputs.gen-demand;
+        genPipeSrc = inputs.gen-pipe;
+        genFlakeSrc = inputs.gen-flake;
+        nixpkgs = inputs.nixpkgs;
+        flakeParts = inputs.flake-parts;
       };
+      lib = import ./lib s.kernel;
       # den-compat (L4) — the den v1 compatibility shim + the two-sided parity harness, on top of the
-      # assembled `lib`. Wired through `lib/compat/wiring.nix` — the ONE construction the standalone
-      # `default.nix` entry goes through too, so the shim's dep list cannot drift between the two roots
-      # (each per-dep rationale lives there, at the single construction).
-      compat = import ./lib/compat/wiring.nix {
-        denHoag = lib;
-        prelude = inputs.gen-prelude.lib;
-        schema = inputs.gen-schema.lib;
-        merge = inputs.gen-merge.lib;
-        aspects = inputs.gen-aspects.lib;
-        graph = inputs.gen-graph.lib;
-        edge = inputs.gen-edge.lib;
-        edgeSrc = inputs.gen-edge;
-      };
+      # assembled `lib`. Wired through `lib/compat/wiring.nix` — the ONE construction of the shim; the
+      # substrate says where its dep values come from, so neither the shim's dep list nor its substrate
+      # can drift between the two roots.
+      compat = import ./lib/compat/wiring.nix (s.compatArgs lib);
 
       # `mkCrossNixos nixpkgs` — build the `nixos` class's real-system terminal from a consumer-supplied
       # nixpkgs flake, the SAME way the parity harness + compat-terminal-seam test do (den-hoag's ONE
@@ -89,14 +90,15 @@
       # Replaces the bare option-declaring export: declares `options.den` (nixpkgs-native raw absorption),
       # runs the compat assembly, and sets `config.flake.{nixosConfigurations,darwinConfigurations}`. See
       # lib/compat/bridge.nix for the two-eval type-crossing resolution + the D7 instantiation grain notes.
-      bridge = import ./lib/compat/bridge.nix {
-        inherit compat mkCrossNixos;
-        prelude = inputs.gen-prelude.lib;
-        schema = inputs.gen-schema.lib;
-        # the migration lib surface, spliced onto the consumer's `den` arg at `den.lib` (R1). Lazy let: it
-        # is defined below and carries no reference back to the bridge, so the forward use is cycle-free.
-        denLib = migrationLib;
-      };
+      bridge = import ./lib/compat/bridge.nix (
+        s.bridgeArgs
+        // {
+          inherit compat mkCrossNixos;
+          # the migration lib surface, spliced onto the consumer's `den` arg at `den.lib` (R1). Lazy let: it
+          # is defined below and carries no reference back to the bridge, so the forward use is cycle-free.
+          denLib = migrationLib;
+        }
+      );
 
       # ── Migration-product re-export layer (ship-gate G1 / T1) ─────────────────────────────────────
       # den's consumers (nix-config) import `inputs.den.flakeModule` and author policies with
@@ -116,21 +118,23 @@
       # class-A (nixos) host leaves them inert. The `den`-shaped context it closes over: `.lib` = the
       # migration surface (recursive, cycle-free via laziness), `.batteries.forward` = the forward-battery
       # stub, `.aspects` = `{ }` (the optional `os-user-class-fwd` include is absent, so `? …` is false).
-      homeEnv = import ./lib/compat/home-env.nix {
-        prelude = inputs.gen-prelude.lib;
-        den = {
-          lib = migrationLib;
-          aspects = { };
-          # The forward battery rides INERT (an empty aspect — v1's `forwardEach` returns
-          # `{ includes = map forwardItem each; }`, batteries/forward.nix/nix/lib/forward.nix at the pin;
-          # the inert twin carries no items). Its ONLY corpus consumer is the droid home arc (home-env
-          # userForward → the nix-on-droid HOME output family, den-hoag-ABSENT — the u4 intoAttr
-          # posture), so a translated forward would have NO reachable artifact either way; the absent
-          # `nixOnDroidConfigurations` output is the self-announcement (ledger u22, the u2/u4 shape).
-          # The REAL surface is the forward-battery NTA (arc-2 territory).
-          batteries.forward = _spec: { includes = [ ]; };
-        };
-      };
+      homeEnv = import ./lib/compat/home-env.nix (
+        s.homeEnvArgs
+        // {
+          den = {
+            lib = migrationLib;
+            aspects = { };
+            # The forward battery rides INERT (an empty aspect — v1's `forwardEach` returns
+            # `{ includes = map forwardItem each; }`, batteries/forward.nix/nix/lib/forward.nix at the pin;
+            # the inert twin carries no items). Its ONLY corpus consumer is the droid home arc (home-env
+            # userForward → the nix-on-droid HOME output family, den-hoag-ABSENT — the u4 intoAttr
+            # posture), so a translated forward would have NO reachable artifact either way; the absent
+            # `nixOnDroidConfigurations` output is the self-announcement (ledger u22, the u2/u4 shape).
+            # The REAL surface is the forward-battery NTA (arc-2 territory).
+            batteries.forward = _spec: { includes = [ ]; };
+          };
+        }
+      );
       migrationLib = lib // {
         # den.lib.policy.* — the policy-authoring vocabulary nix-config writes policies with.
         policy = {
@@ -302,10 +306,10 @@
                 throw "den.lib.take.exactly: the required-key __scopeKeys parametric mechanism is not yet ported"
             );
         };
-        # den.lib.schema — v1's `den.lib.schema` (nix/lib/schema.nix) = the raw gen-schema.lib. den-hoag
-        # already has the input in flake scope (no consumer-fallback needed); consumers (host.nix:22 /
-        # home.nix:22) use it as `schemaLib` = raw.
-        schema = inputs.gen-schema.lib;
+        # den.lib.schema — v1's `den.lib.schema` (nix/lib/schema.nix) = the raw gen-schema lib. Read from
+        # the substrate's kernel, so this surface and the kernel's own `schema` are one value on both
+        # roots; consumers (host.nix:22 / home.nix:22) use it as `schemaLib` = raw.
+        schema = s.kernel.schema;
         # den.lib.strict — v1's strict freeform-type module (nix/lib/strict.nix), exported UNAPPLIED (the
         # `{ lib, ... }:` fn). The consumer's raw-absorption evalModules injects nixpkgs `lib` when it
         # merges `den.schema.<kind> = den.lib.strict`; the substrate has no `lib.mkOptionType` so it must

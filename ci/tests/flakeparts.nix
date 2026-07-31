@@ -217,16 +217,17 @@ let
   # ── THE REAL FLAKE-PARTS CROSSING (spec §12 step 4c-iii): the witnesses below exercise the aggregate
   # flake-parts render through gen-flake's REAL `terminals.mkFlakeTerminal` — a genuine `flake-parts.lib.
   # evalFlakeModule` inside gen-flake's sanctioned nixpkgs/flake-parts boundary — NOT the mechanism stubs above.
-  # `mkFlakeTerminal` ships in gen-flake but is unpublished as of this rung, so den-hoag reaches it via
-  # `--override-input den-hoag/gen-flake path:<local gen-flake>`. OVERRIDE-GATED: on a plain (unpinned) ci the
-  # crossing is absent, so the two witnesses whose render `evaluator` CALLS `mkFlakeTerminal` — W1 (no-translation)
-  # and W2 (real-knot) — hit the null `internal.mkFlakeTerminal` and fail; they are GREEN only under the override,
-  # until the gen-flake push + den-hoag pin bump makes the pushed history plain-ci-green. W3 (adapter-mount) reads
-  # NO mkFlakeTerminal — it builds a plain nixos fleet and mounts via the CORE `denHoag.flakeAdapter` (always
-  # non-null), so it would pass plain ci on its own; it simply co-lives in this override-gated block. The
-  # mechanism witnesses above (stub evaluators) stay plain-ci-green — they prove the mount/transposition/curry
-  # with no flake-parts eval. PARITY never references any of this: the byte-identity gate drives mkDen directly,
-  # names no render evaluator, and runs WITHOUT the override.
+  # NOT override-gated: the pinned gen-flake ships `mkFlakeTerminal`, so W1 (no-translation) and W2 (real-knot)
+  # are green on a plain ci run with no `--override-input`. (This block previously recorded that they "hit the
+  # null `internal.mkFlakeTerminal` and fail" without the override; that became false at the pin bump this suite
+  # rides.) W3 (adapter-mount) reads NO mkFlakeTerminal — it builds a plain nixos fleet and mounts via the CORE
+  # `denHoag.flakeAdapter` — and simply co-lives here. The mechanism witnesses above (stub evaluators) prove the
+  # mount/transposition/curry with no flake-parts eval. PARITY never references any of this: the byte-identity
+  # gate drives mkDen directly and names no render evaluator.
+  #
+  # WHAT THIS SUITE CANNOT SEE. It reaches den-hoag through `inputs.den-hoag`, i.e. the FLAKE root, so it
+  # witnesses the flake root's capability — which was never the one in doubt. The standalone root's
+  # flake-parts capability is witnessed in `root-entry.nix`, the one suite that drives that root.
   mkFlakeTerminal = denHoag.internal.mkFlakeTerminal;
 
   # a SYNTHETIC ecosystem-shaped flake-parts module — the treefmt-nix SHAPE: it declares its OWN `perSystem`

@@ -1547,6 +1547,10 @@
     },
     "root": {
       "inputs": {
+        "flake-parts": [
+          "gen-flake",
+          "flake-parts"
+        ],
         "gen-algebra": "gen-algebra",
         "gen-aspects": "gen-aspects",
         "gen-bind": "gen-bind",

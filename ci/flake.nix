@@ -12,6 +12,11 @@
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
     nix-darwin.url = "github:nix-darwin/nix-darwin";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
+    # flake-parts — the HOST MATERIAL the root-entry suite's gen-flake arm hands the standalone root
+    # (`internal.mkFlakeTerminal` is gated on it, and a host material is a root's to supply). Declared as
+    # a FOLLOWS of the tree den-hoag's own lock already names, so this is a declaration of content the CI
+    # eval already carries: no lock node is added and the resolved revision is the one den-hoag threads.
+    flake-parts.follows = "den-hoag/gen-flake/flake-parts";
   };
 
   outputs =
@@ -61,6 +66,9 @@
           denHoagSrc
           ;
         nixpkgs = inputs.nixpkgs;
+        # the flake-parts FLAKE — the root-entry suite's gen-flake arm supplies it to the standalone
+        # root, which carries none of its own; every other suite ignores it (`...`).
+        flakeParts = inputs.flake-parts;
       };
       extraModules = [
         (
