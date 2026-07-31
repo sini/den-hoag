@@ -1180,7 +1180,7 @@ faithfully to Law A1:
    `mkSystems.nixos` is a placeholder. den-hoag makes exactly one nixpkgs crossing, in
    `lib/output/terminal.nix` (`crossNixos` → `gen-flake.terminals.nixosSystem { nixpkgs }`), driven by
    `den.nixpkgs`. Every other `lib/**` file is nixpkgs-lib-free.
-1. **The dispatch-coupled fixpoint is `gen-scope.circular` composed DIRECTLY over `gen-dispatch.dispatch`.**
+2. **The dispatch-coupled fixpoint is `gen-scope.circular` composed DIRECTLY over `gen-dispatch.dispatch`.**
    `gen-resolve` documents the circular∘dispatch pattern but exports no wrapper. The B1 enrichment
    fixpoint is `gen-scope.circular { init = base; eq = keysetEq } (ctx: ctx // extract (dispatch …))` —
    re-dispatch-on-converging-context. The earlier `dispatchStep`/`dispatchInit` accumulator form was

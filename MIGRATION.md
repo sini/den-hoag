@@ -115,9 +115,9 @@ A legacy surface or compat behavior is deprecated only on evidence, per module:
 
 1. **The fleet corpus no longer exercises it** — the parity corpus (your migrated fleet + the synthetic set)
    has no remaining consumer.
-1. **No known community consumer** — the surface is not in use downstream (the census that drove which
+2. **No known community consumer** — the surface is not in use downstream (the census that drove which
    batteries were ported in the first place).
-1. **A warning for ≥ one minor release** — a deprecation warning ships at least one minor release before
+3. **A warning for ≥ one minor release** — a deprecation warning ships at least one minor release before
    removal, so consumers have a migration window.
 
 Only when all three hold is the module removed. The shim never ships a runtime dependency on den v1 — the

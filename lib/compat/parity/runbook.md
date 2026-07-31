@@ -29,9 +29,9 @@ read a git tree). See `feedback_stage_new_files`.
 
 1. **Write it** in `parity/fixtures/topologies.nix` as `{ name; module; crossArm; hostRoots ? true; flakeRoot ? false; }`. A plain-attrset `module` (`{ den.hosts…; }`) runs on BOTH arms (`crossArm = true`); a FUNCTION module (`{ den, lib, … }: …`) reaches den v1's `den.lib.policy.*` and is v1-ONLY
    (`crossArm = false`, e.g. the negative control).
-1. **`git add parity/fixtures/topologies.nix`** — BEFORE any nix command. Both flakes read a git tree, so
+2. **`git add parity/fixtures/topologies.nix`** — BEFORE any nix command. Both flakes read a git tree, so
    an unstaged fixture is invisible and the harness silently uses the old set (this is the #1 gotcha).
-1. **Capture its diff.** Run the same shape the P1 suite uses (`resultOf`), as a one-off:
+3. **Capture its diff.** Run the same shape the P1 suite uses (`resultOf`), as a one-off:
    ```
    nix eval --impure --json --expr '
      let
@@ -51,16 +51,16 @@ read a git tree). See `feedback_stage_new_files`.
           missing = P.schema.keysOf p.missingFromActual; extra = P.schema.keysOf p.extraInActual;
           v1Hash = h tV1; hoagHash = h tHoag; }'
    ```
-1. **Write the golden.** Transcribe the JSON into a new `<yourFixture> = { … };` entry in
+4. **Write the golden.** Transcribe the JSON into a new `<yourFixture> = { … };` entry in
    `parity/golden/traces.nix` (the seven keys above — `v1`/`hoag`/`matched`/`missing`/`extra`/`v1Hash`/
    `hoagHash`). Every list must be a normalized `<kind>:<name>` sort key.
-1. **Wire the tests.** Add the fixture to `parity/tests/parity-structural.nix` (`resultOf` + a
+5. **Wire the tests.** Add the fixture to `parity/tests/parity-structural.nix` (`resultOf` + a
    `test-<name>` asserting `diffOnly` == `goldenDiff golden.<name>`) and to
    `parity/tests/parity-trace-stability.nix` (the two golden-hash tests + a topology-invariance test).
-1. **Ledger a row** in `ledger.md` IF the diff introduces a NEW classification (a divergence shape not
+6. **Ledger a row** in `ledger.md` IF the diff introduces a NEW classification (a divergence shape not
    already covered by L1–L5). A fixture whose diff is the same domain-boundary shape needs no new row —
    note it under Scope instead.
-1. **Re-run** `parity-structural` + `parity-trace-stability` (green) and re-`git add` the changed files.
+7. **Re-run** `parity-structural` + `parity-trace-stability` (green) and re-`git add` the changed files.
 
 ## Inspect a diff by hand
 
@@ -96,9 +96,9 @@ For each `missing`/`extra` key, decide and record in `ledger.md`:
 
 1. **domain boundary** — a class-fold edge missing on hoag, or a quirk-fold edge extra on hoag. Expected
    at C7 (`edge-schema.md` "domain finding"); disposition = tracked to #44 / default-fold reconciliation.
-1. **schema-alignment (F1/F2)** — an entity scope that failed to name-normalize (id_hash leaked), or a
+2. **schema-alignment (F1/F2)** — an entity scope that failed to name-normalize (id_hash leaked), or a
    non-entity scope with no `nonEntityNameMap` entry. Fix the normalization / extend the map, re-golden.
-1. **real shim defect** — a delivery edge the shim compiled wrong (wrong class/path/mode). Fix the shim;
+3. **real shim defect** — a delivery edge the shim compiled wrong (wrong class/path/mode). Fix the shim;
    this is the parity harness earning its keep.
 
 Regenerate the golden after any deliberate change: re-run the capture (the `resultOf`/`crossArm` shape in
@@ -179,7 +179,7 @@ each time the ship-gate runs both arms:
    materialization and stops at the next rung (the C6 policy-aspect-lambda `resolveAspectRef` gap,
    orthogonal to the cross-pin).
 
-1. **belt-severed + protocol override set** — sever the seam (`passThrough = false`) and align the
+2. **belt-severed + protocol override set** — sever the seam (`passThrough = false`) and align the
    consumer's gen-schema/gen-merge to the protocol-complete revisions:
 
    ```

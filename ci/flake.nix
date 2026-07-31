@@ -62,5 +62,56 @@
           ;
         nixpkgs = inputs.nixpkgs;
       };
+      extraModules = [
+        (
+          { lib, genInputs, ... }:
+          {
+            perSystem =
+              { system, ... }:
+              {
+                # THE TEST INSTRUMENT, PINNED. CI used to invoke `nix run nixpkgs#nix-unit`, which resolves
+                # `nixpkgs` from the DEFAULT FLAKE REGISTRY at run time — a moving branch, not this repo's
+                # lock. That is a correctness problem, not hygiene: den-hoag's gate rests on nix-unit's
+                # ERROR CHANNEL, and that channel FAILS OPEN on omission — an `expectedError` with no `type`
+                # means "any kind", with no `msg` means "any message". A silent semantics change in a future
+                # nix-unit relaxes every expectedError assertion at once, and the suite goes GREENER, not
+                # redder — the direction nobody investigates. Exposing the LOCKED nix-unit as a package makes
+                # the version this repository's decision (it moves only on a `flake.lock` bump) and makes CI
+                # run the SAME store path as the devshell and the pre-commit `ci` hook, which both already
+                # took it from the lock. `genInputs.nix-unit` is exactly what gen's `ci/flakeModule.nix`
+                # resolves, because this flake declares no `nix-unit` input of its own.
+                # `error-channel.nix` pins the channel's SEMANTICS; this pins the instrument.
+                packages = lib.optionalAttrs (genInputs.nix-unit.packages ? ${system}) {
+                  nix-unit = genInputs.nix-unit.packages.${system}.default;
+                };
+
+                # THE MARKDOWN ARM'S CORRECTION. gen's `ci/flakeModule.nix` asks for five mdformat plugins
+                # by writing them into `programs.mdformat.package`, but treefmt-nix computes
+                # `finalPackage = cfg.package.withPlugins cfg.plugins` and `cfg.plugins` DEFAULTS TO `_: [ ]`
+                # — so the pre-wrapped package is re-wrapped with an EMPTY plugin list and all five are
+                # silently dropped. Measured: the mdformat treefmt actually invoked is byte-identical to
+                # plain `pkgs.mdformat` (zero plugin paths in its closure). `plugins` is the option
+                # treefmt-nix honours, so it is set here.
+                #
+                # ONLY `mdformat-frontmatter` is enabled, and the omission is deliberate. Without it mdformat
+                # reads a leading `---` as a thematic break and the YAML frontmatter under it as a setext
+                # heading — which is how `.agents/skills/beads/SKILL.md` lost its `name`/`description` block
+                # (the fields skill discovery reads) to a formatting commit. Enabling gen's other four was
+                # measured against this tree and REJECTED: `mdformat-gfm` reflows the tables in
+                # `lib/compat/parity/ledger.md` and deletes 4,551 non-whitespace characters from it.
+                #
+                # `number` keeps an ordered list's authored ordinals instead of renumbering every item to
+                # `1.`. This repo's markdown is read as RAW TEXT by agents, where a five-step procedure shown
+                # as five `1.`s is materially worse than `1.`–`5.`; it is also what makes the formatted form
+                # of CLAUDE.md's standing directives equal to their authored form, so the gate stops asking
+                # for a rewrite of the file every agent reads first.
+                treefmt.programs.mdformat = {
+                  plugins = p: [ p.mdformat-frontmatter ];
+                  settings.number = true;
+                };
+              };
+          }
+        )
+      ];
     };
 }

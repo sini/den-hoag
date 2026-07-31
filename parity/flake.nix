@@ -122,5 +122,23 @@
         denHoag = den-v2.lib;
         corpus = inputs.corpus;
       };
+      extraModules = [
+        (
+          { lib, genInputs, ... }:
+          {
+            perSystem =
+              { system, ... }:
+              {
+                # The parity suite's instrument, taken from THIS flake's lock rather than the run-time
+                # flake registry — same argument as `ci/flake.nix`, and the differential is the arm that
+                # can least afford a silently-relaxed error channel. `parity/flake.lock` and
+                # `ci/flake.lock` currently pin the same nix-unit rev; each moves only by its own bump.
+                packages = lib.optionalAttrs (genInputs.nix-unit.packages ? ${system}) {
+                  nix-unit = genInputs.nix-unit.packages.${system}.default;
+                };
+              };
+          }
+        )
+      ];
     };
 }

@@ -38,9 +38,9 @@ The managed Beads block is task-tracking guidance, not permission to override re
 This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
 
 1. **File issues for remaining work** - Create beads for anything that needs follow-up
-1. **Run quality gates** (if code changed) - Tests, linters, builds
-1. **Update issue status** - Close finished work, update in-progress items
-1. **Handle git/sync by active profile**:
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **Handle git/sync by active profile**:
    ```bash
    # Conservative/minimal/default: report status and proposed commands; wait for approval.
    git status
@@ -50,7 +50,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
    git push
    git status
    ```
-1. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
+5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
 
 **Critical rules:**
 

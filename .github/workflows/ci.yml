@@ -9,6 +9,13 @@ jobs:
   # Formatting: the ci flake's `formatter` output (treefmt — nixfmt + actionlint + mdformat),
   # the SAME formatter the git-hooks pre-commit `treefmt` hook runs, so `nix fmt` is idempotent
   # with a clean local commit. `--ci` = --fail-on-change --no-cache.
+  #
+  # THE TWO ARMS REPORT SEPARATELY, and that is the point of splitting them. This gate is run FOR a
+  # .nix change, but a single combined invocation returns ONE exit status covering .nix, .md and the
+  # workflows alike — so unrelated prose drift anywhere in the tree turns the gate red and the
+  # committer learns nothing about their own change. `--formatters` partitions the run (nixfmt over
+  # 337 files, mdformat+actionlint over 11, disjoint and exhaustive), so the .nix answer is legible
+  # on its own. The docs arm carries `if: always()` so a red .nix arm never hides its result.
   format:
     runs-on: ubuntu-latest
     defaults:
@@ -18,7 +25,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix fmt -- --ci
+      - name: nix (nixfmt)
+        run: nix fmt -- --ci --formatters nixfmt
+      - name: docs + workflows (mdformat, actionlint)
+        if: always()
+        run: nix fmt -- --ci --formatters mdformat,actionlint
 
   # Tests: the two nix-unit flakes — `ci#tests` (four-concern + shim-law suite) and `parity#tests`
   # (the v1-vs-hoag differential, on SYNTHETIC fixtures + the n=1 live cross). Both are pure evals,
@@ -32,6 +43,21 @@ jobs:
   # run in this repo's CI. `parity#tests` deliberately does NOT force the `corpus` input; it exercises
   # the same mechanism on drvPath-bearing synthetic fixtures. All forced inputs (den-v1, gen, nixpkgs,
   # home-manager) are public and fetch from the committed flake.lock.
+  #
+  # ★ THE INSTRUMENT IS PINNED, AND IT IS PINNED FOR A CORRECTNESS REASON, NOT TIDINESS. These steps
+  # used to run `nix run nixpkgs#nix-unit`, which resolves `nixpkgs` from the DEFAULT FLAKE REGISTRY
+  # at run time — a moving branch, not this repository's lock (the installer step sets no registry).
+  # It floated in practice, not just in principle: the registry served nix-unit 2.35.1 while the lock,
+  # the devshell and the pre-commit `ci` hook all had 2.34.2. That matters because den-hoag's gate
+  # rests on nix-unit's ERROR CHANNEL, whose every property is version-specific and was established by
+  # self-measurement — `msg` is a regex matched by SEARCH, the `type` vocabulary, and above all the
+  # OMISSION rule: an `expectedError` with no `type` means "any kind" and with no `msg` means "any
+  # message". THE CHANNEL FAILS OPEN. A silent semantics change in a future nix-unit would relax every
+  # expectedError assertion in the suite at once and the suite would go GREENER, not redder — the
+  # direction nobody investigates. `./ci#nix-unit` and `./parity#nix-unit` expose each flake's OWN
+  # locked nix-unit, so the version is this repository's decision, moves only on a lock bump, is
+  # readable from flake.lock without running CI, and is the same store path a developer runs locally.
+  # A pin protects against the change; only a fixture DETECTS it — see ci/tests/error-channel.nix.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -39,6 +65,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: ci#tests
-        run: nix run nixpkgs#nix-unit -- --flake ./ci#tests
+        run: nix run ./ci#nix-unit -- --flake ./ci#tests
       - name: parity#tests
-        run: nix run nixpkgs#nix-unit -- --flake ./parity#tests
+        run: nix run ./parity#nix-unit -- --flake ./parity#tests
