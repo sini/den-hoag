@@ -27,6 +27,17 @@
 {
   classNames,
   classifyKey,
+  # THE DECLARED CATEGORY of a content key, from the aspect schema (`aspectSchema.keyCategory`) — the one
+  # shape every classification in the tree is built from, and the one `classifyKey` itself delegates to.
+  # REQUIRED, and a second datum rather than a second algorithm: an instrument supplies the schema instance
+  # its own class names describe, never a hand-written classifier, because two classification authorities on
+  # one builder can disagree about that builder's own channels.
+  # `classifyKey` CANNOT stand in, which is why this is a new input and not a re-use: it answers `"facet"`
+  # for a schema-claimed key and for an unregistered one alike, collapsing the exact distinction the
+  # reserved-channel refusals are. WHICH INSTANCE IT COMES FROM IS LOAD-BEARING: a quirk channel's category
+  # exists only because a fleet declared it, so a quirk-blind schema answers `null` for every channel name
+  # in existence and admits the whole `"channel"` category.
+  keyCategory,
   # §4.1 the prebuilt-arm exclusivity (concern-aspects `artifactExclusive`): a pure per-aspect check that an
   # aspect declaring `artifact` carries no non-empty class content. Threaded into `assertKeysRegistered` (the
   # per-aspect totality gate), so a malformed prebuilt aspect aborts on the eval path. Defaults to the
@@ -285,6 +296,93 @@ let
           # write. See REFERENCE.md.
           rev = graph.transpose rel;
         };
+
+  # ── AN INJECTION IS A CONTENT ELEMENT OF THE SCOPE THAT DECLARES IT ───────────────────────────────────
+  # `declare.inject { class; module }` declares content AT A SCOPE, exactly as an aspect's class body does,
+  # so it is RENDERED AS AN ELEMENT and travels the one extraction rather than a second append path beside
+  # it. The element declares no aspect identity (`key = null` — an injection has none, and minting one would
+  # make an anonymous module visible to every aspect-identity surface) and is never cross-scope deduped
+  # (`sharedFoldKey = null`, the v1 anon rule for node-local content).
+  #
+  # `assertedClasses` is what keeps the injected channel collectable. Routing an injection through the
+  # extraction subjects it to the registered-key gate, which classifies an unregistered channel as a facet
+  # and would SILENTLY DROP an injection there. The assertion is PER ELEMENT rather than added to the
+  # node-wide exempt set, and the difference is not stylistic: this element's content is exactly
+  # `{ name; <channel> = module; }`, so the union reaches nothing but its own injected module, where a
+  # node-wide exemption would also exempt a genuinely typo'd key on that node's ASPECT content and weaken
+  # the typo abort for content the injection has nothing to do with.
+  #
+  # THE MINT MERGES A USER-CONTROLLED KEY SPACE INTO A FIXED ONE, and that is what the two refusals are for.
+  # `${channel}` is a name the fleet author writes; `name` is a key the kernel reads by fixed name; they
+  # land in ONE attrset. A design that widens a name into a reserved key space owes a statement about the
+  # collision, and only two are available: SILENTLY DROP, or REFUSE NAMED. The collision is created HERE —
+  # before an injection is rendered, its channel name was never a content key; after it, it always is — so
+  # the refusals are this rendering's own obligation and not a rule inherited from the extraction.
+  #   (a) A `_`-PREFIXED CHANNEL. `_`-prefixed keys in a module-shaped attrset are the module system's own
+  #       scaffolding (`_module`, `_file`), and the kernel already fixes that reading at three independent
+  #       sites: `classSliceOf`'s prefix conjunct, `assertKeysRegistered`'s key filter, and the emptiness
+  #       peel's leaf test. The prefix conjunct is evaluated BEFORE the exempt/assertion disjunction, so the
+  #       assertion provably cannot admit such a channel; the only admitting change would weaken that
+  #       conjunct for EVERY element, which is the node-wide over-reach the per-element assertion exists to
+  #       avoid.
+  #   (b) A CHANNEL THE ASPECT SCHEMA HAS CLAIMED (`keyCategory ∉ { "class", null }`). Such a name already
+  #       means something in this key space — a key the kernel reads by fixed name, a facet, or a quirk
+  #       channel — so the minted attrset would carry two readings of one value, selected by which gate
+  #       reads it. READING THE DECLARED CATEGORY IS THE POINT, not an implementation convenience: refusing
+  #       a hand-listed key set would be a negative enumeration over an OPEN key set, the shape the
+  #       collection stratum has already retired with its reason written down, and it cannot know what a
+  #       fleet declares — a quirk channel is reserved only because that fleet declared it.
+  # The two conjuncts are INDEPENDENT and neither subsumes the other: `_spool` has category `null`, which
+  # (b) admits and (a) refuses. Both are `builtins.tryEval`-containable.
+  #
+  # ORDER: the injections of a channel have no element position of their own — they are declarations at a
+  # scope, not entries in a resolved-aspect sequence — so their order is the FRAME'S NODE DOMAIN order,
+  # never the act order. That is what makes the answer a function of the declaration SET: permuting two
+  # `inject` acts cannot move it. Channels outside the domain carry no registry order and are appended in
+  # name order, which is the same choice, for the same reason, that the relation's own node domain makes.
+  #
+  # STRICT IN `domain`, and this is a stated mechanism property rather than an implementation detail: the
+  # read forces `domain` UNCONDITIONALLY, before it inspects `acts`, so demanding this field forces the
+  # frame and the acyclicity guard fires. A short-circuit on an empty act list is REJECTED — it would make
+  # the guard fire at a scope declaring an injection and stay silent at a scope declaring only a cyclic
+  # relocation, which is a fail-open selected by an unrelated declaration.
+  injectionElementsAt =
+    domain: id: acts:
+    builtins.seq domain (
+      let
+        byChannel = prelude.groupBy (a: className a.class) (
+          builtins.filter (a: a.__action == "inject") acts
+        );
+        extra = builtins.sort builtins.lessThan (
+          builtins.filter (c: !(builtins.elem c domain)) (builtins.attrNames byChannel)
+        );
+        elementAt =
+          c: a:
+          let
+            cat = keyCategory c;
+          in
+          if prelude.hasPrefix "_" c then
+            throw "den-hoag: class-modules: declare.inject at node '${id}' names a reserved channel '${c}' (a '_'-prefixed content key is module-system scaffolding and is never class content)"
+          else if !(cat == "class" || cat == null) then
+            throw "den-hoag: class-modules: declare.inject at node '${id}' names a reserved channel '${c}' (the aspect schema registers it as a '${cat}' key, and a '${cat}' key is never class content)"
+          else
+            {
+              key = null;
+              # `name` is minted because the extraction passes `content.name` to `classifyKey`; supplying it
+              # removes an unstated precondition rather than relying on the current classifier ignoring it.
+              content = {
+                name = "<inject>";
+                ${c} = a.module;
+              };
+              sharedFoldKey = null;
+              scope = id;
+              assertedClasses = {
+                ${c} = true;
+              };
+            };
+      in
+      prelude.concatMap (c: map (elementAt c) (byChannel.${c} or [ ])) (domain ++ extra)
+    );
 in
 {
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, exported for `projectClass`
@@ -296,6 +394,57 @@ in
     assertKeysRegistered
     forwardSourceClassesOf
     ;
+
+  # ── THE PER-SCOPE RELOCATION MEMO ─────────────────────────────────────────────────────────────────────
+  # Ρ(S) IS A PROPERTY OF THE OWNING SCOPE, so it is resolved ONCE per scope and read by every consumer of
+  # that scope's content, rather than re-derived by each consumer from wherever it happens to be reading.
+  # That is the whole point of naming it an attribute: a relocation applied inside one consumer and not the
+  # other is two answers to one question, selected by which consumer asked.
+  #
+  # `kind = "synthesized"` is a choice among the equation constructors with a semantic consequence:
+  # `cascade` is REJECTED, because a cascaded relocation would make Ρ apply to a DESCENDANT's content —
+  # the projecting-scope reading — and that is an owner-level decision about what a relocation means, not a
+  # constructor to arrive at by default. The declared reading is the owning scope's.
+  #
+  # THE DOMAIN IS THE FRAME'S NODE SET, not `classNames`: `classNames` plus Ρ(S)'s unregistered endpoints.
+  # Narrowing it to the registered names loses an unregistered INTERMEDIATE's content, for the reason
+  # `relOf`'s header states — `transpose` materialises through the node set, so an out-edge from a channel
+  # outside it is never materialised.
+  #
+  # THE RECORD'S TWO FIELDS ARE FORCED INDEPENDENTLY, and the acyclicity guard sits behind BOTH.
+  # `.sourceOrder` forces `genAttrs domain` to WHNF, which forces `domain`, which forces `frame`;
+  # `.injections` forces `domain` through `injectionElementsAt`'s stated strictness. They are two thunks in
+  # one attrset, so reading either fires the cycle abort and neither forces the other — which means the
+  # reserved-channel refusals ride `.injections` alone while the cycle guard rides both, and the two aborts
+  # therefore have DIFFERENT reader sets. Stated here because it is a property of the record's shape that
+  # nothing at a call site would reveal.
+  #
+  # `actions` GETS A NAMED ABORT, `resolution` KEEPS ITS TOTAL DEFAULT. Nix's `or` covers an attribute PATH,
+  # not its final selector, so `.actions.resolution or [ ]` answers `[ ]` both for a node with no resolution
+  # acts and for a `declarations` value carrying no `actions` map at all. The first is the total answer; the
+  # second is a value that should exist and does not, and merging them is the same silent-absence class this
+  # equation exists to remove.
+  class-relocation = resolve.attr {
+    name = "class-relocation";
+    kind = "synthesized";
+    stratum = "resolution";
+    readsAttrs = [ "declarations" ];
+    compute =
+      self: id:
+      let
+        decls = self.get id "declarations";
+        acts =
+          (decls.actions
+            or (throw "den-hoag: class-modules: declarations at node '${id}' carry no actions stratum map")
+          ).resolution or [ ];
+        frame = frameAt id acts;
+        domain = if frame == null then classNames else frame.rel.nodes;
+      in
+      {
+        sourceOrder = prelude.genAttrs domain (srcOrder frame);
+        injections = injectionElementsAt domain id acts;
+      };
+  };
 
   # THE MEMO. `resolve.attr` memoizes per (node, attribute); `genAttrs` memoizes per channel and forces only
   # the channel demanded. This attrset is the query's MEMO TABLE, not its definition.

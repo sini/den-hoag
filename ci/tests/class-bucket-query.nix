@@ -10,8 +10,9 @@
 #       per-class-INDEPENDENT fold would see only `{B→C}` for C and miss A.
 #   (2) INJECT — a resolution `inject { class; module }` appends to the class bucket (non-vacuous).
 #   (3) BASE COLLECTION — each aspect's class content lands in its own bucket (the direct-query base).
-{ denHoag, ... }:
+{ denHoag, denHoagSrc, ... }:
 let
+  inherit (denHoag.internal) prelude aspects merge;
   cmb = denHoag.internal.classModulesBuilder;
   classNames = [
     "A"
@@ -19,9 +20,25 @@ let
     "C"
     "D"
   ];
-  # a registered class key classifies as `class`; every other content key (e.g. the aspect's own `name`) is a
-  # non-collectable `channel` — so both bucket producers key ONLY over `classNames`.
-  classifyKey = _name: key: if builtins.elem key classNames then "class" else "channel";
+  # THE CLASSIFICATION AUTHORITY IS A REAL SCHEMA INSTANCE over this fixture's own class names, not a
+  # hand-written dispatch — both functions the producer classifies with come from it, so the fixture holds
+  # ONE authority about its own channels and the suite tests the kernel's classification rather than a copy
+  # of it. A registered class key still classifies as `class`, so both bucket producers key ONLY over
+  # `classNames`.
+  inherit
+    (import "${denHoagSrc}/lib/concern-aspects.nix" {
+      inherit
+        prelude
+        aspects
+        merge
+        classNames
+        ;
+      errors = import "${denHoagSrc}/lib/errors.nix";
+      kindNames = [ ];
+    })
+    classifyKey
+    aspectSchema
+    ;
 
   # a non-empty deferredModule leaf (a real content wrap; `isEmptyDeferredModule` false), tag-marked so the
   # buckets read as plain data (no functions ⇒ `==` comparable for the parity rows).
@@ -88,7 +105,10 @@ let
     }
   ];
 
-  cm = cmb { inherit classNames classifyKey; };
+  cm = cmb {
+    inherit classNames classifyKey;
+    inherit (aspectSchema) keyCategory;
+  };
   bare = self: cm.class-seeds.compute self "n";
 in
 {

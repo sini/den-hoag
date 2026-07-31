@@ -65,10 +65,14 @@ let
       kindNames = [ ];
     })
     classifyKey
+    aspectSchema
     ;
 
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, built with the extended
-  # `classifyKey` — the same functions the assembly threads to `projectClass`.
+  # `classifyKey` — the same functions the assembly threads to `projectClass`. `keyCategory` comes from
+  # the SAME instance, so the builder's two classification authorities answer about one class vocabulary:
+  # taking it from anywhere else would have this `cm` classify `homeLinux` as a declared class by one
+  # function and as an unregistered name by the other.
   cm =
     import "${denHoagSrc}/lib/attributes/class-modules.nix"
       {
@@ -78,6 +82,7 @@ let
       {
         classNames = [ ];
         inherit classifyKey;
+        inherit (aspectSchema) keyCategory;
       };
   inherit (cm) classSliceOf assertKeysRegistered;
 

@@ -21,9 +21,9 @@
 #   (4) UNREGISTERED INTERMEDIATE `A→X, X→B` with `X ∉ Ch` — content routed THROUGH an unregistered channel
 #       still lands. `X` can be a preimage SOURCE and can never be a query ANSWER, which is what keeps the
 #       unregistered-TARGET and unregistered-SOURCE arms identical to a registered-only relation.
-{ denHoag, ... }:
+{ denHoag, denHoagSrc, ... }:
 let
-  inherit (denHoag.internal) prelude;
+  inherit (denHoag.internal) prelude aspects merge;
   cmb = denHoag.internal.classModulesBuilder;
 
   classNames = [
@@ -33,9 +33,25 @@ let
     "D"
     "Z"
   ];
-  # a registered channel key classifies as `class`; every other content key (e.g. the aspect's own `name`)
-  # is a non-collectable `channel`.
-  classifyKey = _name: key: if builtins.elem key classNames then "class" else "channel";
+  # THE CLASSIFICATION AUTHORITY IS A REAL SCHEMA INSTANCE over this fixture's own class names, not a
+  # hand-written dispatch. Both functions the producer classifies with come from it, so the fixture cannot
+  # hold two authorities that disagree about its own channels — a hand-written `classifyKey` answering
+  # `"class"` for `A` beside a schema answering `null` for it is exactly that disagreement. It also keeps
+  # the suite testing the kernel's classification rather than a copy of it that is free to drift.
+  inherit
+    (import "${denHoagSrc}/lib/concern-aspects.nix" {
+      inherit
+        prelude
+        aspects
+        merge
+        classNames
+        ;
+      errors = import "${denHoagSrc}/lib/errors.nix";
+      kindNames = [ ];
+    })
+    classifyKey
+    aspectSchema
+    ;
 
   # a non-empty deferredModule leaf, tag-marked so the answer reads as plain data (no functions ⇒ `==`
   # comparable, and `unique`-able for the distinct-answer counts).
@@ -92,7 +108,10 @@ let
     in
     self;
 
-  cm = cmb { inherit classNames classifyKey; };
+  cm = cmb {
+    inherit classNames classifyKey;
+    inherit (aspectSchema) keyCategory;
+  };
   answer = acts: tagsOf (cm.class-seeds.compute (mkSelf acts) "n");
 
   # ── permutations of an act list, so an order-dependent producer is measured rather than sampled ───────

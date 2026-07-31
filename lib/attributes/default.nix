@@ -145,6 +145,10 @@ in
       localDemandData,
       classNames,
       classifyKey,
+      # The declared key category (`aspectSchema.keyCategory`) the class-content producer refuses reserved
+      # channels on. Threaded from the SAME schema instance `classifyKey` comes from, so one builder never
+      # carries two classification authorities.
+      keyCategory,
       relationEdges ? [ ],
       relationEdgeKinds ? { },
       strataOrder ? [ ],
@@ -196,11 +200,14 @@ in
       inherit (coords) nodeCoords;
     })
     // {
-      # Only the EQUATION records `class-seeds` (the per-(node, channel) content query, consumed by
-      # `classSubtreeAt`'s cross-scope shared-aspect dedup) and `content-key-totality` (its §2.2
-      # classification driver) enter the map — `classSliceOf` (the factored per-aspect extraction, exported
-      # alongside) is a bare function threaded to `mkOutputModules` (below).
-      inherit (classModules { inherit classNames classifyKey; })
+      # Only the EQUATION records enter the map: `class-relocation` (the per-scope relocation relation Ρ(S),
+      # resolved once at the OWNING scope so every consumer of that scope's content reads one answer),
+      # `class-seeds` (the per-(node, channel) content query, consumed by `classSubtreeAt`'s cross-scope
+      # shared-aspect dedup) and `content-key-totality` (its §2.2 classification driver) — `classSliceOf`
+      # (the factored per-aspect extraction, exported alongside) is a bare function threaded to
+      # `mkOutputModules` (below).
+      inherit (classModules { inherit classNames classifyKey keyCategory; })
+        class-relocation
         class-seeds
         content-key-totality
         ;
@@ -247,12 +254,21 @@ in
     {
       classNames,
       classifyKey,
+      # The declared key category, from the same schema instance as `classifyKey` (see `equations` above).
+      keyCategory,
       # §4.1 the prebuilt-arm exclusivity (concern-aspects `artifactExclusive`), forced inside
       # `assertKeysRegistered` at the projection terminal. Defaults to the identity pass — inert unless threaded.
       artifactExclusive ? (_: true),
     }:
     let
-      cm = classModules { inherit classNames classifyKey artifactExclusive; };
+      cm = classModules {
+        inherit
+          classNames
+          classifyKey
+          keyCategory
+          artifactExclusive
+          ;
+      };
     in
     {
       inherit (cm) classSliceOf assertKeysRegistered forwardSourceClassesOf;
@@ -262,9 +278,12 @@ in
   # structural equations over hand-built roots/rules).
   inherit structural;
 
-  # The raw class-content producer builder (`{ classNames; classifyKey; … }` → the `class-seeds` /
-  # `content-key-totality` equation records), for the class-bucket-query and class-relocation suites'
-  # direct per-node class-slice + relocation scenarios.
+  # The raw class-content producer builder (`{ classNames; classifyKey; keyCategory; … }` → the
+  # `class-relocation` / `class-seeds` / `content-key-totality` equation records), for the
+  # class-bucket-query and class-relocation suites' direct per-node class-slice + relocation scenarios.
+  # An instrument driving these supplies DATA — its own class names and the schema instance describing
+  # them — never a hand-written classifier, which would be a second classification algorithm living in a
+  # test and free to drift from the kernel's.
   classModulesBuilder = classModules;
 
   runResolve =

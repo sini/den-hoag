@@ -8,6 +8,7 @@ let
     prelude
     resolve
     classifyKey
+    aspectSchema
     scope
     aspects
     select
@@ -15,7 +16,10 @@ let
 
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, built with the base
   # `classifyKey` (nixos/darwin/home-manager) — the same functions the assembly threads to
-  # `projectClass`.
+  # `projectClass`. `keyCategory` comes from the SAME instance those two do, which is what keeps the
+  # builder's classification authorities from disagreeing; the top-level instance is the right source for
+  # THIS harness precisely because it declares no quirk channels, so it and a fleet-aware instance agree
+  # on every name the harness uses.
   cm =
     import "${denHoagSrc}/lib/attributes/class-modules.nix"
       {
@@ -25,6 +29,7 @@ let
       {
         classNames = [ ];
         inherit classifyKey;
+        inherit (aspectSchema) keyCategory;
       };
 
   # projectClass replicated over a STUB reach list (byte-identical to output-modules.nix's body — a pure

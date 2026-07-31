@@ -1839,6 +1839,11 @@ let
         coords = coordinates;
         classNames = effectiveClassNames;
         inherit (denAspects) classifyKey;
+        # From the per-mkDen instance, NOT the top-level one: `denAspects` is built with the fleet's
+        # discovered quirk channels, and a quirk-blind schema answers `null` for every channel name in
+        # existence — so the class-content producer's reserved-channel refusal would admit the whole
+        # `"channel"` category on exactly the fleets that declare one.
+        inherit (denAspects.aspectSchema) keyCategory;
         inherit
           relationEdges
           relationEdgeKinds
@@ -1899,6 +1904,9 @@ let
           (attributesLib.mkClassSlice {
             classNames = effectiveClassNames;
             inherit (denAspects) classifyKey artifactExclusive;
+            # All four classification inputs come from ONE schema instance — the per-mkDen, quirk-aware
+            # one — so no gate here can disagree with another about a channel name's category.
+            inherit (denAspects.aspectSchema) keyCategory;
           })
           classSliceOf
           assertKeysRegistered
