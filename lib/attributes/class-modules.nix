@@ -177,7 +177,7 @@ let
       );
   };
 
-  # ── PREIMAGE of a channel: every channel whose content lands here ─────────────────────────────────────
+  # ── PREIMAGE of a channel, IN CANONICAL SOURCE ORDER: every channel whose content lands here ──────────
   # Content comes to rest exactly at a channel with NO outgoing relocation, so the preimage is empty unless
   # `c` is such a REST POSITION, and is then `{ c } ∪ { d : d reaches c }`. That second set is
   # `reachableFrom` over the TRANSPOSED relation — reverse reachability (Arntzenius 2016) with the reverse
@@ -189,6 +189,17 @@ let
   # relation's unregistered endpoints in name order — is what makes the source order deterministic in the
   # DECLARATION SET rather than in the traversal. It filters the frame's nodes, NOT `classNames`: filtering
   # `classNames` here would drop an unregistered INTERMEDIATE back out of the preimage and lose its content.
+  # THE REST POSITION IS PLACED, NOT FILTERED-IN-THEN-HOISTED. `c` heads the answer by construction and the
+  # domain filter carries only the OTHER members, so this one expression produces the canonical source order
+  # — the target's own content first, then its back-reachers in domain order. Admitting `c` through the
+  # filter and re-ordering it afterwards is two expressions deriving one list, and the second one has to
+  # re-decide a membership the first already settled.
+  # TOTAL ON CHANNEL NAMES, not merely on the frame's own nodes. A channel outside `frame.rel.nodes` is an
+  # endpoint of no relocation: `edges c` is `[ ]`, so it IS a rest position, and nothing reaches it backwards,
+  # so `back` is empty and the filter contributes nothing. Its content therefore rests where it was authored
+  # and the answer is `[ c ]`. Answering `[ ]` there would DROP the content of a channel the relation never
+  # mentions — Ρ(n) only ever MOVES content, so a channel outside its domain must read as untouched by it,
+  # and that is what totality means for this relation.
   preimageOf =
     frame: c:
     if frame.rel.edges c != [ ] then
@@ -197,29 +208,22 @@ let
       let
         back = prelude.genAttrs (graph.reachableFrom frame.rev c) (_: true);
       in
-      builtins.filter (d: d == c || back ? ${d}) frame.rel.nodes;
+      [ c ] ++ builtins.filter (d: d != c && back ? ${d}) frame.rel.nodes;
 
-  # ── CANONICAL SOURCE ORDER: the target's own content first, then the rest of the preimage in registered-
-  # channel order. Deterministic in the DECLARATION SET, independent of declaration ORDER. ────────────────
-  # The preimage is LET-BOUND: Nix performs no common-subexpression elimination, so reading it twice would
-  # walk the closure twice for a byte-identical answer.
+  # ── THE SOURCE ORDER of a channel at a node. Deterministic in the DECLARATION SET, independent of
+  # declaration ORDER. ──────────────────────────────────────────────────────────────────────────────────
+  # The order IS the preimage's own order; this binding adds only the no-relocation witness. Nothing is
+  # re-sorted here, because a second ordering pass over a list that already carries its canonical order is a
+  # second derivation of one answer.
   # THE Ρ(n) = ∅ SHORT-CIRCUIT. `frame == null` is the witness that the node declares no relocation. The fast
   # path is a PROVEN IDENTITY, not a second semantics: with no edges the relation has no endpoints, so the
   # node domain is exactly `classNames`; `transpose` is empty, so `reachableFrom` answers `[ ]`, so the
-  # preimage filters that domain down to exactly `[ c ]`. The widened domain therefore costs nothing on this
-  # path — it is not merely unused, it is equal to `classNames`.
+  # preimage contributes no back-reacher and answers exactly `[ c ]`. The widened domain therefore costs
+  # nothing on this path — it is not merely unused, it is equal to `classNames`.
   # IT BRANCHES ON ORDER, NEVER ON CONTENT. Both arms feed the SAME raw-seed concatMap; what the branch
   # selects is a list of channel NAMES. There is exactly one content expression here — a fast path that
   # computed content by a second expression would be a two-path divergence, and this is not that.
-  srcOrder =
-    frame: c:
-    if frame == null then
-      [ c ]
-    else
-      let
-        p = preimageOf frame c;
-      in
-      (if builtins.elem c p then [ c ] else [ ]) ++ builtins.filter (d: d != c) p;
+  srcOrder = frame: c: if frame == null then [ c ] else preimageOf frame c;
 
   # ── RAW seeds of ONE channel at ONE node: aspect content, then node-local injections ──────────────────
   # Injections are raw content at their declared channel, so they relocate exactly as aspect content does
