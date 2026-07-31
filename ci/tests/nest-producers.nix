@@ -222,7 +222,7 @@ let
   # excluded from the trace by construction).
   poisonPayloadFor = _childId: [ (throw "payload forced — trace laziness violated") ];
 
-  # the fold's `place` primitive as a LOCAL twin (output-modules.nix's `nestAtPath` is un-exported) — the
+  # the fold's `place` primitive as a LOCAL twin (the fold wraps with gen-edge's `edge.setAttrByPath`) — the
   # GRAFT oracle wraps INDEPENDENTLY so the leg is non-circular.
   nestAtPath =
     path: value:

@@ -25,10 +25,12 @@
   edge,
 }:
 let
-  # `placeSlice at slice` — graft each module of a content slice at the `at` path (output-modules.nix's
-  # `placeSlice`). `at == [ ]` ⇒ the slice verbatim (flat, root merge); else each module is wrapped under the
-  # path via `edge.setAttrByPath` (the []⇒verbatim lazy attr-wrap — a content contribution's placement never
-  # forces the module payload).
+  # `placeSlice at slice` — graft each module of a content slice at the `at` path. THE §4.2 graft law has ONE
+  # implementation: the content arm below and the output fold's route placement (`output-modules.nix`, which
+  # receives this binding through its `nest` argument) are the same placement, so they cannot drift apart.
+  # `at == [ ]` ⇒ the slice verbatim (flat, root merge); else each module is wrapped under the path via
+  # `edge.setAttrByPath` (the []⇒verbatim lazy attr-wrap — a content contribution's placement never forces the
+  # module payload).
   placeSlice = at: slice: if at == [ ] then slice else map (edge.setAttrByPath at) slice;
 
   # `mkContribution mode extra` — every arm's contribution is `{ mode; } // <arm fields>`, so the mode tag
@@ -310,5 +312,6 @@ in
     bindArgs
     executeDefer
     checkSingular
+    placeSlice
     ;
 }

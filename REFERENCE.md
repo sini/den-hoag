@@ -477,7 +477,9 @@ Each mode returns exactly its contribution row (`mkContribution mode extra`, so 
 **Per-mode laws.**
 
 - **content — one shared fixpoint.** The inner's `ModulesInfo` module list grafted at the `at` path (`[]` ⇒
-  flat, else each module nested under the path via the fold's own `nestAtPath`/`placeSlice` primitive). THE
+  flat, else each module nested under the path via the `placeSlice` primitive — defined in `lib/nest.nix` over
+  gen-edge's `setAttrByPath`, and consumed by the output fold, so the executor and the fold place identically
+  by construction rather than by agreement between twins). THE
   ANCHOR (the sub-plan's oracle): the executor's GRAFT equals the live fold's own placement, byte-identically,
   on the projection fixture — the honest half is PLACEMENT (the executor genuinely performs the at-path wrap; a
   wrong wrap fails the leg); the reach-based gather stays the fold's, not the executor's.

@@ -227,7 +227,9 @@ let
   };
 
   # Attribute assembly (structural attrs 1–6 + resolution attrs 7/9 + collection/settings/output) + the
-  # gen-resolve seam.
+  # gen-resolve seam. The forward reference to `nestLib` (defined below) is cycle-free — nest.nix takes only
+  # `prelude`/`edge`, so it never reaches back into the attribute stratum; the output fold reads its §4.2
+  # `placeSlice` graft law so route placement and nest-mode execution cannot drift apart.
   attributesLib = import ./attributes/default.nix {
     inherit
       prelude
@@ -251,6 +253,7 @@ let
     projects = projectsLib;
     declarations = declare;
     strataScope = strataScopeLib;
+    nest = nestLib;
   };
 
   # The classes concern (§2.4) + the terminal crossing (§2.10, Law A15). `concernClasses.compile`

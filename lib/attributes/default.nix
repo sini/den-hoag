@@ -25,6 +25,9 @@
   errors,
   graph,
   strataScope,
+  # The §4.2 nest-mode execution engine (lib/nest.nix), threaded to the output fold for its `placeSlice`
+  # graft law — the fold's route placement and nest-mode execution are one placement, not two.
+  nest,
 }:
 let
   # The A10 class-share build path (gen-class tier-2/tier-3). Imported here so the output stratum can
@@ -90,6 +93,7 @@ let
       merge
       classShare
       errors
+      nest
       ;
   };
   # §11 Phase 1 — the resolution-stratum relation/derived accessor equations (delivery moved off the top-level

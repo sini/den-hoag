@@ -38,6 +38,9 @@ let
     classShare
     ;
   errors = import "${denHoagSrc}/lib/errors.nix";
+  # the §4.2 mode-execution engine — the fold reads its `placeSlice` graft law, so the real engine is
+  # instantiated here (same `prelude`/`edge` the assembly threads) rather than stubbed.
+  nest = import "${denHoagSrc}/lib/nest.nix" { inherit prelude edge; };
 
   # A `classifyKey` (the §2.2 three-branch dispatch) built with the FLEET-DECLARED class names the route
   # fixtures use (`homeLinux`/`devshell`/`flake-parts` are corpus-declared classes, not core built-ins) —
@@ -160,6 +163,7 @@ let
           merge
           classShare
           errors
+          nest
           ;
       }
       {

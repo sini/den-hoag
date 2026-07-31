@@ -37,7 +37,8 @@
 # id-spine walk for the #62c delivery-edge subtree AND the #66 terminal delivery gather), edge (the
 # fold), bind (the config-thunk adaptation), merge (the class-share freeform absorber), classShare (the
 # A10 gen-class tier-2 build path), errors (the #66 single-path guard — a same-class merge delivery that
-# would double with the fold aborts LOUD, never silently).
+# would double with the fold aborts LOUD, never silently), nest (the §4.2 mode-execution engine — the fold
+# reads its `placeSlice` graft law so route placement and nest-mode execution place identically).
 {
   prelude,
   scope,
@@ -46,6 +47,7 @@
   merge,
   classShare,
   errors,
+  nest,
 }:
 {
   result,
@@ -432,11 +434,12 @@ let
     || !(guardIsContentTime route.guard id)
     || route.guard (result.get id "enriched-context");
 
-  # `place at slice`: the fold's nest (`edge.setAttrByPath`). `at == []` ⇒ the slice
-  # FLAT (bucket b pure remap, #14 home-platform homeLinux→homeManager); `at ≠ []` ⇒ each module wrapped
+  # `place at slice`: the fold's nest, the §4.2 graft law shared with the mode-execution engine (lib/nest.nix
+  # defines it over `edge.setAttrByPath`; the fold consumes it rather than carrying a twin). `at == []` ⇒ the
+  # slice FLAT (bucket b pure remap, #14 home-platform homeLinux→homeManager); `at ≠ []` ⇒ each module wrapped
   # under the path as a content module (`{ <at> = <module>; }`, nest-via-content-module — the shape later
   # tasks place per-cell home-manager.users.<u> content at, #10/#15). Pure attrset assembly (A1).
-  placeSlice = at: slice: if at == [ ] then slice else map (m: edge.setAttrByPath at m) slice;
+  inherit (nest) placeSlice;
 
   # ── The ARG-ENVIRONMENT crossing hook (Phase 4 Task 3, spec §5 (c) — the HARD bucket) ────────────────
   # A route carrying `adaptArgs` (`{config,...}: config.allModuleArgs` for #15 devshell→flake-parts) rewrites

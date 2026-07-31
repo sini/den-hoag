@@ -436,9 +436,9 @@ let
   # would place it. Reached through the raw-gen-libs seam.
   inherit (denHoag.internal) executeNest;
 
-  # the fold's `place` primitive as a LOCAL twin — output-modules.nix's `nestAtPath` (its own gen-edge
-  # `core.setAttrByPath` twin) is UN-EXPORTED, so the GRAFT-leg oracle wraps with a co-located 3-line copy;
-  # the executor performs the real wrap independently, which is what makes the leg non-circular.
+  # the fold's `place` primitive as a LOCAL twin — the fold wraps with gen-edge's `edge.setAttrByPath`, so
+  # the GRAFT-leg oracle keeps a co-located 3-line copy; the executor performs the real wrap independently,
+  # which is what makes the leg non-circular.
   nestAtPath =
     path: value:
     if path == [ ] then value else { ${builtins.head path} = nestAtPath (builtins.tail path) value; };
