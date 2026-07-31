@@ -75,10 +75,15 @@ in
   # is EMPTY and a fire driven by it would call the inner body with none of its required coords bound.
   # The gate is the record's DECLARED coord set (compile.nix `gate`), which is exactly the shape the fire
   # must fill, and it is the same source the kernel's dispatch gates on.
+  # ★ THE DECLARATION TEST IS PRESENCE, matching `emitsFor`'s: a `declaredEmits` entry of `[ ]` is the
+  # EMPTY HEAD stated outright, not a missing entry, and firing a body to replace it would be this
+  # function inventing a codomain over its caller's declaration — the one thing (1) says it never does.
+  # Inert at the single live caller (which resolves the whole declaration chain itself and passes `{ }`),
+  # and that is exactly why the guard has to be right here: the shape is what a future caller inherits.
   recoverEmits =
     { sentinelFields, declaredEmits }:
     name: gate: fn:
-    if declaredEmits ? ${name} && declaredEmits.${name} != [ ] then
+    if declaredEmits ? ${name} then
       declaredEmits.${name}
     else
       prelude.unique (map declare.kindOf (recoverDecls { inherit sentinelFields; } name gate fn));

@@ -106,14 +106,26 @@ let
   # only where none does. `declared` is the SOURCE value's own `emits` (a v1 fleet that already declares
   # its codomain is never fired at a sentinel at all — the shim's opt-out property); then the corpus facts
   # keyed by v1 name; and only then the fire.
+  #
+  # ★ EVERY ARM TESTS PRESENCE, NEVER EMPTINESS, and the difference is the whole ordering. `emits = [ ]` is
+  # an EMPTY HEAD — a rule that compiles, is registered at the bottom stratum, fires where its gate admits
+  # and produces nothing (concern-policies.nix header). A probe result is a GUESS. Reading an explicit
+  # `[ ]` as "nothing was declared" therefore replaces an author's DECLARATION with an inference, and does
+  # it silently, because the two readings coincided only while an empty codomain compiled to no rule at
+  # all. They no longer do: the declaration is honoured, and a body that then emits anything aborts NAMED
+  # against its own empty codomain (`conformingProduce` → `errors.emitsUndeclared`) rather than being
+  # routed by whatever the sentinel happened to reveal. The same reading applies one layer down, to the
+  # corpus fact tables: `producesByName.<name> = [ ]` is that same statement made about a v1 name the shim
+  # owns, so it is a fact like any other and not an absent entry. Absence — no `emits` field, no table
+  # entry — is the ONLY condition under which the fire is reached.
   emitsFor =
     declared: v1Name: gate: fn:
     let
       named = if v1Name == null then "«unnamed»" else v1Name;
     in
-    if declared != null && declared != [ ] then
+    if declared != null then
       declared
-    else if v1Name != null && (declaredEmits.${v1Name} or [ ]) != [ ] then
+    else if v1Name != null && declaredEmits ? ${v1Name} then
       declaredEmits.${v1Name}
     else if !policyRecovery then
       errors.policyCodomainUndeclared named
