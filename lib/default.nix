@@ -58,8 +58,9 @@ let
   # derive compute. See stratum-scope.nix.
   strataScopeLib = import ./stratum-scope.nix { inherit prelude; };
   # production-guard (§8 law 5): the bounded-NTA registration law for a node-spawning production (`emit =
-  # nodes`). A STANDALONE guard — no `den.productions` user surface yet (Phase 5); Phase-5's productions compile
-  # calls it at registration. Inert on every current corpus. See production-guard.nix.
+  # nodes`). The productions compile (concern-productions.nix) calls it at registration, over the live
+  # `den.productions` surface. Inert for every other emit, and no shipped production spawns nodes. See
+  # production-guard.nix.
   productionGuardLib = import ./production-guard.nix { strataScope = strataScopeLib; };
   # den.relations (§5): the relation registry desugared onto the den.edges edge-kind registry (§2.2
   # one-registry) — a relation → one edge-kind @resolution carrying its inverse label. See concern-relations.nix.

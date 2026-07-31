@@ -219,14 +219,20 @@ in
     name: kind:
     fail "parametric-aspect include (R14 list branch)" "the bare-fn parametric include `${name}` returned a list containing a `${kind}` effect — v1 `mkParametricNext` (aspect.nix:72-84) supports ONLY include effects (or bare aspects) in a returned list. Express a non-include effect (spawn/exclude/route/…) as a `den.policies.<name>` policy referenced in the includes list, not as a list entry returned by a parametric include";
 
-  # SURFACE TOTALITY (C1) — a top-level `den.<key>` the shim does not recognise. The permissive v1 eval
-  # (flake-module.nix `v1OptionsModule` freeformType) ABSORBS unknown `den.*` keys silently so an arbitrary
-  # corpus module evaluates; that absorption's promised downstream enforcement is HERE, over the read-back
-  # config. A typo'd or unknown surface key is rejected with a name — never silently dropped (the C1
-  # freeform-absorption trade-off). Names the offending key + the surface the shim compiles.
+  # SURFACE TOTALITY (C1) — a top-level `den.<key>` the shim does not recognise. The permissive eval is the
+  # SHIM'S OWN v1-surface eval (flake-module.nix `v1OptionsModule`, whose `den` submodule carries a
+  # `lazyAttrsOf raw` freeformType): it ABSORBS unknown `den.*` keys silently so an arbitrary corpus module
+  # evaluates, and that absorption's promised downstream enforcement is HERE, over the read-back config.
+  # DEN v1 IS NOT PERMISSIVE AT THIS LEVEL — it declares each `den.*` key individually and puts no freeform
+  # type on the `den` submodule itself, so an unknown top-level key is an UNDECLARED OPTION there, not an
+  # absorbed one. v1's freeform absorption sits one level DOWN, at host ENTRY keys (`strict = false` on the
+  # schema instance type, v1 entities/host.nix), where an unknown key does ride inertly. So C1's job is the
+  # SHIM's own ingest surface being permissive where v1's is not: a typo'd or unknown surface key is
+  # rejected with a name — never silently dropped (the C1 freeform-absorption trade-off). Names the
+  # offending key + the surface the shim compiles.
   unknownSurfaceKey =
     key:
-    fail "surface totality (C1)" "unknown `den.${key}` — the shim compiles { hosts, homes, schema, aspects, policies, classes, include, quirks, contentClass, default, <declared custom kinds> }; a typo'd or unknown `den.*` key is absorbed by the permissive v1 eval and rejected HERE, never silently dropped. Fix the key or extend the surface";
+    fail "surface totality (C1)" "unknown `den.${key}` — the shim compiles { hosts, homes, schema, aspects, policies, classes, include, quirks, contentClass, default, <declared custom kinds> }; a typo'd or unknown `den.*` key is absorbed by the shim's OWN permissive v1-surface eval (den v1 does NOT absorb it — there an unknown top-level `den.*` key is an undeclared option) and rejected HERE, never silently dropped. Fix the key or extend the surface";
 
   # NOT-IMPLEMENTED-BY-CENSUS (C1 surface totality) — an aspect carrying `meta.__forward`, the manifestation
   # of `den.batteries.forward` (v1 `nix/lib/forward.nix` `forwardItem`). The shim does NOT implement the

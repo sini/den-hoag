@@ -1,7 +1,11 @@
-# CLASS-NAME ⟂ ASPECT-NAME COLLISION ON THE evalV1 NAV VIEW (host.settings frontier). The corpus authors an
-# aspect NAMED after a class — `den.aspects.core.users.home-manager` (nix-config core/users/home-manager/
-# home-manager.nix) — carrying a `.settings` facet PLUS its own class content authored the v1 way (`os`,
-# `nixos`, `darwin`, and `homeManager` camelCase). den-hoag grounds v1's `homeManager` class to the built-in
+# CLASS-NAME ⟂ ASPECT-NAME COLLISION ON THE evalV1 NAV VIEW (host.settings frontier). THE SHAPE, authored
+# inline below: an aspect NAMED after a class, carrying a `.settings` facet PLUS its own class content
+# authored the v1 way (`os`, `nixos`, `darwin`, and `homeManager` camelCase) — v1-legal, because v1's class
+# is `homeManager` and never collides with an aspect named `home-manager`. The corpus HM aspect (nix-config
+# modules/den/aspects/core/users/home-manager/home-manager.nix) carries exactly those facets, under the
+# NON-class name `den.aspects.core.users.home-manager-shared` since the name-reservation rename; it was
+# `den.aspects.core.users.home-manager` before it, which is the spelling reproduced here. den-hoag grounds
+# v1's `homeManager` class to the built-in
 # kebab `home-manager` (v1-class-key-map.nix). When the nav/compile typed view (`typedCompileTree` →
 # `mkCompileAspectsType`) keyed its class channels by the GROUNDED kebab name, a `home-manager` channel was
 # materialized on every node — so the key `home-manager` under `core.users` resolved to the class-channel

@@ -7,11 +7,12 @@
 #   3. never self-reads    — the production may not read the keyspace it spawns (non-monotone / unbounded).
 #   4. content identity     — node identity is a content-function of the producing input (finiteness witness:
 #                            finite EDB ⇒ finite pool ⇒ finite image).
-# There is NO `den.productions.<name>` user surface yet (Phase 5 lands it + its behavioral consumer, dedup
-# bundles). L5 lands the registration LAW now, as a STANDALONE guard over a production-shaped record, exercised
-# SYNTHETICALLY — no fleet declares `emit = nodes`, so the guard is inert on every current corpus. Phase-5's
-# `den.productions` compile calls `boundedNtaGuard` at registration (threading the compiled strata order, as the
-# edge-kind compile threads `strataOrder`). See REFERENCE.md §5.
+# `den.productions.<name>` is a live surface and `emit = nodes` is lowered by concern-productions.nix (the
+# two-equation attr-gather + `<name>__spawn` nta). L5 is the registration LAW, exercised SYNTHETICALLY here
+# over production-shaped records — no shipped production declares `emit = nodes`, so the law is inert on every
+# current corpus. The productions compile calls `boundedNtaMessage` (the value form of the guard below) inside
+# its registration guard chain, threading the compiled strata order as the edge-kind compile threads
+# `strataOrder`. See REFERENCE.md §5.
 {
   denHoag,
   ...

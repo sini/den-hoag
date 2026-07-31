@@ -786,15 +786,17 @@ let
   # own-content leaf + the anchor oracle, and `collectedMembersOf` STAYS LIVE (the edge renderer
   # `deliveryEdgesAt` still calls it for the trace).
   #
-  # THE RED WINDOW (spec §Phase-2 scope, INTENTIONAL — documented, not silent): the corpus has NO
-  # reach-edge / reach-suppress / default-edge PRODUCERS until Phase 5 (corpus migration wires host-aspects
-  # → opt-in edge + the framework default edge). So on the real fleet `reach` = the STRUCTURAL SUBTREE ONLY
-  # — the emission half (baseline home content + host-aspects cross-class delivery) is MISSING until Phase 5,
-  # and full-fleet byte/functional validation is Phase 6. Projection is therefore validated SYNTHETICALLY
-  # here (ci/tests/projection.nix drives the edges through a synthetic reach graph — the complete-reach
-  # semantics witnesses: spicetify-once, intel-both, define-user nixos@host+hm@cell). The fleet golden
-  # suites that lose the emission content are MARKED PENDING (`# Phase 5: needs corpus edge producers`),
-  # never faked green.
+  # WHICH EDGE PRODUCERS THE REAL FLEET HAS (spec §Phase-2 scope). The opt-in reach-edge producer LANDED
+  # (§6.2a/6.2b): the corpus host-aspects include (`den.aspects.sini.includes = [ den.batteries.host-aspects
+  # ]`) desugars through the v1 `policy.spawn { classes }` arm into one class-scoped `declare.reach-edge`
+  # per named class, firing cell → its own host root. So on the real fleet `reach` is the structural-
+  # descendant subtree PLUS that cross-class delivery — NOT the subtree alone. The other two producers named
+  # by §Phase-2 are still absent: `reach-suppress` is a declared resolution kind (declarations.nix) that no
+  # fleet produces, and the framework default edge carrying baseline home content is unproduced, so the
+  # corpus emits neither. Full-fleet byte/functional validation is Phase 6. Projection keeps its SYNTHETIC
+  # witnesses here (ci/tests/projection.nix drives the edges through a synthetic reach graph — the
+  # complete-reach semantics witnesses: spicetify-once, intel-both, define-user nixos@host+hm@cell), which
+  # cover edge shapes no corpus producer authors yet.
   terminalModulesAt = id: class: projectClass id class;
 
   # gen-edge graph accessor (§2.3). Isolation makes every non-root scope node its OWN edge-root: a

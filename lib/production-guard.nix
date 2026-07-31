@@ -8,12 +8,15 @@
 #   3. never self-reads     — the production may not read the keyspace it spawns (non-monotone / unbounded).
 #   4. content identity     — node identity is a content-function of the producing input (the finiteness witness:
 #                             finite EDB ⇒ finite pool ⇒ finite image).
-# There is NO `den.productions.<name>` user surface yet — the node-spawning surface + its behavioral consumer
-# (dedup bundles) land in Phase 5. This is a STANDALONE guard over a production-shaped record (§4 vocabulary:
-# `emit ∈ {edges,attr,nodes}`, `mode ∈ {all,fixpoint}`, `from` = sources at strata, `keyspace` = the spawned
-# pool, `identity` = the node-id derivation). Phase-5's `den.productions` compile calls `boundedNtaGuard` at
-# registration (threading the compiled strata order, exactly as the edge-kind compile threads `strataOrder`).
-# `emit != "nodes"` ⇒ the guard is a NO-OP (inert on every current corpus — no shipped production spawns nodes).
+# `den.productions.<name>` IS a live user surface (default.nix `productionsDecl`), and its node-spawning half
+# is lowered by concern-productions.nix: `emit = nodes` compiles to the two-equation attr-gather +
+# `<name>__spawn` nta over a content-addressed `spawnNode`. This file holds the registration LAW over a
+# production-shaped record (§4 vocabulary: `emit ∈ {edges,attr,nodes}`, `mode ∈ {all,fixpoint}`, `from` =
+# sources at strata, `keyspace` = the spawned pool, `identity` = the node-id derivation); the productions
+# compile calls `boundedNtaMessage` inside its registration guard chain, threading the compiled strata order
+# exactly as the edge-kind compile threads `strataOrder`. `emit != "nodes"` ⇒ the law is a NO-OP — the only
+# framework-shipped production is the settings resolution facet (`emit = "attr"`, resolved-settings.nix), so
+# no shipped production spawns nodes.
 {
   strataScope,
 }:
