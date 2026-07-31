@@ -119,8 +119,11 @@ let
   # the parametric evaluation LAZILY (a `__isWrappedFn` aspect is invoked with ctx, a static submodule passes
   # through); `edges` reads the RESOLVED payload's `includes`, so a parametric aspect's successors exist only
   # post-invocation. `emit` receives BOTH the pre-resolution frame and the resolved payload — the node is
-  # `{ key; content }` (bare, no provenance marker) plus the additive `sharedFoldKey` dedup discriminator
-  # and the resolving `scope`. Returns { nodes; seen } with seen ⊇ seen0 (monotone).
+  # `{ key; content }` (bare, no provenance marker) plus the additive `sharedFoldKey` dedup discriminator,
+  # the resolving `scope`, and the `assertedClasses` declaration set. Every field is total and set
+  # unconditionally, so a CONTENT ELEMENT — the granularity both class-content consumers operate at — is
+  # produced complete here and no reader has to reconstruct one of its fields from where it was read.
+  # Returns { nodes; seen } with seen ⊇ seen0 (monotone).
   forwardExpand =
     scopeId: ctx: seen0: aspectList:
     graph.expandPreorder {
@@ -145,6 +148,15 @@ let
         # `bindAtSourceScope`) — v1's "a scope's consumer sees its own scope's pipe value". A cross-scope
         # shared aspect deduped to the host's copy carries the HOST's scope, matching v1's collapse.
         scope = scopeId;
+        # THE CONTENT KEYS THIS ELEMENT ASSERTS AS CLASS CONTENT BY DECLARATION. Same meaning as the
+        # node-wide forward-source `exempt` set (`class-modules.nix` `forwardSourceClassesOf`): a key named
+        # here materializes as class content instead of being classified, and instead of tripping the
+        # unregistered-key abort. `{ }` is the POSITIVE statement "this element asserts nothing;
+        # classification decides every one of its keys" — not an absence read as a default, which is why it
+        # is written unconditionally here rather than defaulted at the readers. An aspect body's keys are
+        # exactly the classification's domain, so `{ }` is the aspect element's total answer; a
+        # kernel-minted element whose channel the fleet author names carries that channel instead.
+        assertedClasses = { };
       };
     };
 
