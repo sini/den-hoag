@@ -167,8 +167,37 @@ let
   nvNulling = {
     config.den.systemViews.${nvSysA}.__entry = null;
   };
+  # A selector-form `neededBy`, so the SECOND scope-context builder is exercised too. That site does not
+  # route through `matchIdWith` — `resolved-aspects.nix` builds its own context inline — and it is the
+  # one a shipped compat desugar already flows a `sel.kind` through, so it is the live one rather than
+  # the staged one. Without the null-aware `entryFor` there, the same nulled `__entry` would flip a
+  # carrier's activation from true to false with no abort: an aspect's content silently not delivered.
+  nvNeededBy =
+    { config, ... }:
+    {
+      config.den.aspects.hostOnly = {
+        neededBy = sel.kind config.den.schema.host;
+        settings.marker.default = "m";
+      };
+      config.den.include = [
+        {
+          at = config.den.env.prod;
+          aspects = [ config.den.aspects.hostOnly ];
+        }
+      ];
+    };
   denEntried = (denHoag.mkDen nvBase).den;
   denNulled = (denHoag.mkDen (nvBase ++ [ nvNulling ])).den;
+  denNbEntried = (denHoag.mkDen (nvBase ++ [ nvNeededBy ])).den;
+  denNbNulled =
+    (denHoag.mkDen (
+      nvBase
+      ++ [
+        nvNeededBy
+        nvNulling
+      ]
+    )).den;
+  nvResolvedAt = d: id: d.structural.eval.get id "resolved-aspects";
 
   nvNulledId = "host:axon";
   nvEntriedId = "host:blade";
@@ -304,6 +333,21 @@ in
     test-null-entry-attrs-selector-unaffected = {
       expr = nvAttrsAt denNulled nvNulledId;
       expected = true;
+    };
+    # THE SECOND SCOPE-CONTEXT BUILDER, which does not route through `matchIdWith`: a selector-form
+    # `neededBy` resolved at the nulled node aborts, and admits at the entried sibling in the same den —
+    # so the obligation is discharged at both sites and not only at the seam.
+    test-null-entry-neededBy-context-aborts = {
+      expr = {
+        atNulled = aborts (nvResolvedAt denNbNulled nvNulledId);
+        atSibling = builtins.isList (nvResolvedAt denNbNulled nvEntriedId);
+        unNulled = builtins.isList (nvResolvedAt denNbEntried nvNulledId);
+      };
+      expected = {
+        atNulled = true;
+        atSibling = true;
+        unNulled = true;
+      };
     };
   };
 }
