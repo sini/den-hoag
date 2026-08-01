@@ -298,6 +298,122 @@ let
   };
   injectMarkerOut = (denHoag.mkDen (markerBase ++ [ injectMarkerMod ])).den.output;
 
+  # ── THE INJECTED KEY SPACE: one fleet per cell of the space a channel name can land in ────────────────
+  # `declare.inject { class = c; module = m; }` mints a content element whose content is
+  # `{ name = "<inject>"; ${c} = m; }`, so the act MERGES A FLEET-AUTHORED NAME INTO A KEY SPACE THE KERNEL
+  # READS BY FIXED NAME. Before an injection is rendered a channel name was never a content key; after it,
+  # it always is — so what happens on a collision is this rendering's own obligation, and only two answers
+  # exist: drop it silently, or refuse it named. The fleets below are one per cell of that space, each
+  # paired with a control ONE DECLARATION away, because a refusal measured without its control is
+  # indistinguishable from a change that refuses the whole space.
+  mkInjectMod =
+    class: module:
+    {
+      config.den.policies.injector = {
+        emits = [ "inject" ];
+        selects = sel.star;
+        fn =
+          { user, ... }:
+          [ (denHoag.declare.inject { inherit class module; }) ];
+      };
+    };
+  mkRerouteMod =
+    from: to:
+    {
+      config.den.policies.rerouter = {
+        emits = [ "reroute" ];
+        selects = sel.star;
+        fn =
+          { user, ... }:
+          [ (denHoag.declare.reroute { inherit from to; }) ];
+      };
+    };
+  outOf = mods: (denHoag.mkDen (relocationBase ++ mods)).den.output;
+  # `spool` becomes a QUIRK CHANNEL by this one declaration, and by nothing else. It is the only member of
+  # the reserved key space a fleet can create, which is why the pair it anchors is the sharpest control
+  # here: every other reserved name is a kernel key whose category no fleet can change.
+  quirkMod.config.den.quirks.spool = { };
+
+  # (b) an UNREGISTERED channel, routed into a registered one through an unregistered endpoint.
+  injectUnregOut = outOf [
+    (mkInjectMod "spool" { tag = "inj-unreg"; })
+    (mkRerouteMod "spool" denHoag.classes.nixos)
+  ];
+  # …and the same fleet carrying, at the same cell, an ASPECT with a genuinely unregistered content key of
+  # that same name. The injection's exemption is stamped on ITS OWN element, so the aspect's key is not
+  # exempted by it and stays a typo.
+  typoAspect =
+    { config, ... }:
+    {
+      config.den.aspects.typo.spool.tag = "typo-spool";
+      config.den.include = [
+        {
+          at = config.den.user.alice;
+          aspects = [ config.den.aspects.typo ];
+        }
+      ];
+    };
+  injectUnregTypoOut = outOf [
+    (mkInjectMod "spool" { tag = "inj-unreg"; })
+    (mkRerouteMod "spool" denHoag.classes.nixos)
+    typoAspect
+  ];
+  # the same aspect and the same relocation with NO injection anywhere — the control for the pair above.
+  typoOnlyOut = outOf [
+    typoAspect
+    (mkRerouteMod "spool" denHoag.classes.nixos)
+  ];
+
+  # (c) the EMPTY module, and its non-empty twin one declaration away.
+  injectEmptyOut = outOf [ (mkInjectMod denHoag.classes.home-manager { }) ];
+  injectEmptyMarkerOut = (denHoag.mkDen (markerBase ++ [ (mkInjectMod denHoag.classes.home-manager { }) ]))
+    .den.output;
+
+  # (d) the `_`-prefixed channel, and the byte-identical fleet one character away.
+  injectUnderscoreOut = outOf [
+    (mkInjectMod "_spool" { tag = "inj-underscore"; })
+    (mkRerouteMod "_spool" denHoag.classes.nixos)
+  ];
+  injectPlainOut = outOf [
+    (mkInjectMod "spool" { tag = "inj-plain"; })
+    (mkRerouteMod "spool" denHoag.classes.nixos)
+  ];
+
+  # (g) the SCHEMA-CLAIMED key space, mint side. Three members, two categories, and the one member a fleet
+  #     itself creates.
+  injectMetaOut = outOf [ (mkInjectMod "meta" { tag = "inj-meta"; }) ];
+  injectIncludesOut = outOf [ (mkInjectMod "includes" { tag = "inj-includes"; }) ];
+  injectArtifactOut = outOf [ (mkInjectMod "artifact" { tag = "inj-artifact"; }) ];
+  injectNameOut = outOf [ (mkInjectMod "name" { tag = "inj-name"; }) ];
+  injectQuirkOut = outOf [
+    quirkMod
+    (mkInjectMod "spool" { tag = "inj-spool"; })
+    (mkRerouteMod "spool" denHoag.classes.nixos)
+  ];
+
+  # (h) the same key space read from the SOURCE side: an aspect declaring content at the declared quirk
+  #     channel, with a relocation carrying it into a registered class.
+  quirkSourceAspect =
+    { config, ... }:
+    {
+      config.den.aspects.spoolsrc.spool.tag = "src-spool";
+      config.den.include = [
+        {
+          at = config.den.user.alice;
+          aspects = [ config.den.aspects.spoolsrc ];
+        }
+      ];
+    };
+  routeSourceQuirkOut = outOf [
+    quirkMod
+    quirkSourceAspect
+    (mkRerouteMod "spool" denHoag.classes.nixos)
+  ];
+  routeSourceUnregOut = outOf [
+    quirkSourceAspect
+    (mkRerouteMod "spool" denHoag.classes.nixos)
+  ];
+
   # ── THE DESTINATION INPUT: a ROUTE targeting the channel the relocation empties ───────────────────────
   # `relocationMod` moves `home-manager` to `nixos`; a route declaring `to = home-manager` at the same scope
   # is the ONE fixture combination that asks whose relocation governs a route's DESTINATION. Neither the
@@ -648,6 +764,223 @@ in
           marker2 = "unset";
         };
       };
+    };
+
+    # ══ THE INJECTED KEY SPACE — where a channel name may land, and where it is refused ═════════════════
+    # The rows above inject at a REGISTERED class, which is one cell of the space an injected channel name
+    # can occupy. The gate an injection crosses is a sequence, and a suite exercising one cell of it is
+    # blind to the others: a fixture injecting only at a registered class cannot see a widening that
+    # admits reserved names, and one injecting only a non-empty module cannot see a declared no-op being
+    # collected. Every refusal below is paired with a control ONE DECLARATION away that must keep
+    # delivering, because a refusal without its control is satisfied by a change that refuses the whole
+    # space — the exact failure the per-element assertion exists to avoid.
+
+    # (a) AN UNREGISTERED CHANNEL DELIVERS, and the two consumers agree about it. The injected content is
+    #     routed into a registered class through an endpoint that is registered nowhere, which is the
+    #     shape a design routing injections through the key classifier alone gets wrong.
+    test-inject-unregistered-channel-projectClass-eq-classSubtreeAt = {
+      expr = {
+        cell = injectUnregOut.projectClass alice "nixos";
+        host = injectUnregOut.projectClass axon "nixos";
+      };
+      expected = {
+        cell = injectUnregOut.classSubtreeAt alice "nixos";
+        host = injectUnregOut.classSubtreeAt axon "nixos";
+      };
+    };
+
+    # (b) the ABSOLUTE content, so the agreement above cannot be satisfied by two sides broken alike.
+    test-inject-unregistered-channel-content = {
+      expr = {
+        cell = builtins.concatMap tags (injectUnregOut.projectClass alice "nixos");
+        host = builtins.concatMap tags (injectUnregOut.projectClass axon "nixos");
+        hostFolded = builtins.concatMap tags (injectUnregOut.classSubtreeAt axon "nixos");
+      };
+      expected = {
+        cell = [ "inj-unreg" ];
+        host = [
+          "nixos-host"
+          "inj-unreg"
+        ];
+        hostFolded = [
+          "nixos-host"
+          "inj-unreg"
+        ];
+      };
+    };
+
+    # (c) ★ THE EXEMPTION DOES NOT WIDEN PAST THE ELEMENT THAT CARRIES IT. The injection's exemption is
+    #     stamped on its OWN element, whose content is exactly `{ name; spool = <module>; }`, so it reaches
+    #     nothing but the injected module. This fleet puts both readings of one name at one cell: an
+    #     `inject` at `spool` and an ASPECT declaring content at `spool`, with a relocation carrying that
+    #     channel into `nixos`. The injected module arrives; the aspect's does not — the relocation reads
+    #     `spool` off the element that asserts it and skips it on the element that does not. An
+    #     implementation exempting the channel NODE-WIDE instead answers both, which is what this row
+    #     excludes, and its control is the injection-free fleet one declaration away where nothing arrives.
+    #
+    #     ★ WHAT THIS ROW DOES NOT SAY, stated because the gap is the interesting part: an unregistered
+    #     content key on a native aspect is not refused here — it is DROPPED SILENTLY, and measurably so
+    #     on a fleet with no injection anywhere and at a channel name no injection shares. So the aspect's
+    #     absence below is the classifier's silent drop, not a refusal, and this row is not evidence that
+    #     one exists. The named totality abort is witnessed on the synthetic harness rows above, whose
+    #     hand-built elements reach it; no native fixture in this file does.
+    test-inject-unregistered-channel-no-typo-widening = {
+      expr = {
+        withInjection = builtins.concatMap tags (injectUnregTypoOut.projectClass alice "nixos");
+        control = builtins.concatMap tags (typoOnlyOut.projectClass alice "nixos");
+      };
+      expected = {
+        withInjection = [ "inj-unreg" ]; # the asserting element's content, and only it.
+        control = [ ]; # one declaration away, the same key carries nothing across.
+      };
+    };
+
+    # (d) A DECLARED NO-OP IS DROPPED. An `inject` whose module is empty contributes no content, so the
+    #     collected length matches the injection-free control exactly…
+    test-inject-empty-module-not-collected = {
+      expr = {
+        empty = builtins.length (injectEmptyOut.classSubtreeAt alice "home-manager");
+        control = builtins.length (relocationFreeOut.classSubtreeAt alice "home-manager");
+      };
+      expected = {
+        empty = 1;
+        control = 1;
+      };
+    };
+
+    # (e) …and its twin, which is what stops a repair from dropping EVERY injection: the same fleet with a
+    #     non-empty module collects it. The two rows disagree under any single-sided error.
+    test-inject-nonempty-module-collected = {
+      expr = {
+        nonEmpty = builtins.length (injectedOut.classSubtreeAt alice "home-manager");
+        control = builtins.length (relocationFreeOut.classSubtreeAt alice "home-manager");
+      };
+      expected = {
+        nonEmpty = 2;
+        control = 1;
+      };
+    };
+
+    # (f) and the justification for the drop, stated where it is falsifiable: the seed count moves and the
+    #     RESOLVED CONFIGURATION does not. Both fleets answer the same marker at the built member, so
+    #     dropping the empty injection is measured to change no configuration rather than argued to.
+    test-inject-empty-module-resolved-config-unchanged = {
+      expr = {
+        empty = (evalMember injectEmptyMarkerOut.systems.home-manager.${alice}).marker;
+        control = (evalMember markerFreeOut.systems.home-manager.${alice}).marker;
+      };
+      expected = {
+        empty = "hm-alice";
+        control = "hm-alice";
+      };
+    };
+
+    # (g) A `_`-PREFIXED CHANNEL IS REFUSED NAMED. `_`-prefixed keys in a module-shaped attrset are the
+    #     module system's own scaffolding, so a channel name there would carry two readings of one value.
+    #     The message names the channel, which is what makes this a refusal a fleet author can act on
+    #     rather than an anonymous abort somewhere below the declaration.
+    test-inject-underscore-channel-refused = {
+      expr = builtins.deepSeq (injectUnderscoreOut.classSubtreeAt axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "declare\\.inject at node '[^']*' names a reserved channel '_spool' \\(a '_'-prefixed content key is module-system scaffolding";
+      };
+    };
+
+    # (h) ITS CONTROL, one character away: the byte-identical fleet spelling the channel `spool` still
+    #     delivers. Without it the row above is satisfied by any change that breaks unregistered
+    #     injections wholesale.
+    test-inject-underscore-control-plain-channel = {
+      expr = builtins.concatMap tags (injectPlainOut.classSubtreeAt axon "nixos");
+      expected = [
+        "nixos-host"
+        "inj-plain"
+      ];
+    };
+
+    # (i) A CHANNEL THE ASPECT SCHEMA HAS CLAIMED IS REFUSED NAMED, and the message states the CATEGORY as
+    #     well as the name — the refusal is about what the name already means in this key space, not about
+    #     the name itself. The three members below are armed separately rather than as one parameterised
+    #     row because they do not share a category: `meta` and `includes` are structural keys the kernel
+    #     reads by fixed name, `artifact` is a facet. A row pinning one member would be blind to a
+    #     classifier that answered correctly for its category and wrongly for the other.
+    test-inject-schema-claimed-channel-meta-refused = {
+      expr = builtins.deepSeq (injectMetaOut.classSubtreeAt axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "names a reserved channel 'meta' \\(the aspect schema registers it as a 'structural' key";
+      };
+    };
+    test-inject-schema-claimed-channel-includes-refused = {
+      expr = builtins.deepSeq (injectIncludesOut.classSubtreeAt axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "names a reserved channel 'includes' \\(the aspect schema registers it as a 'structural' key";
+      };
+    };
+    test-inject-schema-claimed-channel-artifact-refused = {
+      expr = builtins.deepSeq (injectArtifactOut.classSubtreeAt axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "names a reserved channel 'artifact' \\(the aspect schema registers it as a 'facet' key";
+      };
+    };
+
+    # (j) ★ `name` — the member that needed a different predicate from every other row here, and the
+    #     reason it gets its own. It is the key the mint itself writes into the element it builds, so a
+    #     design that renders first and classifies afterwards collides with its own scaffolding and raises
+    #     an evaluator error naming neither the declaration nor the node. The refusal is stated at the
+    #     mint, before construction, which is what makes this abort CONTAINABLE and named at all.
+    test-inject-channel-name-is-refused-before-construction = {
+      expr = builtins.deepSeq (injectNameOut.classSubtreeAt axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "names a reserved channel 'name' \\(the aspect schema registers it as a 'structural' key";
+      };
+    };
+
+    # (k) ★★ THE QUIRK CHANNEL, and it is the sharpest pair here because the two fleets are ONE
+    #     DECLARATION apart. `spool` is reserved only because this fleet declared it a quirk channel —
+    #     every other member of the reserved space is a kernel key whose category no fleet can change. So
+    #     the pair makes the refusal a finding about the CATEGORY rather than about the name: the fleets
+    #     agree on every other declaration and must disagree here. It is also the only row that pins the
+    #     refusal's dependence on WHICH aspect-schema instance the predicate reads — a quirk-blind
+    #     instance answers `null` for `spool`, admits it, and passes every other row in this block.
+    test-inject-quirk-channel-refused = {
+      expr = builtins.deepSeq (injectQuirkOut.classSubtreeAt axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "reserved channel 'spool' \\(the aspect schema registers it as a 'channel' key";
+      };
+    };
+    test-inject-quirk-channel-control-undeclared = {
+      expr = builtins.concatMap tags (injectPlainOut.classSubtreeAt axon "nixos");
+      expected = [
+        "nixos-host"
+        "inj-plain"
+      ];
+    };
+
+    # (l) ★★ THE SAME KEY SPACE ON THE SOURCE SIDE, where the value class is aspect content rather than an
+    #     injected module. Every row above mints; this one READS. An implementation refusing relocation
+    #     endpoints instead of the read would pass all of them and fail this one, which is why the two
+    #     sides are armed separately. The content sits at a present, non-empty key that the source-side
+    #     read would otherwise answer past silently.
+    test-route-source-at-declared-quirk-channel-refused = {
+      expr = builtins.deepSeq (routeSourceQuirkOut.projectClass axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class content at scope '[^']*' is read from a reserved channel 'spool' \\(the aspect schema registers it as a 'channel' key";
+      };
+    };
+
+    # (m) its control, the source-side twin of (k)'s: the byte-identical fleet WITHOUT the quirk
+    #     declaration leaves `spool` merely unregistered, and an unregistered source is a legitimate shape
+    #     this refusal must not touch. A change refusing non-class sources wholesale satisfies (l) while
+    #     emptying every unregistered route in the tree; this row is what excludes it.
+    test-route-source-quirk-channel-control-undeclared = {
+      expr = builtins.concatMap tags (routeSourceUnregOut.projectClass axon "nixos");
+      expected = [ "nixos-host" ];
     };
 
     # ══ THE DESTINATION COORDINATE UNDER RELOCATION — the §4.5b ruling on a NATIVE fleet ════════════════
