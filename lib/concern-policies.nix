@@ -355,6 +355,70 @@ let
     else
       false;
 
+  # `firstUnstable path s` → `null` (stratum-stable) or the FIRST offending sub-selector with its PATH and
+  # the GROUND it failed on. This is `kindDetermined`'s recursion over the same closed tag set with a
+  # different answer at ONE leaf — `kind` — so it inherits that walk's totality and termination rather
+  # than needing its own, and it returns the witness instead of the boolean so the refusal can name where
+  # the fault is. `stratumStable s` IS `firstUnstable s == null`; it is NOT bound separately, because a
+  # second binding nothing reads is a declaration with no consumer, which is the dual of the absence
+  # defect the `selects` surface exists to remove.
+  #
+  # WHY `kind` IS UNSTABLE HERE WHILE `kindDetermined` ADMITS IT. The pre-pass dispatches over the
+  # attachment-free node set, whose containment edges are the pass's OWN output, so what its selectors
+  # need is not "the answer is a function of node kind" but "the answer is the same in every completion
+  # of this graph" — stability, in van Antwerpen, Néron, Tolmach, Visser & Wachsmuth's sense (PEPM 2016,
+  # §4.3 Correctness, Lemma 2): a query answered against an incomplete scope graph is licensed only where
+  # every ground instance agrees. Statix decides that dynamically and DELAYS when it cannot; the pre-pass
+  # has no later in which the edges exist independently of its own answer, so the property is secured by
+  # restricting the query language instead. `sel.kind` and `sel.entity` both read `data.__identity`, which
+  # the adapter composes from `entryFor` — and a completion may null a node's `__entry` (a
+  # `den.systemViews.<sys>.__entry = null` reaches `decls` through the scopeRoots fold), so their answers
+  # are not the same in every completion. `sel.attrs { type = k; }` reads `data.type`, which `project`
+  # merges LAST for every node with no `__entry` involved — so it cannot be shadowed by a decl key and it
+  # answers at an entry-less node: the robust form, on this axis, despite `sel.kind` being the
+  # schema-checked constructor.
+  #
+  # THE TWO GROUNDS ARE THE MESSAGE'S JOB, not the predicate's: an author who cannot tell a positional
+  # refusal from an entry-dependent one cannot tell which repair to make. `attrs` with a payload other
+  # than `{ type = …; }` is reported under the positional ground, and the ground's sentence names the
+  # decl-key reading as well as the positional one — those decls are exactly what the completion injects.
+  firstUnstable =
+    path: s:
+    let
+      t = s.__sel;
+      fault = ground: {
+        tag = t;
+        inherit path ground;
+      };
+    in
+    if t == "star" then
+      null
+    else if t == "attrs" then
+      (if builtins.attrNames s.a == [ "type" ] then null else fault "position")
+    else if t == "kind" || t == "entity" then
+      fault "entry"
+    else if t == "and" || t == "any" then
+      firstUnstableIn path 0 s.selectors
+    else if t == "not" then
+      firstUnstable "${path}/${t}" s.selector
+    else
+      fault "position";
+  firstUnstableIn =
+    path: i: xs:
+    if xs == [ ] then
+      null
+    else
+      let
+        r = firstUnstable "${path}/${toString i}" (builtins.head xs);
+      in
+      if r != null then r else firstUnstableIn path (i + 1) (builtins.tail xs);
+
+  # Does this RECORD's declared codomain reach a feed the staged pre-pass dispatches? `emits` is the
+  # record's field — `produces` is the COMPILED RULE's, and registration runs before any rule is built.
+  # The vocabulary is `declare.prePassKinds`, the same statement the two feed filters below are the two
+  # halves of.
+  dispatchedInPrePass = emits: builtins.any (k: builtins.elem k declare.prePassKinds) emits;
+
   # THE MEMO'S SYNTHETIC WITNESS. The kind-determined fragment's answer factors through `type`, so it is
   # decided against a single-node stand-in and never against a real node — which is what lets the index
   # be built once per fleet, before any node exists. A selector reading more than `type` cannot reach
@@ -432,6 +496,21 @@ let
           # (arm 1 is what makes `v.selects` safe for the three arms below it).
           refusal = if builtins.isAttrs v && v ? selects then refusesAt "" v.selects else null;
           at = r: if r.path == "" then "the selector" else "the selector at `${r.path}`";
+          # THE FIFTH REFUSAL, and it is a property of the PAIR (`emits`, `selects`) rather than of the
+          # selector alone — the identical value is admissible on a rule that emits `edge` and refused on
+          # one that emits `suppress`. That is why it is not a fifth arm of `refusesAt`, whose answer is a
+          # function of one walk over one selector. Two total walks, two domains, one registration.
+          # Read only after the three `refusal` arms have established the tree well-formed, and after the
+          # codomain has been established a list of known kinds classifying to ONE stratum.
+          unstable =
+            if refusal == null && dispatchedInPrePass emits then firstUnstable "" v.selects else null;
+          ground =
+            if unstable == null then
+              null
+            else if unstable.ground == "entry" then
+              "it reads the node's `__entry`-derived identity, and a completion of the pre-pass's graph may null that entry (`den.systemViews.<sys>.__entry = null` reaches a node's decls through the scopeRoots fold), so its answer is not the same in every completion. Write `sel.attrs { type = <kind name>; }`, which reads the `type` the projection merges LAST for every node"
+            else
+              "its answer depends on where the node sits in the scope graph — or on a decl key a completion injects — and the pre-pass dispatches BEFORE the containment edges exist, because those edges are its own output. There is no later at which to retry it. Write a selector over `type` alone (`sel.star`, `sel.any [ ]`, `sel.attrs { type = <kind name>; }`, and boolean combinations of those)";
         in
         if !(builtins.isAttrs v) then
           "den.policies: `${name}` is not a record - a policy value is `{ emits; selects; fn; gate ? <formals>; ops ? [ ]; }`. A bare `ctx: [ declarations ]` closure cannot carry the emitted-kind family the kernel schedules on, and recovering it by firing the body against a fabricated context is what this surface replaces"
@@ -453,6 +532,8 @@ let
           "den.policies: `${name}` emits unknown declaration kind `${builtins.head unknown}` - the vocabulary is the registered declaration kinds (declarations.nix `groups`)"
         else if builtins.length (groupsOf emits) > 1 then
           "den.policies: `${name}` emits kinds spanning strata ${builtins.concatStringsSep ", " (groupsOf emits)} - a rule's declarations classify to ONE stratum. This is gen-dispatch's core invariant, not only den-hoag's: `dispatch.deriveGroup` (gen-dispatch `mkActions`, the declared-stratum vocabulary) aborts on a declared kind family spanning groups, and `compileOne` discharges every rule through it. Split it into one policy per stratum; the split is authored and named rather than synthesized"
+        else if unstable != null then
+          "den.policies: `${name}`.selects — ${at unstable} carries tag `${unstable.tag}`, which is not STRATUM-STABLE, and `${name}` emits into a family the STAGED PRE-PASS dispatches (${builtins.concatStringsSep ", " declare.prePassKinds}). ${ground}"
         else if siteMarkOps != [ ] then
           "den.policies: `${name}`.ops carries a SITE-MARK-only pipeOp - site marks are per-node emission data fired WHERE the policy fires, so they belong in the body's emission, not in the fleet-wide compose seed. `ops` carries only ctx-independent commitments (a derived-channel DAG or a delivery route)"
         else
@@ -816,7 +897,11 @@ let
       ) rules;
       # The EXCLUDE-FAMILY feed (#72): the structural-group rules that can emit `suppress`. The staged
       # pre-pass dispatches ONLY these for suppression collection; empty for an exclude-free fleet.
-      excludeFamily = builtins.filter (r: r.group == "structural" && emitsAny r [ "suppress" ]) rules;
+      # The kind list is the declaration vocabulary's, not a literal here: it is one half of
+      # `declare.prePassKinds`, which the registration stability check reads whole.
+      excludeFamily = builtins.filter (
+        r: r.group == "structural" && emitsAny r declare.excludeFamilyKinds
+      ) rules;
       # THE RANK, name-keyed and spanning EVERY declared policy — not only the exclude feed. The
       # stratification is a property of the whole declaration graph; the exclude feed is the projection
       # of it that fires, joined back by the compiled rule's `identity`. Handing out the ranked set

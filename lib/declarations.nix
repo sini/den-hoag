@@ -248,6 +248,23 @@ let
   ];
   isResolveFamily = a: builtins.elem (kindOf a) resolveFamilyKinds;
 
+  # Exclude-family kinds (#72): the declarations the staged pre-pass's SECOND feed consumes. Stated here
+  # beside its sibling rather than as a literal at the feed filter, because the two together are what
+  # `prePassKinds` is the union of, and a vocabulary spelled in three places is a vocabulary that can
+  # disagree with itself.
+  excludeFamilyKinds = [
+    "suppress"
+  ];
+
+  # THE PRE-PASS VOCABULARY — the declaration kinds the STAGED pre-pass dispatches, across BOTH its feeds.
+  # ONE statement, read by the two feed filters and by the registration stability check that governs them
+  # (concern-policies.nix), never restated beside either. The check carries no `group == "structural"`
+  # conjunct because the conjunct is IMPLIED on this domain: registration refuses a stratum-spanning
+  # codomain, so a surviving record's `groupsOf emits` is a singleton; and every kind here is listed in
+  # `groups.structural`. Deriving it rather than copying the conjunct is what keeps the feed's condition
+  # from acquiring a third spelling.
+  prePassKinds = resolveFamilyKinds ++ excludeFamilyKinds;
+
   # `suppress { name }` — structural: a SCOPE-LOCAL POLICY-SUPPRESSION fact (#72, the exclude family —
   # candidate A, ledger u21). Names a policy (the v1 registry name) whose rules must NOT fire at the
   # declaring scope or its descendants — v1's `policy.exclude <policy>` constraint (pin 11866c16
@@ -499,6 +516,8 @@ actions
     codomainRows
     codomainsOf
     resolveFamilyKinds
+    excludeFamilyKinds
+    prePassKinds
     isMemberWrapper
     importEdgesOf
     checkStratum

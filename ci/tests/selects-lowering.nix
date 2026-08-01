@@ -56,8 +56,24 @@ let
       "refused"
     else if builtins.match ".*whose payload field.*" m != null then
       "malformed"
+    else if builtins.match ".*not STRATUM-STABLE.*" m != null then
+      "unstable"
     else
       "UNCLASSIFIED: ${m}";
+  # The GROUND an unstable verdict reports. Two grounds, because they tell an author two different
+  # things: a positional selector is refused at a stratum that has no positions yet, and an
+  # `__entry`-reading one because a completion may null the entry. An author who cannot tell them apart
+  # cannot tell which repair to make, so the discrimination is asserted and not assumed.
+  groundOf =
+    m:
+    if m == null then
+      "-"
+    else if builtins.match ".*may null that entry.*" m != null then
+      "entry"
+    else if builtins.match ".*where the node sits in the scope graph.*" m != null then
+      "position"
+    else
+      "-";
   # The PATH the message reports, read off its own text — `<root>` where it names no sub-selector.
   pathOf =
     m:
@@ -85,6 +101,30 @@ let
       (sel.attrs { type = "host"; })
       s
     ];
+
+  # ARM 5's harness varies the CODOMAIN as well as the selector, because arm 5 is the only registration
+  # refusal that is a property of the PAIR: the identical selector is admitted on a record emitting
+  # `edge` and refused on one emitting `suppress`. The codomain-dependent required fields ride along —
+  # `suppresses` for the exclude family, `binds` for the resolve family — because without them the
+  # codomain guard answers first and every cell would be measuring a different refusal.
+  verdictOf =
+    emits: s:
+    msg {
+      p = {
+        inherit emits;
+        selects = s;
+        fn = body;
+      }
+      // (if builtins.elem "suppress" emits then { suppresses = [ ]; } else { })
+      // (if builtins.elem "member" emits then { binds = [ ]; } else { });
+    };
+  # one cell: the arm, the ground and the path, as one comparable string.
+  pairCell =
+    emits: s:
+    let
+      m = verdictOf emits s;
+    in
+    "${armOf m}:${groundOf m} @${pathOf m}";
 
   # `kindDetermined`, read through the index's own observable rather than through a private predicate:
   # a one-rule feed is kind-determined iff nothing lands in `positionDependent`.
@@ -361,6 +401,142 @@ in
         disjunction = "admitted @-";
         hostsAndTheirDescendants = "admitted @-";
         nestedNot = "admitted @-";
+      };
+    };
+
+    # ARM 5 — the STRATUM-STABILITY refusal, and it is a property of the PAIR (`emits`, `selects`) rather
+    # than of the selector alone. A record whose codomain reaches a family the staged pre-pass dispatches
+    # must carry a selector whose answer is the same in EVERY completion of the pre-pass's graph: that
+    # pass fires over the attachment-free node set, and the containment edges a positional selector would
+    # read are the pass's own output, so there is no later at which to retry the query. `sel.kind` and
+    # `sel.entity` fail for the second reason — they read the `__entry`-derived identity, and a
+    # completion may null a node's entry.
+    #
+    # NESTING CANNOT EVADE IT, for the same reason arms 2-4 walk: the check is `kindDetermined`'s
+    # recursion with one leaf flipped, so a `within` buried under an `any` is refused AT the `within`,
+    # WITH its path. A top-tag test would admit every cell below whose name starts `nested`.
+    test-arm5-prepass-stratum-refusal-at-every-depth = {
+      expr = {
+        topWithinOnSuppress = pairCell [ "suppress" ] (sel.within (sel.attrs { type = "env"; }));
+        nestedWithinOnSuppress = pairCell [ "suppress" ] (nest (sel.within (sel.attrs { type = "env"; })));
+        nestedWithinOnMember = pairCell [ "member" ] (nest (sel.within (sel.attrs { type = "env"; })));
+        deeplyNestedParentMatches = pairCell [ "suppress" ] (
+          sel.not (nest (sel.parentMatches (sel.attrs { type = "env"; })))
+        );
+        # the payload-shape row: an `attrs` reading anything but `type` reads a decl key, and the decls
+        # are exactly what a completion injects.
+        attrsTwoKeysOnSuppress = pairCell [ "suppress" ] (
+          sel.attrs {
+            type = "host";
+            other = 1;
+          }
+        );
+        # the ENTRY ground, at both depths and on both feeds.
+        kindOnSuppress = pairCell [ "suppress" ] (
+          sel.kind {
+            kind = "host";
+            options = { };
+          }
+        );
+        nestedKindOnMember = pairCell [ "member" ] (
+          nest (
+            sel.kind {
+              kind = "host";
+              options = { };
+            }
+          )
+        );
+        entityOnSuppress = pairCell [ "suppress" ] (sel.entity { id_hash = "x"; });
+      };
+      expected = {
+        topWithinOnSuppress = "unstable:position @<root>";
+        nestedWithinOnSuppress = "unstable:position @/1";
+        nestedWithinOnMember = "unstable:position @/1";
+        deeplyNestedParentMatches = "unstable:position @/not/1";
+        attrsTwoKeysOnSuppress = "unstable:position @<root>";
+        kindOnSuppress = "unstable:entry @<root>";
+        nestedKindOnMember = "unstable:entry @/1";
+        entityOnSuppress = "unstable:entry @<root>";
+      };
+    };
+
+    # THE CONTROLS FOR ARM 5, in the same run, and there are two independent ones because the refusal has
+    # two conjuncts. Without the first, the arm above is satisfied by a check that refuses every
+    # pre-pass record; without the second, by one that refuses those selectors everywhere.
+    test-arm5-controls-both-conjuncts = {
+      expr = {
+        # (a) THE FRAGMENT is live: stratum-stable selectors register clean ON the pre-pass feeds.
+        starOnSuppress = pairCell [ "suppress" ] sel.star;
+        emptyAnyOnSuppress = pairCell [ "suppress" ] (sel.any [ ]);
+        attrsTypeOnMember = pairCell [ "member" ] (sel.attrs { type = "host"; });
+        booleanCombinationOnSuppress = pairCell [ "suppress" ] (
+          sel.not (
+            sel.any [
+              (sel.attrs { type = "host"; })
+              (sel.attrs { type = "user"; })
+            ]
+          )
+        );
+        # (b) THE CODOMAIN is what makes the pair: the SAME values, refused above, register clean on a
+        #     record whose `emits` no pre-pass feed dispatches.
+        withinOnEdge = pairCell [ "edge" ] (sel.within (sel.attrs { type = "env"; }));
+        kindOnEdge = pairCell [ "edge" ] (
+          sel.kind {
+            kind = "host";
+            options = { };
+          }
+        );
+        withinOnEmptyCodomain = pairCell [ ] (sel.within (sel.attrs { type = "env"; }));
+      };
+      expected = {
+        starOnSuppress = "admitted:- @-";
+        emptyAnyOnSuppress = "admitted:- @-";
+        attrsTypeOnMember = "admitted:- @-";
+        booleanCombinationOnSuppress = "admitted:- @-";
+        withinOnEdge = "admitted:- @-";
+        kindOnEdge = "admitted:- @-";
+        withinOnEmptyCodomain = "admitted:- @-";
+      };
+    };
+
+    # ARM 5 IS NOT A FIFTH ARM OF THE SELECTOR WALK, and the ordering is what says so. A `has` on an
+    # exclude-family record is still arm 3's refusal: arms 2-4 read one walk over one selector and their
+    # answer is a property of the selector alone, so they are decided before a question that needs the
+    # record. Folding arm 5 into that walk would make its answer depend on a record it does not receive.
+    test-arm5-does-not-displace-the-selector-walk = {
+      expr = {
+        hasOnSuppress = pairCell [ "suppress" ] (sel.has sel.star);
+        bogusTagOnSuppress = pairCell [ "suppress" ] (nest {
+          __sel = "bogus";
+        });
+        malformedOnMember = pairCell [ "member" ] (nest {
+          __sel = "any";
+        });
+      };
+      expected = {
+        hasOnSuppress = "refused:- @<root>";
+        bogusTagOnSuppress = "unknown:- @/1";
+        malformedOnMember = "malformed:- @/1";
+      };
+    };
+
+    # THE MESSAGE CARRIES WHAT THE AUTHOR NEEDS TO ACT: the rule's own identity, the vocabulary that put
+    # it in scope of the check, and a repair. The vocabulary is rendered FROM the declaration vocabulary
+    # rather than spelled in the message, so a kind entering the pre-pass appears here without an edit.
+    test-arm5-message-names-rule-vocabulary-and-repair = {
+      expr =
+        let
+          m = verdictOf [ "suppress" ] (sel.within (sel.attrs { type = "env"; }));
+        in
+        {
+          namesTheRule = builtins.match ".*`p`.selects.*" m != null;
+          namesTheFeedVocabulary = builtins.match ".*member, suppress.*" m != null;
+          namesTheRepair = builtins.match ".*Write a selector over .type. alone.*" m != null;
+        };
+      expected = {
+        namesTheRule = true;
+        namesTheFeedVocabulary = true;
+        namesTheRepair = true;
       };
     };
 
