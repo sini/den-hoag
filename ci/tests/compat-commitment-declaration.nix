@@ -25,11 +25,10 @@
 # The three `condCommit` arms are one body exhibiting the empty head, the reason the head is empty, and
 # law (b) at a real node.
 #
-# ★ EVERY EXCLUSION HERE IS PROVED LIVE BY EXHIBITION. Re-pointing each negative lookahead at text the SAME
-# message does carry reddens exactly its own arm: three exclusions, three kills, the other seventeen arms
-# green in the same run. An exclusion that could never have matched is a green that measures nothing, and a
-# bare exclusion with no conjoined positive would pass on a message that says nothing at all — so each is
-# paired with a substring the message must render.
+# ★ EVERY EXCLUSION HERE IS PROVED LIVE BY EXHIBITION. Each of the four negative lookaheads, re-pointed at
+# text the SAME message does carry, reddens exactly its own arm and no other. An exclusion that could never
+# have matched is a green that measures nothing, and a bare exclusion with no conjoined positive would pass
+# on a message that says nothing at all — so each is paired with a substring the message must render.
 #
 # ★ THE EMPTY HEAD IS PINNED AS A VALUE, NOT AS AN ABSENCE. The conditional reads `host.class` — a
 # `probe-sentinel.nix` CONSTANT, so the value sentinel answers `"«sentinel»"` and the body reaches a
@@ -403,11 +402,41 @@ in
     #   • the CHANNEL, and
     #   • WHICH commitment field is populated — both erased by `unique (map kindOf …)`, so an arm asserting
     #     them is a regression test for the refusal's POSITION, not merely for it firing.
-    test-a9-undeclared-law-a-names-the-channel-and-the-populated-field = {
+    #
+    # ★ THE FIELD CLAUSE IS ASSERTED AS A COMPUTATION, NOT AS A CONSTANT. This record populates `derived`
+    # alone, so the clause must render `derived` AND NOT the other two: an arm pinning the derived clause
+    # by itself is equally satisfied by a message that names all three unconditionally, which is what
+    # `commitmentFieldsOf`'s empty-render fallback does and what a hard-coded clause would do. The
+    # exclusion is proved live by its own companion below, whose record populates two fields and whose
+    # render carries the excluded text.
+    test-a9-undeclared-law-a-names-the-channel-and-only-the-populated-field = {
       expr = (compiled { inherit undeclaredCommit; }).undeclaredCommit.emits;
       expectedError = {
         type = "ThrownError";
-        msg = "den-compat: compose commitment: policy `undeclaredCommit` produced a `pipeCommit` declaration on channel `mesh` carrying a derived-channel DAG";
+        msg = "^(?![\\s\\S]*a delivery route)[\\s\\S]*den-compat: compose commitment: policy `undeclaredCommit` produced a `pipeCommit` declaration on channel `mesh` carrying a derived-channel DAG";
+      };
+    };
+    # …and a record populating TWO fields renders BOTH, joined. This is the arm that makes the one above a
+    # statement about `commitmentFieldsOf` rather than about one string: the two records differ by a single
+    # `as` stage, and the clause the first arm EXCLUDES is the clause this one REQUIRES. The pinned
+    # substring spans the join, so collapsing the separator moves exactly this arm.
+    test-a9-undeclared-law-a-joins-two-populated-fields = {
+      expr =
+        (compiled {
+          twoFields = {
+            __isPolicy = true;
+            selects = sel.star;
+            fn = _ctx: [
+              (p.from "mesh" [
+                (p.transform (x: x))
+                (p.as "sink")
+              ])
+            ];
+          };
+        }).twoFields.emits;
+      expectedError = {
+        type = "ThrownError";
+        msg = "carrying a derived-channel DAG \\(`derived`\\) and a delivery route \\(`routes`\\)";
       };
     };
     # …and the REMEDY names BOTH kinds. An author following a `pipeCommit`-only remedy verbatim would clear
