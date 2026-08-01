@@ -110,7 +110,31 @@ let
 
   # (4): an UNCONDITIONAL excluder suppresses wherever it is selected. Its codomain needs no name-set
   # entry — the body emits `suppress` at every firing, so recovery reads it directly.
-  detected = mk [ (policyRef "always-exclude" (_ctx: [ (exclude userToHostRef) ])) ];
+  #
+  # ★★ THE SELECTION IS STATED, AND AT ROOT LOCI, BECAUSE A CELL-KIND LOCUS IS REFUSED. This record used
+  # to carry no `selects` at all, so its arm derived one from a `_ctx:` body with no entity-kind formals
+  # — `sel.star`, every node — and the pre-pass then filed suppression sets at the bare `user:pol` /
+  # `user:tux` loci as well as at the hosts. Those user keys are in a space the consuming fold never
+  # reads, and the pre-pass now refuses them by name: *"a locus at a CELL kind is keyed in a space the
+  # fold never reads — the emission would be produced, keyed, and silently dropped."* The keys happened
+  # to be REDUNDANT here, because the same excluder also fired at the hosts and the cells inherit from
+  # there — but redundant-by-accident is not a representation, and the abort guards the representation.
+  #
+  # ★ ROOT SELECTION PLUS INHERITANCE IS THE SUPPORTED SPELLING for a fleet-wide suppression, and it is
+  # the mechanism this witness always rested on: the set rides the emitting ROOT's decls and the
+  # `suppressed-policies` inherited attribute carries it self ∪ ancestors to that root's descendants.
+  # Nothing about the DETECTION changes — the body is untouched, so it still emits `suppress` at the
+  # probe and is still classified into the feed with no name-set entry, which is what this witness is
+  # for. The value is AUTHORED rather than derived from formals so the intent is readable at the record
+  # instead of reconstructed from what its lambda happens to destructure.
+  detected = mk [
+    (
+      policyRef "always-exclude" (_ctx: [ (exclude userToHostRef) ])
+      // {
+        selects = sel.attrs { type = "host"; };
+      }
+    )
+  ];
 
   # (5): a policy whose body emits `suppress` while its DECLARED codomain says `enrich`. The declaration
   # is well-formed on its own (one kind, one stratum), so registration is clean and the conflict can only
@@ -141,6 +165,11 @@ let
     builtins.length (
       builtins.filter (e: (e.source.class or null) == "user") (fleet.den.graph.trace root)
     );
+  # The SUPPRESSION SET a node carries, read directly rather than inferred from an edge count. The two
+  # observables answer different questions: an edge count says a route did not land at that root, this
+  # says the node holds the constraint that stopped it — and only the second can be read at a node the
+  # route was never going to reach.
+  supAt = fleet: id: fleet.den.structural.eval.get id "suppressed-policies";
   ok = e: (builtins.tryEval (builtins.deepSeq e true)).success;
 in
 {
@@ -162,14 +191,31 @@ in
       expected = 1;
     };
     # (4) the DETECTED (unconditional) path suppresses fleet-wide with no name-set entry.
+    #
+    # ★ "FLEET-WIDE" IS NOW MEASURED AT THE CELLS RATHER THAN INFERRED FROM THE HOSTS. The two edge
+    # counts are the original claim and they are unchanged; what they could not distinguish is a
+    # suppression that reached every node from one that merely removed the two parent-targeted edges.
+    # The excluder selects HOST loci only, so every reading at a cell is the inherited
+    # `suppressed-policies` attribute doing the work — which is the mechanism the fleet-wide claim
+    # always rested on and which nothing here used to read.
     test-detected-excluder-suppresses-fleet-wide = {
       expr = {
         d = userEdgesAt detected dHost;
         n = userEdgesAt detected nHost;
+        # the emitting roots carry the set…
+        supAtDroidHost = supAt detected dHost;
+        supAtNixosHost = supAt detected nHost;
+        # …and their cells receive it, self ∪ ancestors, without being selected themselves.
+        supAtDroidCell = supAt detected "user:tux@host:d1";
+        supAtNixosCell = supAt detected "user:pol@host:n1";
       };
       expected = {
         d = 0;
         n = 0;
+        supAtDroidHost = [ "user-to-host" ];
+        supAtNixosHost = [ "user-to-host" ];
+        supAtDroidCell = [ "user-to-host" ];
+        supAtNixosCell = [ "user-to-host" ];
       };
     };
     # (5) RETARGETED. This pinned `excludeFamilyUntagged`, which is RETIRED — not relaxed. Feed membership
