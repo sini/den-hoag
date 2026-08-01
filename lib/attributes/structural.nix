@@ -15,6 +15,14 @@
 # fixed pure predicate `node -> bool` carrying no per-fleet content, so it is the same shape as
 # `declarations`, not as the per-fleet data below. Undefaulted, hence required — a defaulted
 # `_: false` would call every cell a root and drop the `memberAtCell` law entirely.
+# `matchAt self r id` = the PER-NODE SELECTION MATCHER — does rule `r`'s `selects` admit node `id`,
+# answered by gen-select over the scope context of the in-flight eval `self`. It binds with the libs
+# for the same reason `isCellNode` does; the eval arrives as its first argument, which is what lets a
+# `compute` body supply its own `self` rather than the file capturing one. It is what the selection
+# index applies at a position its kind memo cannot answer — a selector reading a node's POSITION
+# (`within`, `parentMatches`) rather than only its kind. Undefaulted, hence required: a default
+# answering `false` would silently drop every position-dependent rule at every node, and one throwing
+# would make a legal selector a crash.
 # `fleetChildren self id` = the cell-expansion glue (gen-product enumeration lives in
 # lib/fleet.nix, Law A1). `linkTarget entry` → { kind; nodeIds; } | null resolves a `link` target
 # to the scope NODES whose enriched-context feeds §B3 linked-context — a LIST, because an entity
@@ -28,6 +36,7 @@
   declarations,
   errors,
   isCellNode,
+  matchAt,
 }:
 {
   # The two structural feeds already SELECTED on each rule's declared `selects`
@@ -176,10 +185,11 @@ in
         # a descendant kind (inherited down a P edge) no longer over-fires. `.type` is total (every node
         # carries a kind), and the index is total over kinds.
         nodeKind = (self.node id).type;
-        # The per-node matcher is a named throw built in place from this file's own `errors` argument: a
-        # kind-determined selection is answered from the memo and never applies it, and a positional one
-        # aborts naming its own rule rather than being silently mis-selected.
-        applicableEnrich = policiesIndex.enrich (r: _id: errors.selectorNeedsPerNodeMatch r) id nodeKind;
+        # A kind-determined selection is answered from the memo and never applies the matcher; a
+        # POSITION-dependent one is answered per node, against this dispatch's own in-flight eval — so
+        # a rule selecting `within (attrs { type = "host"; })` reaches every scope under a host, which
+        # is a relation over the scope graph and not a set of kind names.
+        applicableEnrich = policiesIndex.enrich (matchAt self) id nodeKind;
         # one enrich dispatch at a context → its fired enrich declarations. classify is a
         # constant single-kind tag here (every rule in policiesRules.enrich is an enrich
         # declaration); the general declaration classifier would be ceremony.
@@ -360,8 +370,8 @@ in
         # include-scoped rule reaches only its owner-kind nodes — an ancestor coord inherited by a
         # descendant kind no longer over-fires.
         nodeKind = (self.node id).type;
-        # The same in-place matcher constant as attr 2 (see there).
-        applicablePolicy = policiesIndex.policy (r: _id: errors.selectorNeedsPerNodeMatch r) id nodeKind;
+        # The same per-node matcher as attr 2 (see there).
+        applicablePolicy = policiesIndex.policy (matchAt self) id nodeKind;
         # §B3 linked-context, folded from the structural phase's own `link` declarations —
         # forward-threaded through `combine`, so it never feeds back into the links it reads. The
         # node's own bindings shadow it (`linkedContext // ctx`): a link only ADDS a target's

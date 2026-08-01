@@ -45,6 +45,13 @@ let
     # The cell/root discriminator, bound with the libs rather than per fleet — a fixed pure predicate
     # over the id shape, so it has no per-fleet content to thread. See structural.nix's header.
     inherit (import ../build-roots.nix { inherit prelude; }) isCellNode;
+    # THE PER-NODE SELECTION MATCHER. A rule and a node id to whether the rule's `selects` admits that
+    # node, decided by gen-select in the scope context over the in-flight resolve eval. Bound with the
+    # libs for the same reason `isCellNode` is: it carries no per-fleet content — the eval it reads is
+    # the `self` its caller applies it to, which is why the eval is the FIRST argument and not a
+    # captured one. The ctx extension is empty: selection reads a node's kind and its position in the
+    # scope graph, both of which the base scope context already carries.
+    matchAt = self: r: id: scopeAdapter.matchIdWith { eval = self; } { } r.selects id;
   };
   resolvedAspects = import ./resolved-aspects.nix {
     inherit
