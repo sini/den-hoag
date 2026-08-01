@@ -134,8 +134,20 @@
   assertKeysRegistered ? (_: _: null),
   # iv-b — the reach's forward-source-class set (`class-modules.nix forwardSourceClassesOf`): the unregistered
   # `fromClass` keys a `meta.__forward` spec on a reached node names, EXEMPTED from the §2.2 typo-abort so
-  # their bucket materializes for `routeRemapFor`. Native default = `{ }` (no forward ⇒ byte-identical).
-  forwardSourceClassesOf ? (_: { }),
+  # their bucket materializes for `routeRemapFor`.
+  # REQUIRED, NO DEFAULT, on the same ground as `sourceOrderOf` above and not merely beside it. A `_: { }`
+  # default is a WRONG answer rather than an absent one: `{ }` says "the reach declares no forward source",
+  # which is honest for a fleet that declares none and false for a caller that simply did not thread the set.
+  # Every unregistered `fromClass` then falls outside `exempt`, its bucket never materializes, and the forward
+  # answers `[ ]` — a wrong answer indistinguishable from a legitimate one, which is the fail-open the
+  # required formal above exists to close, at a second coordinate. The omission is VALUE-level, so no lexical
+  # guard can reach it: a defaulted read leaves the export set closed and no raw read outside the owning file,
+  # satisfying every predicate stated over the text while answering as though the reach carried no forward at
+  # all. MEASURED, not argued — the projection suite's stub omitted this argument and ran thirty forward rows
+  # against an empty exemption, green only because every row's `fromClass` happened to name a REGISTERED
+  # class, which is the one case where no exemption is needed. An argument a caller may decline to supply is
+  # one a caller can be wrong about in silence.
+  forwardSourceClassesOf,
 }:
 let
   allNodeIds = builtins.attrNames result.allNodes;

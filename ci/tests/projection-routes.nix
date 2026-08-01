@@ -101,14 +101,15 @@ let
   # route's `to` is a coordinate at the target root, relabelled by that root's own relocation exactly as the
   # element arm's sources are. It is a REQUIRED formal there, so this instrument supplies the real query
   # rather than letting a default answer as though no relocation existed.
-  # ★ `forwardSourceClassesOf` IS THREADED BECAUSE THE PRODUCTION ASSEMBLY THREADS IT, and the projection
-  # reads it through an OPTIONAL argument defaulting to `_: { }`. A stub that omits it therefore runs every
-  # forward row against an EMPTY exemption — which is not a smaller instrument but a different one: the
-  # exemption is exactly what lets a forward read content out of a source class the key classifier does not
-  # recognise. Omitting it leaves the rows below green for the wrong reason, because every forward source
-  # they name happens to be a registered class name, where no exemption is needed; a forward from an
-  # unregistered source silently answers nothing. An argument the fixture may decline to supply is one the
-  # fixture can be wrong about in silence, so it is supplied.
+  # ★ `forwardSourceClassesOf` IS A REQUIRED FORMAL THERE TOO, and this instrument is why. It was threaded
+  # here first, while the projection still read it through an optional argument defaulting to `_: { }` — and
+  # a stub that omitted it therefore ran every forward row against an EMPTY exemption, which is not a smaller
+  # instrument but a different one: the exemption is exactly what lets a forward read content out of a source
+  # class the key classifier does not recognise. That omission left the rows below green for the wrong
+  # reason, because every forward source they name happens to be a registered class name, where no exemption
+  # is needed; a forward from an unregistered source silently answered nothing. An argument a caller may
+  # decline to supply is one a caller can be wrong about in silence, so the default is now gone and the
+  # threading below is what the kernel demands rather than what this file elects.
   inherit (cm)
     classSliceAt
     sourceOrderOf
