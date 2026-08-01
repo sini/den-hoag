@@ -49,6 +49,7 @@
 # ═════════════════════════════════════════════════════════════════════════════════════════════════════
 { denHoag, denCompat, ... }:
 let
+  inherit (denHoag) sel;
   declare = denHoag.declare;
   compile = denHoag.internal.compilePolicies;
   # The CONFIGURABLE probe sentinel (B2): `compilePoliciesWith sentinelFields` merges the fields onto the
@@ -214,6 +215,7 @@ in
                 "link"
                 "edge"
               ];
+              selects = sel.star;
               fn =
                 ctx:
                 if ctx.host.name == "match" then
@@ -244,10 +246,12 @@ in
           c = compile {
             foo-link = {
               emits = [ "link" ];
+              selects = sel.star;
               fn = ctx: if ctx.host.name == "match" then [ (declare.link { target = ent "t"; }) ] else [ ];
             };
             foo-edge = {
               emits = [ "edge" ];
+              selects = sel.star;
               fn = ctx: if ctx.host.name == "match" then [ (declare.edge (ent "asp")) ] else [ ];
             };
           };
@@ -343,6 +347,7 @@ in
           c = compile {
             foo = gated hostCond (_ctx: [ (declare.edge (ent "asp")) ]) // {
               emits = [ "edge" ];
+              selects = sel.star;
             };
           };
         in
@@ -371,6 +376,7 @@ in
           c = compile {
             foo = (gated hostCond (vc (declare.edge (ent "asp")))) // {
               emits = [ "edge" ];
+              selects = sel.star;
             };
           };
           r = builtins.head c.policy;
@@ -401,6 +407,7 @@ in
           c = compile {
             foo = (gated hostCond (vc hubPeerPipeOp)) // {
               emits = [ "pipeOp" ];
+              selects = sel.star;
             };
           };
           r = builtins.head c.policy;
@@ -427,6 +434,7 @@ in
           (compile {
             foo = gated hostCond (_ctx: [ (declare.edge (ent "asp")) ]) // {
               emits = [ "edge" ];
+              selects = sel.star;
             };
           }).policy
         ).produces;
@@ -446,6 +454,7 @@ in
                 "link"
                 "edge"
               ];
+              selects = sel.star;
               fn = _ctx: [ ];
             };
           };
@@ -506,7 +515,7 @@ in
       expected = {
         fleetWide = false;
         kindScoped = true;
-        armFiresAtKind = [ "k" ];
+        armFiresAtKind = sel.attrs { type = "k"; };
       };
     };
 

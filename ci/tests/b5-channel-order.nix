@@ -10,6 +10,7 @@
 #     both, in pinned order.
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   schema = {
     config.den.schema = {
       env.parent = null;
@@ -176,6 +177,7 @@ let
       ];
       config.den.policies.linkBlade = {
         emits = [ "link" ];
+        selects = sel.star;
         fn = { user, ... }: [
           (denHoag.declare.link { target = config.den.host.blade; })
         ];

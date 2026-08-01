@@ -11,6 +11,7 @@
 # only when the `declarations` (resolution) attribute is forced.
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   I = denHoag.internal;
   inherit (I)
     runResolve
@@ -77,6 +78,7 @@ let
         "edge"
         "member"
       ];
+      selects = sel.star;
       fn = _ctx: [
         (declare.edge H)
         (declare.member {
@@ -96,6 +98,7 @@ let
   chan = compilePolicies {
     needsChan = {
       emits = [ "edge" ];
+      selects = sel.star;
       fn = { someChannel }: [ (declare.edge H) ];
     };
   };
@@ -120,6 +123,7 @@ let
   poisonMod = {
     config.den.policies.poison = {
       emits = [ "edge" ];
+      selects = sel.star;
       fn = _ctx: [ (declare.edge poisonEntry) ];
     };
   };
@@ -137,10 +141,12 @@ let
       config.den.policies = {
         linkEnv = {
           emits = [ "link" ];
+          selects = sel.star;
           fn = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
         };
         captureEnv = {
           emits = [ "configure" ];
+          selects = sel.star;
           fn =
             { env, ... }:
             [
@@ -154,6 +160,7 @@ let
         };
         structSeesEnv = {
           emits = [ "emit" ];
+          selects = sel.star;
           fn = { env, ... }: [ (declare.emit { marker = "struct-saw-env"; }) ];
         };
       };
@@ -175,6 +182,7 @@ let
       config.den.policies = {
         seedEnv = {
           emits = [ "enrich" ];
+          selects = sel.star;
           fn = _ctx: [
             (declare.enrich {
               key = "env";
@@ -184,10 +192,12 @@ let
         };
         linkEnv = {
           emits = [ "link" ];
+          selects = sel.star;
           fn = _ctx: [ (declare.link { target = config.den.env.prod; }) ];
         };
         captureEnv = {
           emits = [ "configure" ];
+          selects = sel.star;
           fn =
             { env, ... }:
             [
@@ -225,6 +235,7 @@ let
       # the suppression TARGET — a declared policy for the suppressor to name.
       quiet = {
         emits = [ ];
+        selects = sel.star;
         fn = _ctx: [ ];
       };
       # the exclude family (`group == "structural"` and `emits` ∋ `suppress`, concern-policies.nix).
@@ -232,6 +243,7 @@ let
       # suppression there.
       hush = {
         emits = [ "suppress" ];
+        selects = sel.star;
         suppresses = [ "quiet" ];
         fn =
           { host, ... }:
@@ -288,6 +300,7 @@ in
       expr = I.policyMessage {
         fine = {
           emits = [ "edge" ];
+          selects = sel.star;
           fn = _ctx: [ (declare.edge H) ];
         };
       };

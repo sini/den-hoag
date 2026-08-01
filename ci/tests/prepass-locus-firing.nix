@@ -28,6 +28,7 @@
 # N=2 arm cannot be read as "the emitter never fired at all".
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag) declare;
 
   # `zone <- rack <- blade`. `blade` is the CANDIDATE cell kind (childless, parented); `rack` is a
@@ -64,6 +65,7 @@ let
     {
       config.den.policies.claim-rack = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ "pick" ];
         fn =
           { zone, ... }:
@@ -89,7 +91,7 @@ let
     { config, ... }:
     {
       config.den.policies.seat-by-value = {
-        selects = [ "rack" ];
+        selects = sel.attrs { type = "rack"; };
         emits = [ "member" ];
         binds = [ ];
         fn =
@@ -112,7 +114,7 @@ let
     { config, ... }:
     {
       config.den.policies.seat-by-formal = {
-        selects = [ "rack" ];
+        selects = sel.attrs { type = "rack"; };
         emits = [ "member" ];
         binds = [ ];
         fn =

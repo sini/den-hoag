@@ -18,8 +18,9 @@
 #   (3) no-mark channels unaffected — a channel with no collect mark binds own emissions alone.
 #   (4) THE F6 LOUD CEILING — a config-dependent (deferred) emission on a collected channel aborts
 #       NAMED at the consumer (errors.collectedConfigThunk), never a silent wrong value.
-{ denCompat, ... }:
+{ denHoag, denCompat, ... }:
 let
+  inherit (denHoag) sel;
   P = denCompat.pipe;
 
   # ── fixture A/B: two hosts (mutual siblings), h1 with cells tuxA+tuxB, h2 with cell tuxC.
@@ -72,7 +73,7 @@ let
       # its job, and the right answer to a question this suite is not asking.
       den.policies.collect-mesh = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "pipeOp" ];
         fn =
           { host, ... }:
@@ -87,7 +88,7 @@ let
       # its job, and the right answer to a question this suite is not asking.
       den.policies.collect-umesh = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "pipeOp" ];
         fn =
           { user, ... }:
@@ -134,7 +135,7 @@ let
       # its job, and the right answer to a question this suite is not asking.
       den.policies.collect-umesh-all = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "pipeOp" ];
         fn =
           { user, ... }:
@@ -151,7 +152,7 @@ let
       # its job, and the right answer to a question this suite is not asking.
       den.policies.collect-mesh-all = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "pipeOp" ];
         fn =
           { host, ... }:
@@ -185,7 +186,7 @@ let
       # its job, and the right answer to a question this suite is not asking.
       den.policies.collect-mesh = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "pipeOp" ];
         fn =
           { host, ... }:

@@ -22,8 +22,14 @@
 #       byte-equal with and without the raw side channel;
 #   (5) the TREE DUAL (unit) — rawStampTreeOf keeps exactly the leaves stampTreeOf drops
 #       (complementary trees; a mixed group appears in both, split by child).
-{ denCompat, nixpkgsLib, ... }:
+{
+  denHoag,
+  denCompat,
+  nixpkgsLib,
+  ...
+}:
 let
+  inherit (denHoag) sel;
   P = denCompat.pipe;
   registryLib = denCompat.registry;
 
@@ -125,7 +131,7 @@ let
           policies.collect-guests = {
             __isPolicy = true;
             emits = [ "pipeOp" ];
-            selects = null;
+            selects = sel.star;
             fn =
               { host, ... }:
               [

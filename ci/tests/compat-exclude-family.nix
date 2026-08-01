@@ -30,6 +30,7 @@
 #   (6) NAMELESS target — a policy-record exclude without a name aborts NAMED.
 { denCompat, denHoag, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denCompat) exclude;
 
   # the coerced registry shape a corpus exclude targets (bridge policy-type coercion; the v1 name is
@@ -197,6 +198,7 @@ in
             m = denHoag.internal.policyMessage {
               undeclared = {
                 emits = [ "enrich" ];
+                selects = sel.star;
                 fn = _ctx: [ (exclude userToHostRef) ];
               };
             };

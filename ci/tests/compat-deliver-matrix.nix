@@ -14,6 +14,7 @@
 # `value` (v1's frozen sourceKey has no value arm). A class-source deliver → `collected` of the `from`.
 { denCompat, denHoag, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denCompat)
     deliver
     route
@@ -181,7 +182,7 @@ let
       config.den.schema.host.includes = [ "seed" ];
       config.den.policies.route1 = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "delivery" ];
         fn = _ctx: [
           (deliver {
@@ -192,7 +193,7 @@ let
       };
       config.den.policies.p = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "delivery" ];
         fn = _ctx: [
           (provide {
@@ -241,7 +242,7 @@ let
       config.den.schema.host.includes = [ "base" ];
       config.den.policies.ga = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "delivery" ];
         fn = _ctx: [
           (deliver {

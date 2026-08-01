@@ -18,8 +18,14 @@
 #       INGEST by the named `errors.reservedClassInclude`, which reports the aspect path, the colliding class
 #       and the rename remedy — paired with the control that a bare module carrying no class-named definition
 #       location is NOT claimed by that scan and still meets gen-aspects' generic type guard.
-{ denCompat, nixpkgsLib, ... }:
+{
+  denHoag,
+  denCompat,
+  nixpkgsLib,
+  ...
+}:
 let
+  inherit (denHoag) sel;
   inherit (denCompat) route;
 
   # (1)/(2) compile-level: a class-named key stays class content (content-shape-agnostic); a non-class
@@ -100,7 +106,7 @@ let
           policies.hm-forward = {
             __isPolicy = true;
             emits = [ "delivery" ];
-            selects = null;
+            selects = sel.star;
             fn =
               { user, host, ... }:
               [

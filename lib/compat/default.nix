@@ -132,6 +132,11 @@ let
       graph
       ;
     inherit (denHoag) declare aspectIdHash;
+    # den-hoag's selector vocabulary — the domain `selects` is valued in. The compat compiler is upstream
+    # of the evaluated schema, so it holds kind NAMES and never kind VALUES, and writes the library's own
+    # sanctioned positional form (`sel.attrs { type = k; }`) rather than a hand-minted stand-in for the
+    # identity-checked `sel.kind`. Reached through `denHoag` like `declare`, not as a new substrate dep.
+    inherit (denHoag) sel;
     # den-hoag's built-in class set (`denHoag.classes` = nixos/darwin/home-manager; k8s-manifests is
     # compat-provisioned via builtins.nix, arriving through the corpus's `den.classes`) PLUS the ambient
     # legacy-battery classes (`os`/`user`, `legacy.defaults.registeredClasses`). Including the battery classes
@@ -270,7 +275,7 @@ let
     feat:
     import ./builtins.nix {
       inherit prelude errors;
-      inherit (denHoag) declare;
+      inherit (denHoag) declare sel;
       inherit (feat) fleetContext flakeOutputClasses;
     };
   # The shared wiring builder both `mkWiring` (legacy-only signature — `compat-legacy-severed` drives it)

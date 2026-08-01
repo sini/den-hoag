@@ -29,6 +29,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   I = denHoag.internal;
   # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
   # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
@@ -45,6 +46,7 @@ let
   # The REAL fleet-context enrich builder (single source of truth — no shape duplication).
   fleetContext = import "${denHoagSrc}/lib/compat/fleet-context.nix" {
     declare = denHoag.declare;
+    inherit sel;
   };
 
   # ── registries the bridge shape ingests (compat-fleet-context convention) ──
@@ -269,7 +271,7 @@ in
       expected = {
         fleetWideGlobal = false;
         kindArm = true;
-        armFiresAtKind = [ "k" ];
+        armFiresAtKind = sel.attrs { type = "k"; };
       };
     };
 

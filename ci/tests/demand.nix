@@ -13,6 +13,7 @@
 #   registration — an upward/cyclic `below` aborts at kind registration (downward-only DAG).
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   declare = denHoag.declare;
   # gen-demand's demand constructor — a kind resolver emits its sub-demands with it (the root demands
   # come from `declare.demand` policies; sub-demands are emitted inside a kind's `resolve`).
@@ -105,6 +106,7 @@ let
       # one root database demand, emitted by a policy at the host node (subject = the firing host).
       config.den.policies.provisionDb = {
         emits = [ "demand" ];
+        selects = sel.star;
         fn =
           { host, ... }:
           [
@@ -134,6 +136,7 @@ let
       config.den.policies = {
         provisionA = {
           emits = [ "demand" ];
+          selects = sel.star;
           fn =
             { host, ... }:
             [
@@ -145,6 +148,7 @@ let
         };
         provisionB = {
           emits = [ "demand" ];
+          selects = sel.star;
           fn =
             { host, ... }:
             [
@@ -182,6 +186,7 @@ let
       config.den.demandKinds = cascadeKinds;
       config.den.policies.provision = {
         emits = [ "demand" ];
+        selects = sel.star;
         fn =
           { host, ... }:
           [

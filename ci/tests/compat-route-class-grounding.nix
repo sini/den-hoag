@@ -16,10 +16,12 @@
 # already-grounded name passes through IDENTITY (`src` → `src`, corpus `homeLinux`/`flake-parts` unchanged);
 # (c) a genuinely-unknown class name still aborts LOUDLY.
 {
+  denHoag,
   denCompat,
   ...
 }:
 let
+  inherit (denHoag) sel;
   inherit (denCompat)
     route
     compile
@@ -95,7 +97,7 @@ let
           policies.homeLinux-to-hm = {
             __isPolicy = true;
             emits = [ "delivery" ];
-            selects = null;
+            selects = sel.star;
             fn = _: [
               (denCompat.route {
                 fromClass = "homeLinux";

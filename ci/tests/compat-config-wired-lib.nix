@@ -16,6 +16,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   # Reconstruct the bridge with the SAME deps flake.nix threads (mirrors compat-bridge.nix).
   mkCrossNixos =
     npkgs:
@@ -87,7 +88,7 @@ let
     # `errors.memberAtCell` aborts. `null` is a claim, not a neutral placeholder.
     den.policies.env-to-host = {
       __isPolicy = true;
-      selects = [ "host" ];
+      selects = sel.attrs { type = "host"; };
       emits = [ "member" ];
       binds = [ ];
       fn =

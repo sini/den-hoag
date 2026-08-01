@@ -23,8 +23,9 @@
 #       host-rooted deliveries do. Uses a `darwin` source (NO ambient darwin route — the ONLY darwin→nixos
 #       edge is the cell-fired one, isolating the cell-vs-host rooting; `os` would be confounded by the
 #       host's own ambient os→nixos route gathering the cell's os content via the #62c subtree members).
-{ denCompat, ... }:
+{ denHoag, denCompat, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denCompat) deliver;
 
   # every `tag` string reachable in a wrapped deferredModule (the gen-aspects `{ imports = [ … ]; }`
@@ -75,7 +76,7 @@ let
         # its job, and the right answer to a question this suite is not asking.
         den.policies.self1 = {
           __isPolicy = true;
-          selects = null;
+          selects = sel.star;
           emits = [ "delivery" ];
           fn = _ctx: [
             (deliver (
@@ -113,7 +114,7 @@ let
       # its job, and the right answer to a question this suite is not asking.
       den.policies.cellRoute = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "delivery" ];
         fn = { user, ... }: [
           (deliver {

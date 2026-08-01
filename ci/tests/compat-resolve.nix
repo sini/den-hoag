@@ -14,6 +14,7 @@
 # rack a parent-kind root) — the genericity pin (no env/host/user names in the arm proofs).
 { denCompat, denHoag, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag) declare;
   R = denHoag.policy.resolve;
   sha = s: builtins.hashString "sha256" s;
@@ -147,6 +148,7 @@ let
       {
         config.den.policies.grant = {
           emits = [ "member" ];
+          selects = sel.star;
           binds = [ "authToken" ];
           fn =
             { zone, ... }:
@@ -175,7 +177,7 @@ let
       # declaring something else makes the body's `member` a codomain violation caught at the emitting site.
       config.den.policies.enroll = {
         gate.rack = false;
-        selects = [ "rack" ];
+        selects = sel.attrs { type = "rack"; };
       }
       // tag
       // {
@@ -263,7 +265,7 @@ let
     {
       config.den.policies."__kindInclude__rack__policy__0" = {
         gate.rack = false;
-        selects = [ "rack" ];
+        selects = sel.attrs { type = "rack"; };
       }
       // tag
       // {

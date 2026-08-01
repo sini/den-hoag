@@ -75,6 +75,7 @@ let
       ];
       config.den.policies.setLevel = {
         emits = [ "configure" ];
+        selects = sel.star;
         fn =
           { user, ... }:
           [
@@ -102,6 +103,7 @@ let
         name = "pAlpha";
         value = {
           emits = [ "configure" ];
+          selects = sel.star;
           fn =
             { user, ... }:
             [
@@ -118,6 +120,7 @@ let
         name = "pBeta";
         value = {
           emits = [ "configure" ];
+          selects = sel.star;
           fn =
             { user, ... }:
             [

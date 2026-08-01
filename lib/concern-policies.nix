@@ -5,7 +5,7 @@
 # A policy value is a RECORD. It DECLARES the facts the kernel schedules on rather than having them
 # recovered by firing its body against a fabricated context:
 #
-#   { emits :: [Kind]; fn :: ctx -> [Decl]; selects ? null; gate ? functionArgs fn; ops ? [ ];
+#   { emits :: [Kind]; selects :: Selector; fn :: ctx -> [Decl]; gate ? functionArgs fn; ops ? [ ];
 #     suppresses :: [PolicyName]  (iff emits contains `suppress`)
 #     binds      :: [BindingKey]  (iff emits contains `member`) }
 #
@@ -41,12 +41,23 @@
 # a policy from the compiled rule set. A policy disappears only by not being written — which is the one
 # spelling of "this fleet has no such rule" that a reader cannot mistake for anything else.
 #
-# SELECTS is the 3-VALUED dispatch selection, because absence has two DIFFERENT meanings and one value
-# cannot carry both: `null` = unconstrained (dynamic attachment — fires wherever the gate admits),
-# `[ ]` = selects nothing (in no node's rule list at all), `[ k ... ]` = fires at nodes of those OWN
-# kinds (k = 0: the node itself, not descendants inheriting the coordinate). Neither absence is spelled
-# by omission. The default is `null`, so a record supplying only `emits` + `fn` keeps a bare closure's
-# dispatch reach exactly.
+# SELECTS is the dispatch selection, and it is REQUIRED and TOTAL: one representation — a gen-select
+# SELECTOR — with no default, no `null`, and no kind-name list. Absence has two DIFFERENT meanings and a
+# field with a default converts one of them into the meaning of silence, at which point silence is
+# indistinguishable from a decision. So both absences are promoted to CONSTRUCTED VALUES with distinct
+# constructors, and they are the two unit elements of the selector lattice's own operations:
+#   · `sel.star`     every node — gen-select's top selector (`matchOne` answers `true` unconditionally);
+#   · `sel.any [ ]`  no node    — the empty disjunction (`builtins.any f [ ] = false`);
+#   · anything else  the constrained case, e.g. `sel.attrs { type = "host"; }` positionally, or
+#                    `sel.kind den.schema.host` where the schema kind VALUE is in scope.
+# The empty list is not a selector at all, so the CONSTRUCTOR consuming it is the choice an author makes
+# — `sel.any [ ]` selects nothing and `sel.and [ ]` selects everything, because `any` and `all` have
+# opposite empty-list identities. An omitted `selects` is refused at registration, because silence must
+# not be read as a permission to reach every node. That is the same argument `emits` makes one field up.
+#
+# THE SELECTION PREDICATE IS gen-select's, NOT den-hoag's. `indexBySelection` decides only WHEN IT IS
+# SAFE NOT TO CALL IT (the kind-determined fragment, below); there is no expression in the kernel that
+# decides what a selection MEANS.
 #
 # GATE defaults to the body's `functionArgs` — the presence gate (a rule fires only where every
 # destructured ctx key is present; a channel-named arg, never a ctx key, therefore never fires). It is
@@ -81,6 +92,9 @@
   errors,
   strataScope,
   graph,
+  # gen-select — the selector vocabulary `selects` is valued in and the matcher the index memoises.
+  # The kernel reads `select.matches` and nothing else of the selection semantics.
+  select,
 }:
 let
   # The SEEDED strata config (§B2): the compiled stratum order with the stratum→ctx-key-groups map EMPTY
@@ -94,12 +108,13 @@ let
     ctxKeyStrata = { };
   };
 
-  # A policy value's declared parts. `emits` and `fn` are REQUIRED (validated by `policyMessage` before
-  # any rule is built); the rest carry their documented defaults, and each default is the exact semantics
-  # the corresponding omission had before it was a field.
+  # A policy value's declared parts. `emits`, `selects` and `fn` are REQUIRED (validated by
+  # `policyMessage` before any rule is built) and are read as bare selects — an accessor with an `or`
+  # default is a default, whatever it is spelled as, and `selects` had one. The rest carry their
+  # documented defaults, and each default is the exact semantics the corresponding omission had before
+  # it was a field.
   emitsOf = v: v.emits;
   fnOf = v: v.fn;
-  selectsOf = v: v.selects or null;
   gateOf = v: v.gate or (builtins.functionArgs v.fn);
   opsOf = v: v.ops or [ ];
   # The group a policy's declared codomain classifies to. `declare.stratumOfKind` is TOTAL on the closed
@@ -124,6 +139,237 @@ let
       groups = groupsOf emits;
     in
     if groups == [ ] then builtins.head declare.strata else builtins.head groups;
+
+  # ── THE SELECTOR VOCABULARY, READ STRUCTURALLY ───────────────────────────────────────────────────
+  #
+  # gen-select's tag set is CLOSED by `matchOne`'s if-chain, whose final arm throws on an unknown tag,
+  # and every predicate the kernel applies to a `selects` value is structural over the selector TREE
+  # rather than a test on its outermost tag. A top-tag test is evaded by nesting: `sel.any [ … (sel.has
+  # …) ]` carries tag `any` while its `has` child is matched normally and reads `ctx.children`. So the
+  # closed-set check, the refusal and the payload check ride ONE recursion — the one that already owns
+  # termination — and `knownTags` has exactly one reader.
+  knownTags = [
+    "star"
+    "attrs"
+    "entity"
+    "kind"
+    "and"
+    "any"
+    "not"
+    "has"
+    "within"
+    "parentMatches"
+    "coord"
+    "when"
+  ];
+  # The three tags this dispatch context cannot safely interpret, refused BY NAME at registration:
+  #   · `coord` — `matchOne`'s arm requires `data ? __coords`, which the scope adapter's projection does
+  #     not carry, so it would abort deep inside gen-select naming a coordinate-blind context;
+  #   · `has`   — reads `ctx.children`, an attribute the dispatch sites are upstream of;
+  #   · `when`  — its payload is a Nix FUNCTION, so the walk has nowhere to descend and cannot see the
+  #     identical `ctx.children` read the `has` refusal exists to stop. Refuse-at-the-tag is the only
+  #     structural option, and the direction of approximation is the safe one: over-refusing costs a
+  #     message, over-admitting costs an uncatchable abort at an arbitrary consumer.
+  refusedTags = {
+    coord = true;
+    has = true;
+    when = true;
+  };
+  # ONE ROW PER TAG THE WALK ADMITS — i.e. `knownTags \ refusedTags`, exactly. Each row names the tag's
+  # payload FIELD and, where its consumers need one, the TYPE test they presuppose. `star` carries no
+  # payload and `ok = null` means no type test — both are ROWS rather than omissions, because an absent
+  # declaration is a decision here too.
+  #
+  # A payload field needs a type test iff its consumers include an operation THAT IS NOT ALREADY TOTAL
+  # ON EVERY NIX VALUE and whose totality THE WALK'S OWN DESCENT INTO THAT FIELD does not establish.
+  # Both clauses are load-bearing: `kind` and `id_hash` are exempt by the first (their only consumer is
+  # `==`, total across types), and `selector` by the second (A4/A6 hand it back to this walk, whose root
+  # case is total on every Nix value, so the recursion IS the check). `selectors` and `a` are exempt by
+  # neither — `head`/`tail`/`all`/`any` presuppose a list before any element is reached, and
+  # `builtins.attrNames` is the first operation to touch `a` at all.
+  payloadOf = {
+    star = null;
+    attrs = {
+      field = "a";
+      ok = builtins.isAttrs;
+    };
+    kind = {
+      field = "kind";
+      ok = null;
+    };
+    entity = {
+      field = "id_hash";
+      ok = null;
+    };
+    and = {
+      field = "selectors";
+      ok = builtins.isList;
+    };
+    any = {
+      field = "selectors";
+      ok = builtins.isList;
+    };
+    not = {
+      field = "selector";
+      ok = null;
+    };
+    within = {
+      field = "selector";
+      ok = null;
+    };
+    parentMatches = {
+      field = "selector";
+      ok = null;
+    };
+  };
+  # A tag that is not a string cannot be interpolated — `matchOne`'s own unknown-tag throw fails building
+  # its message on one — so the renderer is TOTAL by construction: `builtins.typeOf` answers on every Nix
+  # value. A scalar tier (render the value when `toJSON` can) is deliberately NOT taken: it requires
+  # enumerating the types `toJSON` is total on, which is a closure claim over Nix's value space that a
+  # future value type falsifies silently, and `toJSON` itself aborts on a function and overflows on a
+  # self-referential set. The cost is one bit of detail; a non-string tag is illegal whatever its value.
+  renderTag = t: if builtins.isString t then t else "<${builtins.typeOf t}>";
+  # PRESENCE, THEN TYPE. The second test READS the field, so it cannot precede the first — that ordering
+  # is internal to this helper, which is why it is one helper and not two arms that a reshuffle could
+  # separate. `found` distinguishes the two faults an author fixes two different ways: `<absent>` says
+  # add the field, `<string>` says the field is there and holds the wrong kind of thing.
+  payloadFault =
+    row: s:
+    if !(s ? ${row.field}) then
+      {
+        inherit (row) field;
+        found = "<absent>";
+      }
+    else if row.ok != null && !(row.ok s.${row.field}) then
+      {
+        inherit (row) field;
+        found = "<${builtins.typeOf s.${row.field}}>";
+      }
+    else
+      null;
+  # `refusesAt path s` → `null` (admissible) or the FIRST fault with the PATH to the offending node.
+  # A message naming `has` on a rule whose top tag is `any` is the same puzzle for the reader that a
+  # top-tag test was for the checker, so every answer carries where it was found.
+  #
+  # THE ARM ORDER IS DERIVED, not stylistic, and each constraint is named by what its violation does:
+  #   A0 before everything — every later arm reads `s.__sel`; on a non-attrset that is an uncatchable
+  #      missing-attribute abort, and A0's predicate is total on every Nix value.
+  #   A1 before A3 — A3 indexes `payloadOf.${t}`, whose domain is a tag vocabulary, so an unrecognised
+  #      tag is itself a missing-attribute abort there.
+  #   A2 before A3 — `payloadOf` has rows only for the admissible tags, so A3 on a refused tag aborts;
+  #      and on a refused tag with an absent payload, `refused` is the message the author needs.
+  #   A3 before A4-A6 — the descent arms read `s.selectors` / `s.selector`, and the type half of A3
+  #      before A5's iteration, which reaches `builtins.head` on a non-list.
+  # A1 and A2 themselves COMMUTE (`refusedTags ⊆ knownTags`, so their predicates are disjoint); the
+  # ordering that matters is that both precede A3.
+  refusesAt =
+    path: s:
+    if !(builtins.isAttrs s && s ? __sel) then
+      {
+        status = "unknown";
+        tag = "<not-a-selector>";
+        field = null;
+        found = null;
+        inherit path;
+      }
+    else
+      let
+        t = s.__sel;
+      in
+      if !(builtins.isString t) || !(builtins.elem t knownTags) then
+        {
+          status = "unknown";
+          tag = renderTag t;
+          field = null;
+          found = null;
+          inherit path;
+        }
+      else if refusedTags ? ${t} then
+        {
+          status = "refused";
+          tag = t;
+          field = null;
+          found = null;
+          inherit path;
+        }
+      else
+        let
+          row = payloadOf.${t};
+          fault = if row == null then null else payloadFault row s;
+        in
+        if fault != null then
+          {
+            status = "malformed";
+            tag = t;
+            inherit (fault) field found;
+            inherit path;
+          }
+        # `child`/`descendant` mint no tag of their own — they ARE `and`/`within` compositions — so they
+        # need no case and the walk is total on them by construction.
+        else if t == "and" || t == "any" then
+          firstRefusal path 0 s.selectors
+        else if t == "not" || t == "within" || t == "parentMatches" then
+          refusesAt "${path}/${t}" s.selector
+        else
+          null;
+  firstRefusal =
+    path: i: xs:
+    if xs == [ ] then
+      null
+    else
+      let
+        r = refusesAt "${path}/${toString i}" (builtins.head xs);
+      in
+      if r != null then r else firstRefusal path (i + 1) (builtins.tail xs);
+
+  # `kindDetermined : Selector → Bool` — the fragment whose answer is provably a function of node KIND
+  # alone, which is exactly what a per-kind memo presupposes. Structural over the same closed tag set,
+  # and applied ONLY to registered selectors, so every payload it reads has already been established
+  # present and usable by the walk above.
+  #   · `star`   constant `true`;
+  #   · `attrs`  iff its payload is exactly `{ type = …; }` — the scope adapter's `project` merges `type`
+  #              LAST, so it is present on every node and no decl key can shadow it;
+  #   · `kind`   reads `data.__identity.kind`, which the adapter copies from `node.type` — true under the
+  #              entry-totality precondition, and at an entry-less node the memo is COARSER than per-node
+  #              evaluation (the witness supplies `__identity` unconditionally);
+  #   · `and`/`any`/`not`  pointwise boolean combinations of functions of `type` are functions of `type`;
+  #   · everything else    reads a per-node or positional fact. `when` is classified position-dependent
+  #     WITHOUT inspecting its function, which is the FINER direction — it costs evaluations and never
+  #     mis-selects; over-classifying as kind-determined is the unsound one and no analysis of an
+  #     arbitrary Nix function could justify it.
+  kindDetermined =
+    s:
+    let
+      t = s.__sel;
+    in
+    if t == "star" then
+      true
+    else if t == "attrs" then
+      builtins.attrNames s.a == [ "type" ]
+    else if t == "kind" then
+      true
+    else if t == "and" || t == "any" then
+      builtins.all kindDetermined s.selectors
+    else if t == "not" then
+      kindDetermined s.selector
+    else
+      false;
+
+  # THE MEMO'S SYNTHETIC WITNESS. The kind-determined fragment's answer factors through `type`, so it is
+  # decided against a single-node stand-in and never against a real node — which is what lets the index
+  # be built once per fleet, before any node exists. A selector reading more than `type` cannot reach
+  # this context (it is classified position-dependent and never consulted here), so supplying no
+  # `parent`, `children`, `ancestors` or decls IS the guard rather than an omission.
+  witnessId = "__kindWitness";
+  kindWitness = k: {
+    data = _: {
+      type = k;
+      __identity = {
+        kind = k;
+        id_hash = witnessId;
+      };
+    };
+  };
 
   # THE REFINED CODOMAINS (`declare.codomainRows`): the required-iff rule, over every row. `emits` names
   # the declaration KINDS a body may produce; a row's field names the DEPENDENCY EDGES one of those kinds
@@ -182,17 +428,27 @@ let
           unknown = builtins.filter (k: !(knownKind k)) (if builtins.isList emits then emits else [ ]);
           ops = v.ops or [ ];
           siteMarkOps = builtins.filter declare.isSiteMarkData ops;
+          # ONE walk, THREE messages. Read only after the `fn` guard, and only when the field is present
+          # (arm 1 is what makes `v.selects` safe for the three arms below it).
+          refusal = if builtins.isAttrs v && v ? selects then refusesAt "" v.selects else null;
+          at = r: if r.path == "" then "the selector" else "the selector at `${r.path}`";
         in
         if !(builtins.isAttrs v) then
-          "den.policies: `${name}` is not a record - a policy value is `{ emits; fn; selects ? null; gate ? <formals>; ops ? [ ]; }`. A bare `ctx: [ declarations ]` closure cannot carry the emitted-kind family the kernel schedules on, and recovering it by firing the body against a fabricated context is what this surface replaces"
+          "den.policies: `${name}` is not a record - a policy value is `{ emits; selects; fn; gate ? <formals>; ops ? [ ]; }`. A bare `ctx: [ declarations ]` closure cannot carry the emitted-kind family the kernel schedules on, and recovering it by firing the body against a fabricated context is what this surface replaces"
         else if !(v ? emits) then
           "den.policies: `${name}` declares no `emits` - the declaration codomain is REQUIRED. `emits = [ ]` (an EMPTY HEAD: the rule compiles, fires, and producing anything violates its codomain) is a legal value; an omitted `emits` is not, because silence must not be read as a permission to discover it by execution"
         else if !(builtins.isList emits) then
           "den.policies: `${name}`.emits must be a LIST of declaration-kind tags, got ${builtins.typeOf emits}"
         else if !(v ? fn) || !(builtins.isFunction v.fn) then
           "den.policies: `${name}` declares no function-valued `fn` - the body is `ctx: [ declarations ]`"
-        else if !(selectsOf v == null || builtins.isList (selectsOf v)) then
-          "den.policies: `${name}`.selects must be `null` (unconstrained), `[ ]` (selects nothing) or a list of kind names; those are three DIFFERENT selections and an omitted field means the first"
+        else if !(v ? selects) then
+          "den.policies: `${name}` declares no `selects` - the dispatch selection is REQUIRED. The three selections are `sel.star` (every node), `sel.any [ ]` (no node) and any other selector (the constrained case, e.g. `sel.attrs { type = \"host\"; }`); an omitted field is not a legal spelling of any of them, because silence must not be read as a permission to reach every node"
+        else if refusal != null && refusal.status == "unknown" then
+          "den.policies: `${name}`.selects — ${at refusal} carries the unknown tag `${refusal.tag}`, which is not one of gen-select's selector tags. `selects` is a SELECTOR, not `null` and not a list of kind names: write `sel.star` for every node, `sel.any [ ]` for no node, or `sel.attrs { type = <kind name>; }` / `sel.kind <kind value>` to constrain by kind"
+        else if refusal != null && refusal.status == "refused" then
+          "den.policies: `${name}`.selects — ${at refusal} carries tag `${refusal.tag}`, which the dispatch context cannot interpret. `coord` needs a `__coords` projection the scope context does not carry; `has` and `when` can read `ctx.children`, an attribute the dispatch sites are upstream of. den-hoag's own `hasClass` / `hasSetting` sugars are `when` selectors, so they are inadmissible in `selects` (they remain admissible on `members`, `of` and `sel`, which are read at a different stratum)"
+        else if refusal != null && refusal.status == "malformed" then
+          "den.policies: `${name}`.selects — ${at refusal} carries tag `${refusal.tag}` whose payload field `${refusal.field}` is `${refusal.found}`. A recognised tag with an unusable payload aborts inside gen-select's own descent, where the message names neither the field nor the policy that wrote it; registration is the only total position at which the field can be established usable"
         else if unknown != [ ] then
           "den.policies: `${name}` emits unknown declaration kind `${builtins.head unknown}` - the vocabulary is the registered declaration kinds (declarations.nix `groups`)"
         else if builtins.length (groupsOf emits) > 1 then
@@ -306,26 +562,79 @@ let
         ) (builtins.genList (i: i) (builtins.length cond.bottomUp))
       );
 
-  # THE SELECTION, once per feed: one filtered list per SCHEMA kind, each preserving the feed's OWN ORDER.
-  # Dispatch order determines emission order and therefore merge order, so a bucket-concatenation index
-  # (`byKind ++ anyKind`) would perturb output; filtering the original list once per kind preserves it
-  # exactly. A rule with `selects = [ ]` lands in NO bucket — it is not filtered out at a node, it is
-  # ABSENT FROM EVERY NODE'S RULE LIST, so the shape is unrepresentable rather than corrected. A rule with
-  # `selects = null` is in every bucket. `kinds` is opaque data supplied by the caller — the kernel learns
-  # no kind NAMES.
+  # THE SELECTION, once per feed. Dispatch order determines emission order and therefore merge order, so
+  # a bucket-concatenation index (`byKind ++ anyKind`) would perturb output; ONE filter over the feed's
+  # OWN list preserves it exactly. That is why the memo is a PARALLEL BOOLEAN VECTOR at the feed's own
+  # positions rather than a sub-list: partitioning into kind-determined and position-dependent halves and
+  # concatenating them produces a mis-ordered intermediate that a later sort would have to repair, and a
+  # repair that works is how an order defect closes falsely. A rule selecting `sel.any [ ]` lands in NO
+  # bucket — it is not filtered out at a node, it is ABSENT FROM EVERY NODE'S RULE LIST; a rule selecting
+  # `sel.star` is in every bucket. The two absences are opposite extremes of one table, which is the
+  # clearest reason they cannot share a spelling. `kinds` is opaque data supplied by the caller — the
+  # kernel learns no kind NAMES.
   #
-  # The result is a FUNCTION, not an attrset, and that is deliberate: a table lookup with an `or [ ]`
-  # fallback would answer "no rules" for a kind absent from `kinds`, silently dropping every unconstrained
-  # rule at that node — the failure mode this whole design exists to remove, reintroduced at the read. The
-  # fallback recomputes the same filter instead, so the selection is TOTAL over node kinds by construction
-  # and `kinds` is a memoisation hint rather than a correctness precondition.
-  indexByKind =
+  # `.at` is a FUNCTION, not an attrset, and that is deliberate: a table lookup with an `or [ ]` fallback
+  # would answer "no rules" for a kind absent from `kinds`, silently dropping every unconstrained rule at
+  # that node — the failure mode this whole design exists to remove, reintroduced at the read. Both
+  # tables here recompute on a miss instead, so the selection is TOTAL over node kinds by construction and
+  # `kinds` is a memoisation hint rather than a correctness precondition. The record this returns is a
+  # CONSTRUCTION carrying that one function plus one observable; `positionDependent` is read at the
+  # BINDING site and never threaded, so nothing a call site holds is an attrset where a function belongs.
+  #
+  # ★ THE INDEX IS A MEMO OF THE MATCHER, NOT A SECOND SELECTION PREDICATE. The semantics is
+  # `select.matches`; this decides only when it is safe not to call it.
+  indexBySelection =
     kinds: feed:
     let
-      at = k: builtins.filter (r: r.selects == null || builtins.elem k r.selects) feed;
-      table = prelude.genAttrs kinds at;
+      # `kindDetermined` is a pure function of the RULE, so it is decided once per rule, never per node.
+      tagged = prelude.imap0 (i: r: {
+        inherit i r;
+        kd = kindDetermined r.selects;
+      }) feed;
+
+      # THE MEMO, over the fragment for which kind IS the key: a boolean at each of the feed's OWN
+      # positions. `false` at a position holding a position-dependent rule — that position is answered
+      # per node below and never read from here. It needs no resolve result at all: the fragment's
+      # answer factors through `type`, so it is decided against the synthetic single-node witness.
+      admitsAt' = k: map (e: e.kd && select.matches e.r.selects witnessId (kindWitness k)) tagged;
+      table = prelude.genAttrs kinds admitsAt';
+      admitsAt = k: table.${k} or (admitsAt' k); # TOTAL: a kind outside `kinds` recomputes
+
+      positionDependent = map (e: e.r) (builtins.filter (e: !e.kd) tagged);
+
+      # ★ THE SHORT-CIRCUIT. When NO rule is position-dependent the whole feed's answer is a function of
+      # kind alone, so the per-node filter is not merely memoisable, it is UNNECESSARY: precompute the
+      # selected list per kind and hand it back whole. One table lookup per node — today's cost, restored
+      # BY CONSTRUCTION rather than recovered later as an optimisation. `pick` filters the same `tagged`
+      # list by the same positional vector, so the precomputed list is the feed's own order with entries
+      # removed and the order property above is inherited rather than re-argued.
+      pick = adm: map (e: e.r) (builtins.filter (e: builtins.elemAt adm e.i) tagged);
+      selectedTable = prelude.genAttrs kinds (k: pick (admitsAt k));
+      selectedAt = k: selectedTable.${k} or (pick (admitsAt k)); # TOTAL, same discipline
     in
-    k: table.${k} or (at k);
+    {
+      # `matchAt` is supplied BY THE DISPATCH SITE, which is where the resolve eval is in scope. Both
+      # arms have the SAME ARITY so every call site is one expression either way. It takes the RULE, not
+      # the rule's selector: a selector value cannot name the policy that wrote it, and the matcher the
+      # current landing supplies is a throw whose whole job is to name it.
+      at =
+        if positionDependent == [ ] then
+          # Nothing reads `matchAt` or `id`: the selection is a table lookup on kind.
+          _matchAt: _id: kind:
+          selectedAt kind
+        else
+          # ONE order-preserving pass over the ORIGINAL feed. No partition, no concatenation.
+          matchAt: id: kind:
+          let
+            admits = admitsAt kind;
+          in
+          map (e: e.r) (
+            builtins.filter (e: if e.kd then builtins.elemAt admits e.i else matchAt e.r id) tagged
+          );
+      # Exposed: its LENGTH is the scaling observable — a fleet-independent number a gate can assert on,
+      # and the exact quantity whose growth converts the per-node cost from negligible to dominant.
+      inherit positionDependent;
+    };
 
   # `compileWithStrata { order; ctxKeyStrata } policies` — the strata-aware compiler. `compileWith` is
   # this with the seeded config (an empty ctx-key map ⇒ identity projection).
@@ -462,7 +771,7 @@ let
             inherit group;
             condition = gateOf v;
             produces = emits;
-            selects = selectsOf v;
+            inherit (v) selects;
             ops = opsOf v;
             identity = name;
             produce = conformingProduce name v emits (projectedBase group base.produce);
@@ -524,7 +833,7 @@ in
   inherit
     compileWith
     compileWithStrata
-    indexByKind
+    indexBySelection
     policyMessage
     ;
 }

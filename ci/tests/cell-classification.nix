@@ -88,7 +88,7 @@ let
         gate = {
           box = false;
         };
-        selects = [ "box" ];
+        selects = sel.attrs { type = "box"; };
         emits = [ "member" ];
         binds = [ ];
         fn =

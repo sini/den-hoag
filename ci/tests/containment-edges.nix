@@ -21,6 +21,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag) declare;
   prelude = denHoag.internal.prelude;
   graph = denHoag.internal.genGraph;
@@ -83,6 +84,7 @@ let
     {
       config.den.policies.env-to-host = {
         emits = [ "member" ];
+        selects = sel.star;
         # The binding codomain is read off the very attrset the body emits, so the declaration cannot
         # disagree with the emission for any argument this fixture is instantiated with.
         binds = builtins.attrNames bindings;
@@ -105,6 +107,7 @@ let
     {
       config.den.policies.env-to-cluster = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ ];
         fn =
           { env, ... }:

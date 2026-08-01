@@ -8,8 +8,9 @@
 # Two witnesses over one fixture (a host firing a `deliver { from; to }` route), with and without child
 # cells. `descendants` is self-EXCLUDING, so a childless firing node yields `[ id ]` — byte-identical to the
 # pre-#62c own-scope collection (the second witness pins that identity).
-{ denCompat, ... }:
+{ denHoag, denCompat, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denCompat) deliver;
 
   # host:igloo firing a class-source route `src -> dst`; `withCells` toggles two home-manager user cells
@@ -45,7 +46,7 @@ let
         den.policies.route1 = {
           __isPolicy = true;
           emits = [ "delivery" ];
-          selects = null;
+          selects = sel.star;
           fn = _ctx: [
             (deliver {
               from = "src";

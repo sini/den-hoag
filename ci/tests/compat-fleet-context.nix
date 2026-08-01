@@ -20,6 +20,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   registry = import ./_lib/instance-registry.nix { inherit denHoag lib; };
   I = denHoag.internal;
   # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
@@ -36,6 +37,7 @@ let
   # The REAL policy builder (single source of truth — no shape duplication).
   fleetContext = import "${denHoagSrc}/lib/compat/fleet-context.nix" {
     declare = denHoag.declare;
+    inherit sel;
   };
 
   # The registries the bridge ingests: `config.den.environments`, built by gen-schema's OWN
@@ -97,7 +99,7 @@ let
   rulesFor =
     policies:
     I.compilePolicies (
-      builtins.mapAttrs (_: v: v // { selects = null; })
+      builtins.mapAttrs (_: v: v // { selects = sel.star; })
         (denCompat.compile { inherit policies; }).policies
     );
 

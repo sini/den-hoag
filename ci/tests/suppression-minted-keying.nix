@@ -21,6 +21,7 @@
 # satisfied by an empty list arriving for the wrong reason.
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag) declare;
 
   # `zone <- rack <- blade`. The third level is load-bearing rather than decorative: the pre-pass runs over
@@ -57,6 +58,7 @@ let
     {
       config.den.policies.claim-rack = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ ];
         fn =
           { zone, ... }:
@@ -79,7 +81,7 @@ let
     { config, ... }:
     {
       config.den.policies.drop-victim = {
-        selects = [ "rack" ];
+        selects = sel.attrs { type = "rack"; };
         emits = [ "suppress" ];
         suppresses = [ "victim" ];
         fn =

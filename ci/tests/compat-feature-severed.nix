@@ -34,6 +34,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   edge = denHoag.internal.edge;
 
   # ── the wirings: all-on baseline + one-feature-off per legacy feature (the `mkWiringWith` front door) ──
@@ -226,7 +227,7 @@ let
     policies.expose-ru = {
       __isPolicy = true;
       emits = [ "pipeOp" ];
-      selects = [ "user" ];
+      selects = sel.attrs { type = "user"; };
       fn = { user, ... }: [ (denCompat.pipe.from "resolved-users" [ denCompat.pipe.expose ]) ];
     };
   };

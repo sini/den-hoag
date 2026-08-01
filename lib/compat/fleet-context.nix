@@ -46,6 +46,8 @@
 # deferred to board #49 (ledger row `accessGroups`).
 {
   declare,
+  # den-hoag's selector vocabulary — this shim mechanism declares its own selection (see `selects` below).
+  sel,
 }:
 {
   # `mkEnrichPolicy { envs; secretsConfig }` — the `{ host, ... }`-gated enrich policy. `envs` is the
@@ -66,13 +68,13 @@
       # The fleet-context binding is a pure enrichment: one `enrich` declaration carrying the host's
       # environment + secrets bindings, and nothing else.
       emits = [ "enrich" ];
-      # UNCONSTRAINED, declared rather than derived. This is a SHIM-SYNTHESISED ambient global, not a v1
+      # EVERY NODE, declared rather than derived. This is a SHIM-SYNTHESISED ambient global, not a v1
       # `den.policies` registration: it appears in no `den.schema.<K>.includes` because there is no v1
       # declaration of it to include, and v1's counterpart binds this context at FLAKE scope where the
       # whole fleet inherits it. Deriving its selection from the schema would read that absence as "in no
       # includes list, therefore selects nothing" and delete the enrich fixpoint's single writer from every
       # node — the right rule for a user policy, the wrong one for the shim's own mechanism.
-      selects = null;
+      selects = sel.star;
       fn =
         { host, ... }:
         let

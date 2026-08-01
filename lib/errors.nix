@@ -335,6 +335,29 @@ in
   # validator that returns its message is the only CI-testable form) and raised here.
   policyRegistration = msg: fail "policy registration" msg;
 
+  # A POSITION-DEPENDENT SELECTOR REACHED A DISPATCH SITE THAT CARRIES NO PER-NODE MATCHER. The index
+  # memoises only the fragment whose answer is a function of node kind; anything else — `within`,
+  # `parentMatches`, `entity` — must be decided against the live scope, and the value the site threads
+  # for that is this throw until the resolve-eval matcher is wired.
+  #
+  # ★ THREADED RATHER THAN OMITTED, and that is the whole point of it existing. "No rule needs a per-node
+  # match" is a claim about the CORPUS, and the index is a kernel construct that outlives it: with no
+  # matcher threaded, the first author to write a positional selector is SILENTLY WRONG at every node.
+  # With this, "never applied" stops being an assertion and becomes a checked property of the running
+  # fleet — the abort names the author's own rule, at the first node it reaches. The two mechanisms
+  # compose exactly, so neither needs a flag: the index applies a matcher only on its general arm, and it
+  # takes the general arm only when some rule is position-dependent. The condition that would make
+  # holding this throw wrong is the same condition that fires it.
+  selectorNeedsPerNodeMatch =
+    rule:
+    fail "dispatch selection" "policy `${rule.identity or "«unnamed»"}` declares a POSITION-DEPENDENT `selects` — a selector whose answer is not a function of node kind alone (`within` / `parentMatches` / `entity`, or a boolean combination containing one) — and it reached a dispatch site that carries no per-node matcher. Either write a kind-determined selector (`sel.star`, `sel.any [ ]`, `sel.attrs { type = <kind>; }`, `sel.kind <kind value>`, and boolean combinations of those), or thread the scope-adapter matcher into this site";
+
+  # `runPrePass` was applied without an `indexFeed`. The default this replaces answered `[ ]` — "no rules
+  # at this node", chosen by omission and silently, which is the same absence-is-a-decision defect the
+  # `selects` surface exists to remove, arriving as a defaulted argument. The throw sits INSIDE all four
+  # lambdas, so binding the default costs nothing and only APPLYING it aborts.
+  prePassIndexUnthreaded = fail "staged pre-pass" "`runPrePass` was called with no `indexFeed`, so the pass has no selection to make. An index that answered the empty feed would silently drop every rule at every node — which is indistinguishable from a fleet whose rules genuinely select nothing — so the absent argument aborts instead. Thread `concernPolicies.indexBySelection <kinds>` projected to `.at`";
+
   # §4.1 the prebuilt-arm exclusivity: an aspect declaring `artifact` (the value-mode prebuilt face) may
   # carry no non-empty class content — the prebuilt IS the materialized face, so class buckets alongside it
   # are contradictory. Names the aspect and the offending class key.

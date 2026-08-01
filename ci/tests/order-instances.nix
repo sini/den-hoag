@@ -153,6 +153,7 @@ let
       # terminal `configure` policy → the `policy` tier (authority-wins by position, A8).
       config.den.policies.setLvl = {
         emits = [ "configure" ];
+        selects = sel.star;
         fn =
           { user, ... }:
           [

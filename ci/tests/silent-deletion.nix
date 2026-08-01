@@ -29,6 +29,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   d = denHoag.declare;
   compile = denHoag.internal.compilePolicies;
   msg = denHoag.internal.policyMessage;
@@ -53,6 +54,7 @@ let
   # policy, and the point is that its mis-declaration is now loud instead of its existence being silent.
   ghost = {
     emits = [ ];
+    selects = sel.star;
     fn = _: [
       (d.enrich {
         key = "g";
@@ -69,6 +71,7 @@ let
   # emit — and under the deletion reading it was the one case the deletion happened to serve.
   inert = {
     emits = [ ];
+    selects = sel.star;
     fn = _: [ ];
   };
   # A fleet-wide compose commitment that is NOT site-mark data (`marks = [ ]`), so `policyMessage`'s ops
@@ -81,6 +84,7 @@ let
   # ── (2) the throwing enrichment fact ────────────────────────────────────────────────────────────────
   throwing = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = _: [
       (d.enrich {
         key = "t";
@@ -143,17 +147,18 @@ in
         }).pipeOps;
       expected = [ composeOp ];
     };
-    #   `selects`: the 3-valued dispatch selection still places the rule in exactly its own buckets.
+    #   `selects`: the declared selector still places the rule in exactly its own buckets. The matcher
+    #   the index is handed is never applied here — a kind-determined selector is answered from the memo.
     test-empty-head-keeps-its-selects = {
       expr =
         let
           feed =
             (compile {
               p = inert // {
-                selects = [ "node" ];
+                selects = sel.attrs { type = "node"; };
               };
             }).policy;
-          at = k: builtins.length (indexFeed [ "node" "other" ] feed k);
+          at = k: builtins.length (indexFeed [ "node" "other" ] feed (_: _: throw "unreachable") "n:1" k);
         in
         {
           node = at "node";

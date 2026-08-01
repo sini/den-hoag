@@ -22,8 +22,9 @@
 #   (5) SHARED SURVIVES / OWN DROPS — a den.default host hm rides into the cell gather (shared arm); a
 #       `schema.host.includes` host hm is dropped (own arm) — both arms of the twin, one fixture;
 #   (6) R-ROOT-FILTER clears the double — one hm aspect at host+user (own both) declared ONCE.
-{ denCompat, ... }:
+{ denHoag, denCompat, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denCompat) route;
 
   tags =
@@ -79,7 +80,7 @@ let
               policies.hm-forward = {
                 __isPolicy = true;
                 emits = [ "delivery" ];
-                selects = null;
+                selects = sel.star;
                 fn =
                   { user, host, ... }:
                   [
@@ -137,7 +138,7 @@ let
         # its job, and the right answer to a question this suite is not asking.
         den.policies.hm-forward = {
           __isPolicy = true;
-          selects = null;
+          selects = sel.star;
           emits = [ "delivery" ];
           fn =
             { user, host, ... }:
@@ -191,7 +192,7 @@ let
         policies.hm-forward = {
           __isPolicy = true;
           emits = [ "delivery" ];
-          selects = null;
+          selects = sel.star;
           fn =
             { user, host, ... }:
             [

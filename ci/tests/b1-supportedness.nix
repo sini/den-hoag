@@ -31,6 +31,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   d = denHoag.declare;
 
   # ── the one-node fleet: schema, one instance, the policies under test ────────────────────────────
@@ -100,6 +101,7 @@ let
   # a positive chain that only closes across iterations of the fixpoint.
   seedS = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = _: [
       (d.enrich {
         key = "s";
@@ -109,6 +111,7 @@ let
   };
   chainC = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = { s, ... }: [
       (d.enrich {
         key = "c";
@@ -118,6 +121,7 @@ let
   };
   chainE = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = { c, ... }: [
       (d.enrich {
         key = "e";
@@ -129,6 +133,7 @@ let
   # ADMITS same-stratum positive reads, so this is legal and yields the empty model, not an abort.
   posCycX = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = { y, ... }: [
       (d.enrich {
         key = "x";
@@ -138,6 +143,7 @@ let
   };
   posCycY = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = { x, ... }: [
       (d.enrich {
         key = "y";
@@ -149,6 +155,7 @@ let
   # actually writes. It must not be caught.
   defG = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = _: [
       (d.enrich {
         key = "g";
@@ -158,6 +165,7 @@ let
   };
   defH = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn =
       {
         g ? "DEFAULT",
@@ -203,6 +211,7 @@ let
   # in this file is a scalar or a string, which is why a `==`-only law measured green here.
   fnPol = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = _: [
       (d.enrich {
         key = "fn";
@@ -212,6 +221,7 @@ let
   };
   modPol = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = _: [
       (d.enrich {
         key = "m";
@@ -224,6 +234,7 @@ let
   };
   listPol = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = _: [
       (d.enrich {
         key = "l";
@@ -291,6 +302,7 @@ let
   # two are indistinguishable, because a Nix closure exposes nothing below its formals.
   growFn = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn = ctx: [
       (d.enrich {
         key = "gf";
@@ -307,6 +319,7 @@ let
   # neither is a value-less probe (which the per-declaration-stratum guard rejects outright).
   stepA = {
     emits = [ "enrich" ];
+    selects = sel.star;
     fn =
       {
         n ? 0,
@@ -668,6 +681,7 @@ in
       expr = crossedDomain {
         plainB = {
           emits = [ "enrich" ];
+          selects = sel.star;
           fn = _: [
             (d.enrich {
               key = "b";

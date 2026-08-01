@@ -64,10 +64,13 @@
 {
   prelude,
   errors,
+  denHoag,
   ...
 }:
 let
   deliverLib = import ../../deliver.nix { inherit prelude errors; };
+  # den-hoag's selector vocabulary — this battery declares its own selection (see `desugar` below).
+  inherit (denHoag) sel;
 
   supportedOses = [
     "nixos"
@@ -116,17 +119,18 @@ rec {
   # THE GENERAL RULE FOR BATTERIES, so it is not rediscovered per battery: a battery that exports a
   # `routeInclude` (os-user, os-class) has its route folded into `den.aspects.defaults.includes`, so it
   # arrives as an `__aspectInclude__*` arm WITH an include path and its selection is derived correctly —
-  # it needs no `selects`. A battery that exports NO `routeInclude` and instead registers a policy through
-  # its `desugar` (this one) reaches dispatch only as a bare `den.policies.<name>`, which is in no
-  # `includes` list, so an UNDECLARED selection derives `[ ]` and the route is absent from every node.
-  # No `routeInclude` ⇒ declare `selects`.
+  # it needs no `selects` of its own. A battery that exports NO `routeInclude` and instead registers a
+  # policy through its `desugar` (this one) reaches dispatch only as a bare `den.policies.<name>`, which
+  # is in no `includes` list, so a derived selection would answer `sel.any [ ]` and the route would be
+  # absent from every node. No `routeInclude` ⇒ declare `selects`, and the value is `sel.star`: a v1
+  # AMBIENT battery is present on every fleet without any schema mentioning it.
   desugar =
     v1:
     v1
     // {
       policies = (v1.policies or { }) // {
         hm-user-detect = hmUserDetect // {
-          selects = null;
+          selects = sel.star;
         };
       };
     };

@@ -147,6 +147,7 @@ let
       # policy `configure` → the terminal `policy` slot.
       config.den.policies.setAppLevel = {
         emits = [ "configure" ];
+        selects = sel.star;
         fn =
           { user, ... }:
           [

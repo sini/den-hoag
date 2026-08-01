@@ -8,6 +8,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag.internal) identity;
   inherit (denHoag) declare;
   # The strata-aware policy compiler seam (concern-policies.compileWithStrata): compile with an
@@ -135,6 +136,7 @@ let
   # The ctx projection wraps ONLY the FINAL dispatch produce, never the probe.
   linkFoo = {
     emits = [ "link" ];
+    selects = sel.star;
     gate = {
       thing = false;
     };
@@ -639,6 +641,7 @@ in
         let
           edgeFoo = {
             emits = [ "edge" ];
+            selects = sel.star;
             gate = {
               asp = false;
             };

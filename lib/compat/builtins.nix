@@ -47,6 +47,9 @@
   prelude,
   errors,
   declare,
+  # den-hoag's selector vocabulary — the domain a compiled rule's `selects` is valued in. A shim
+  # built-in declares `sel.star` outright (see `ambient` below).
+  sel,
   # The compile-time `den.features.fleetContext` gate. Off ⇒ OMIT `fleetContextEnrichModule` from this
   # provisioning module's `imports`, so the `fleet-context-enrich` enrich policy is never provisioned (a
   # compat-wiring change, not a kernel edit — every other builtin provision untouched). Default on for a
@@ -66,7 +69,7 @@ let
   # host-bearing node's enriched-context, the compat twin of v1's fleet.nix scope-inheritance fan-out
   # (see fleet-context.nix for the law + v1 cites). Provisioned below as a config-dependent sub-module
   # (`imports`), so it can read the bridge-ingested `config.den.environments` / `config.den.secretsConfig`.
-  fleetContextLib = import ./fleet-context.nix { inherit declare; };
+  fleetContextLib = import ./fleet-context.nix { inherit declare sel; };
   # The provisioning module (config-dependent — reads the flake-parts `config.den` registries). Kept in
   # `imports` (not the top-level `config` below) so `builtins.nix`'s static `config.den.{classes,schema,
   # policies}` view stays a plain attrset for the unit suites that read it directly.
@@ -405,7 +408,7 @@ let
   # filtered the content out before the sibling host-to-wsl-host module import declared `options.wsl`.
   # Mark a shim-provisioned route AMBIENT: its dispatch selection is unconstrained BY DECLARATION, never
   # derived from a schema that was never asked to include it.
-  ambient = route: route // { selects = null; };
+  ambient = route: route // { selects = sel.star; };
   wslToHost = {
     __denCanTake = "host";
     fn =

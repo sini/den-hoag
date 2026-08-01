@@ -28,6 +28,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   R = denHoag.policy.resolve;
 
   tags =
@@ -85,7 +86,7 @@ let
         # LOUD"). Latent here only because nothing forces that path yet.
         den.policies.env-users = {
           __isPolicy = true;
-          selects = [ "host" ];
+          selects = sel.attrs { type = "host"; };
           emits = [ "member" ];
           binds = [ ];
           fn =

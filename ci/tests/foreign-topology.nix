@@ -13,6 +13,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   # ── the foreign fleet — datacenter (root) → rack → blade (the leaf CELL) ──────────────────────────────
   schema = {
     config.den.schema = {
@@ -91,6 +92,7 @@ let
       config.den.aspects.rackTag = { };
       config.den.policies.tag-rack = {
         emits = [ "edge" ];
+        selects = sel.star;
         fn =
           { rack, ... }:
           [ (denHoag.declare.edge config.den.aspects.rackTag) ];

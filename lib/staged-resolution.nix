@@ -181,10 +181,18 @@ let
       # `suppressed-policies` inherited attribute (gen-scope inheritSet) delivers with the v1 semantics.
       # Default: an empty feed → `suppressions = { }` → byte-identical.
       excludeRules ? [ ],
-      # The by-kind selection CONSTRUCTOR (`concernPolicies.indexByKind kinds`), applied here once per
-      # rank class. Threaded rather than rebuilt so the exclude feed's selection is the same expression
-      # every other feed's is.
-      indexFeed ? (_: (_: [ ])),
+      # The selection CONSTRUCTOR (`concernPolicies.indexBySelection kinds` projected to `.at`), applied
+      # here once per rank class. Threaded rather than rebuilt so the exclude feed's selection is the same
+      # expression every other feed's is. Arity after the feed is `matchAt -> id -> kind -> [rule]`.
+      #
+      # THE DEFAULT IS AN ABORT, NOT AN EMPTY SELECTION. A pre-pass invoked without an index should not
+      # quietly select nothing — that is "no rules at this node" chosen by omission, the same shape the
+      # `selects` surface removes one layer up. The throw is inside all four lambdas, so binding the
+      # default costs nothing and only applying it fires.
+      indexFeed ? (
+        _: _: _: _:
+        errors.prePassIndexUnthreaded
+      ),
       # policy name -> its RANK in the stratification (concern-policies `policyRank`): the position of
       # the policy's cluster in the condensation's reverse-topological order. It spans EVERY declared
       # policy, not just the exclude feed, because the stratification is a property of the whole
@@ -232,12 +240,17 @@ let
       # filter (which acts this feed consumes), a different question from selection. The caller partitions
       # CELL (`containTo == null`) vs CONTAINMENT (`containTo` set) tuples. A value-conditional policy
       # taking its false branch simply emits nothing here (its emission arrives once its ctx value is).
+      # ★ The index's `matchAt` is built HERE rather than taken as a parameter, and that is what keeps
+      # `runPrePass`'s signature untouched: the value is a CONSTANT — a named throw over `errors`, which
+      # is already a module argument of this file — so it needs nothing from outside the pass. A matcher
+      # carrying the resolve eval could not be built here at all, since the eval does not exist inside a
+      # pass that runs before it; that is a separate landing and it is what would force a parameter.
       fireFeedAt =
         index: keep: nodeKind: id: ctx:
         let
           acts =
             (dispatch.dispatch {
-              rules = index nodeKind;
+              rules = index (r: _id: errors.selectorNeedsPerNodeMatch r) id nodeKind;
               inherit id;
               context = ctx;
               match = dispatch.fromFunctionMatch;

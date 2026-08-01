@@ -4,6 +4,7 @@
 # needed, so `fleetChildren` spawns nothing. Also pins the grounded attribute names.
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   I = denHoag.internal;
   # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
   # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
@@ -34,7 +35,7 @@ let
   # an enrich declaration is inert data: { key; value; __policy; }.
   # `selects = null` — unconstrained: the rule fires wherever its gate admits. Stamped onto the built
   # rule because `dispatch.mkRule`'s argument set is closed; the kernel's own compile sets the same field.
-  enrichRule = args: enrichRule' args // { selects = null; };
+  enrichRule = args: enrichRule' args // { selects = sel.star; };
   enrichRule' =
     {
       identity,

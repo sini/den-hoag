@@ -13,6 +13,7 @@
 #     aspect resolves against the home-manager config at the terminal, a host-scoped one against nixos.
 { denHoag, nixpkgsLib, ... }:
 let
+  inherit (denHoag) sel;
   I = denHoag.internal;
   edge = I.edge;
   declare = denHoag.declare;
@@ -201,6 +202,7 @@ let
     {
       config.den.policies.injector = {
         emits = [ "inject" ];
+        selects = sel.star;
         fn =
           { host, ... }:
           [

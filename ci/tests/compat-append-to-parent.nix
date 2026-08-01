@@ -23,8 +23,14 @@
 #       delivery with the flag renders exactly the self-targeted edge, annotated;
 #   (4) the descriptor surface — route's `__extra.appendToParent` sets the field (default false), and
 #       the edge annotation mirrors v1's routeEdge (:813).
-{ denCompat, nixpkgsLib, ... }:
+{
+  denHoag,
+  denCompat,
+  nixpkgsLib,
+  ...
+}:
 let
+  inherit (denHoag) sel;
   inherit (denCompat) route compile;
 
   # Cross a host's built nixos modules through a REAL evalModules (a top-level freeform absorber, the same
@@ -71,7 +77,7 @@ let
         # its job, and the right answer to a question this suite is not asking.
         den.policies.hmForward = {
           __isPolicy = true;
-          selects = null;
+          selects = sel.star;
           emits = [ "delivery" ];
           fn =
             { user, host, ... }:
@@ -126,7 +132,7 @@ let
         # its job, and the right answer to a question this suite is not asking.
         den.policies.route1 = {
           __isPolicy = true;
-          selects = null;
+          selects = sel.star;
           emits = [ "delivery" ];
           fn = _ctx: [
             (route (

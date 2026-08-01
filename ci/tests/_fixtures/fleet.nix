@@ -322,6 +322,7 @@ let
         {
           config.den.policies.clusterLink = {
             emits = [ "link" ];
+            selects = sel.star;
             fn =
               { cluster, ... }:
               [
@@ -335,6 +336,7 @@ let
         {
           config.den.policies.provisionDb = {
             emits = [ "demand" ];
+            selects = sel.star;
             fn =
               { cluster, ... }:
               [
@@ -350,6 +352,7 @@ let
         {
           config.den.policies.setColor = {
             emits = [ "configure" ];
+            selects = sel.star;
             fn =
               { user, ... }:
               [

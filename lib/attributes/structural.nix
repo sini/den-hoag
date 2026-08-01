@@ -175,7 +175,10 @@ in
         # a descendant kind (inherited down a P edge) no longer over-fires. `.type` is total (every node
         # carries a kind), and the index is total over kinds.
         nodeKind = (self.node id).type;
-        applicableEnrich = policiesIndex.enrich nodeKind;
+        # The per-node matcher is a named throw built in place from this file's own `errors` argument: a
+        # kind-determined selection is answered from the memo and never applies it, and a positional one
+        # aborts naming its own rule rather than being silently mis-selected.
+        applicableEnrich = policiesIndex.enrich (r: _id: errors.selectorNeedsPerNodeMatch r) id nodeKind;
         # one enrich dispatch at a context → its fired enrich declarations. classify is a
         # constant single-kind tag here (every rule in policiesRules.enrich is an enrich
         # declaration); the general declaration classifier would be ceremony.
@@ -356,7 +359,8 @@ in
         # include-scoped rule reaches only its owner-kind nodes — an ancestor coord inherited by a
         # descendant kind no longer over-fires.
         nodeKind = (self.node id).type;
-        applicablePolicy = policiesIndex.policy nodeKind;
+        # The same in-place matcher constant as attr 2 (see there).
+        applicablePolicy = policiesIndex.policy (r: _id: errors.selectorNeedsPerNodeMatch r) id nodeKind;
         # §B3 linked-context, folded from the structural phase's own `link` declarations —
         # forward-threaded through `combine`, so it never feeds back into the links it reads. The
         # node's own bindings shadow it (`linkedContext // ctx`): a link only ADDS a target's

@@ -158,6 +158,7 @@ let
       # `backup`'s schedule/retention subkeys (per-subkey provenance — schedule/retention=policy, method=host).
       config.den.policies.patch = {
         emits = [ "configure" ];
+        selects = sel.star;
         fn =
           { user, ... }:
           [
@@ -290,6 +291,7 @@ let
     {
       config.den.policies.env-to-host = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ ];
         fn =
           { env, ... }:
@@ -310,6 +312,7 @@ let
     {
       config.den.policies.env-to-cluster = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ ];
         fn =
           { env, ... }:
@@ -430,6 +433,7 @@ let
     {
       config.den.policies.org-to-env = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ ];
         fn =
           { org, ... }:
@@ -450,6 +454,7 @@ let
     {
       config.den.policies.env-to-host = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ ];
         fn =
           { env, ... }:

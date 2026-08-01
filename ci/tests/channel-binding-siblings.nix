@@ -38,6 +38,7 @@
 # by the totality argument in the source, not by a witness.
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   d = denHoag.declare;
   system = "x86_64-linux";
 
@@ -154,6 +155,7 @@ let
     systemViews.${system}.channels = "from-the-system-view";
     policies.writeChannelsKey = {
       emits = [ "enrich" ];
+      selects = sel.star;
       fn = _ctx: [
         (d.enrich {
           key = "channels";
@@ -289,6 +291,7 @@ in
       expr = builtins.deepSeq (bindingsOf {
         policies.writeChannelsKey = {
           emits = [ "enrich" ];
+          selects = sel.star;
           fn = _ctx: [
             (d.enrich {
               key = "channels";
@@ -519,6 +522,7 @@ in
                 { };
             policies.writeSomeOtherKey = {
               emits = [ "enrich" ];
+              selects = sel.star;
               fn = _ctx: [
                 (d.enrich {
                   key = "notASiblingEither";

@@ -16,8 +16,14 @@
 # isEntity promotion); the user-scope firing is proven end-to-end by the frozen-corpus probe advancing past
 # home-platform.nix:29. The probe-shape unit twin (value-less sentinel classification) lives in
 # compat-policy-expansion `test-enriched-home-route-shapes`.
-{ denCompat, nixpkgsLib, ... }:
+{
+  denHoag,
+  denCompat,
+  nixpkgsLib,
+  ...
+}:
 let
+  inherit (denHoag) sel;
   inherit (denCompat)
     mkDen
     include
@@ -50,7 +56,7 @@ let
     )
     // {
       emits = [ "edge" ];
-      selects = null;
+      selects = sel.star;
     };
 
   # A minimal v1-surface fleet: two hosts on DIFFERENT systems (the field the demoted path key becomes), the

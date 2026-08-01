@@ -24,6 +24,7 @@
 # omitted. Rank ordering supplies the negative literal's EXTENSION; the body still has to read it.
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag) declare;
   I = denHoag.internal;
 
@@ -37,7 +38,7 @@ let
   # A GATED excluder — the `fires(P,n) <- ... AND NOT suppressed(P,n)` clause, written out. A suppressed
   # policy produces NOTHING, its own `suppress` included.
   gated = name: target: {
-    selects = [ "rack" ];
+    selects = sel.attrs { type = "rack"; };
     emits = [ "suppress" ];
     suppresses = [ target ];
     fn =
@@ -51,7 +52,7 @@ let
   # An UNCONDITIONAL excluder — the same head with no negative literal in its body. Kept as the contrast
   # arm: rank ordering delivers the extension, but a rule that never reads it cannot be gated by it.
   unconditional = target: {
-    selects = [ "rack" ];
+    selects = sel.attrs { type = "rack"; };
     emits = [ "suppress" ];
     suppresses = [ target ];
     fn = _ctx: [ (declare.suppress { name = target; }) ];

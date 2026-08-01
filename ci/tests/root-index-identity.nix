@@ -24,6 +24,7 @@
 # collision rather than to the fixture.
 { denHoag, nixpkgsLib, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag) declare;
 
   # ── the topology: zone <- rack, plus a `tag` registry the pre-pass never fires at ────────────────
@@ -74,6 +75,7 @@ let
     {
       config.den.policies.grant-token = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ "authToken" ];
         fn =
           { zone, ... }:

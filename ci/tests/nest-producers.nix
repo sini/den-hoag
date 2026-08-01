@@ -11,6 +11,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag.internal)
     containmentPairs
     nestProducer
@@ -100,6 +101,7 @@ let
       {
         config.den.policies.grant = {
           emits = [ "member" ];
+          selects = sel.star;
           binds = [ "t" ];
           fn =
             { zone, ... }:

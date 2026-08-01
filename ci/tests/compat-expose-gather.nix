@@ -11,8 +11,9 @@
 #       up only through nodes that RE-EXPOSE. A non-re-exposing middle TRAPS its child's exposed data — the
 #       grandparent receives NOTHING (the non-vacuous negative that a blind subtree gather would violate).
 #       When the middle DOES re-expose, the leaf's value reaches the grandparent (own ++ child order).
-{ denCompat, ... }:
+{ denHoag, denCompat, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denCompat) gather;
 
   # ── (A) FLEET — cross-class expose delivery + no-mark isolation ────────────────────────────────────
@@ -47,7 +48,7 @@ let
       # its job, and the right answer to a question this suite is not asking.
       den.policies.expose-ru = {
         __isPolicy = true;
-        selects = null;
+        selects = sel.star;
         emits = [ "pipeOp" ];
         fn = { user, ... }: [
           (denCompat.pipe.from "resolved-users" [ denCompat.pipe.expose ])

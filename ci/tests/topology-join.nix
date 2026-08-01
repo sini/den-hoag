@@ -64,6 +64,7 @@ let
     {
       config.den.policies.env-to-host = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ "grant" ];
         fn =
           { env, ... }:
@@ -86,6 +87,7 @@ let
     {
       config.den.policies.env-to-cluster = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ ];
         fn =
           { env, ... }:
@@ -172,7 +174,7 @@ let
         emits = [ "member" ];
         binds = [ ];
         gate.host = false;
-        selects = [ "host" ];
+        selects = sel.attrs { type = "host"; };
         fn = ctx: [
           (declare.member {
             coords = {

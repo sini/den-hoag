@@ -34,6 +34,7 @@
   ...
 }:
 let
+  inherit (denHoag) sel;
   # Shared reach/projectClass driver bindings, hoisted to a `/_`-skipped module (see the harness header).
   harness = import ./_lib/projection-harness.nix { inherit denHoag denHoagSrc; };
   inherit (harness)
@@ -135,6 +136,7 @@ let
   # PROJECTING host and the descendant cell whose slice reach delivers to it.
   relocationMod.config.den.policies.relocate-hm = {
     emits = [ "reroute" ];
+    selects = sel.star;
     fn =
       { host, ... }:
       [
@@ -165,6 +167,7 @@ let
   # leaving every `reroute` row above green.
   injectMod.config.den.policies.inject-hm = {
     emits = [ "inject" ];
+    selects = sel.star;
     fn =
       { user, ... }:
       [
@@ -187,6 +190,7 @@ let
   relocationDarwinSource.config.den.aspects.acct.darwin.tag = "dar-alice";
   routeMod.config.den.policies.route-darwin-to-hm = {
     emits = [ "delivery" ];
+    selects = sel.star;
     fn =
       { user, ... }:
       [

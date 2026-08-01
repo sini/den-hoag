@@ -185,6 +185,7 @@ let
       # `hasAspect` is never a policy-dispatch ctx key (it routes to the guard system) ⇒ never fires.
       config.den.policies.wouldConfigure = {
         emits = [ "configure" ];
+        selects = sel.star;
         fn =
           { hasAspect, ... }:
           [
@@ -244,6 +245,7 @@ let
       ];
       config.den.policies.wouldConfigure = {
         emits = [ "configure" ];
+        selects = sel.star;
         fn = policyFn config;
       };
     };

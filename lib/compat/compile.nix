@@ -24,6 +24,10 @@
   # nodes hash through (gen-schema identity.nix:16). `idHashOf` routes through it so the resolve-arm's
   # name-preimage aligns to the factor nodes BY CONSTRUCTION, not by a coincident literal copy.
   schema,
+  # den-hoag's selector vocabulary (`denHoag.sel` = gen-select's constructors) — the domain every
+  # compiled rule's `selects` is valued in. See `anyOfKinds` below for why the compat arms write
+  # `sel.attrs { type = k; }` rather than `sel.kind`.
+  sel,
   # The aspect namespace-identity helper (§A2), from den-hoag's kernel single-authority
   # (denHoag.aspectIdHash, routed onto gen-native's `aspects.aspectId`) — the compat aspect-edge sites
   # recompute the SAME id_hash the kernel stamps.
@@ -214,11 +218,47 @@ let
     }
     // codomainStamps ref ungated emits;
 
-  # THE DYNAMIC-ATTACHMENT ABSENCE, said rather than implied. A record with no entity-kind formal keeps
-  # its DYNAMIC attachment and must reach every node — which is `selects = null`, NOT `[ ]`. The omission
-  # this replaces was load-bearing and its own comment said so; the field makes the two absences different
-  # VALUES instead of the same missing key.
-  selectsOfFormals = firesAt: if firesAt == [ ] then null else firesAt;
+  # ── THE SELECTION PRODUCERS ──────────────────────────────────────────────────────────────────────
+  #
+  # `anyOfKinds` — the kind-literal disjunction, NORMALISED to one spelling per selection: a singleton is
+  # the bare literal, never a one-element `any`. Two spellings of one selection is the same defect the
+  # `selects` domain removes, one level down — a reader comparing two rules must be able to read "same
+  # selection" off the values, and `sel.any [ x ]` beside a bare `x` is one selection in two shapes.
+  #
+  # WHY `sel.attrs { type = k; }` AND NOT `sel.kind`, which is the identity-checked constructor. `sel.kind`
+  # takes a gen-schema kind VALUE (an attrset carrying `kind` and `options`) and throws by guard on a
+  # string. Those values are a function of the evaluated `den.schema`, which is computed INSIDE `mkDen` —
+  # strictly downstream of the value this pure compile produces — so demanding one here is a genuine
+  # circularity and not a wiring gap. A `lib.fix` knot is refused because the guard forces its argument at
+  # CONSTRUCTION, so the knot ties only while nothing in the schema derivation forces the selector, which
+  # is an unstated merge-order property of a dependency whose violation is an UNCATCHABLE infinite
+  # recursion. A hand-minted `{ kind = k; options = { }; }` stand-in would satisfy the guard while carrying
+  # none of the provenance the guard exists to check — positional typing wearing an identity-checked
+  # constructor's name. `sel.attrs` is gen-select's own sanctioned name-only route (its removed
+  # constructor's migration message names it), and between two positional forms the one that SAYS it is
+  # positional is correct. It is also the TOTAL one: the scope adapter's projection merges `type` last, so
+  # it is present on every node, where `sel.kind`'s answer routes through an optional `__entry` payload.
+  # A NATIVE author holds the schema and writes `sel.kind den.schema.host`; the compat compiler speaks v1's
+  # vocabulary, which is kind names and nothing else.
+  anyOfKinds =
+    ks:
+    if builtins.length ks == 1 then
+      sel.attrs { type = builtins.head ks; }
+    else
+      sel.any (map (k: sel.attrs { type = k; }) ks);
+
+  # ★ `anyOfKinds` IS DELIBERATELY NOT TOTAL ON `[ ]`. The empty case is exactly the question the two
+  # absences disagree about, and forcing each caller to answer it in its own arm is the whole of the fix.
+  # The two answers now sit as two adjacent lines that cannot be mistaken for each other — where they used
+  # to be `[ ] ↦ null` and `[ ] ↦ [ ]` in one compile unit, 1,500 lines apart:
+  #
+  # THE DYNAMIC-ATTACHMENT ABSENCE, said rather than implied. A record with no entity-kind formal keeps its
+  # DYNAMIC attachment and must reach every node — a STATED decision now, with its reason in the arm,
+  # rather than a value that happened to coincide with a field's default.
+  selectsOfFormals = firesAt: if firesAt == [ ] then sel.star else anyOfKinds firesAt;
+  # THE SCHEMA-PATH ABSENCE: a name in no `includes` list selects NOTHING. Same input, opposite answer,
+  # different constructor — see `selectsFromSchema` below for why nowhere is the right answer there.
+  selectsOfSchema = ks: if ks == [ ] then sel.any [ ] else anyOfKinds ks;
 
   # #72 — THE SUPPRESSION GATE (v1 dispatch-policies.nix:15-33: dispatch filters `aspectPolicies` by
   # name against the scoped exclude constraints). den-hoag rendering: the pre-pass's suppression sets
@@ -1279,9 +1319,8 @@ let
           # encodes "a v1 policy fires only where its schema INCLUDES it" — true of a v1 USER policy, and
           # false of a shim-synthesised AMBIENT global, which has no includes entry because it is not a v1
           # declaration at all (v1's equivalent binds at flake scope and is inherited fleet-wide). Those
-          # mechanisms therefore DECLARE `selects` on their own record, and a declared value wins —
-          # including `null`, which is a real value here and not a missing key. Only an UNDECLARED
-          # selection is derived from the schema.
+          # mechanisms therefore DECLARE `selects` on their own record — `sel.star`, stated — and a
+          # declared value wins. Only an UNDECLARED selection is derived from the schema.
           selects = if policies.${name} ? selects then policies.${name}.selects else selectsFromSchema name;
         };
     in
@@ -1615,15 +1654,16 @@ let
     map (
       ref:
       let
-        # board #57 confinement: `__firesAtKinds` = the record fn's own REQUIRED entity-kind formals (v1
+        # board #57 confinement: the record fn's own REQUIRED entity-kind formals (v1
         # `resolveArgsSatisfied`, schema.nix:188-190) — the same source `compilePolicy`'s `__condition`
-        # gates on, restricted to kinds. Mirrors `kindInclude`'s `[ kind ]` annotation. A DESCENDANT
+        # gates on, restricted to kinds. Mirrors `kindInclude`'s own kind selector. A DESCENDANT
         # inherits an ancestor coord down its P edge (a user cell carries its host's `host` coord,
         # structural.nix attr 1), so the formals-presence `__condition` ALONE over-fires a `{ host }`
-        # include at every user cell; the kind pre-filter pins v1's fire-AT-the-owner-kind. AND-ed with the
-        # `__condition` gate it only NARROWS — never adds a firing. OMITTED when the record has no
-        # entity-kind formal (a `{ class, … }` / ungated include keeps its DYNAMIC attachment; an empty
-        # `__firesAtKinds` would wrongly drop it at every node — the pre-filter is `elem nodeKind list`).
+        # include at every user cell; the kind confinement pins v1's fire-AT-the-owner-kind. AND-ed with
+        # the `__condition` gate it only NARROWS — never adds a firing. The confinement is carried as the
+        # rule's own SELECTOR (`selectsOfFormals`, below), matched by gen-select at the dispatch, so
+        # nothing in den-hoag decides what it means; a record with no entity-kind formal answers `sel.star`
+        # and keeps its DYNAMIC attachment, which is a stated arm rather than an omitted annotation.
         # RESIDUAL (documented, not half-done): v1's SECOND confinement — fire only where the aspect walk
         # REGISTERED the record (aspect-attachment locality, e.g. the including user's cell vs all cells) —
         # is a distinct, corpus-unexercised rung, left unimplemented.
@@ -1708,11 +1748,12 @@ let
 
   # THE SELECTION ABSENCE, said rather than implied. A `den.policies.<name>` DEFINITION is a registry
   # entry; `den.schema.<K>.includes` is what puts it into DISPATCH. A name in no `includes` list selects
-  # NOTHING (`[ ]`) — which is v1's behaviour, where a policy fires only where it is INCLUDED and never by
+  # NOTHING — which is v1's behaviour, where a policy fires only where it is INCLUDED and never by
   # `den.policies` presence alone, and which answers a registered-but-unreferenced policy firing at every
-  # node in the fleet. The two absences are now different VALUES: `[ ]` here, against `null` for a record
-  # whose formals leave its attachment dynamic (`selectsOfFormals`). The kernel learns no kind NAMES from
-  # this — `ing.kindIncludes` is data, and `expandRefs` is the same flattening the include arms use.
+  # node in the fleet. The two absences are different CONSTRUCTORS applied to the same empty list:
+  # `sel.any [ ]` here (`selectsOfSchema`), against `sel.star` for a record whose formals leave its
+  # attachment dynamic (`selectsOfFormals`). The kernel learns no kind NAMES from this — `ing.kindIncludes`
+  # is data, and `expandRefs` is the same flattening the include arms use.
   namesRef =
     name: refs:
     builtins.elem name (builtins.filter (n: n != null) (map (r: r.name or null) (expandRefs refs)));
@@ -1759,7 +1800,8 @@ let
       ) (builtins.attrNames (ing.kindExcludes or { }));
     in
     if violations == [ ] then null else builtins.head violations;
-  selectsFromSchema = name: builtins.filter (k: !(isExcludedAtKind k name)) (includedAt name);
+  selectsFromSchema =
+    name: selectsOfSchema (builtins.filter (k: !(isExcludedAtKind k name)) (includedAt name));
   compiledPolicies = compilePolicies ing normalizeList aspectRec selectsFromSchema v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag declarations,
@@ -1924,7 +1966,7 @@ let
           aspectPolicy = prelude.optionalAttrs (edgeRefs != [ ]) {
             "__kindInclude__${kind}" = {
               gate = kindCoord;
-              selects = [ kind ];
+              selects = sel.attrs { type = kind; };
               emits = [ "edge" ];
               fn = _ctx: map (ref: declare.edge (resolveAspectRef aspectRec ref)) edgeRefs;
             };
@@ -1945,7 +1987,8 @@ let
                   gate = kindCoord // base.gate;
                   # `den.schema.<kind>.excludes` naming this policy removes it from THIS kind's selection.
                   # Same-kind only; a descendant-scoped exclude has already aborted (`excludeScopeCheck`).
-                  selects = if isExcludedAtKind kind (ref.name or null) then [ ] else [ kind ];
+                  selects =
+                    if isExcludedAtKind kind (ref.name or null) then sel.any [ ] else sel.attrs { type = kind; };
                 };
             }) policyRefs
           );

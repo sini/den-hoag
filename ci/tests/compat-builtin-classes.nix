@@ -36,6 +36,7 @@ let
     prelude = { };
     errors = { };
     declare = { };
+    sel = { };
     flakeOutputClasses = true;
   };
   classesView = builtinsMod.config.den.classes;
@@ -45,6 +46,7 @@ let
     prelude = { };
     errors = { };
     declare = { };
+    sel = { };
     flakeOutputClasses = false;
   };
   classesViewOff = builtinsModOff.config.den.classes;

@@ -7,6 +7,7 @@
 # validated by the ship-gate corpus re-probe; these are the unit-level mechanism pins.
 { denHoag, denCompat, ... }:
 let
+  inherit (denHoag) sel;
   I = denHoag.internal;
   # The structural feeds arrive KIND-INDEXED (`indexPolicyFeed kinds feed` -> `kind -> [rule]`), selecting
   # on each rule's declared `selects`. An empty kind list memoises nothing, so every lookup takes the
@@ -44,7 +45,7 @@ let
   # point here, so the selection is declared rather than inherited from a compile this test is not driving.
   stubRules = I.compilePolicies {
     systemToFlakeParts = compiledStub // {
-      selects = null;
+      selects = sel.star;
     };
   };
   ent = k: {

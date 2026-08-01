@@ -192,6 +192,7 @@ let
       declare
       errors
       graph
+      select
       ;
     strataScope = strataScopeLib;
   };
@@ -489,7 +490,7 @@ let
         options.den.policies = merge.mkOption {
           type = merge.types.lazyAttrsOf merge.types.raw;
           default = { };
-          description = "Relationship policies: `<name> = { emits = [ <declaration-kind> ]; fn = ctx: [ declarations ]; selects ? null; gate ? <fn formals>; ops ? [ ]; }` (r2 §B). `emits` is the REQUIRED declaration codomain, checked at every firing; `selects` is the 3-valued dispatch selection (`null` = unconstrained, `[ ]` = selects nothing, `[ k ... ]` = fires at nodes of those kinds).";
+          description = "Relationship policies: `<name> = { emits = [ <declaration-kind> ]; selects = <selector>; fn = ctx: [ declarations ]; gate ? <fn formals>; ops ? [ ]; }` (r2 §B). `emits` is the REQUIRED declaration codomain, checked at every firing. `selects` is the REQUIRED dispatch selection and its value is a gen-select SELECTOR: `sel.star` (every node), `sel.any [ ]` (no node), or a constrained selector such as `sel.kind den.schema.host` / `sel.attrs { type = \"host\"; }`. It has no default, because a field whose absence has two distinguishable meanings cannot have one.";
         };
       };
 
@@ -1070,7 +1071,7 @@ let
         # contains `member` — already selected by node kind. Dispatching only these keeps the pre-pass from
         # running an arbitrary co-firing policy body at a root (which could hit an uncatchable
         # missing-attribute read). Empty for a resolve-free fleet → pre-pass inert.
-        resolveIndex = indexFeed policiesRules.resolveFamily;
+        resolveIndex = resolveIx.at;
         # NATIVE ATTACHMENT (route 2) — the `den.attach` rows, verbatim. A fleet declaring none passes
         # `{ }` and the pre-pass emits nothing synthetic, so its five products are byte-identical.
         nativeAttach = ent.config.den.attach;
@@ -1450,16 +1451,44 @@ let
         ctxKeyStrata = { };
       } ent.config.den.policies;
 
-      # THE SELECTION, built ONCE PER FLEET, one index per feed (`concernPolicies.indexByKind`). Each is a
-      # function `kind -> [rule]` filtering on the rule's declared `selects`, preserving the feed's own
+      # THE SELECTION, built ONCE PER FLEET, one index per feed (`concernPolicies.indexBySelection`).
+      # Each index answers `matchAt -> id -> kind -> [rule]`, memoising the fragment of the selector
+      # language whose answer is provably a function of node kind alone and preserving the feed's own
       # order — dispatch order determines emission order and therefore merge order. The kind list is the
       # discovered schema's own kinds; it memoises the common case, and the index stays total for any kind
       # outside it, so an incomplete list costs a recomputation rather than a silent drop.
+      #
+      # ONE CONSTRUCTION PER FEED, bound here so the two projections share it rather than rebuilding the
+      # index. What escapes a binding is `.at`; the record never does, and `positionDependent` is read at
+      # this binding site and never threaded.
       policyKindNames = builtins.attrNames denMeta;
-      indexFeed = concernPolicies.indexByKind policyKindNames;
+      indexOf = feed: concernPolicies.indexBySelection policyKindNames feed;
+      enrichIx = indexOf policiesRules.enrich;
+      policyIx = indexOf policiesRules.policy;
+      resolveIx = indexOf policiesRules.resolveFamily;
+      # ★ THE FOURTH FEED, built for its `positionDependent` ONLY: `.at` is never taken, because the
+      # pre-pass selects per RANK CLASS and threads `indexFeed`. The rank classes PARTITION this feed
+      # (`rankOf` is a total function of the rule, so the classes are pairwise disjoint and cover it) and
+      # `kindDetermined` is a per-rule predicate, so a filter by it commutes with the partition and this
+      # one memo answers the observable for all of them — exactly, not as a bound.
+      excludeIx = indexOf policiesRules.excludeFamily;
+      # The value THREADED to the pre-pass: still a function OF THE FEED, so `staged-resolution.nix`'s
+      # per-rank-class application is textually unchanged and the discipline that file states about it
+      # ("threaded rather than rebuilt so the exclude feed's selection is the same expression every other
+      # feed's is") survives.
+      indexFeed = feed: (indexOf feed).at;
       policiesIndex = {
-        enrich = indexFeed policiesRules.enrich;
-        policy = indexFeed policiesRules.policy;
+        enrich = enrichIx.at;
+        policy = policyIx.at;
+      };
+      # The scaling observable, read HERE and nowhere else — it never crosses into a call site. Its
+      # length is fleet-independent and is what a gate asserts on; the fourth entry is what makes the
+      # coverage all four index applications rather than the three with a binding site of their own.
+      positionDependentByFeed = {
+        enrich = enrichIx.positionDependent;
+        policy = policyIx.positionDependent;
+        resolve = resolveIx.positionDependent;
+        exclude = excludeIx.positionDependent;
       };
 
       # The quirks concern: ONE fleet-level gen-pipe.compose over every declared channel (+ its ops),
@@ -2693,6 +2722,12 @@ let
         inherit (ent.config.den) systems;
         scopeRoots = scopeRoots;
         inherit structural;
+        # THE SCALING OBSERVABLE (one entry per index application): the rules of each feed whose selector
+        # is NOT kind-determined, so their selection has to be decided per node. `builtins.length` of each
+        # is fleet-independent and total, which is what a scaling gate can assert on — the quantity whose
+        # growth converts the per-node cost from a table lookup into a per-node match. A read-only
+        # surface; the indexes themselves never hand it to a call site.
+        inherit positionDependentByFeed;
         # The quirks concern surface: class entries (the class-tag vocabulary — the built-ins UNION the
         # fleet's DECLARED classes, §2.2), the ONE composed channel DAG, and the fleet channel outputs
         # (`.at pos` → per-position channel values, and the input to the class-relative read
@@ -2805,8 +2840,14 @@ in
     # The definition-time validator as a VALUE (`null` = clean, else the first named message), so the
     # suite asserts each named registration contract on its TEXT — `tryEval` cannot capture a throw's.
     policyMessage = concernPolicies.policyMessage;
-    # The kind selection over a compiled feed (`indexByKind kinds feed` → `kind -> [rule]`).
-    indexPolicyFeed = concernPolicies.indexByKind;
+    # The selection over a compiled feed, PROJECTED to its matcher: `indexPolicyFeed kinds feed` →
+    # `matchAt -> id -> kind -> [rule]`, the same arity-3 value every dispatch site binds. The record
+    # itself is reachable through `indexPolicySelection` for a caller that wants the observable too —
+    # `.at` is what a call site holds, per the binding rule.
+    indexPolicyFeed = kinds: feed: (concernPolicies.indexBySelection kinds feed).at;
+    # The index CONSTRUCTION (`indexBySelection kinds feed` → `{ at; positionDependent; }`), for the
+    # suite's scaling-observable and short-circuit-arm assertions.
+    indexPolicySelection = concernPolicies.indexBySelection;
     # The edge-kind registry compile (§2.2) + the framework pre-registration, for the suite's
     # registration/validation scenarios. `compileEdges { kinds; strataOrder; disciplines ? {} }` (the
     # `disciplines` arm is the compiled disciplines table the closure gate reads); `edgeKinds` = the

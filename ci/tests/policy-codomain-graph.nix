@@ -21,6 +21,7 @@
 # only ever asserts rejection.
 { denHoag, ... }:
 let
+  inherit (denHoag) sel;
   inherit (denHoag) declare;
   I = denHoag.internal;
 
@@ -40,7 +41,7 @@ let
 
   # A containment emitter DECLARING the key it binds. Its `binds` is the producer side of a positive edge.
   binder = key: {
-    selects = [ "zone" ];
+    selects = sel.attrs { type = "zone"; };
     emits = [ "member" ];
     binds = [ key ];
     fn =
@@ -64,16 +65,16 @@ let
   # its `suppresses` is the negative one, so a single record can close a cycle by itself. The formal is
   # written literally in each variant because a Nix function's formals cannot be computed — which is also
   # why the reader side of a positive edge is read off the gate rather than derived.
-  suppressorReadingTok = target: kinds: {
-    selects = kinds;
+  suppressorReadingTok = target: at: {
+    selects = at;
     emits = [ "suppress" ];
     suppresses = [ target ];
     fn =
       { tok, ... }:
       builtins.seq tok [ (declare.suppress { name = target; }) ];
   };
-  suppressorReadingHost = target: kinds: {
-    selects = kinds;
+  suppressorReadingHost = target: at: {
+    selects = at;
     emits = [ "suppress" ];
     suppresses = [ target ];
     fn =
@@ -95,7 +96,7 @@ let
   #    drop-binder→binder: one cluster, one negative edge inside it. ─────────────────────────────────────
   bindingCycle = {
     binder = binder "tok";
-    drop-binder = suppressorReadingTok "binder" [ "rack" ];
+    drop-binder = suppressorReadingTok "binder" (sel.attrs { type = "rack"; });
   };
 
   # ── A4b: the SAME shape with the two policies at kinds that can never meet at one node. `posOf` is a
@@ -105,14 +106,14 @@ let
   #    per-(policy, node) reachability relation that does not exist at registration. ────────────────────
   unmeetableCycle = {
     binder = binder "host";
-    drop-binder = suppressorReadingHost "binder" [ "blade" ];
+    drop-binder = suppressorReadingHost "binder" (sel.attrs { type = "blade"; });
   };
 
   # ── A4: a purely POSITIVE cycle — each policy destructures the key the other declares in `binds`, and
   #    neither suppresses anything. Condition 1 admits it, so it must REGISTER CLEAN. ──────────────────
   positiveCycle = {
     p1 = {
-      selects = [ "zone" ];
+      selects = sel.attrs { type = "zone"; };
       emits = [ "member" ];
       binds = [ "a" ];
       fn =
@@ -120,7 +121,7 @@ let
         builtins.seq b [ ];
     };
     p2 = {
-      selects = [ "zone" ];
+      selects = sel.attrs { type = "zone"; };
       emits = [ "member" ];
       binds = [ "b" ];
       fn =
@@ -133,7 +134,7 @@ let
   #    declarations are well-formed on their own — so the conflict can only surface at the emission. ────
   suppressOutOfCodomain = {
     rogue = {
-      selects = [ "rack" ];
+      selects = sel.attrs { type = "rack"; };
       emits = [ "suppress" ];
       suppresses = [ "declared-target" ];
       fn = _ctx: [ (declare.suppress { name = "undeclared-target"; }) ];
@@ -141,7 +142,7 @@ let
   };
   bindOutOfCodomain = {
     rogue = {
-      selects = [ "zone" ];
+      selects = sel.attrs { type = "zone"; };
       emits = [ "member" ];
       binds = [ "declared" ];
       fn =
@@ -171,6 +172,7 @@ in
       expr = I.policyMessage {
         a = {
           emits = [ "suppress" ];
+          selects = sel.star;
           fn = _ctx: [ ];
         };
       };
@@ -180,6 +182,7 @@ in
       expr = I.policyMessage {
         a = {
           emits = [ "member" ];
+          selects = sel.star;
           fn = _ctx: [ ];
         };
       };
@@ -192,11 +195,13 @@ in
       expr = I.policyMessage {
         a = {
           emits = [ "suppress" ];
+          selects = sel.star;
           suppresses = [ ];
           fn = _ctx: [ ];
         };
         b = {
           emits = [ "member" ];
+          selects = sel.star;
           binds = [ ];
           fn = _ctx: [ ];
         };
@@ -212,6 +217,7 @@ in
       expr = I.policyMessage {
         a = {
           emits = [ "enrich" ];
+          selects = sel.star;
           suppresses = [ "x" ];
           fn = _ctx: [ ];
         };

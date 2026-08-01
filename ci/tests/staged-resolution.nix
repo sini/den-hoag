@@ -106,6 +106,7 @@ let
     {
       config.den.policies.grant-token = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ "authToken" ];
         fn =
           { zone, ... }:
@@ -129,6 +130,7 @@ let
     {
       config.den.policies.grant-token-r2 = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ "authToken" ];
         fn =
           { zone, ... }:
@@ -155,7 +157,7 @@ let
         gate = {
           rack = false;
         };
-        selects = [ "rack" ];
+        selects = sel.attrs { type = "rack"; };
         # The codomain a probe could not reveal: this body emits its `member` only once `authToken` is
         # present, so firing it at a value-less context observes nothing. Declared, it is in the pre-pass's
         # resolve-family feed by derivation.
@@ -242,6 +244,7 @@ let
     {
       config.den.policies.grant-two = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [
           "tokenA"
           "tokenB"
@@ -278,6 +281,7 @@ let
     {
       config.den.policies.grant-bare = {
         emits = [ "member" ];
+        selects = sel.star;
         binds = [ "bareToken" ];
         fn =
           { zone, ... }:

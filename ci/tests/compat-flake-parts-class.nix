@@ -13,11 +13,13 @@
 # suite pins that the KIND + CLASS registrations COEXIST, that the route fires without the deliver abort, and
 # that the deliver abort posture stays LOUD for a genuinely-unknown class name.
 {
+  denHoag,
   denCompat,
   denHoagSrc,
   ...
 }:
 let
+  inherit (denHoag) sel;
   # The real built-in provisioning module (lib/compat/builtins.nix, wired into the flakeModule). Read with
   # dummy args: the `classes`/`schema` values this suite reads are literals, never forcing prelude/errors
   # (the lazy `policies`/`deliverLib` bindings stay unforced) — a regression guard on the ACTUAL wiring, the
@@ -26,9 +28,10 @@ let
   builtinsMod = import "${denHoagSrc}/lib/compat/builtins.nix" {
     prelude = { };
     errors = { };
-    # dummy `declare` — this suite reads only the static `config.den.classes` view; the fleet-context
-    # enrichment (which forces `declare`) rides `imports`, never touched here (stays unforced).
+    # dummy `declare`/`sel` — this suite reads only the static `config.den.classes` view; the
+    # fleet-context enrichment (which forces both) rides `imports`, never touched here (stays unforced).
     declare = { };
+    sel = { };
   };
 
   # A fleet reproducing the corpus emitter: the flake-parts KIND (isEntity) + a KIND-attached content-set
@@ -64,7 +67,7 @@ let
           policies.devshell-to-flake-parts = {
             __isPolicy = true;
             emits = [ "delivery" ];
-            selects = null;
+            selects = sel.star;
             fn = _: [
               (denCompat.route {
                 fromClass = "devshell";
