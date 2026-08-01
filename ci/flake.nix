@@ -48,6 +48,11 @@
       # Source tree of the den-hoag flake, for the A1 zero-machinery source scan (reads
       # lib/**.nix text). The lib itself is pure/path-free, so the scan needs the store path.
       denHoagSrc = "${inputs.den-hoag}";
+      # DECLARED KNOWN-FAILURES — applied HERE and threaded, never imported-and-applied per declaring
+      # file. `import` memoises the lambda, not the application, so a per-file application would
+      # rebuild the source-derived anchor index once per file; applied once, it is one thunk per
+      # evaluation however many leaves are declared.
+      xfail = import ./tests/_lib/xfail.nix { inherit denHoagSrc; };
     in
     gen.lib.mkCi {
       inherit inputs;
@@ -64,6 +69,7 @@
           darwinFlake
           nixpkgsLib
           denHoagSrc
+          xfail
           ;
         nixpkgs = inputs.nixpkgs;
         # the flake-parts FLAKE — the root-entry suite's gen-flake arm supplies it to the standalone
