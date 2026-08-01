@@ -775,6 +775,14 @@ in
     # That is a KNOWN OPEN DEFECT (the empty-recovery hazard), not a behaviour we endorse. Asserting the
     # silence would pin the defect into the suite and make it green through its own fix. It stays red as a
     # live witness until an empty RECOVERY is as loud as a throwing one.
+    #
+    # ★ NOT CONVERTED TO A DECLARED KNOWN-FAILURE, AND THE OMISSION IS DELIBERATE. Every other red in
+    # this suite now carries its tracker id on the leaf. This one does not, because no tracker has been
+    # confirmed to own it: the reading that it belongs to the empty-recovery hazard rests on this
+    # comment agreeing with that hazard's description, which is a reading of two texts rather than a
+    # tracker decision. Inventing the attribution is the exact failure the declaration mechanism exists
+    # to remove, so the red stays anonymous and visible instead of being made green under a guess.
+    # Owner item on den-hoag-9uv: confirm the id or reassign, then declare it here.
     test-probeSentinel-off-parks = {
       expr = probeEnrichParks offProbeSentinel;
       expected = true;

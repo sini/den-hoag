@@ -26,6 +26,7 @@
   denHoag,
   denCompat,
   denHoagSrc,
+  xfail,
   ...
 }:
 let
@@ -281,18 +282,37 @@ in
     # body, and a value-conditional body revealed nothing. With the codomain declared there is nothing to
     # fan over: ONE rule, its group derived from `emits`, keeping the selection the formals imply. The
     # count is the whole point, so it is asserted rather than the weaker "at least one".
-    test-expansion-collapses-to-one-rule = {
-      expr = {
-        subRuleCount = builtins.length w6SubRules;
-        allFiresAtHost = builtins.all (r: r.selects == [ "host" ]) w6SubRules;
+    #
+    # DECLARED KNOWN-FAILURE. The fixture is a VALUE-CONDITIONAL v1 policy; the shim recovers its
+    # codomain by firing it at a value-less sentinel, the false branch returns `[ ]`, and an empty
+    # codomain classifies to no group and compiles to no rule — silently. That empty recovery is the
+    # defect, and it is the same one the severed-feature witness holds open.
+    #
+    # ★ IT CANNOT BE DECLARED AS A WHOLE-ATTRSET VALUE XFAIL, and the split below is that refusal
+    # rather than a stylistic choice. `actual` would freeze `allFiresAtHost = true` and
+    # `noStratumSuffix = true` — BOTH VACUOUSLY TRUE over the empty sub-rule list, since `all p [ ]`
+    # holds — as expectations, and unlike a paired control they would keep reading as verified after
+    # the seed is fixed. So the declaration is narrowed to the field that carries the failure, and the
+    # two `all`s are re-asserted below with their non-emptiness forced in the SAME expression.
+    test-expansion-collapses-to-one-rule = xfail.value {
+      bead = "den-hoag-9xo.75";
+      construct = "recoverEmits";
+      expr = builtins.length w6SubRules;
+      actual = 0;
+      correct = 1;
+    };
+    # the two quantifiers, made non-vacuous. Red on the same empty recovery, declared on the same
+    # seam — the suite gains a leaf and loses two vacuous truths.
+    test-expansion-subrule-shape = xfail.value {
+      bead = "den-hoag-9xo.75";
+      construct = "recoverEmits";
+      expr =
+        w6SubRules != [ ]
+        && builtins.all (r: r.selects == [ "host" ]) w6SubRules
         # and no `#<stratum>` suffix survives in the identity space.
-        noStratumSuffix = builtins.all (r: builtins.match ".*#.*" r.identity == null) w6SubRules;
-      };
-      expected = {
-        subRuleCount = 1;
-        allFiresAtHost = true;
-        noStratumSuffix = true;
-      };
+        && builtins.all (r: builtins.match ".*#.*" r.identity == null) w6SubRules;
+      actual = false;
+      correct = true;
     };
   };
 }
