@@ -19,6 +19,18 @@
 #   4. no route targeting C ⇒ `projectClass id C` UNCHANGED (identity — the additive base).
 # Guard PHASE (functionArgs classification, owner ruling): content-time (entity formals → gated at
 # projection) vs eval-time (module formals → config-gated at the crossing via nested eval, no import-cycle).
+#
+# ── THE TRANSFORM LAYERS UNDER RELOCATION AND INJECTION (spec §14.6/§14.7) ────────────────────────────────
+# The witnesses above hold the relocation relation EMPTY, so they measure what the fold does to a route's
+# content and never which COORDINATE it reads that content at, or from. Two later groups close that:
+#   5. ROUTES AND FORWARDS CARRY INJECTIONS (§4.5a). An `inject` declares content at a scope, so it travels
+#      `reach`'s structural payload and both transform layers see it. These rows run on a SECOND instrument
+#      (`projectReachOf`) whose `reach` is the kernel's own, because a hand-placed injection element would
+#      let the fixture supply the very payload the row is meant to measure.
+#   6. THE DESTINATION COORDINATE UNDER RELOCATION (§4.5b). A route's `to` and a forward's `intoClass` name
+#      coordinates AT THE PROJECTING SCOPE, read through that scope's relocation. The outgoing arm and its
+#      `systems` consequence are native rows in `ci/tests/projection.nix`; the incoming arm and the
+#      forward/projecting-scope split are here, where the stub expresses both cleanly.
 {
   denHoag,
   denHoagSrc,
@@ -35,6 +47,7 @@ let
     bind
     merge
     aspects
+    select
     classShare
     ;
   errors = import "${denHoagSrc}/lib/errors.nix";
@@ -93,15 +106,23 @@ let
   # A synthetic content element `{ key; content; scope; assertedClasses }` (the reach node shape
   # `classSliceAt` reads). `scope` and `assertedClasses` are STAMPED because a content element is produced
   # COMPLETE — the extraction projects both fields with a named throw rather than reconstructing either from
-  # where the element was read. `scope` is the synthetic sentinel these fixtures resolve their relocation
-  # memo at (they declare routes, never a `reroute`, so the memo is the empty relation); `assertedClasses =
-  # { }` is the POSITIVE statement "this element asserts nothing", the value every produced aspect element
-  # carries — so the fixtures stay semantically identical to what the assembly feeds the extraction.
-  mkNode = key: content: {
+  # where the element was read. `scope` is the id these fixtures resolve their relocation memo at, and it is
+  # LOAD-BEARING rather than decorative: a scope that declares no `reroute` resolves the empty relation and
+  # the element's content rests where it was authored, while a scope that declares one governs that element's
+  # content wherever it is projected. `assertedClasses = { }` is the POSITIVE statement "this element asserts
+  # nothing", the value every produced aspect element carries — so the fixtures stay semantically identical
+  # to what the assembly feeds the extraction.
+  # `mkNodeAt` carries the scope EXPLICITLY, because the destination rows turn on WHICH scope's relocation
+  # governs a coordinate: a forward spec rides an aspect at a reached node while its placement lands at the
+  # projecting scope, so telling the two apart needs a fixture that can put an element at a scope other than
+  # the projecting one. `mkNode` is that function at the synthetic sentinel — the value every pre-existing
+  # row in this file used, so those rows are byte-identical.
+  mkNodeAt = sc: key: content: {
     inherit key content;
-    scope = syntheticScope;
+    scope = sc;
     assertedClasses = { };
   };
+  mkNode = mkNodeAt syntheticScope;
   syntheticScope = "<synthetic>";
 
   # A `delivery` resolution action (the shape `translateDelivery`/`deliveriesAt` produce/read): a
@@ -132,6 +153,20 @@ let
       mode = "merge";
       inherit guard adaptArgs appendToParent;
     };
+
+  # The two other RESOLUTION acts a scope's declaration list can carry — the same list `deliveryAct` lands
+  # in, because `class-relocation` and `routesAt` read one `actions.resolution` stratum and differ only in
+  # the `__action` they filter on. Written as literals for the same reason `deliveryAct` is: these fixtures
+  # assert over what the KERNEL does with a declaration, so the declaration itself is data the fixture
+  # states, not a value routed through the public constructor (which the native suites exercise).
+  rerouteAct = from: to: {
+    __action = "reroute";
+    inherit from to;
+  };
+  injectAct = class: module: {
+    __action = "inject";
+    inherit class module;
+  };
 
   # A STUB `result` for `mkOutputModules`: `reach id` = the reached node list, `declarations` = the route
   # (delivery) actions, `enriched-context` = the guard's scope bindings, `node`/`children` inert. `allNodes`
@@ -209,6 +244,92 @@ let
     graph: id: class:
     (mkOut graph).projectClass id class;
 
+  # ── THE SECOND INSTRUMENT: a stub whose `reach` IS THE KERNEL'S OWN REACH ─────────────────────────────
+  # `mkResult` above serves `reach` as a hand-written node list, which is the right instrument for the route
+  # TRANSFORM rows — they assert what the fold does GIVEN a reach. It is the wrong instrument for the
+  # injection rows, and the difference is the whole of what those rows test: an injection reaches a route
+  # because `reach`'s STRUCTURAL arm carries the scope's injection elements beside its resolved aspects. A
+  # fixture that hand-placed the injection element into the reach list would assert the fold over a payload
+  # the fixture itself supplied, and would stay green with that payload deleted from the kernel.
+  # So this variant drives the REAL `reach.compute` (the `mkRa` shape `ci/tests/_lib/projection-harness.nix`
+  # already uses) over the same stub, and the fixture supplies only DECLARATIONS. `resolved-aspects` moves to
+  # its own `aspects` field, because `reach` is now the computed answer rather than the field.
+  # ADDITIVE: no pre-existing row reads it, so every fixture above is byte-identical.
+  mkRa =
+    import "${denHoagSrc}/lib/attributes/resolved-aspects.nix"
+      {
+        inherit
+          prelude
+          scope
+          aspects
+          select
+          resolve
+          ;
+        graph = denHoag.internal.genGraph;
+      }
+      {
+        # These fixtures author no containment pool; stated rather than defaulted in the kernel, the same
+        # choice the projection harness makes for the same reason.
+        containAncestorIds = _nid: [ ];
+      };
+  mkResultReach =
+    graph:
+    let
+      result = {
+        allNodes = builtins.mapAttrs (_: _: { }) graph;
+        get =
+          id: attr:
+          let
+            g = graph.${id} or { };
+          in
+          if attr == "reach" then
+            mkRa.reach.compute result id
+          else if attr == "declarations" then
+            { actions.resolution = g.routes or [ ]; }
+          else if attr == "class-relocation" then
+            cm.class-relocation.compute result id
+          else if attr == "enriched-context" then
+            g.ctx or { }
+          else if attr == "children" then
+            g.children or { }
+          else if attr == "resolved-aspects" then
+            g.aspects or [ ]
+          else if attr == "received-collections" then
+            { }
+          else if attr == "resolved-settings" then
+            { }
+          else
+            throw "projection-routes stub: unexpected attr ${attr}";
+        node = id: (graph.${id} or { }).node or { parent = null; };
+      };
+    in
+    result;
+  mkOutReach =
+    graph:
+    import "${denHoagSrc}/lib/attributes/output-modules.nix"
+      {
+        inherit
+          prelude
+          scope
+          edge
+          bind
+          merge
+          classShare
+          errors
+          nest
+          ;
+      }
+      {
+        result = mkResultReach graph;
+        classesByName = { };
+        classOfNode = _: null;
+        channelNames = [ ];
+        inherit classSliceAt sourceOrderOf assertKeysRegistered;
+      };
+  projectReachOf =
+    graph: id: class:
+    (mkOutReach graph).projectClass id class;
+
   # every `tag` string reachable in a wrapped deferredModule (gen-aspects `{ imports = [ … ]; }` form).
   tags =
     m:
@@ -283,6 +404,185 @@ let
       ]
       ++ projected;
     }).config;
+
+  # ══ FIXTURES for the injection-payload rows (spec §14.6 — the §4.5a decision) ═══════════════════════════
+  # One reached aspect carrying base home-manager content and a homeLinux slice, plus the corpus route
+  # `homeLinux → home-manager`. The subject fleet adds ONE `inject` act at the route's `from` class; the
+  # control is that fixture with the act removed and nothing else.
+  injBaseAspects = [
+    (mkNodeAt "scope" "a" {
+      home-manager.tag = "hm-base";
+      homeLinux.tag = "linux-a";
+    })
+  ];
+  injRoute = deliveryAct {
+    from = "homeLinux";
+    to = "home-manager";
+  };
+  gRouteInject.scope = {
+    aspects = injBaseAspects;
+    routes = [
+      injRoute
+      (injectAct "homeLinux" { tag = "inj-route"; })
+    ];
+  };
+  gRouteInjectControl.scope = {
+    aspects = injBaseAspects;
+    routes = [ injRoute ];
+  };
+
+  # The corpus route reading its SOURCE through a preimage: one reached element carrying content at BOTH the
+  # route's `from` class and a third channel, with a `reroute` at that element's own scope moving the third
+  # into `from`. The control is the same element and the same route with the `reroute` act removed, so the
+  # difference between the two answers is exactly the relocated slice.
+  preimageAspects = [
+    (mkNodeAt "scope" "a" {
+      homeLinux.tag = "linux-own";
+      darwin.tag = "dar-preimage";
+    })
+  ];
+  gRoutePreimage.scope = {
+    reach = preimageAspects;
+    routes = [
+      injRoute
+      (rerouteAct "darwin" "homeLinux")
+    ];
+  };
+  gRoutePreimageControl.scope = {
+    reach = preimageAspects;
+    routes = [ injRoute ];
+  };
+
+  # A forward spec whose `fromClass` is the injected channel — no route at all, so the row reads
+  # `forwardModulesFor`'s own `srcSlices` fold rather than `remapOver`'s.
+  fwdSpecAspects = [
+    (mkNodeAt "scope" "fa" {
+      meta.__forward = {
+        fromClass = "homeLinux";
+        intoClass = "home-manager";
+        intoPath = [ "placed" ];
+        guard = null;
+        adaptArgs = null;
+        item = null;
+      };
+    })
+  ];
+  gForwardInject.scope = {
+    aspects = fwdSpecAspects;
+    routes = [ (injectAct "homeLinux" { tag = "inj-fwd"; }) ];
+  };
+  gForwardInjectControl.scope = {
+    aspects = fwdSpecAspects;
+    routes = [ ];
+  };
+
+  # The module an `inject` act carries, shaped so it WOULD declare a forward if it were an aspect's content.
+  forwardCarrier = {
+    tag = "inj-carrier";
+    meta.__forward = {
+      fromClass = "home-manager";
+      intoClass = "nixos";
+      intoPath = [ "leaked" ];
+      guard = null;
+      adaptArgs = null;
+      item = null;
+    };
+  };
+  gInjectCarrier.scope = {
+    aspects = [ (mkNodeAt "scope" "a" { home-manager.tag = "hm-base"; }) ];
+    routes = [ (injectAct "homeLinux" forwardCarrier) ];
+  };
+  # the SAME shape as an ASPECT's content — the non-vacuity twin (an aspect at that shape DOES forward).
+  gAspectCarrier.scope = {
+    aspects = [
+      (mkNodeAt "scope" "a" { home-manager.tag = "hm-base"; })
+      (mkNodeAt "scope" "carrier" (forwardCarrier // { name = "carrier"; }))
+    ];
+    routes = [ ];
+  };
+
+  # ── the parent-targeted (`appendToParent` + `adaptArgs` + non-empty `at`) route, whose ensure-target-path
+  #    seed fires exactly when the whole-route contribution is empty. Four fixtures put content into and out
+  #    of that gate by ONE declaration each.
+  seedRoute = deliveryAct {
+    from = "home-manager";
+    to = "nixos";
+    at = [
+      "home-manager"
+      "users"
+      "tux"
+    ];
+    appendToParent = true;
+    adaptArgs = _: { };
+  };
+  seedHost = {
+    node.parent = null;
+    children.cell = { };
+    aspects = [ (mkNodeAt "host" "host-own" { nixos.tag = "nixos-host"; }) ];
+  };
+  mkSeedFleet = cellAspects: cellActs: {
+    host = seedHost;
+    cell = {
+      node.parent = "host";
+      aspects = cellAspects;
+      routes = [ seedRoute ] ++ cellActs;
+    };
+  };
+  hmCellAspects = [ (mkNodeAt "cell" "acct" { home-manager.tag = "hm-tux"; }) ];
+  hlCellAspects = [ (mkNodeAt "cell" "acct" { homeLinux.tag = "hl-tux"; }) ];
+  gSeedInjectOnly = mkSeedFleet [ ] [ (injectAct "home-manager" { tag = "inj-cell"; }) ];
+  gSeedNoContent = mkSeedFleet [ ] [ ];
+  gSeedOutgoing = mkSeedFleet hmCellAspects [ (rerouteAct "home-manager" "darwin") ];
+  gSeedOutgoingControl = mkSeedFleet hmCellAspects [ ];
+  gSeedIncoming = mkSeedFleet hlCellAspects [ (rerouteAct "homeLinux" "home-manager") ];
+  gSeedIncomingControl = mkSeedFleet hlCellAspects [ ];
+
+  # ══ FIXTURES for the destination rows (spec §14.7 — the §4.5b ruling) ═══════════════════════════════════
+  # The route's SOURCE side is held fixed (two reached nodes carrying only `homeLinux`) so every answer below
+  # moves for exactly one reason: which coordinate the route's DESTINATION resolves to.
+  destReach = [
+    (mkNode "a" { homeLinux.tag = "linux-a"; })
+    (mkNode "b" { homeLinux.tag = "linux-b"; })
+  ];
+  destRouteToDarwin = deliveryAct {
+    from = "homeLinux";
+    to = "darwin";
+  };
+  gDestIncoming.scope = {
+    reach = destReach;
+    routes = [
+      destRouteToDarwin
+      (rerouteAct "darwin" "home-manager")
+    ];
+  };
+  gDestIncomingControl.scope = {
+    reach = destReach;
+    routes = [ destRouteToDarwin ];
+  };
+
+  # A forward spec authored at a DESCENDANT scope (`desc`) while its placement lands at the projecting scope
+  # — the pair of fixtures that tells the two scopes apart, which is the whole content of §4.7 row 17.
+  destFwdNodes = [
+    (mkNodeAt "desc" "fa" {
+      homeLinux.tag = "fwd-src";
+      meta.__forward = {
+        fromClass = "homeLinux";
+        intoClass = "home-manager";
+        intoPath = [ "placed" ];
+        guard = null;
+        adaptArgs = null;
+        item = null;
+      };
+    })
+  ];
+  gFwdDestAtProjecting.scope = {
+    reach = destFwdNodes;
+    routes = [ (rerouteAct "home-manager" "nixos") ];
+  };
+  gFwdDestAtDescendant = {
+    scope.reach = destFwdNodes;
+    desc.routes = [ (rerouteAct "home-manager" "nixos") ];
+  };
 in
 {
   flake.tests.projection-routes = {
@@ -949,6 +1249,229 @@ in
         moduleIsFunction = false;
         hasImports = true;
         class = "flake-parts";
+      };
+    };
+
+    # ══ (8) ROUTES AND FORWARDS CARRY INJECTIONS — the §4.5a decision, armed (spec §14.6) ═════════════════
+    # An `inject` act declares content AT A SCOPE exactly as an aspect's class body does, so it travels
+    # `reach`'s structural payload and is therefore visible to EVERY consumer that folds over reach — the
+    # element arm, the route remap, and the forward fold alike. The alternative §4.5a rejects unifies only
+    # the projection, leaving the two transform layers reading a reach with no injections in it; these rows
+    # are what tells the two designs apart. They run on the SECOND instrument (`projectReachOf`), whose reach
+    # is the kernel's own, because a hand-placed injection element would assert the fold over a payload the
+    # fixture supplied.
+
+    # (a) A ROUTE reads the injected content at its SOURCE class. The `inject` sits at `homeLinux`, the
+    #     route is `homeLinux → home-manager`, so the injected module arrives in the home-manager
+    #     projection behind the route's other remapped slices (reach order: aspects, then injections).
+    test-route-carries-injection-at-source-class = {
+      expr = builtins.concatMap tags (projectReachOf gRouteInject "scope" "home-manager");
+      expected = [
+        "hm-base" # the base element arm's own home-manager slice.
+        "linux-a" # the route remap of the reached aspect's homeLinux slice…
+        "inj-route" # …and of the INJECTION at that same channel.
+      ];
+    };
+
+    # (b) THE CONTROL, same run: the byte-identical fixture WITHOUT the `inject` act gives the route's
+    #     existing answer, so (a) cannot be satisfied by a change that perturbs every route.
+    test-route-injection-free-control = {
+      expr = builtins.concatMap tags (projectReachOf gRouteInjectControl "scope" "home-manager");
+      expected = [
+        "hm-base"
+        "linux-a"
+      ];
+    };
+
+    # (c) A FORWARD reads the injected content at its `fromClass`. No route is declared at all, so the
+    #     delivery runs through `forwardModulesFor`'s own `srcSlices` fold — the second of the two transform
+    #     layers, and the one an implementation that widened only `remapOver` would leave empty.
+    test-forward-carries-injection-at-fromClass = {
+      expr = {
+        withInjection = projectReachOf gForwardInject "scope" "home-manager";
+        control = projectReachOf gForwardInjectControl "scope" "home-manager";
+      };
+      expected = {
+        withInjection = [
+          {
+            placed = {
+              tag = "inj-fwd";
+            };
+          }
+        ]; # placed at the spec's `intoPath`.
+        control = [ ]; # no injection ⇒ the forward has no source content.
+      };
+    };
+
+    # (d) AN INJECTION DECLARES NO FORWARD — §4.7 row 13a's defined limit, and it is a claim about the
+    #     ELEMENT's shape rather than about the fixture's. An admitted minted element's `content` is
+    #     `{ name; <channel> = module; }`, so a `meta.__forward` written INSIDE the injected module is part
+    #     of the module and never reaches the specs fold, which reads `n.content.meta`.
+    #     ★ THE NON-VACUITY TWIN IS THE SECOND FIELD, and it is what makes this a checked claim rather than a
+    #     restatement: the byte-identical attrset carried as an ASPECT's content DOES produce a live forward
+    #     spec (it delivers the reached home-manager content at `leaked` into nixos). The two fixtures differ
+    #     only in which producer minted the element, and they answer differently.
+    test-injection-declares-no-forward = {
+      expr = {
+        injectionForwards = projectReachOf gInjectCarrier "scope" "nixos";
+        aspectForwards = projectReachOf gAspectCarrier "scope" "nixos";
+      };
+      expected = {
+        injectionForwards = [ ]; # the injection contributed no spec…
+        aspectForwards = [
+          {
+            leaked = {
+              tag = "hm-base";
+            };
+          }
+        ]; # …where the same shape as an aspect does.
+      };
+    };
+
+    # (e) THE PARENT-TARGETED SEED IS SUPPRESSED BY AN INJECTION — §4.7 row 12a. The ensure-target-path seed
+    #     fires only on a whole-route contribution of `[ ]`, so a cell whose ONLY class-`from` content is an
+    #     injection must produce the REMAPPED content and no seed. Its twin — the same fixture with no
+    #     content of any kind at the cell — must still produce the seed, so the row cannot be satisfied by a
+    #     change that empties or fills the gate unconditionally.
+    test-parent-targeted-route-seed-suppressed-by-injection = {
+      expr = {
+        withInjection = (crossFreeform (projectReachOf gSeedInjectOnly "host" "nixos")).home-manager.users;
+        noContent = (crossFreeform (projectReachOf gSeedNoContent "host" "nixos")).home-manager.users;
+      };
+      expected = {
+        withInjection.tux = {
+          tag = "inj-cell";
+        }; # the injection remapped ⇒ no seed.
+        noContent.tux = { }; # nothing at the cell ⇒ the seed.
+      };
+    };
+
+    # (f) THE SEED FIRES UNDER AN OUTGOING RELOCATION — §4.7 row 12b, the arm that is live in production.
+    #     The cell HAS real `home-manager` content and reroutes that channel away at its own scope, so the
+    #     route's contribution at `from` is empty and the seed fires. `remapOver` reading the RAW view would
+    #     leave `placed` non-empty and the seed silent. Control, same run: the byte-identical fixture without
+    #     the `reroute` act delivers the remapped content and no seed.
+    test-parent-targeted-route-seed-fires-under-relocation = {
+      expr = {
+        relocated = (crossFreeform (projectReachOf gSeedOutgoing "host" "nixos")).home-manager.users;
+        control = (crossFreeform (projectReachOf gSeedOutgoingControl "host" "nixos")).home-manager.users;
+      };
+      expected = {
+        relocated.tux = { }; # content moved to `darwin` ⇒ the route is empty ⇒ the seed.
+        control.tux = {
+          tag = "hm-tux";
+        }; # no relocation ⇒ the remap ⇒ no seed.
+      };
+    };
+
+    # (g) THE SEED IS SUPPRESSED BY AN INCOMING RELOCATION — §4.7 row 12c, the same gate's other direction.
+    #     The cell has NO `home-manager` content of its own but reroutes `homeLinux` INTO it, so the route's
+    #     source resolves through the preimage and the relocated content is remapped instead of the seed.
+    test-parent-targeted-route-seed-suppressed-by-incoming-relocation = {
+      expr = {
+        relocated = (crossFreeform (projectReachOf gSeedIncoming "host" "nixos")).home-manager.users;
+        control = (crossFreeform (projectReachOf gSeedIncomingControl "host" "nixos")).home-manager.users;
+      };
+      expected = {
+        relocated.tux = {
+          tag = "hl-tux";
+        }; # the preimage content arrives through the route.
+        control.tux = { }; # no relocation ⇒ nothing at `from` ⇒ the seed.
+      };
+    };
+
+    # (h) THE ROUTE READS ITS SOURCE THROUGH THE PREIMAGE — §4.7 row 7a, the third relocation cell of the
+    #     same read rows (f) and (g) cover, and the one on the CORPUS route shape rather than the
+    #     parent-targeted one. A reached element declares content at a third channel and reroutes it INTO
+    #     the route's `from` class at its own scope, so that content must arrive through the route. Reading
+    #     the raw view would see only the `from` class's own content — which is exactly what the control,
+    #     the byte-identical fixture without the `reroute` act, answers.
+    test-route-carries-preimage-content-under-incoming-relocation = {
+      expr = {
+        relocated = builtins.concatMap tags (projectClassOf gRoutePreimage "scope" "home-manager");
+        control = builtins.concatMap tags (projectClassOf gRoutePreimageControl "scope" "home-manager");
+      };
+      expected = {
+        relocated = [
+          "linux-own" # the route's own `from` content, first — the rest position heads the source order…
+          "dar-preimage" # …then its back-reacher, which the raw view does not see at all.
+        ];
+        control = [ "linux-own" ];
+      };
+    };
+
+    # ══ (9) THE DESTINATION COORDINATE UNDER RELOCATION — the §4.5b ruling, armed (spec §14.7) ════════════
+    # A route's `to` and a forward's `intoClass` are coordinates AT THE PROJECTING SCOPE, so they are read
+    # through that scope's relocation exactly as the element arm's sources are read through each element's.
+    # §14.7's outgoing row and the member row run on the NATIVE fleet in `ci/tests/projection.nix` (the
+    # member half is a `systems` observation, which needs a fleet); the two rows below are the arms this
+    # suite's instrument expresses better — an incoming destination, and the forward/projecting-scope split.
+
+    # (a) AN INCOMING RELOCATION ADMITS THE PREIMAGE — §4.7 row 16a, and it is recorded as its own row
+    #     because it is the direction in which the two candidate readings AGREE on the declared destination
+    #     and differ only on this admission. The target root reroutes `darwin → home-manager`, and a route
+    #     declaring `to = "darwin"` therefore contributes to the HOME-MANAGER projection. A suite carrying
+    #     the outgoing row alone would be blind to it.
+    test-route-destination-admits-preimage-under-incoming-relocation = {
+      expr = {
+        homeManager = builtins.concatMap tags (projectClassOf gDestIncoming "scope" "home-manager");
+        darwin = builtins.concatMap tags (projectClassOf gDestIncoming "scope" "darwin");
+        controlHomeManager = builtins.concatMap tags (
+          projectClassOf gDestIncomingControl "scope" "home-manager"
+        );
+        controlDarwin = builtins.concatMap tags (projectClassOf gDestIncomingControl "scope" "darwin");
+      };
+      expected = {
+        # the route's contribution arrives at the channel the declared destination relocates INTO…
+        homeManager = [
+          "linux-a"
+          "linux-b"
+        ];
+        darwin = [ ]; # …and not at the channel it was declared at, which has an outgoing relocation.
+        # CONTROL, same run: without the `reroute` act the route answers at its declared destination.
+        controlHomeManager = [ ];
+        controlDarwin = [
+          "linux-a"
+          "linux-b"
+        ];
+      };
+    };
+
+    # (b) A FORWARD'S DESTINATION FOLLOWS THE PROJECTING SCOPE'S RELOCATION — §4.7 row 17, and NOT a
+    #     duplicate of the route row. A forward spec rides `meta.__forward` on an aspect at a REACHED node
+    #     while its placement lands at the PROJECTING scope, so the question is which of the two scopes'
+    #     relocations governs `intoClass`. ★ THE MIRROR FIXTURE IS THE CONTROL AND THE ROW CANNOT BE STATED
+    #     WITHOUT IT: with the `reroute` at the projecting scope the destination moves, and with the SAME
+    #     `reroute` at the descendant that authored the spec it must stay put. A row asserting only the first
+    #     half is satisfied by an implementation reading the spec author's scope.
+    test-forward-destination-follows-outgoing-relocation = {
+      expr = {
+        atProjectingHomeManager = projectClassOf gFwdDestAtProjecting "scope" "home-manager";
+        atProjectingNixos = projectClassOf gFwdDestAtProjecting "scope" "nixos";
+        atDescendantHomeManager = projectClassOf gFwdDestAtDescendant "scope" "home-manager";
+        atDescendantNixos = projectClassOf gFwdDestAtDescendant "scope" "nixos";
+      };
+      expected = {
+        # reroute at the PROJECTING scope: `home-manager` has an outgoing relocation, so the declared
+        # destination resolves to nothing there and the forward lands at `nixos` instead.
+        atProjectingHomeManager = [ ];
+        atProjectingNixos = [
+          {
+            placed = {
+              tag = "fwd-src";
+            };
+          }
+        ];
+        # THE MIRROR: the same `reroute` at the DESCENDANT that authored the spec leaves the destination
+        # unmoved — the projecting scope declares no relocation, so `intoClass` resolves as written.
+        atDescendantHomeManager = [
+          {
+            placed = {
+              tag = "fwd-src";
+            };
+          }
+        ];
+        atDescendantNixos = [ ];
       };
     };
   };

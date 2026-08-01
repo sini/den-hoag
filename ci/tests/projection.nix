@@ -155,6 +155,56 @@ let
   relocationFreeOut = (denHoag.mkDen relocationBase).den.output;
   relocatedOut = (denHoag.mkDen (relocationBase ++ [ relocationMod ])).den.output;
   axon = "host:axon";
+  alice = "user:alice@host:axon";
+
+  # ── THE INJECTION INPUT: the second public relocation verb, on the same fixture ───────────────────────
+  # `declare.inject` declares content AT A SCOPE with no aspect behind it. It reaches both consumers through
+  # the SAME per-scope memo the `reroute` half rides (`class-relocation.injections`), read by `class-seeds`
+  # for the fold and by `reach`'s structural arm for the projection — which is why the two sides can be
+  # compared here at all, and why an implementation wiring only one of the two reads fails these rows while
+  # leaving every `reroute` row above green.
+  injectMod.config.den.policies.inject-hm = {
+    emits = [ "inject" ];
+    fn =
+      { user, ... }:
+      [
+        (denHoag.declare.inject {
+          class = denHoag.classes.home-manager;
+          module = {
+            tag = "inj-alice";
+          };
+        })
+      ];
+  };
+  injectedOut = (denHoag.mkDen (relocationBase ++ [ injectMod ])).den.output;
+
+  # ── THE DESTINATION INPUT: a ROUTE targeting the channel the relocation empties ───────────────────────
+  # `relocationMod` moves `home-manager` to `nixos`; a route declaring `to = home-manager` at the same scope
+  # is the ONE fixture combination that asks whose relocation governs a route's DESTINATION. Neither the
+  # relocation fixture above nor the route suites carried it, which is why the question went unasked.
+  # The cell gains a `darwin` slice as the route's SOURCE, held fixed across subject and control so the only
+  # thing that moves between the two fleets is the presence of the `reroute` act.
+  relocationDarwinSource.config.den.aspects.acct.darwin.tag = "dar-alice";
+  routeMod.config.den.policies.route-darwin-to-hm = {
+    emits = [ "delivery" ];
+    fn =
+      { user, ... }:
+      [
+        (denHoag.declare.delivery {
+          sourceClass = denHoag.classes.darwin;
+          targetClass = denHoag.classes.home-manager;
+          module = null; # a CLASS source (the route case), not a module delivery.
+          path = [ ];
+          mode = "merge";
+        })
+      ];
+  };
+  routedBase = relocationBase ++ [
+    relocationDarwinSource
+    routeMod
+  ];
+  routedOut = (denHoag.mkDen routedBase).den.output;
+  routedRelocatedOut = (denHoag.mkDen (routedBase ++ [ relocationMod ])).den.output;
 in
 {
   flake.tests.projection = {
@@ -272,6 +322,124 @@ in
           "nixos-host"
           "hm-alice"
         ];
+      };
+    };
+
+    # ══ THE INJECTION INPUT — the second public verb, armed at both consumers ═══════════════════════════
+    # `den-hoag-4kh.41` recorded the standing gap in one line: only `reroute` was armed. The rows above
+    # measure a relocation; these measure an INJECTION, which is the other half of the same memo and the
+    # half with no witness. They are stated in the register the rows above use — the two consumers compared,
+    # then the absolute content, then the injection-free control — so a remedy that broke both sides alike
+    # cannot satisfy the equality alone.
+
+    # (i) THE TWO CONSUMERS AGREE on an injected channel, at the cell that declares it AND at the host that
+    #     reaches it. `classSubtreeAt` folds `class-seeds`, which reads the memo's `injections` directly;
+    #     `projectClass` folds `classSliceAt` over `reach`, whose structural arm carries the same elements.
+    #     One memo, two reads — and an implementation wiring only the fold leaves the host half red.
+    test-inject-projectClass-eq-classSubtreeAt = {
+      expr = {
+        cell = injectedOut.projectClass alice "home-manager";
+        host = injectedOut.projectClass axon "home-manager";
+      };
+      expected = {
+        cell = injectedOut.classSubtreeAt alice "home-manager";
+        host = injectedOut.classSubtreeAt axon "home-manager";
+      };
+    };
+
+    # (ii) THE ABSOLUTE CONTENT, so the equality above cannot be satisfied by two sides broken alike: the
+    #      injected module lands AFTER the cell's own aspect content (an injection has no element position
+    #      of its own — it follows the scope's resolved aspects), and it reaches the HOST's projection too,
+    #      because reach's structural arm draws the descendant cell's elements into the host's view.
+    test-inject-projectClass-content = {
+      expr = {
+        cell = builtins.concatMap tags (injectedOut.projectClass alice "home-manager");
+        host = builtins.concatMap tags (injectedOut.projectClass axon "home-manager");
+      };
+      expected = {
+        cell = [
+          "hm-alice"
+          "inj-alice"
+        ];
+        host = [
+          "hm-alice"
+          "inj-alice"
+        ];
+      };
+    };
+
+    # (iii) THE INJECTION-FREE CONTROL, same run: the byte-identical fleet without `injectMod` carries the
+    #       aspect content alone on BOTH consumers. Without it the rows above are satisfied by any change
+    #       that adds content to every projection.
+    test-inject-control-injection-free = {
+      expr = {
+        projected = builtins.concatMap tags (relocationFreeOut.projectClass alice "home-manager");
+        folded = builtins.concatMap tags (relocationFreeOut.classSubtreeAt alice "home-manager");
+      };
+      expected = {
+        projected = [ "hm-alice" ];
+        folded = [ "hm-alice" ];
+      };
+    };
+
+    # ══ THE DESTINATION COORDINATE UNDER RELOCATION — the §4.5b ruling on a NATIVE fleet ════════════════
+    # A route's `to` names a coordinate AT THE TARGET ROOT, so it is read through that root's own relocation
+    # exactly as the element arm's sources are read through each element's. The fleet declares BOTH: a
+    # `reroute` moving `home-manager` to `nixos`, and a `delivery` whose `targetClass` is `home-manager`.
+    # `ci/tests/projection-routes.nix` carries the incoming-destination and forward arms on its stub; this is
+    # the OUTGOING arm, and it is native because its consequence — the member row below — is a `systems`
+    # observation that only a fleet has.
+
+    # (i) THE DISCRIMINATING ROW, and it must assert BOTH halves. A row asserting only that `home-manager`
+    #     is empty is satisfied by a design that drops the route's content outright; a row asserting only
+    #     that `nixos` gained it is satisfied by one that delivers it twice. Under the rejected reading —
+    #     the destination matched literally — the first half stays populated and the second stays missing.
+    test-route-destination-follows-outgoing-relocation = {
+      expr = {
+        homeManager = builtins.concatMap tags (routedRelocatedOut.projectClass alice "home-manager");
+        nixos = builtins.concatMap tags (routedRelocatedOut.projectClass alice "nixos");
+      };
+      expected = {
+        homeManager = [ ]; # the declared destination has an outgoing relocation ⇒ nothing rests there.
+        nixos = [
+          "hm-alice" # the cell's own relocated content…
+          "dar-alice" # …and the ROUTE's contribution, which followed the same relocation.
+        ];
+      };
+    };
+
+    # (ii) THE CONTROL that makes the row above evidence: the byte-identical fleet WITHOUT the `reroute` act
+    #      answers at the route's declared destination and adds nothing at `nixos`. Without it the row is
+    #      satisfied by any change that re-aims every route.
+    test-route-destination-unmoved-without-relocation = {
+      expr = {
+        homeManager = builtins.concatMap tags (routedOut.projectClass alice "home-manager");
+        nixos = builtins.concatMap tags (routedOut.projectClass alice "nixos");
+      };
+      expected = {
+        homeManager = [
+          "hm-alice"
+          "dar-alice"
+        ];
+        nixos = [ ];
+      };
+    };
+
+    # (iii) THE MEMBER VANISHES DESPITE THE ROUTE — §15.1's corrected quantifier, made falsifiable at the
+    #       surface the ruling is about. `contentIdsOf` filters on `terminalModulesAt id name != [ ]`, a
+    #       THREE-term sum (element fold ++ route remap ++ forwards), so the member leaves `systems.<class>`
+    #       only when all three are empty at that coordinate. This fleet declares a route targeting exactly
+    #       the emptied channel — the one input on which the sum could be non-empty with the fold empty — so
+    #       the row is what tells the ruling apart from a design under which the member survives holding
+    #       route content. Its control is the same fleet one declaration away.
+    test-member-vanishes-under-outgoing-relocation-despite-route = {
+      expr = {
+        relocated = builtins.attrNames routedRelocatedOut.systems.home-manager;
+        control = builtins.attrNames routedOut.systems.home-manager;
+      };
+      expected = {
+        relocated = [ ]; # all three terms empty at `home-manager` ⇒ the member is gone.
+        control = [ alice ]; # one declaration away, the member is there.
       };
     };
 
