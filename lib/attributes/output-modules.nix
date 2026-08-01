@@ -102,14 +102,17 @@
   # `applyPipeEffects` REPLACES the consumed value); multiple policies on one base concatenate,
   # per-policy from the base values. Native default = `{ }` (no untargeted deriving pipe) ⇒ identity.
   derivedBaseNames ? { },
-  # THE ONE per-aspect class-slice extraction (`attributes/class-modules.nix classSliceOf`, threaded
-  # through `attributesLib.mkClassSlice` with the discovered `classifyKey`). `classSliceOf aspect class`
-  # returns that aspect's `class`-C bucket contribution as `[ { module; shared; } ]` (0 or 1) — `projectClass`
-  # maps `.module` (bare, the classSubtreeAt anchor). Native default reproduces the bucket read locally but is
+  # THE ONE relocation-aware class-slice extraction (`attributes/class-modules.nix classSliceAt`, threaded
+  # through `attributesLib.mkClassSlice` with the discovered `classifyKey`). `classSliceAt eval exempt e class`
+  # returns that element's `class`-C bucket contribution as `[ { module; shared; } ]` — `projectClass`
+  # maps `.module` (bare, the classSubtreeAt anchor). It takes the EVAL HANDLE because the relocation
+  # relation is a property of the ELEMENT'S OWN scope, which the extraction reads off the element rather
+  # than accepting from the caller — so every consumer here passes the same `result` it already closes over,
+  # and none of them chooses a scope. Native default reproduces the un-relocated empty read locally but is
   # ALWAYS supplied by den-hoag's assembly (the class-modules extraction is the single source); the default is
   # a defensive identity for a caller that constructs `mkOutputModules` standalone without the extraction.
-  classSliceOf ? (
-    _: _: _:
+  classSliceAt ? (
+    _: _: _: _:
     [ ]
   ),
   # §2.2 TOTALITY assertion (`class-modules.nix assertKeysRegistered`). Forces classification of every
@@ -147,7 +150,7 @@ let
   # NOT on bucket non-emptiness: a bare-channel host (its aspects emit only quirk content, no nixos class body
   # — edge-completeness `axon`) still emits `collected:scope/nixos | merge`, matching v1's `defaultFoldEdges`
   # (which folds a producing class unconditionally). `class-modules` now drops EMPTY class buckets (the typed
-  # `{ imports = [ { } ]; }` no-op — `classSliceOf` isEmptyModule, so a delivered bucket carries only REAL
+  # `{ imports = [ { } ]; }` no-op — `rawSliceOf` isEmptyModule, so a delivered bucket carries only REAL
   # content, no double-count), so emptiness can no longer gate the fold; producing-class presence does. Cross-
   # class content movement is the EXPLICIT deliver/inject edge, never the default fold. NO-EFFECT-RUNTIME: one
   # producing-class read (the node's contentClass) — never a module body (deferred content stays A17-lazy).
@@ -508,13 +511,13 @@ let
   # `{ imports = [ { } ]; }` DEFAULT body even for an aspect that declares no content there (the documented
   # §2.5 over-report, output-modules.nix:118-126). The BASE fold masks this via producing-class scoping
   # (`classBucketsOf` folds only a node's OWN producing class); a ROUTE is an EXPLICIT cross-class read, so
-  # `classSliceOf n route.from` over a `from` the reached node never declared yields that phantom default
+  # `classSliceAt result n route.from` over a `from` the reached node never declared yields that phantom default
   # slice. The corpus's built-in os→nixos route surfaces it (an `acct`-shaped cell declares nixos+home-manager,
   # never `os`, yet its phantom `os` default slice remaps into nixos). This is DRVPATH-HARMLESS (the phantom
   # body is `{ imports = [ { } ]; }` — an empty no-op module the terminal merge absorbs to nothing) and is
   # NOT filtered here: the only phantom signal is the nixpkgs `_file = "<default>"` presentation marker on the
   # INNER module (not a robust gen-aspects "was-never-declared" contract), so dropping on it would be the
-  # emptiness-by-another-name fragile filter the spec §5 silent-content-loss warns against. `classSliceOf`
+  # emptiness-by-another-name fragile filter the spec §5 silent-content-loss warns against. `rawSliceOf`
   # already drops a LITERAL `{ }` body; the freeform default is not literal-`{ }`, so it rides through — the
   # accepted, ledgered over-report. The routed-delta anchor witness (`ci/tests/projection.nix`) pins the
   # invariant `projectClass id C == classSubtreeAt id C ++ <route remap delta>` (exact-equal only for a
@@ -578,7 +581,7 @@ let
     };
 
   # `exempt` = the srcScope's forward-source-class set, threaded in by the caller (`routeRemapFor`) so the
-  # per-node `classSliceOf` collects an unregistered forward SOURCE class (a plain corpus route's `from` is a
+  # per-node `classSliceAt` collects an unregistered forward SOURCE class (a plain corpus route's `from` is a
   # registered class ⇒ `{ }` exemption ⇒ unaffected).
   remapOver =
     exempt: srcScope: route:
@@ -587,7 +590,7 @@ let
       placed = prelude.concatMap (
         n:
         let
-          slices = map (e: e.module) (classSliceOf exempt n route.from);
+          slices = map (e: e.module) (classSliceAt result exempt n route.from);
         in
         if route.at == [ ] then
           # at=[] — flat merge into the target class (home-platform bucket b). No placement path, so no
@@ -656,7 +659,9 @@ let
     prelude.concatMap (
       spec:
       let
-        srcSlices = prelude.concatMap (n: map (e: e.module) (classSliceOf exempt n spec.fromClass)) reach;
+        srcSlices = prelude.concatMap (
+          n: map (e: e.module) (classSliceAt result exempt n spec.fromClass)
+        ) reach;
         hasAdapter = spec.guard != null || spec.adaptArgs != null;
         # v1 `guardFn` (forward.nix:73-86), item-applied: a FN guard result → `res item` (e.g. `mkIf cond`)
         # applied to the placed content; a BOOL result → gate the whole placement (`optionalAttrs`, v1's
@@ -716,7 +721,7 @@ let
   # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
   # reach's canonical order (own-subtree → descendant cells → default edges → opt-in edges — the merge_ord
   # order spec §1 pins). Each reach node's `content` is already ctx-resolved at ITS OWN scope (the P-PROJECT
-  # closure resolves per-provider), so the slice is ctx-correct across scopes. `classSliceOf` is THE ONE
+  # closure resolves per-provider), so the slice is ctx-correct across scopes. `classSliceAt` is THE ONE
   # extraction the `class-modules` buckets use (0/1 `{ module; shared }` per aspect); `.module` strips to the
   # bare deferredModule.
   #
@@ -728,7 +733,7 @@ let
   # §2.2 TOTALITY (ruling 2026-07-14): each reached aspect's non-`_` keys are ALL classified
   # (`assertKeysRegistered`, forced via `seq`) before its projected-class slice is taken — a genuinely
   # unregistered typo key on a REACHABLE aspect aborts NAMED (never silently vanishes on the drv path,
-  # the §5 content-loss failure that `classSliceOf class` alone — classifying only the projected key —
+  # the §5 content-loss failure that `classSliceAt … class` alone — classifying only the projected key —
   # would let through). Totality covers reached content (edges/descendants), not just the own node.
   #
   # ROUTE CLASS-REMAP (spec §5 (b)). The base class-slice projection over `reach` PLUS the
@@ -766,7 +771,7 @@ let
         map (e: {
           inherit (e) module;
           scope = n.scope or id;
-        }) (classSliceOf exempt n class)
+        }) (classSliceAt result exempt n class)
       )
     ) reach
     ++ map atProjectingScope (routeRemapFor exempt id class)

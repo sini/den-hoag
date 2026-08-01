@@ -111,7 +111,7 @@ in
     );
 
     # PARKED — a `home-pingu` → homeManager forward fires at each user CELL, but the shipped hmUserDetect lift
-    # (`parentTargetedRoutesAt` → `remapOver`) reads `classSliceOf(cell, "homeManager")` PER-NODE, so the
+    # (`parentTargetedRoutesAt` → `remapOver`) reads `classSliceAt(cell, "homeManager")` PER-NODE, so the
     # forward's synthesized hm content never reaches `home-manager.users.pingu` (pingu resolves "unset", not
     # "hello"). The config-reading `mkIf` guard mechanism itself is exercised green by the option-existence
     # guard cases above.

@@ -1896,10 +1896,12 @@ let
             _: _: _:
             { }
           );
-        # THE ONE per-aspect class-slice extraction + §2.2 totality assertion, built with the
+        # THE ONE relocation-aware class-slice extraction + §2.2 totality assertion, built with the
         # discovered `classifyKey` so `projectClass` (the reach-based projection) and the `class-modules`
         # buckets share exactly one extraction — the ANCHOR `projectClass == classSubtreeAt` on a no-edge
         # node is that equivalence — and `projectClass` enforces the unregistered-key totality abort.
+        # `sourceOrderOf` is exported by the same builder as a graph query over the relocation relation; it
+        # is not threaded here because no output-stratum reader takes it yet.
         inherit
           (attributesLib.mkClassSlice {
             classNames = effectiveClassNames;
@@ -1908,7 +1910,7 @@ let
             # one — so no gate here can disagree with another about a channel name's category.
             inherit (denAspects.aspectSchema) keyCategory;
           })
-          classSliceOf
+          classSliceAt
           assertKeysRegistered
           forwardSourceClassesOf
           ;

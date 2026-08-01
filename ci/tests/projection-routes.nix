@@ -84,12 +84,21 @@ let
         inherit classifyKey;
         inherit (aspectSchema) keyCategory;
       };
-  inherit (cm) classSliceOf assertKeysRegistered;
+  inherit (cm) classSliceAt assertKeysRegistered;
 
-  # A synthetic resolved-aspect node `{ key; content }` (the reach node shape `classSliceOf` reads).
+  # A synthetic content element `{ key; content; scope; assertedClasses }` (the reach node shape
+  # `classSliceAt` reads). `scope` and `assertedClasses` are STAMPED because a content element is produced
+  # COMPLETE — the extraction projects both fields with a named throw rather than reconstructing either from
+  # where the element was read. `scope` is the synthetic sentinel these fixtures resolve their relocation
+  # memo at (they declare routes, never a `reroute`, so the memo is the empty relation); `assertedClasses =
+  # { }` is the POSITIVE statement "this element asserts nothing", the value every produced aspect element
+  # carries — so the fixtures stay semantically identical to what the assembly feeds the extraction.
   mkNode = key: content: {
     inherit key content;
+    scope = syntheticScope;
+    assertedClasses = { };
   };
+  syntheticScope = "<synthetic>";
 
   # A `delivery` resolution action (the shape `translateDelivery`/`deliveriesAt` produce/read): a
   # class→class route carries `sourceClass`/`targetClass` entries (`{ name; }`), a `path`, `mode`, and a
@@ -124,38 +133,50 @@ let
   # (delivery) actions, `enriched-context` = the guard's scope bindings, `node`/`children` inert. `allNodes`
   # keys the systems spine (unforced by projectClass). Each id in `graph` carries `{ reach; routes ? [];
   # ctx ? {}; node ? {} }`.
-  mkResult = graph: {
-    allNodes = builtins.mapAttrs (_: _: { }) graph;
-    get =
-      id: attr:
-      let
-        g = graph.${id} or { };
-      in
-      if attr == "reach" then
-        g.reach or [ ]
-      else if attr == "declarations" then
-        { actions.resolution = g.routes or [ ]; }
-      else if attr == "enriched-context" then
-        g.ctx or { }
-      else if attr == "children" then
-        g.children or { }
-      else if attr == "resolved-aspects" then
-        g.reach or [ ]
-      # Track A's `placeRemapped` threads `bindingsAt srcScope` (source-scope channel/settings bindings) into
-      # the nested slice eval; these fixtures declare no channels/settings, so serve them empty (the real
-      # fleet serves the neron/settings folds). `enriched-context` (ctx) above already covers the entity half.
-      else if attr == "received-collections" then
-        { }
-      else if attr == "resolved-settings" then
-        { }
-      else
-        throw "projection-routes stub: unexpected attr ${attr}";
-    node = id: (graph.${id} or { }).node or { parent = null; };
-  };
+  mkResult =
+    graph:
+    let
+      result = {
+        allNodes = builtins.mapAttrs (_: _: { }) graph;
+        get =
+          id: attr:
+          let
+            g = graph.${id} or { };
+          in
+          if attr == "reach" then
+            g.reach or [ ]
+          else if attr == "declarations" then
+            { actions.resolution = g.routes or [ ]; }
+          # ── THE PER-SCOPE RELOCATION MEMO the extraction reads a channel's source order through. Served by
+          # driving the KERNEL's own equation over this same stub, so the instrument supplies DATA (the
+          # declarations at a scope) and never a second copy of the relocation algorithm — the `mkSelf`
+          # shape `ci/tests/class-relocation.nix` already uses for `"content-key-totality"`. Omitting it
+          # would not silently pin the un-relocated semantics: `sourceOrderOf` aborts NAMING the scope.
+          else if attr == "class-relocation" then
+            cm.class-relocation.compute result id
+          else if attr == "enriched-context" then
+            g.ctx or { }
+          else if attr == "children" then
+            g.children or { }
+          else if attr == "resolved-aspects" then
+            g.reach or [ ]
+          # Track A's `placeRemapped` threads `bindingsAt srcScope` (source-scope channel/settings bindings) into
+          # the nested slice eval; these fixtures declare no channels/settings, so serve them empty (the real
+          # fleet serves the neron/settings folds). `enriched-context` (ctx) above already covers the entity half.
+          else if attr == "received-collections" then
+            { }
+          else if attr == "resolved-settings" then
+            { }
+          else
+            throw "projection-routes stub: unexpected attr ${attr}";
+        node = id: (graph.${id} or { }).node or { parent = null; };
+      };
+    in
+    result;
 
   # Instantiate the REAL `mkOutputModules` over a stub `result` and pull out `projectClass` (the code path
   # under test). classesByName/classOfNode/channelNames are inert for projectClass (it reads only reach +
-  # declarations + enriched-context); `classSliceOf`/`assertKeysRegistered` are the real extraction.
+  # declarations + enriched-context); `classSliceAt`/`assertKeysRegistered` are the real extraction.
   mkOut =
     graph:
     import "${denHoagSrc}/lib/attributes/output-modules.nix"
@@ -176,7 +197,7 @@ let
         classesByName = { };
         classOfNode = _: null;
         channelNames = [ ];
-        inherit classSliceOf assertKeysRegistered;
+        inherit classSliceAt assertKeysRegistered;
       };
 
   projectClassOf =

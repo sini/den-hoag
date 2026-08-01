@@ -37,7 +37,7 @@ in
     # nixos-half is NOT reachable now (contra the migration plan's D6 premise) — the `nix→nixos@[nix]`
     # reroute itself is the block, upstream of the hm-half's hm-lift #9. The hm arm additionally hits the
     # forward-into-homeManager-at-cell lift (output-modules `parentTargetedRoutesAt` → `remapOver` reads
-    # classSliceOf(cell,"homeManager") per-node; hm-lift #9, same as forward-from-custom-class.nix:194 /
+    # classSliceAt(cell,"homeManager") per-node; hm-lift #9, same as forward-from-custom-class.nix:194 /
     # guarded-forward.nix:107). The v1 combined `{ nixos = …; hm = …; }` assertion is preserved verbatim so
     # the unpark is a mechanical uncomment. Unparks when the nix→nixos forward reroute (+ the hm-at-cell
     # lift) ships.

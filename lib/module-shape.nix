@@ -2,7 +2,7 @@
 # emptiness. Under the single typed tree a class-keyed value is a deferredModule `{ imports = [ … ]; }`
 # (gen-merge wraps `{ _file; imports }`), and gen-aspects materializes EVERY registered class key on every
 # aspect — an UNSET class defaults to the EMPTY wrap `{ imports = [ { } ]; }`. Several sites need to peel the
-# wrap and test whether the real content is empty (class-modules `classSliceOf`'s no-op drop; compile's
+# wrap and test whether the real content is empty (class-modules `rawSliceOf`'s no-op drop; compile's
 # `looksLikeClassContent` empty-deferred guard; the annotate-battery test's content read) — hoisted here so
 # the peel/empty rule can never drift. nixpkgs-lib-free (only `prelude` + builtins).
 { prelude }:

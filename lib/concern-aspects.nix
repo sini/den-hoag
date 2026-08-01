@@ -29,7 +29,7 @@ let
   # owns the config-free facet MODULES (neededBy/settings/artifact) so their option types live in ONE source
   # shared with the typed-view consumers — a `.settings` block types identically wherever it is registered.
   keySemanticsLib = import ./key-semantics.nix { inherit prelude; };
-  # The deferredModule SHAPE helper — the one peel/emptiness rule (class-modules `classSliceOf` uses it too).
+  # The deferredModule SHAPE helper — the one peel/emptiness rule (class-modules `rawSliceOf` uses it too).
   # `artifactExclusive` reads it to decide whether a class content key is a real declaration or an empty no-op.
   inherit (import ./module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
 
@@ -116,7 +116,7 @@ let
   # carry NO class content — "its class buckets must be empty; declaring both throws named". A pure decision
   # over an aspect's own CONTENT (the resolved-aspect `content` attrset, or a raw aspect declaration): if
   # `artifact` is present (non-null), every content key that `classifyKey` routes to a `class` category must
-  # have an EMPTY deferredModule body (`isEmptyDeferredModule` — the same peel/emptiness rule `classSliceOf`
+  # have an EMPTY deferredModule body (`isEmptyDeferredModule` — the same peel/emptiness rule `rawSliceOf`
   # uses, so an all-empty class default from gen-aspects' materialization is NOT a real declaration). A single
   # non-empty class key alongside `artifact` aborts NAMED. Returns `true` on the clean case (a truthy sentinel
   # the caller may `seq`); an aspect with NO `artifact` is trivially exclusive. Total + pure (Law A1) — no

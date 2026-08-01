@@ -2,7 +2,7 @@
 #
 # `projectClass id class` = the class-`C` module slice of EVERY resolved-aspect node in `reach id`, in
 # reach's canonical order (own-subtree → descendant cells → default edges → opt-in edges), each slice via
-# `classSliceOf` (THE ONE extraction the `class-modules` buckets also use). The terminal CONSUMES it:
+# `classSliceAt` (THE ONE extraction the `class-modules` buckets also use). The terminal CONSUMES it:
 # `terminalModulesAt = projectClass` — projection is now the terminal's content source (the emission model,
 # `classSubtreeAt ++ deliveryModulesAt`, is dead and deleted).
 #
@@ -13,15 +13,16 @@
 #     BEFORE it replaces the emission. Driven on the `class-fold-subtree` fixture (nixos host + 3 hm cells
 #     each emitting a define-user-shaped nixos slice), reached through `fleet.den.output.{projectClass,
 #     classSubtreeAt}`.
-#   • THE RELOCATION INPUT (real fleet, the anchor's NON-TRIVIAL input): the two sides of the anchor are
-#     not the same function — `classSubtreeAt` reads `class-seeds`, which APPLIES the node's relocation
-#     relation Ρ(n) (`reroute`); `projectClass` reads `classSliceOf` over reach, the RAW extraction. On a
-#     relocation-FREE fleet Ρ(n) = ∅, so both sides answer the same for the trivial reason that neither
-#     computes a relocation, and the equality is satisfied by an input that cannot distinguish them. This
-#     plane declares a relocation over content that arrives BY REACH, which is the input class on which
-#     the two sides CAN differ.
+#   • THE RELOCATION INPUT (real fleet, the anchor's NON-TRIVIAL input): the two sides of the anchor reach
+#     the relocation relation Ρ(n) (`reroute`) by different routes — `classSubtreeAt` reads `class-seeds`,
+#     which applies it off the node's own frame; `projectClass` reads `classSliceAt` over reach, which
+#     applies it off the `class-relocation` memo at each ELEMENT'S OWN scope. On a relocation-FREE fleet
+#     Ρ(n) = ∅, so both sides answer the same for the trivial reason that neither moves any content, and
+#     the equality is satisfied by an input that cannot distinguish them. This plane declares a relocation
+#     over content that arrives BY REACH, which is the input class on which the two sides COULD differ —
+#     and the rows are what measure that they do not.
 #   • SYNTHETIC (stub reach, the edge-replacement proofs): `projectClass` is `concatMap (n: map (e: e.module)
-#     (classSliceOf n class)) (reach id)`, so GIVEN a reach list it is a pure class-slice fold — reach's own
+#     (classSliceAt eval n class)) (reach id)`, so GIVEN a reach list it is a pure class-slice fold — reach's own
 #     edge-following (opt-in / structural-descendant / class-scope) is proven in reach-graph.nix. Here we
 #     drive projectClass over a STUB `result` serving a synthetic reach list, witnessing the class-slice
 #     projection: an opt-in-edge host-hm slice included once, a descendant define-user nixos slice, F9
@@ -43,7 +44,6 @@ let
     projectReach
     projectReachTotal
     tags
-    classSliceOf
     assertKeysRegistered
     ;
 
@@ -220,8 +220,10 @@ in
     # that declares one: content whose channel has an outgoing relocation comes to rest at the target, so
     # the SOURCE channel holds nothing and the TARGET channel carries the moved slice. `classSubtreeAt`
     # folds each scope's `class-seeds` and therefore answers the relocated content; `projectClass` folds
-    # `classSliceOf` straight over reach and answers the raw content. THE EQUIVALENCE HOLDS ONLY WHEN THE
-    # PROJECTION APPLIES THE RELOCATION RELATION — this input exhibits the divergence.
+    # `classSliceAt` over reach, which resolves each element's source order at THAT ELEMENT'S OWN scope and
+    # therefore answers the relocated content too. THE EQUIVALENCE HOLDS ONLY BECAUSE THE PROJECTION APPLIES
+    # THE RELOCATION RELATION — these rows are what measures that it does, and they fail against a
+    # projection folding the raw per-channel read.
 
     # (i) CONTROL, in the same run: the SAME fleet with no relocation declared agrees on both channels, so
     #     the rows below measure the relocation and not the fixture's own shape (native mkDen, the
@@ -318,7 +320,7 @@ in
     };
 
     # (c) F9 CLASS-SCOPE (no over-reach): projecting the `home-manager` class over a reach list that includes
-    #     a nixos-ONLY host aspect does NOT pull the nixos slice — `classSliceOf` selects only the projected
+    #     a nixos-ONLY host aspect does NOT pull the nixos slice — `classSliceAt` selects only the projected
     #     class's key. (reach's edge class-filter is the reach-graph companion; this is the projection gate.)
     test-synthetic-class-scope-no-nixos-in-hm = {
       expr =

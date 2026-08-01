@@ -202,7 +202,7 @@ in
     # forwarded `["tux"]`; nix→nixos @`[]` and @`["nix" "settings"]` land, only @`["nix"]` does not). The `hm`
     # half: a forward INTO homeManager at a user CELL
     # (nix→homeManager) lands in `projectClass(cell, "homeManager")`, but the shipped hmUserDetect lift
-    # (output-modules `parentTargetedRoutesAt` → `remapOver`) reads `classSliceOf(cell, "homeManager")`
+    # (output-modules `parentTargetedRoutesAt` → `remapOver`) reads `classSliceAt(cell, "homeManager")`
     # PER-NODE, so the forward's SYNTHESIZED hm content is invisible to the lift to `home-manager.users.<u>`
     # (`attribute 'allowed-users' missing`). A separate composition (no corpus route delivers INTO homeManager
     # then lifts).

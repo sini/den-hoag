@@ -203,8 +203,8 @@ in
       # Only the EQUATION records enter the map: `class-relocation` (the per-scope relocation relation Ρ(S),
       # resolved once at the OWNING scope so every consumer of that scope's content reads one answer),
       # `class-seeds` (the per-(node, channel) content query, consumed by `classSubtreeAt`'s cross-scope
-      # shared-aspect dedup) and `content-key-totality` (its §2.2 classification driver) — `classSliceOf`
-      # (the factored per-aspect extraction, exported alongside) is a bare function threaded to
+      # shared-aspect dedup) and `content-key-totality` (its §2.2 classification driver) — `classSliceAt`
+      # (the factored relocation-aware extraction, exported alongside) is a bare function threaded to
       # `mkOutputModules` (below).
       inherit (classModules { inherit classNames classifyKey keyCategory; })
         class-relocation
@@ -245,11 +245,14 @@ in
   # applies it once at the top level (like the narrow accessor).
   mkOutputModules = outputModules;
 
-  # THE ONE per-aspect class-slice extraction + §2.2 totality assertion, built per-mkDen with the
+  # THE ONE relocation-aware class-slice extraction + §2.2 totality assertion, built per-mkDen with the
   # DISCOVERED `classifyKey` and threaded to `mkOutputModules` (so `projectClass` and the `class-modules`
   # buckets share exactly one extraction, and `projectClass` enforces the unregistered-key totality abort
-  # over every reached aspect). `classNames` is inert for both (they read only `classifyKey` + `prelude`),
-  # passed to satisfy the class-modules instance signature.
+  # over every reached aspect). `classNames` is inert for these FOUR bare functions: `classSliceAt` reads
+  # `classifyKey`, `prelude`, `keyCategory` (the source-side reserved-channel refusal) and the eval handle
+  # it is passed, and the added `sourceOrderOf` reads `keyCategory` and that same handle — neither ever
+  # reads `classNames`, which is load-bearing only for the `class-relocation` memo's own domain. It is
+  # passed here to satisfy the class-modules instance signature.
   mkClassSlice =
     {
       classNames,
@@ -271,7 +274,12 @@ in
       };
     in
     {
-      inherit (cm) classSliceOf assertKeysRegistered forwardSourceClassesOf;
+      inherit (cm)
+        classSliceAt
+        sourceOrderOf
+        assertKeysRegistered
+        forwardSourceClassesOf
+        ;
     };
 
   # Expose the structural builder for the suite's minimal-scenario scaffolding (b2 builds

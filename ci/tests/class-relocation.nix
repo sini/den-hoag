@@ -62,6 +62,10 @@ let
 
   # one aspect per registered channel except `Z`, which stays registered and content-free (the uninvolved
   # channel the acyclicity witness demands).
+  # `scope` and `assertedClasses` are STAMPED: a content element is produced COMPLETE, and the totality
+  # assertion projects `assertedClasses` with a named throw rather than reading an absence as a default.
+  # `{ }` is the value every produced aspect element carries — "this element asserts nothing" — so these
+  # fixtures stay semantically identical to what the assembly feeds the equation.
   resolvedAspects =
     map
       (c: {
@@ -70,6 +74,8 @@ let
           ${c} = mod "c${c}";
         };
         sharedFoldKey = null;
+        scope = "n";
+        assertedClasses = { };
       })
       [
         "A"

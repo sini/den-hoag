@@ -63,17 +63,10 @@ let
   # `m == { }` drop.
   inherit (import ../module-shape.nix { inherit prelude; }) isEmptyDeferredModule;
 
-  # THE ONE per-aspect class-slice extraction so the seed query AND `projectClass`
-  # — the reach-based projection — share EXACTLY one extraction.
-  # `classSliceOf aspect class` = the `class`-C contribution of a SINGLE resolved-aspect node
-  # (`{ key; content; }`): the aspect's `content.${class}` deferredModule IFF that key is a registered
-  # `class` key (via `classifyKey`, §2.2) and its body is a non-empty declaration. Returns a `[ { module; } ]`
-  # list (0 or 1 entry — one class = one content key). A `_`-prefixed / channel / facet key is skipped; an
-  # EMPTY body (`{ }` raw, or the typed `{ imports = [ { } ]; }` wrap) is a declared no-op, dropped so seed
-  # counts reflect real content. `projectClass` maps `.module` (bare, for the classSubtreeAt anchor).
   # ── FORWARD-SOURCE-CLASS ACCEPTANCE (iv-b, reach-sourced exemption). A live forward SOURCE class (an
-  # unregistered `fromClass` a `meta.__forward` spec on a REACHED node names — output-modules
-  # `forwardSourceClassesAt`) MATERIALIZES its content instead of aborting, so `routeRemapFor` can move it
+  # unregistered `fromClass` a `meta.__forward` spec on a REACHED node names — read at the INLINE binding
+  # `f = (n.content.meta or { }).__forward or null;` in output-modules' `forwardModulesFor` specs fold)
+  # MATERIALIZES its content instead of aborting, so `routeRemapFor` can move it
   # (the collect-coupling: silencing the abort alone delivers nothing). A NON-exempt unregistered key STILL
   # aborts in `classifyKey` (Law A1/A2 typo-protection preserved). The `exempt` set (a keyset attrset) is
   # threaded per-node from the reach's forward specs; `{ }` for every non-forward node ⇒ byte-identical.
@@ -87,7 +80,40 @@ let
       if f == null then acc else acc // { ${f.fromClass} = true; }
     ) { } nodes;
 
-  classSliceOf =
+  # ── THE CONTENT ELEMENT'S TWO FIELD PROJECTIONS — PRIVATE, and the privacy is a ruling ────────────────
+  # `e.scope` and `e.assertedClasses`, each with a NAMED throw on absence. They stay private because a field
+  # projection is NOT a surface: exporting one would publish an accessor for a field the caller already
+  # holds, which is a second derivation of a present fact — the same shape this file deleted when it stopped
+  # letting a reader reconstruct an element's scope from where it was read.
+  # THE THROWS GUARD A STATE NO PRODUCER CAN CREATE. Both producers of a content element write both fields
+  # unconditionally in a record literal — `resolved-aspects.nix`'s `forwardExpand.emit` (`scope = scopeId`,
+  # `assertedClasses = { }`) and `injectionElementsAt.elementAt` below (`scope = id`,
+  # `assertedClasses = { ${c} = true; }`, on its one admitting branch; the refusing branches return no
+  # element at all). The population they answer for is therefore the HAND-BUILT element, where the named
+  # throw replaces the evaluator's own unnamed missing-attribute error.
+  scopeOf =
+    e:
+    e.scope or (throw "den-hoag: class-modules: content element carries no scope (${
+      builtins.toJSON (e.content.name or null)
+    })");
+  assertedOf =
+    e:
+    e.assertedClasses or (throw "den-hoag: class-modules: content element carries no assertedClasses (${
+      builtins.toJSON (e.content.name or null)
+    })");
+
+  # THE RAW per-element class-slice extraction — the UN-EXPORTED half of the one extraction.
+  # `rawSliceOf exempt e class` = the `class`-C contribution of a SINGLE content element
+  # (`{ key; content; }`): the element's `content.${class}` deferredModule IFF that key is a registered
+  # `class` key (via `classifyKey`, §2.2) and its body is a non-empty declaration. Returns a `[ { module; } ]`
+  # list (0 or 1 entry — one class = one content key). A `_`-prefixed / channel / facet key is skipped; an
+  # EMPTY body (`{ }` raw, or the typed `{ imports = [ { } ]; }` wrap) is a declared no-op, dropped so seed
+  # counts reflect real content.
+  # IT IS RAW BECAUSE IT READS ONE CHANNEL, NOT A CLASS'S PREIMAGE: relocation is applied by `classSliceAt`,
+  # which concatMaps this over the source order. Exporting it would publish an extraction that answers the
+  # un-relocated question, which is the defect the unification removes — so the exported entry point is the
+  # relocation-aware one and this stays private.
+  rawSliceOf =
     exempt: aspect: class:
     let
       content = aspect.content;
@@ -117,6 +143,90 @@ let
           }
         ];
 
+  # ── THE Ρ-PREIMAGE ORDER OF A CHANNEL AT A SCOPE — A GRAPH QUERY, AND THE ONE EXPORTED HELPER ─────────
+  # `sourceOrderOf eval S c` answers *what is the Ρ(S)-preimage order of channel `c`*, off the OWNING
+  # scope's `class-relocation` memo. It is EXPORTED — unlike the two field projections above — because that
+  # is a question about the relocation relation with meaning to any consumer of that relation, not an
+  # accessor for a field the caller already holds.
+  #
+  # THE MEMO IS `let`-BOUND AND ITS ABSENCE ABORTS NAMED, which is the whole reason for the binding.
+  # Nix's `or` covers an attribute PATH and not its final selector, so
+  # `(eval.get sid "class-relocation").sourceOrder.${c} or [ c ]` would answer `[ c ]` for two categorically
+  # different inputs: a channel the relation does not mention, and an eval that does not serve the equation
+  # AT ALL. The second is exactly today's un-relocated answer delivered silently — an omission of the same
+  # class as the defect this unification exists to remove — so it gets its own named abort and the `or`
+  # covers the final selector alone.
+  # THERE `[ c ]` IS A PROVEN TOTAL ANSWER, not a fallback: a channel absent from the memo's domain is
+  # absent from the frame's node set, so it is an endpoint of no relocation; Ρ(S) neither moves its content
+  # nor moves content into it, and its content rests where it was authored. That is the same answer the
+  # widened `preimageOf` returns, so the lookup and the function agree by construction.
+  #
+  # ── THE SOURCE-SIDE HALF OF THE RESERVED-CHANNEL LAW, and it sits at the READ because only the read
+  # covers the law's whole class. `injectionElementsAt` refuses a schema-claimed channel where an injection
+  # MINTS a content key; the same law's other surface is the key `rawSliceOf` SELECTS, which after
+  # unification is exactly the `d` this answer supplies — the *written* and the *selected* halves of one key
+  # space. FOUR independent declarations put a name in front of this filter: a relocation source
+  # (`reroute.from`), a forward's `fromClass` (which needs no relocation anywhere in the fleet), the QUERY
+  # CHANNEL `c` itself (every registered class name is demanded here, so a fleet reaches it by declaring a
+  # class at a schema-claimed name and nothing else), and a route source resolved through the channel half
+  # of a bucket registry keyed on classes ∪ quirk channels (where nothing at the declaration site names a
+  # channel — the name is PRODUCED by the lookup, which is why no endpoint-side or declaration-side refusal
+  # can see it).
+  # REFUSING AT THE ENDPOINT INSTEAD IS NOT SUFFICIENT, and that is measured rather than argued: the forward
+  # path passes a free-form `fromClass` read off a reached aspect's `meta.__forward` with no relocation
+  # present, so a relocation-endpoint check cannot see it. Both paths funnel through this one expression.
+  # THE REFUSAL IS STRICT, NOT LAZY: the filter runs over the WHOLE answer before any member is returned, so
+  # it fires for a reader that SCANS (`builtins.elem` over the order) exactly as for one that maps.
+  # `keyCategory` is the instance argument the mint-side refusal already threads — same field, same record,
+  # same call site — so the second position costs no interface change.
+  sourceOrderOf =
+    eval: sid: c:
+    let
+      memo = eval.get sid "class-relocation";
+      order =
+        memo.sourceOrder
+          or (throw "den-hoag: class-modules: no class-relocation memo at scope '${sid}' (the eval serving this extraction does not carry the relocation equation)");
+      src = order.${c} or [ c ];
+      bad = builtins.filter (
+        d:
+        let
+          cat = keyCategory d;
+        in
+        !(cat == "class" || cat == null)
+      ) src;
+    in
+    if bad == [ ] then
+      src
+    else
+      let
+        d = builtins.head bad;
+      in
+      throw "den-hoag: class-modules: class content at scope '${sid}' is read from a reserved channel '${d}' (the aspect schema registers it as a '${keyCategory d}' key, and a '${keyCategory d}' key is never class content)";
+
+  # ── THE ONE EXTRACTION, RELOCATION-AWARE — the exported entry point ───────────────────────────────────
+  # `classSliceAt eval exempt e c` = the `c`-content of ONE content element, read through the relocation
+  # relation of THE ELEMENT'S OWN scope: the concatenation of the element's raw slices at every channel in
+  # `c`'s preimage there. Both class-content consumers therefore share one extraction AND one relocation,
+  # rather than one extraction and two relocations applied at two coordinates.
+  #
+  # IT TAKES THE EVAL HANDLE, NOT A SOURCE-ORDER FUNCTION, and the choice is load-bearing. With a
+  # `sourceOrderAt` parameter every call site picks a currying and BOTH wrong currings are SILENT:
+  # `_: c: [ c ]` reproduces the un-relocated defect exactly, and `_: c: lookup id c` installs the
+  # PROJECTING-scope reading where the declared semantics is the owning scope's. With the handle there is
+  # one thing to pass, every production consumer already holds exactly one, and the scope is read OFF THE
+  # ELEMENT rather than chosen by the caller.
+  # THE SCOPE READ IS THE EMITTING ONE, NOT THE PROJECTING ONE: an edge-projected element carries the edge
+  # TARGET's scope, so a relocation declared at that target governs its content even when a different scope
+  # is doing the projecting. That is the owning-scope reading, and it is why the field is read here.
+  #
+  # THE `assertedClasses` UNION HAS EXACTLY ONE DERIVATION AND IT IS INSIDE THIS FILE. An element's own
+  # asserted keys open the registered-key gate for its own minted channel and nothing else; a caller
+  # spelling `exempt // e.assertedClasses` would re-derive, outside the file that owns `assertedOf`, a set
+  # this file already computes — the second-derivation shape the design refuses everywhere else.
+  classSliceAt =
+    eval: exempt: e: c:
+    prelude.concatMap (d: rawSliceOf (exempt // assertedOf e) e d) (sourceOrderOf eval (scopeOf e) c);
+
   # Per-aspect totality force: (a) the §4.1 prebuilt-arm EXCLUSIVITY (`artifactExclusive` — an aspect
   # declaring `artifact` with non-empty class content aborts NAMED); (b) a WHNF force of every non-`_`,
   # non-exempt content key, which FIRES THE CLOSED GATE on a typo — an undeclared non-attrset leaf throws
@@ -125,12 +235,27 @@ let
   # an unresolved aspect is never reached (laziness). WHNF only: a class key forces to its deferredModule
   # wrapper (cheap, no user-content descent); an undeclared attrset key is an admitted nested-aspect namespace
   # (no throw at WHNF — its own content validates only when it is included and resolved). `exempt`
-  # forward-source keys materialize via `classSliceOf`, so they are skipped here.
+  # forward-source keys materialize via `rawSliceOf`, so they are skipped here.
+  #
+  # THE `assertedClasses` UNION IS PERFORMED HERE, NOT AT THE CALLER, so that both of this file's
+  # element-consuming exports apply the SAME private projection to the SAME field. `classSliceAt` one fence
+  # above opens `rawSliceOf (exempt // assertedOf e) e d`; a caller spelling `exempt // n.assertedClasses`
+  # would re-derive that set from that field OUTSIDE the file that owns `assertedOf` — a second derivation
+  # of a fact this file already computes. Callers therefore pass their bare node-wide `exempt`.
+  # WHAT THE POSITION BUYS, stated as the property rather than as an improvement: a caller-side union forces
+  # the BARE field before the assertion is entered, so an element missing it answers the evaluator's own
+  # unnamed missing-attribute error; the internal union forces `assertedOf`, so the same element answers the
+  # NAMED throw. Output moves on exactly that population — a hand-built element with no `assertedClasses`
+  # and at least one non-`_`, non-exempt content key. On every PRODUCED element nothing moves at all: an
+  # aspect element's `assertedClasses` is `{ }` by construction, and `exempt // { }` is `exempt`.
+  # ITS BLAST RADIUS IS THE WHOLE CALL SET, not just the projection fold: the node-indexed
+  # `content-key-totality` driver forces the field too, because the union is now inside the assertion.
   assertKeysRegistered =
     exempt: aspect:
     let
+      exempt' = exempt // assertedOf aspect;
       content = aspect.content;
-      keys = builtins.filter (k: !(prelude.hasPrefix "_" k) && !(exempt ? ${k})) (
+      keys = builtins.filter (k: !(prelude.hasPrefix "_" k) && !(exempt' ? ${k})) (
         builtins.attrNames content
       );
     in
@@ -244,7 +369,7 @@ let
   # the channel, so re-reading or re-filtering them here would repeat a node-level value K times per node.
   rawSeedsAt =
     resolvedAspects: exempt: injects: d:
-    prelude.concatMap (a: classSliceOf exempt a d) resolvedAspects
+    prelude.concatMap (a: rawSliceOf exempt a d) resolvedAspects
     ++ map (a: {
       inherit (a) module;
       sharedFoldKey = null;
@@ -320,7 +445,7 @@ let
   # the refusals are this rendering's own obligation and not a rule inherited from the extraction.
   #   (a) A `_`-PREFIXED CHANNEL. `_`-prefixed keys in a module-shaped attrset are the module system's own
   #       scaffolding (`_module`, `_file`), and the kernel already fixes that reading at three independent
-  #       sites: `classSliceOf`'s prefix conjunct, `assertKeysRegistered`'s key filter, and the emptiness
+  #       sites: `rawSliceOf`'s prefix conjunct, `assertKeysRegistered`'s key filter, and the emptiness
   #       peel's leaf test. The prefix conjunct is evaluated BEFORE the exempt/assertion disjunction, so the
   #       assertion provably cannot admit such a channel; the only admitting change would weaken that
   #       conjunct for EVERY element, which is the node-wide over-reach the per-element assertion exists to
@@ -385,12 +510,19 @@ let
     );
 in
 {
-  # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, exported for `projectClass`
-  # (output-modules). NEITHER is an equation record — the assembly (attributes/default.nix) selects
-  # the equations below into the equations map and threads these to `mkOutputModules` separately (a bare
-  # function would break gen-resolve's two-stratum equation classification if spread into the map).
+  # THE ONE relocation-aware extraction, the graph query it reads the source order through, and the §2.2
+  # totality assertion — exported for `projectClass` (output-modules). NONE is an equation record: the
+  # assembly (attributes/default.nix) selects the equations below into the equations map and threads these
+  # to `mkOutputModules` separately (a bare function would break gen-resolve's two-stratum equation
+  # classification if spread into the map).
+  # THE SPLIT IS BY KIND, NOT BY CONVENIENCE. `sourceOrderOf` is a GRAPH QUERY — it answers a question about
+  # the relocation relation that has meaning to any consumer of that relation — so it is a surface. The two
+  # field projections it and `classSliceAt` are built from (`scopeOf`, `assertedOf`) are NOT: each is one
+  # field read with a named throw, and exporting one would publish an accessor for a value the caller
+  # already holds.
   inherit
-    classSliceOf
+    classSliceAt
+    sourceOrderOf
     assertKeysRegistered
     forwardSourceClassesOf
     ;

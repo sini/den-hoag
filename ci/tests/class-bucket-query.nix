@@ -1,6 +1,6 @@
 # class-bucket-query — the DIRECT per-node class-slice QUERY ATOM ([[project_class_bucket_holdover]]). The
 # eager per-class content bucket (the v1 state-accumulator VALUE-shape — the whole-map base-accumulation) is
-# retired for a direct per-(node,class) keyed class-slice sourced from `classSliceOf` (THE per-aspect
+# retired for a direct per-(node,class) keyed class-slice sourced from `rawSliceOf` (THE per-element
 # extraction), with inject/reroute kept as a whole-map post-transform. The REACHABLE descendant-closure
 # (`classSubtreeAt`) is re-sourced over this direct atom (via the memoized `class-modules-keyed`).
 #
@@ -49,6 +49,10 @@ let
   bareTags = v: builtins.mapAttrs (_: ss: map (e: (builtins.head e.module.imports).tag) ss) v;
 
   # two resolved-aspect nodes: aspect `aspA` carries class-A content, aspect `aspD` carries class-D content.
+  # `scope` and `assertedClasses` are STAMPED: a content element is produced COMPLETE, and the totality
+  # assertion projects `assertedClasses` with a named throw rather than reading an absence as a default.
+  # `{ }` is the value every produced aspect element carries — "this element asserts nothing" — so these
+  # fixtures stay semantically identical to what the assembly feeds the equation.
   resolvedAspects = [
     {
       content = {
@@ -56,6 +60,8 @@ let
         A = mod "cA";
       };
       sharedFoldKey = null;
+      scope = "n";
+      assertedClasses = { };
     }
     {
       content = {
@@ -63,6 +69,8 @@ let
         D = mod "cD";
       };
       sharedFoldKey = null;
+      scope = "n";
+      assertedClasses = { };
     }
   ];
   # synthetic resolver: `resolved-aspects` = the two nodes; `declarations.actions.resolution` = `acts`;
