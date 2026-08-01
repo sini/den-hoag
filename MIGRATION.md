@@ -74,6 +74,55 @@ includes den's built-in classes and the v1 battery classes the shim provisions (
 sites of this shape are already known across the wider den config corpus — an aspect keyed `aliases` beside a
 declared `den.classes.aliases`, and one keyed `wsl` beside the built-in WSL battery class.
 
+## Value-conditional policies declare their codomain (`binds`, `suppresses`)
+
+Bare-lambda policies remain the normal form — nothing changes for most configs. The shim discovers what a
+v1 policy emits by firing its body once against a probe entry, and for an unconditional body that recovery
+is complete. But a body that gates its emissions on a real entity value — say, on the host's environment
+matching —
+
+```nix
+den.policies.env-to-hosts = { environment, ... }:
+  # emissions guarded by: hostCfg.environment == environment.name
+```
+
+takes the false branch at the probe (the probe entry matches nothing real), so the shim observes an empty
+codomain. The policy's first real emission is then refused, by name:
+
+```
+den-hoag: binding codomain: policy 'env-to-hosts' emitted a 'member' binding 'accessGroups',
+which is not in its declared 'binds' = [ ]
+```
+
+**Why the shim refuses instead of guessing.** The codomain is not just a check — it feeds the schedule.
+A declared `binds` becomes a positive dependency edge in the stratification that orders policy evaluation
+(a policy binding `accessGroups` must run before one whose formals destructure it). Firing the body in real
+context to observe the emission is circular — the schedule produces that context. And a shim-side table of
+known policy names is the one mechanism measured to drift: the `emits` table gained its darwin entry only
+after the linux-only entry left darwin hosts silently unrouted, then missed the third sibling the same way.
+Admitting the emission unchecked would trade a named refusal for a silent drop.
+
+**The remedy is one field, and it is valid v1 today.** Give the policy the record form and state the fact
+only its author knows:
+
+```nix
+den.policies.env-to-hosts = {
+  __isPolicy = true;
+  binds = [ "accessGroups" ];   # or `suppresses = [ ... ]` for a value-conditional excluder
+  fn = { environment, ... }: ...;
+};
+```
+
+den v1 accepts this form as-is — its policy type checks `__isPolicy`, its merge preserves the extra field,
+and dispatch reads only `.fn` — so the declaration can land **before** the pin bump, byte-inert under v1.
+Reference config `nix-config` took exactly this route in commit `43c48473`, declaring `binds` on its
+environment-gated member policy and `suppresses` on its droid-conditional excluder.
+
+**Where to look in your own config.** Only emitting policies whose bodies guard emissions on entity values
+need this — a `resolve`/`include` that fires unconditionally recovers fine. You do not need to find them in
+advance: the refusal names the policy, the field, and the missing key, and each is a one-field remedy at the
+named site.
+
 ## `provides` / `forwards` migrate LAST
 
 `provides` and `forwards` are legacy — den v2 has no native equivalent (policies define relationships,
