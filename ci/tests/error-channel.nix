@@ -95,14 +95,38 @@ in
       };
     };
 
-    # EXTRA-KEY TOLERANCE. Attribution (a bead id, a construct name) rides ON the leaf rather than in a side
-    # artifact, which only works because nix-unit ignores keys it does not know. If it started rejecting
-    # them, every attributed leaf in the repo would fail at once; this one fails first and says why.
+    # EXTRA-KEY TOLERANCE. A declared known-failure carries its attribution (a tracker id, the name of
+    # the source binding whose retirement invalidates it) ON the leaf rather than in a side artifact,
+    # which only works because nix-unit ignores keys it does not know. If it started rejecting them,
+    # every attributed leaf in the repo would fail at once; this one fails first and says why.
+    #
+    # ★ THE PAYLOAD KEYS ARE DELIBERATELY NOT `bead`/`construct`. Carrying `bead` is not a way of
+    # LOOKING like a declaration, it IS the definition of one — the census selects on exactly those
+    # keys, so a fixture wearing them is a declaration claiming a defect that does not exist, and its
+    # prose `construct` named no binding. The instrument property under test is key-AGNOSTIC (nix-unit
+    # ignores what it does not know), so any unknown key proves it, and the real attribution keys are
+    # exercised end to end by the declarations that mean it.
     test-extra-keys-are-tolerated-on-an-error-leaf = {
       expr = canary;
       expectedError.msg = "compose commitment";
-      bead = "den-hoag-1rk";
-      construct = "error-channel canary";
+      fixtureUnknownKey = "den-hoag-1rk";
+      fixtureSecondUnknownKey = "error-channel canary";
+    };
+
+    # THE DISPATCH. A leaf carrying BOTH assertion forms is run as a VALUE-form test and its
+    # `expectedError` is IGNORED — silently, and green, whenever `expr` does not throw. That is why the
+    # two forms are refused as a pair at the point a leaf is built: the loud case (a throwing `expr`
+    # escaping uncaught) is the one everybody notices, and this quiet one is the dangerous half. The
+    # `expectedError` below names a message nothing here ever raises, so this leaf is green ONLY
+    # because the dispatch reads `expected`. It reddens the day nix-unit dispatches on the other key or
+    # on the pair — which would silently change what every both-key leaf in the repo asserts.
+    test-both-forms-dispatch-on-expected = {
+      expr = 1;
+      expected = 1;
+      expectedError = {
+        type = "ThrownError";
+        msg = "nothing in this leaf ever throws";
+      };
     };
 
     # `tryEval`'s classification, for the contrast the two leaves above rest on: it distinguishes "threw"
