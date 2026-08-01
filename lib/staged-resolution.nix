@@ -159,13 +159,14 @@ let
   #                    containTo target — e.g. `cluster` — may be a root we do NOT fire at, so the index is
   #                    NOT restricted to the fired root kinds).
   #   resolveIndex   = the RESOLVE-FAMILY feed (concern-policies `policiesRules.resolveFamily`) already
-  #                    SELECTED by node kind (`concernPolicies.indexByKind`): a function `kind -> [rule]`
-  #                    over the structural-group rules that can emit `member`. This feed — NOT the whole
-  #                    structural feed — is what the pass dispatches, so an arbitrary co-firing policy body
-  #                    is never run at a root (which could hit an uncatchable missing-attribute read); a
-  #                    resolve-free fleet indexes an empty feed → the pass is inert. The selection arrives
-  #                    PRE-APPLIED because it is a property of the feed, not of the firing: building it
-  #                    here would rebuild it at every root.
+  #                    SELECTED on each rule's declared `selects` (`concernPolicies.indexBySelection`): a
+  #                    function `matchAt -> id -> kind -> [rule]` over the structural-group rules that can
+  #                    emit `member`. This feed — NOT the whole structural feed — is what the pass
+  #                    dispatches, so an arbitrary co-firing policy body is never run at a root (which
+  #                    could hit an uncatchable missing-attribute read); a resolve-free fleet indexes an
+  #                    empty feed → the pass is inert. The selection arrives PRE-APPLIED because it is a
+  #                    property of the feed, not of the firing: building it here would rebuild it at
+  #                    every root.
   runPrePass =
     {
       scopeRoots,

@@ -5,8 +5,8 @@
 # (attr 5). No structural attribute demands a resolution attribute (A4); the gen-resolve
 # schedule enforces it. Every attribute VALUE is inert data — never a dispatch accumulator record.
 #
-# `policiesIndex` = { enrich; policy; } KIND-INDEXED gen-dispatch feeds (concern-policies compiles them
-# from `den.policies` and `indexByKind` selects each on the rule's declared `selects`).
+# `policiesIndex` = { enrich; policy; } SELECTION-INDEXED gen-dispatch feeds (concern-policies compiles
+# them from `den.policies` and `indexBySelection` selects each on the rule's declared `selects`).
 # `declarations` = the declaration vocabulary DEP (`declare`) — `stratumOf` a declaration to its
 # B2 stratum, `strata` (the stratified-dispatch order), `kindOf`/`kindToStratum`, `importEdgesOf`
 # (distinct from the attribute named `declarations` below, the dispatched policy declarations at a
@@ -30,10 +30,11 @@
   isCellNode,
 }:
 {
-  # The two structural feeds already SELECTED by node kind (`concernPolicies.indexByKind`): each is a
-  # function `kind -> [rule]` built ONCE PER FLEET, so the per-node compute is a lookup instead of a scan
-  # of the whole rule list. Selection is a property of the feed, not of the node, so building it inside
-  # `compute` would rebuild it at every node.
+  # The two structural feeds already SELECTED on each rule's declared `selects`
+  # (`concernPolicies.indexBySelection`): each is a function `matchAt -> id -> kind -> [rule]` built ONCE
+  # PER FLEET, so the per-node compute is a lookup instead of a scan of the whole rule list. Selection is
+  # a property of the feed, not of the node, so building it inside `compute` would rebuild it at every
+  # node.
   policiesIndex,
   fleetChildren,
   linkTarget ? (_: null),
