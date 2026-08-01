@@ -1081,6 +1081,9 @@ let
         # as pre-pass suppression sets. Empty for an exclude-free fleet → inert.
         excludeRules = policiesRules.excludeFamily;
         inherit indexFeed;
+        # The per-node matcher for the index positions the kind memo cannot answer. It reads the scope
+        # graph through the resolve result, which is why the pass takes it rather than building it.
+        matchAt = r: id: scopeAdapter.matchIdWith structural { } r.selects id;
         # The stratification, decided once at registration over the SIGNED policy dependency graph. The
         # pass reads it as the firing order that makes a negated read see a COMPLETE predicate.
         inherit (policiesRules) policyRank;

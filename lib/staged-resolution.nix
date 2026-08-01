@@ -194,6 +194,13 @@ let
         _: _: _: _:
         errors.prePassIndexUnthreaded
       ),
+      # THE PER-NODE SELECTION MATCHER (`rule -> id -> bool`), for the index positions the kind memo
+      # cannot answer. It is a PARAMETER and not a value built here because it carries a scope context
+      # over the resolve eval, and this pass runs before that eval exists — so the pass can hold the
+      # matcher but can never construct one. Undefaulted, hence required: a default answering `false`
+      # would drop every position-dependent rule at every node silently, which is the absence-by-omission
+      # this whole selection surface exists to remove.
+      matchAt,
       # policy name -> its RANK in the stratification (concern-policies `policyRank`): the position of
       # the policy's cluster in the condensation's reverse-topological order. It spans EVERY declared
       # policy, not just the exclude feed, because the stratification is a property of the whole
@@ -241,17 +248,15 @@ let
       # filter (which acts this feed consumes), a different question from selection. The caller partitions
       # CELL (`containTo == null`) vs CONTAINMENT (`containTo` set) tuples. A value-conditional policy
       # taking its false branch simply emits nothing here (its emission arrives once its ctx value is).
-      # ★ The index's `matchAt` is built HERE rather than taken as a parameter, and that is what keeps
-      # `runPrePass`'s signature untouched: the value is a CONSTANT — a named throw over `errors`, which
-      # is already a module argument of this file — so it needs nothing from outside the pass. A matcher
-      # carrying the resolve eval could not be built here at all, since the eval does not exist inside a
-      # pass that runs before it; that is a separate landing and it is what would force a parameter.
+      # ★ The index's `matchAt` is the threaded parameter, applied at the position the kind memo leaves
+      # unanswered. A kind-determined feed never reaches it, so a fleet whose rules all select by kind
+      # pays exactly the table lookup it paid before.
       fireFeedAt =
         index: keep: nodeKind: id: ctx:
         let
           acts =
             (dispatch.dispatch {
-              rules = index (r: _id: errors.selectorNeedsPerNodeMatch r) id nodeKind;
+              rules = index matchAt id nodeKind;
               inherit id;
               context = ctx;
               match = dispatch.fromFunctionMatch;
