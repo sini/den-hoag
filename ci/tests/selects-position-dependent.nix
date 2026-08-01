@@ -87,6 +87,49 @@ let
     builtins.filter (
       id: (den.structural.eval.get id "declarations").actions.structural or [ ] != [ ]
     ) (builtins.attrNames den.structural.eval.allNodes);
+
+  # THE OTHER STRUCTURAL SITE. An `enrich`-only codomain routes the policy to the enrichment fixpoint
+  # instead of the stratified dispatch — a different feed, a different attribute, the same selection.
+  # The enrichment is a constant, so the keyset it commits to is the same at every node it reaches and
+  # the fixpoint's supportedness comparison has nothing conditional to disagree about.
+  enrichFleet =
+    selects:
+    (denHoag.mkDen [
+      {
+        config.den.schema.host.parent = null;
+        config.den.schema.user = {
+          parent = "host";
+          imports = [ userOpts ];
+        };
+        config.den.attach.user.ref = "host";
+        config.den.host = {
+          a = { };
+          b = { };
+        };
+        config.den.user = {
+          u1.host = "a";
+          u2.host = "b";
+          u3.host = "b";
+        };
+        config.den.policies.E = {
+          inherit selects;
+          emits = [ "enrich" ];
+          fn = _ctx: [
+            (declare.enrich {
+              key = "mark";
+              value = "fired";
+            })
+          ];
+        };
+      }
+    ]).den;
+  # The enriched context is what the fixpoint publishes, so a node carrying the key is a node the
+  # enrich policy was selected at. It is NOT inherited — attribute 1 threads decls, not enrichments.
+  enrichedAt =
+    den:
+    builtins.filter (id: (den.structural.eval.get id "enriched-context") ? mark) (
+      builtins.attrNames den.structural.eval.allNodes
+    );
 in
 {
   flake.tests.selects-position-dependent = {
@@ -143,6 +186,29 @@ in
           "user:u3"
         ];
         nowhere = [ ];
+      };
+    };
+
+    # (e) THE ENRICHMENT SITE, same selection. Both structural dispatch sites obtain the matcher the same
+    # way — from the eval they are running inside — but they are two expressions in two attributes, and a
+    # thread connected at one of them is not connected at the other.
+    test-the-enrichment-site-selects-the-same-way = {
+      expr = {
+        narrow = enrichedAt (enrichFleet anchors);
+        wide = enrichedAt (enrichFleet anchorsAndBelow);
+      };
+      expected = {
+        narrow = [
+          "host:a"
+          "host:b"
+        ];
+        wide = [
+          "host:a"
+          "host:b"
+          "user:u1"
+          "user:u2"
+          "user:u3"
+        ];
       };
     };
   };
