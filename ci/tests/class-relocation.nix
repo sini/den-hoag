@@ -118,6 +118,24 @@ let
     }
   ];
 
+  # A THIRD aspect list, identical to the first plus one element declaring a `settings` FACET. `settings`
+  # is a schema-registered facet on every aspects instance — it is not a class, and it is not unregistered
+  # either, which is the whole of what makes it a witness: it sits in the key space the extraction may
+  # never read class content out of. The value is the facet ATTRSET the schema types it as, not a deferred
+  # module, because the answer this fixture refuses is precisely "the facet attrset arriving in a class's
+  # slice list".
+  settingsAspects = resolvedAspects ++ [
+    {
+      content = {
+        name = "aspSettings";
+        settings.tag = "cSettings";
+      };
+      sharedFoldKey = null;
+      scope = "n";
+      assertedClasses = { };
+    }
+  ];
+
   mkSelfOver =
     asps: acts:
     let
@@ -147,6 +165,10 @@ let
   answer = acts: tagsOf (cm.class-seeds.compute (mkSelf acts) "n");
   # the same query over the aspect list carrying the `_`-prefixed channel.
   answerU = acts: tagsOf (cm.class-seeds.compute (mkSelfOver underscoreAspects acts) "n");
+  # …and over the list carrying the `settings` facet. UNTAGGED: the refusal rows below force the raw
+  # answer, and `tagsOf` would peel a deferred module the facet element does not carry — so a fixture
+  # error would surface as a `tagsOf` crash rather than as the named throw the row asserts.
+  answerS = acts: cm.class-seeds.compute (mkSelfOver settingsAspects acts) "n";
 
   # ── permutations of an act list, so an order-dependent producer is measured rather than sampled ───────
   removeAt =
@@ -186,6 +208,11 @@ let
 
   # a demand for ONE channel, containment-tested. `deepSeq` forces the tags (strings), never a module body.
   demand = acts: c: (builtins.tryEval (builtins.deepSeq (answer acts).${c} true)).success;
+  # the same containment test over the two extended aspect lists. `answerU`'s answer is tagged (its extra
+  # element carries a deferred module); `answerS`'s is raw, and on the admitting side its channels hold
+  # tag-bearing modules whose leaves `deepSeq` reaches all the same.
+  demandU = acts: c: (builtins.tryEval (builtins.deepSeq (answerU acts).${c} true)).success;
+  demandS = acts: c: (builtins.tryEval (builtins.deepSeq (answerS acts).${c} true)).success;
 in
 {
   flake.tests.class-relocation = {
@@ -387,6 +414,75 @@ in
           "cA"
           "cB"
         ];
+      };
+    };
+
+    # ── (5) the SCHEMA-CLAIMED source: the key space the extraction may never read class content from ───
+    # The relocation's SOURCE end takes three kinds of name, and only two of them were decided above: a
+    # registered class (rows 1–4) and an unregistered one (`X`, `Y` — admitted, and the reason the memo's
+    # node domain is `Ch ∪ endpoints`). The third is a name the aspect schema has ALREADY CLAIMED for
+    # something that is not class content — a facet, a structural key, a declared quirk channel. Reading a
+    # class's content out of one is the same defect as minting one there, so the refusal sits at the READ,
+    # where both the relocation source and a forward's `fromClass` funnel through one expression.
+    # THE FIXTURE'S CLASSIFICATION AUTHORITY IS WHAT MAKES THESE ROWS EXPRESSIBLE HERE: the producer takes
+    # its `keyCategory` from this file's own `concern-aspects.nix` instance, so `settings` classifies as
+    # `facet` in the harness exactly as it does on a fleet. A hand-written classifier has no category
+    # surface at all and could witness nothing.
+
+    # (a) THE REFUSAL, and the message carries the DERIVATION rather than the name alone. Asserting only
+    #     that the demand aborts is satisfied by any throw the fixture provokes — the memo guard, the
+    #     cycle guard, a missing attribute — so the row pins the two things that make it THIS refusal:
+    #     the channel it refused and the category it read off the schema. Both are message text, which is
+    #     the only place a `tryEval`-shaped assertion can carry a shape.
+    #     The FORWARD half of the same law (`meta.__forward`'s `fromClass`, which needs no relocation
+    #     anywhere) is not witnessed here: `class-seeds` never reads a forward spec. It rides
+    #     `ci/tests/projection-routes.nix`, on the instrument that carries forwards.
+    test-reroute-from-schema-claimed-channel-refused = {
+      expr = builtins.deepSeq (answerS [ (reroute "settings" "B") ]).B true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class content at scope 'n' is read from a reserved channel 'settings' \\(the aspect schema registers it as a 'facet' key";
+      };
+    };
+
+    # (b) THE SAME FIXTURE WITHOUT THE ACT ANSWERS NORMALLY, and it answers the no-act baseline exactly.
+    #     Without this the row above is satisfied by a fixture that was broken before any relocation was
+    #     declared — the extra element is the only thing that changed, and this is what says the element
+    #     itself is inert until a relocation names its channel. It also states the third fact the pair
+    #     needs: the facet content is REALLY THERE and REALLY invisible to the query, so the refusal is
+    #     about the name in the source order and not about an absent key.
+    test-schema-claimed-channel-inert-without-relocation = {
+      expr = {
+        noAct = demandS [ ] "B";
+        sameAsWithoutTheAspect = tagsOf (answerS [ ]) == answer [ ];
+        declaresSettings = builtins.any (a: a.content ? settings) settingsAspects;
+      };
+      expected = {
+        noAct = true;
+        sameAsWithoutTheAspect = true;
+        declaresSettings = true;
+      };
+    };
+
+    # (c) THE SECOND CONTROL, one key space over — and it is what pins the SPLIT rather than a blanket
+    #     refusal. `_u` is a channel that carries content and is claimed by no one: the schema answers no
+    #     category for it, and the extraction's prefix conjunct skips it before classification. Relocating
+    #     FROM it must therefore stay ADMITTED and inert, where relocating from `settings` aborts. The two
+    #     rows differ only in which key space the source name is in and must land on opposite verdicts; a
+    #     change refusing every non-class source satisfies (a) and breaks this one.
+    #     ★ THE `settings` FIELD IS THE POSITIVE CONTROL, in the same run on the same instrument: it shows
+    #     the refusal is live in this evaluation, so `admitted = true` reads as a decision rather than as
+    #     a predicate that never fires.
+    test-reroute-from-underscore-channel-still-admitted = {
+      expr = {
+        admitted = demandU [ (reroute "_u" "B") ] "B";
+        declaresUnderscore = builtins.any (a: a.content ? _u) underscoreAspects;
+        refusalIsLiveInThisRun = demandS [ (reroute "settings" "B") ] "B";
+      };
+      expected = {
+        admitted = true;
+        declaresUnderscore = true;
+        refusalIsLiveInThisRun = false;
       };
     };
   };
