@@ -1676,7 +1676,22 @@ let
             ungated = compilePolicy ing normalizeList aspectRec "__aspectInclude__${ref.name}" ref;
             compiled = gateSuppression (ref.name or null) ungated;
           in
-          compiled // familyStamps ref ungated // { selects = selectsOfFormals firesAt; };
+          compiled
+          // familyStamps ref ungated
+          // {
+            # DECLARATION BEATS DERIVATION — the same law the schema arm states, at the arm that compiles
+            # top-level `den.default.includes` records. The confinement below is a TRANSLATION of what a
+            # v1 record states elsewhere (its required entity-kind formals); an authored `selects` states
+            # the selection directly, and a translation cannot overrule the thing it translates.
+            #
+            # ★ ABSENCE HERE MEANS SOMETHING DIFFERENT FROM ABSENCE AT THE KERNEL SURFACE, and that is why
+            # this is a seam and not a default. A native author omitting `selects` has left the selection
+            # undecided, which the kernel refuses. A v1-shaped record carrying no `selects` has stated no
+            # selection *in that field* — it stated one by where it is attached — so the derived value is
+            # the written-down reading of what it did state, and this consultation distinguishes "v1 said
+            # nothing here, so den-hoag translates" from "the author said this".
+            selects = if ref ? selects then ref.selects else selectsOfFormals firesAt;
+          };
       }
     ) aspectIncludeRecords
   );
@@ -1725,6 +1740,11 @@ let
           name = s.synthName;
           value = {
             gate = fnArgsOf s.fn;
+            # ★ NO SEAM IS POSSIBLE AT THIS ARM, and it is recorded rather than absorbed by the quantifier
+            # that covers the two record arms. The source here is a bare FUNCTION, which carries no field
+            # for an author to state a selection in: `f ? selects` is total on a function and answers
+            # `false` for every input this arm can receive, so a consultation would not be a seam, it
+            # would be a constant. The derived value is the whole of what this arm can say.
             selects = selectsOfFormals s.firesAt;
             emits = [ "edge" ];
             fn = _ctx: [ (declare.edge (aspectRec s.aspectName)) ];
@@ -1966,6 +1986,11 @@ let
           aspectPolicy = prelude.optionalAttrs (edgeRefs != [ ]) {
             "__kindInclude__${kind}" = {
               gate = kindCoord;
+              # ★ NO SEAM IS OWED AT THIS ARM, for a different reason than the bare-fn arm's. This mints
+              # ONE edge rule FOR THE KIND, edging every static ref and synthetic aspect at once, so there
+              # is no "the source record" to consult — the rule has N of them. Its selector is not a
+              # derivation FROM a source at all: it is the statement THAT a kind's own edge rule fires at
+              # that kind's nodes, which is not an authorial question.
               selects = sel.attrs { type = kind; };
               emits = [ "edge" ];
               fn = _ctx: map (ref: declare.edge (resolveAspectRef aspectRec ref)) edgeRefs;
@@ -1987,8 +2012,24 @@ let
                   gate = kindCoord // base.gate;
                   # `den.schema.<kind>.excludes` naming this policy removes it from THIS kind's selection.
                   # Same-kind only; a descendant-scoped exclude has already aborted (`excludeScopeCheck`).
+                  #
+                  # DECLARATION BEATS DERIVATION, at the second arm that has a source record to ask. The
+                  # kind selector is this arm's TRANSLATION of where a v1 record is attached; an authored
+                  # `selects` states the selection itself, so it wins over the translation.
+                  #
+                  # ★ THE EXCLUSION STAYS OUTERMOST, and the ordering is the open question rather than a
+                  # preference. An exclusion is a DECLARATION TOO — made at the schema rather than on the
+                  # record — so a record carrying `selects` that its kind also excludes is two authored
+                  # statements in conflict, and which of them wins is not settled by the law that settles
+                  # record-versus-derivation. Written this way the excluded case answers exactly what it
+                  # answers today, so the seam lands without deciding a question nobody has posed.
                   selects =
-                    if isExcludedAtKind kind (ref.name or null) then sel.any [ ] else sel.attrs { type = kind; };
+                    if isExcludedAtKind kind (ref.name or null) then
+                      sel.any [ ]
+                    else if ref ? selects then
+                      ref.selects
+                    else
+                      sel.attrs { type = kind; };
                 };
             }) policyRefs
           );
