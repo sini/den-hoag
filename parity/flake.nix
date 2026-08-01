@@ -109,6 +109,17 @@
           fixtures = import ./fixtures/topologies.nix { };
           golden = import ./golden/traces.nix;
         };
+
+      # DECLARED KNOWN-FAILURES — the same mechanism `ci/` uses, reaching into den-hoag's own tree.
+      # This is a SECOND tree with its own suites, so it needs its own census: a leaf carrying
+      # attribution here is a declaration that no other census walks, and totality is per-tree.
+      #
+      # `denHoagSrc` is den-hoag and not this flake, and that is the whole point rather than a
+      # convenience: a parity declaration is still a claim about a DEN-HOAG binding, so its
+      # `construct` must resolve against den-hoag's governed roots. `path:..` copies the whole tree,
+      # so the mechanism is inside this flake's store copy — the same reach the terminal import above
+      # already uses. The index is built once per flake; there is nothing to share across evaluations.
+      xfail = import "${den-v2}/ci/tests/_lib/xfail.nix" { denHoagSrc = "${den-v2}"; };
     in
     gen.lib.mkCi {
       inherit inputs;
@@ -120,6 +131,7 @@
           denV1
           nixpkgsLib
           harness
+          xfail
           ;
         # den-hoag's own lib (the four-concern API) — the P8 suite reaches `denHoag.internal.class`/
         # `.classShare` for the deliberately-corrupted-core teeth (the A18 gate mechanism, direct).
