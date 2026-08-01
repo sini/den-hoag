@@ -20,9 +20,17 @@
   errors,
 }:
 let
-  # Kind → stratum grouping (mkActions groups ARE the B2 strata). `collection`'s single kind is
-  # `pipeOp` — the pipe.* op payload rides it; concern-quirks wraps the operators below
-  # into `pipeOp` declarations.
+  # Kind → stratum grouping (mkActions groups ARE the B2 strata). `collection` carries the pipe.* op
+  # payload, split across TWO kinds because a pipe's data takes two different routes and WHICH route it
+  # takes is a DECLARED fact rather than a shape a consumer infers:
+  #   • `pipeCommit` — the fleet COMPOSE COMMITMENT (the derived-channel DAG, the delivery routes, the
+  #     aspect-delivery targets). It seeds the ONE gen-pipe compose BEFORE the eval, so it is
+  #     ctx-independent by contract and rides the record's `ops` field, produced by a single
+  #     definition-time firing (compat/compile.nix `mintFleetWide`), never by a dispatched one.
+  #   • `pipeMark` — the per-node SITE MARKS (expose/collect/broadcast/append). Per-scope EMISSION
+  #     wiring, fired WHERE the policy fires, so it rides the dispatched body's emission.
+  # Both sit at `collection`, so a policy declaring both spans ONE stratum and needs no span reasoning
+  # (`groupsOf [ "pipeCommit" "pipeMark" ]` is the singleton `[ "collection" ]`).
   # Some kinds ride the mkActions dispatch with the raw `actions.<kind>` constructor (no custom
   # wrapper below), so their contract is stated here at the group site:
   #   • `spawn`/`spawnShared`/`emit` — child-node creation (`spawn`/`spawnShared`) and
@@ -58,7 +66,10 @@ let
       "reach-edge"
       "reach-suppress"
     ];
-    collection = [ "pipeOp" ];
+    collection = [
+      "pipeCommit"
+      "pipeMark"
+    ];
     demand = [ "demand" ];
   };
   # The SEED stratum order (§B2). The order is DATA: `compileStrata` folds name-keyed dense insertions
@@ -170,21 +181,25 @@ let
   # is stamped at definition time rather than probed. The contract names it `declare.stratumOfKind`.
   stratumOfKind = actions.groupOfKind;
 
-  # LAW: the collection stratum's compose commitments are the DERIVED-op DAG (channel-shaping) and the
-  # delivery ROUTES — those seed the ONE fleet gen-pipe compose BEFORE eval, from ctx-INDEPENDENT bodies.
-  # A pipeOp carrying ONLY site marks on a BARE channel ref (`derived.__derived = false`, no deriving
-  # stages, no routes) makes NO probe-time compose commitment: site marks are per-node EMISSION wiring
-  # (default.nix:509 "Site `marks` … are per-scope EMISSION wiring, not compose ops"), fired WHERE the
+  # LAW: the collection stratum's compose commitments are the DERIVED-op DAG (channel-shaping), the
+  # delivery ROUTES and the aspect-delivery TARGETS — those seed the ONE fleet gen-pipe compose BEFORE
+  # eval, from ctx-INDEPENDENT bodies. Site marks make no such commitment: they are per-node EMISSION
+  # wiring (default.nix "Site `marks` … are per-scope EMISSION wiring, not compose ops"), fired WHERE the
   # policy fires — the v1 parity is register-pipe-effect.nix:15's per-scope `scopedPipeEffects`
-  # scopedAppend at dispatch. So such a pipeOp is per-node DATA, not a compose op; `isSiteMarkData`
-  # is the predicate concern-policies' value-conditional expansion guard uses to ALLOW it through (a
-  # DERIVED/route pipeOp from a value-less policy still aborts — it IS a probe-time commitment).
-  isSiteMarkData =
+  # scopedAppend at dispatch.
+  #
+  # ROUTING IS NO LONGER A VALUE-SHAPE QUESTION. Which route a pipe's data takes is the DECLARED kind
+  # (`pipeCommit` / `pipeMark`), decided at translation. What survives here is a CONFORMANCE predicate:
+  # does a compiled record CARRY commitment content? A conformance check compares a declaration against
+  # what a body produced, which is a different question from dispatch and is the one the mark-mode
+  # refusal has to answer.
+  # ★ Every disjunct is tested against `[ ]`, never against `null`: `compilePipe` binds all three fields
+  # as LISTS or as a `dag` that sets `__derived` explicitly, so `(a.targeted or null) != null` would be
+  # true of every record it can build. The tree's own convention one file over is the same
+  # (`isUntargetedDeriving` reads `(p.targeted or [ ]) == [ ]`).
+  bearsCommitment =
     a:
-    kindOf a == "pipeOp"
-    && (a.marks or [ ]) != [ ]
-    && !(a.derived.__derived or false)
-    && (a.routes or [ ]) == [ ];
+    (a.derived.__derived or false) || (a.routes or [ ]) != [ ] || (a.targeted or [ ]) != [ ];
 
   # Static kind → stratum map — the errors.mixedStratum naming and structural.nix's vocabulary
   # interface consume it (the inverse of `groups`).
@@ -473,7 +488,7 @@ let
       a:
       if kindOf a == "link" then
         [ a.target ]
-      else if kindOf a == "pipeOp" && (a.op or null) == "route" then
+      else if kindOf a == "pipeCommit" && (a.op or null) == "route" then
         [ ] # routing joins imports via channel wiring
       else
         [ ]
@@ -509,7 +524,7 @@ actions
     kindOf
     stratumOfKind
     kindToStratum
-    isSiteMarkData
+    bearsCommitment
     isResolveFamily
     suppress
     isSuppress
@@ -535,7 +550,7 @@ actions
   "reach-suppress" = reach-suppress;
   # pipe.* operators re-exported from gen-pipe (map/filter/fold/scan/over/route/join/tee). They are
   # content-agnostic dataflow ops and carry no `__action` yet — concern-quirks wraps
-  # them as `pipeOp` collection declarations. `over` is the whole-list escape hatch (§2.3): used both for
+  # them as `pipeCommit` collection declarations. `over` is the whole-list escape hatch (§2.3): used both for
   # a v1-shim `for` (whole-list rewrite) and to prepend the v1 flattenAndExtract (list-emission →
   # per-element contributions) ahead of a deriving chain (`compilePipe`).
   pipe = {

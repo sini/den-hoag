@@ -66,6 +66,14 @@ let
   # silence, because the author who follows it is told they made progress.
   renderOriginLabels = origins: builtins.concatStringsSep " and " (map (o: o.label) origins);
   renderOriginRemedies = origins: builtins.concatStringsSep "; " (map (o: o.remedy) origins);
+
+  # THE TWO-KIND REMEDY, written once because two refusals owe it. A declared codomain containing
+  # `pipeCommit` must also contain `pipeMark`: the commitment rides `ops` from ONE definition-time firing,
+  # while the site marks are still emitted at every DISPATCHED node — so a `pipeCommit`-only declaration
+  # clears one abort and produces the next one on the policy's own mark. The obligation runs ONE WAY:
+  # `[ "pipeMark" ]` is complete and correct for a mark-only policy, and widening the commitment gate to
+  # test `pipeMark` would fire every mark-only policy at the commitment sentinel.
+  commitmentRemedy = "declare the codomain as `[ \"pipeCommit\" \"pipeMark\" ]` — BOTH kinds are required, because the commitment rides `ops` from ONE definition-time firing while the site marks are still emitted at every dispatched node, so a `pipeCommit`-only declaration would fail this same law on the policy's own mark";
 in
 {
   identityLaw =
@@ -293,9 +301,25 @@ in
   # every firing checks each emitted declaration against it. The declaration therefore cannot drift from
   # the body: a mis-declared codomain aborts LOUD at the emitting site instead of mis-routing the rule
   # silently. Names the policy, the offending kind and the declared codomain.
+  #
+  # ★ THE `pipeCommit` CASE IS THE BODY END OF THE COMPOSE-COMMITMENT BOUNDARY, and it carries forward the
+  # record of a REFUTED design that used to sit in this file as its own error. That design made `ops` a
+  # static field filled from a DISPATCHED firing, and it cannot work: measured on nix-config
+  # `modules/den/policies/pipes.nix` (`broadcast-syncthing-hub-shares`), a `pipe.transform` closing over
+  # `user.name` yields DIFFERENT ops at two different users, and a record field cannot hold a per-node
+  # value. What was wrong was the ARITY, not the field. The commitment firing is DEFINITION-TIME — once
+  # per commitment-bearing policy, at the compat record mint, where no node exists — so `ops` is filled
+  # from that one firing and a commitment reaching a DISPATCHED route is a commitment that would be built
+  # and never applied. This law refuses it rather than dropping it, which is the same reason the retired
+  # error refused it at the other end of the same boundary.
   emitsUndeclared =
     originName: policyName: kind: emits:
-    fail "declaration codomain" "policy ${policyIdent originName policyName} produced a `${kind}` declaration, which is not in its declared `emits` = [ ${builtins.concatStringsSep " " emits} ]. The codomain is a CONTRACT checked at every firing, not an annotation: either add `${kind}` to `emits` or stop producing it";
+    fail "declaration codomain" "policy ${policyIdent originName policyName} produced a `${kind}` declaration, which is not in its declared `emits` = [ ${builtins.concatStringsSep " " emits} ]. The codomain is a CONTRACT checked at every firing, not an annotation: ${
+      if kind == "pipeCommit" then
+        commitmentRemedy
+      else
+        "either add `${kind}` to `emits` or stop producing it"
+    }";
 
   # THE TWO REFINED CODOMAINS, and why `emits` alone does not discharge them. `emits` names the
   # declaration KINDS a body may produce; these name the DEPENDENCY EDGES those declarations create.
@@ -324,23 +348,6 @@ in
   negativeCycle =
     suppressor: cluster:
     fail "stratification (ABW Lemma 1)" "the policy dependency graph has a cycle through the NEGATIVE edge contributed by `${suppressor}` — the mutually-dependent cluster is [ ${builtins.concatStringsSep " " cluster} ]. A suppression edge is a negated read and a binding edge is a positive one; Apt, Blair & Walker (1988), `Stratified Programs`, Lemma 1, p. 97, admits cycles of positive edges and forbids any cycle containing a negative one, so the program has no stratification. Break the cluster by removing one `suppresses` entry or one `binds`/formal pairing";
-
-  # The compose-commitment boundary (declarations.nix `isSiteMarkData`). A DERIVED-channel DAG or a
-  # delivery route seeds the ONE fleet gen-pipe compose BEFORE the eval, so it is declared as data in
-  # `ops`; only per-node SITE MARKS are emitted from a body.
-  #
-  # ★ THE OTHER END OF THIS BOUNDARY IS NOT BUILT, AND CANNOT BE BUILT AS SPECIFIED. `ops` is specified as
-  # a STATIC field, which requires the commitment to be ctx-INDEPENDENT — and it is not. Measured on
-  # nix-config `modules/den/policies/pipes.nix:136-149` (`broadcast-syncthing-hub-shares`, wired at
-  # `den.schema.user.includes`): its `pipe.transform` has `role = "derive"`, so it is ops-eligible, and its
-  # function closes over `user.name` — the ops observed at two different users DIFFER. A record field
-  # cannot hold a per-node value, so no design that makes `ops` a static field can work, and the fleet
-  # compose seed's construction is wrong UPSTREAM of this shim rather than merely unwired here.
-  # Until that is redesigned, a body carrying a derived/route pipeOp aborts HERE rather than being
-  # silently dropped from a seed that never received it. Do not work around this in the shim.
-  opsInBody =
-    originName: policyName:
-    fail "compose commitment" "policy ${policyIdent originName policyName} produced a `pipeOp` declaration carrying a derived-channel DAG or a delivery route from its BODY. Those seed the ONE fleet gen-pipe compose before the eval and are ctx-independent by contract, so they are declared as data in `ops`; only per-node SITE MARKS are emitted from the body";
 
   # Registration rejection, at an explicit boundary rather than as a throw deep inside a dispatch. The
   # message is produced as a VALUE by `policyMessage` (Nix's `tryEval` cannot capture a throw's text, so a

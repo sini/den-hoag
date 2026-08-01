@@ -63,11 +63,13 @@
 # destructured ctx key is present; a channel-named arg, never a ctx key, therefore never fires). It is
 # NOT derived from `emits`: what a policy produces and where its ctx admits it are different questions.
 #
-# OPS carries the FLEET-WIDE gen-pipe compose commitments as DATA. A derived-channel DAG or a delivery
-# route seeds the ONE fleet compose BEFORE the eval and is ctx-INDEPENDENT by contract, so extracting it
-# by firing a body was recovering a constant. Only per-node SITE MARKS are emitted from `fn`
-# (`declare.isSiteMarkData` — site marks are per-node emission wiring, v1 register-pipe-effect.nix:15
-# `scopedPipeEffects`); the two directions are checked at opposite ends.
+# OPS carries the FLEET-WIDE gen-pipe compose commitments as DATA — every element a `pipeCommit`. A
+# derived-channel DAG, a delivery route or an aspect-delivery target seeds the ONE fleet compose BEFORE
+# the eval and is ctx-INDEPENDENT by contract, so extracting it from a DISPATCHED firing was reading a
+# per-node value into a fleet-level field. Only per-node SITE MARKS are emitted from `fn` — `pipeMark`,
+# per-node emission wiring, v1 register-pipe-effect.nix:15 `scopedPipeEffects`. WHICH route a pipe's data
+# takes is the DECLARED kind, not a shape a consumer infers; the two directions are checked at opposite
+# ends (a `pipeMark` in `ops` at registration, a `pipeCommit` on the dispatched route at every firing).
 #
 # STRATUM (B2) is DERIVED, never declared. A rule fires in exactly ONE stratum, and `declare.stratumOfKind`
 # is a total function from the kind tag, so declaring a stratum beside `emits` would create a second source
@@ -491,7 +493,22 @@ let
           emits = v.emits or null;
           unknown = builtins.filter (k: !(knownKind k)) (if builtins.isList emits then emits else [ ]);
           ops = v.ops or [ ];
-          siteMarkOps = builtins.filter declare.isSiteMarkData ops;
+          # THE `ops` LAW, over the DECLARED KIND. `ops` carries fleet-wide compose commitments only, so
+          # every element must be a `pipeCommit`. A `pipeMark` there is per-node emission data in a
+          # definition-time seed; anything else — a stale spelling, a foreign kind, an element with no
+          # `__action` at all — is an unknown ops element.
+          # ★ Written over `a.__action or null`, NOT over `declare.kindOf a`: `kindOf` is a bare selection
+          # with no default, so a tag-less element would raise Nix's own unattributed
+          # `attribute '__action' missing` from inside the very predicate that exists to name it.
+          opsKindOf = a: a.__action or null;
+          markOps = builtins.filter (a: opsKindOf a == "pipeMark") ops;
+          unknownOps = builtins.filter (
+            a:
+            !(builtins.elem (opsKindOf a) [
+              "pipeCommit"
+              "pipeMark"
+            ])
+          ) ops;
           # ONE walk, THREE messages. Read only after the `fn` guard, and only when the field is present
           # (arm 1 is what makes `v.selects` safe for the three arms below it).
           refusal = if builtins.isAttrs v && v ? selects then refusesAt "" v.selects else null;
@@ -534,8 +551,15 @@ let
           "den.policies: `${name}` emits kinds spanning strata ${builtins.concatStringsSep ", " (groupsOf emits)} - a rule's declarations classify to ONE stratum. This is gen-dispatch's core invariant, not only den-hoag's: `dispatch.deriveGroup` (gen-dispatch `mkActions`, the declared-stratum vocabulary) aborts on a declared kind family spanning groups, and `compileOne` discharges every rule through it. Split it into one policy per stratum; the split is authored and named rather than synthesized"
         else if unstable != null then
           "den.policies: `${name}`.selects — ${at unstable} carries tag `${unstable.tag}`, which is not STRATUM-STABLE, and `${name}` emits into a family the STAGED PRE-PASS dispatches (${builtins.concatStringsSep ", " declare.prePassKinds}). ${ground}"
-        else if siteMarkOps != [ ] then
-          "den.policies: `${name}`.ops carries a SITE-MARK-only pipeOp - site marks are per-node emission data fired WHERE the policy fires, so they belong in the body's emission, not in the fleet-wide compose seed. `ops` carries only ctx-independent commitments (a derived-channel DAG or a delivery route)"
+        else if markOps != [ ] then
+          "den.policies: `${name}`.ops carries a `pipeMark` - site marks are per-node emission data fired WHERE the policy fires, so they belong in the body's emission, not in the fleet-wide compose seed. `ops` carries only ctx-independent commitments (`pipeCommit`: a derived-channel DAG, a delivery route or an aspect-delivery target)"
+        else if unknownOps != [ ] then
+          "den.policies: `${name}`.ops carries an element whose `__action` is `${
+            let
+              k = (builtins.head unknownOps).__action or null;
+            in
+            if k == null then "«absent»" else k
+          }` - every `ops` element is a `pipeCommit` declaration. An element carrying another kind, or no readable `__action`, is not a compose commitment and nothing downstream can route it"
         else
           codomainMessage name v emits;
       offenders = builtins.filter (m: m != null) (prelude.mapAttrsToList checkOne policies);
@@ -781,9 +805,14 @@ let
       # codomain is caught LOUD rather than mis-routing the rule silently. It SUBSUMES
       # `declare.checkStratum` (a conforming emission cannot span strata, because `emits` does not) and the
       # retired resolve-/exclude-family untagged guards (a `member`/`suppress` emitter has DECLARED it, so
-      # it is in the feed by derivation and "emitted but untagged" is unrepresentable). The `pipeOp` arm is
-      # the body end of the compose-commitment boundary whose other end is `policyMessage`'s ops law. One
-      # attrset membership test per emitted declaration, on a list already being materialised.
+      # it is in the feed by derivation and "emitted but untagged" is unrepresentable). One attrset
+      # membership test per emitted declaration, on a list already being materialised.
+      # ★ IT IS ALSO THE BODY END OF THE COMPOSE-COMMITMENT BOUNDARY, and it needs no arm of its own for
+      # it. A `pipeCommit` arriving on the DISPATCHED route is refused by the general codomain law above:
+      # the mark rule's declared `emits` carries `pipeMark`, so an unauthorised commitment fails
+      # `admitted ? ${k}` and takes `emitsUndeclared`. The special-cased value-shape arm this replaced
+      # decided routing by inspecting a record; routing is now the declared kind, and the general law
+      # already refuses a kind a declaration does not admit.
       #
       # THE SAME LAW ONE LEVEL FINER, for the two kinds that create dependency EDGES. The registration
       # check decides the stratification from the DECLARED graph; without a firing-time check a body
@@ -815,8 +844,6 @@ let
           in
           if !(admitted ? ${k}) then
             errors.emitsUndeclared originName name k emits
-          else if k == "pipeOp" && !(declare.isSiteMarkData a) then
-            errors.opsInBody originName name
           else if declare.codomainRows ? ${k} then
             let
               row = declare.codomainRows.${k};
