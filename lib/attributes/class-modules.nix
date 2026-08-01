@@ -615,7 +615,6 @@ in
     stratum = "resolution";
     readsAttrs = [
       "resolved-aspects"
-      "declarations"
       "content-key-totality"
       "class-relocation"
     ];
