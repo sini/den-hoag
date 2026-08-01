@@ -93,6 +93,30 @@
                   nix-unit = genInputs.nix-unit.packages.${system}.default;
                 };
 
+                # THE TREE-ROOT CORRECTION. gen's `ci/flakeModule.nix` sets `projectRootFile = ".git/config"`,
+                # which treefmt-nix lowers to `--tree-root-file=.git/config`: treefmt walks UP the directory
+                # chain for a directory in which `.git/config` exists. In a git WORKTREE `.git` is not a
+                # directory but a small gitdir-POINTER FILE, so the worktree root does not satisfy the
+                # predicate and the walk CROSSES THE WORKTREE BOUNDARY and settles on the main checkout.
+                # A `nix fmt` run from inside a worktree therefore rewrites the MAIN CHECKOUT'S copies and
+                # leaves the worktree it was invoked in untouched — measured: the formatter's own log printed
+                # the main checkout as its tree root, and four files there were reflowed by a run in a
+                # worktree. The same wrapper is `pre-commit.settings.hooks.treefmt.package`, so a
+                # per-worktree commit gate was formatting a tree other than the one being committed.
+                #
+                # `null` is treefmt-nix's documented native-detection branch — the wrapper then passes no
+                # tree-root flag at all and treefmt resolves the root itself via `git rev-parse
+                # --show-toplevel`, which is worktree-correct. It has to be a SUBSTITUTION rather than a
+                # removal: with the option merely unset, treefmt-nix's own `mkDefault "flake.nix"` applies
+                # and pins the tree root to `ci/` alone — inside the worktree, but the wrong scope.
+                # `mkForce` is required because gen states the option at normal priority.
+                #
+                # LOCAL OVERRIDE — remove when `mkCi`'s `projectRootFile` is `null` upstream. One residual
+                # survives the fix: the native-detection branch does not `unset PRJ_ROOT` (the tree-root-file
+                # branch does), and treefmt honours `PRJ_ROOT`, so a direnv entered at the main checkout
+                # re-opens the same cross-tree vector.
+                treefmt.projectRootFile = lib.mkForce null;
+
                 # THE MARKDOWN ARM'S CORRECTION. gen's `ci/flakeModule.nix` asks for five mdformat plugins
                 # by writing them into `programs.mdformat.package`, but treefmt-nix computes
                 # `finalPackage = cfg.package.withPlugins cfg.plugins` and `cfg.plugins` DEFAULTS TO `_: [ ]`

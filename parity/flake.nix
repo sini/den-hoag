@@ -136,6 +136,21 @@
                 packages = lib.optionalAttrs (genInputs.nix-unit.packages ? ${system}) {
                   nix-unit = genInputs.nix-unit.packages.${system}.default;
                 };
+
+                # THE TREE-ROOT CORRECTION, same defect and same fix as `ci/flake.nix` — this flake takes its
+                # formatter from the same `mkCi`, and its own lock pins a gen rev carrying the identical
+                # setting, so the arm is affected independently of `ci/`'s. gen sets
+                # `projectRootFile = ".git/config"`, which treefmt-nix lowers to
+                # `--tree-root-file=.git/config`; treefmt walks up for a directory containing `.git/config`,
+                # and in a git WORKTREE `.git` is a gitdir-POINTER FILE rather than a directory, so the walk
+                # crosses the worktree boundary and formats the MAIN CHECKOUT instead of the tree it was
+                # invoked in. `null` selects treefmt-nix's native detection (`git rev-parse --show-toplevel`),
+                # which is worktree-correct; it must be a substitution, since with the option unset
+                # treefmt-nix's `mkDefault "flake.nix"` would pin the root to `parity/` alone. `mkForce` is
+                # required because gen states the option at normal priority.
+                #
+                # LOCAL OVERRIDE — remove when `mkCi`'s `projectRootFile` is `null` upstream.
+                treefmt.projectRootFile = lib.mkForce null;
               };
           }
         )
