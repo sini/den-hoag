@@ -1,5 +1,6 @@
-# C7.5 gap 3 — collection-stratum pipeOp CONSUMPTION. den-compat compiles a v1 `pipe.from name [stages]`
-# to a `pipeOp` declaration carrying a gen-pipe DERIVED channel DAG (filter/transform/fold/for folded
+# C7.5 gap 3 — collection-stratum COMPOSE-COMMITMENT CONSUMPTION. den-compat compiles a v1
+# `pipe.from name [stages]`
+# to a `pipeCommit` declaration carrying a gen-pipe DERIVED channel DAG (filter/transform/fold/for folded
 # left-to-right). Before C7.5 that DAG compiled but never reached the fleet gen-pipe compose (produced,
 # never consumed). Now den-hoag threads every policy's pipe `derived` channel into the ONE compose (the
 # `policyOps` seam — the same seam the demand channel rides), so the transform is a real fleet channel.
@@ -14,7 +15,7 @@
 # `over` op, so the stage composes as `feat.over.<i>.over.<j>` (whole-list), where `transform` stays
 # `feat.over.<i>.map.<j>` (per-element). The `as` delivery routes are wired (default.nix — route channelRef
 # records rooted at the derived terminal); `to` aspect-targeting is the documented follow-on.
-{ denCompat, xfail, ... }:
+{ denCompat, ... }:
 let
   # A v1 `pipe.from` policy effect built exactly as the corpus does (policy-effects.nix shape).
   pipeEffect = pipeName: stages: {
@@ -117,42 +118,21 @@ in
     # list-valued emission spread into per-element contributions ahead of the stages, compilePipe) plus its
     # two deriving stages (transform→map, filter→filter). The whole chain is declared so gen-pipe E4a's
     # declared-op-input check passes — the flatten+transform+filter is CONSUMED into the fleet DAG.
-    #
-    # DECLARED KNOWN-FAILURE. Nothing populates a compiled policy record's `ops` — the compat
-    # compiler mints `emits`/`gate`/`fn`/`selects` and no `ops` — so `pipeOps`, which concat-maps
-    # `ops` over the rules, is universally empty and the compose sees no derived channel to consume.
-    # The seed construction is wrong upstream of the shim rather than merely unwired here, so this is
-    # declared against the seam and not worked around locally.
-    test-derived-channels-consumed = xfail.value {
-      bead = "den-hoag-gb9";
-      construct = "pipeOps";
+    test-derived-channels-consumed = {
       expr = builtins.length derivedAdded;
-      actual = 0;
-      correct = 3;
+      expected = 3;
     };
     # …and every derived channel is the gen-pipe derived form rooted on the base channel (`feat.<op>.…`).
     # Non-emptiness is asserted in the SAME expression as the quantifier, because `all p [ ]` is TRUE: over
     # an empty `derivedAdded` the naming property certifies itself, so this test would report green on the
     # exact compose delta — none at all — that `test-derived-channels-consumed` exists to catch. The two
     # halves are forced together, so the names property can only pass on channels that were really added.
-    #
-    # DECLARED KNOWN-FAILURE, on the same empty seed. ★ THE WHOLE LEAF IS DECLARED RATHER THAN A
-    # NARROWED FIELD, and that is safe only BECAUSE the two halves are forced together: freezing
-    # `allRootedOnBase = true` — which is vacuously true over the empty list — would normally pin a
-    # vacuous truth that keeps reading as verified after the seed is fixed. Here it cannot, because
-    # the moment the seed is fixed `anyDerived` flips and the leaf goes red on the pair.
-    test-derived-channel-names = xfail.value {
-      bead = "den-hoag-gb9";
-      construct = "pipeOps";
+    test-derived-channel-names = {
       expr = {
         anyDerived = derivedAdded != [ ];
         allRootedOnBase = builtins.all (c: builtins.substring 0 5 c == "feat.") derivedAdded;
       };
-      actual = {
-        anyDerived = false;
-        allRootedOnBase = true;
-      };
-      correct = {
+      expected = {
         anyDerived = true;
         allRootedOnBase = true;
       };
@@ -168,34 +148,25 @@ in
 
     # board #45: each single-stage pipe adds TWO derived channels now — the leading flattenAndExtract `over`
     # (the per-element spread, compilePipe) plus the stage itself, the stage rooted on the flatten-over.
-    test-for-single-derived = xfail.value {
-      bead = "den-hoag-gb9";
-      construct = "pipeOps";
+    test-for-single-derived = {
       expr = builtins.length forDerivedNames;
-      actual = 0;
-      correct = 2;
+      expected = 2;
     };
     # a `for` (whole-list) pipe is HONORED to gen-pipe's `over` op — the STAGE channel is
     # `feat.over.<i>.over.<j>` (whole-list run, rooted on the flatten-over), NOT a per-element `…map…`.
-    test-for-honored-as-over = xfail.value {
-      bead = "den-hoag-gb9";
-      construct = "pipeOps";
+    test-for-honored-as-over = {
       expr = builtins.any (
         c: builtins.match "feat\\.over\\.[0-9]+\\.over\\.[0-9]+" c != null
       ) forDerivedNames;
-      actual = false;
-      correct = true;
+      expected = true;
     };
     # `transform` (no whole-list marker) stays the per-element `map` — the discriminator against `for`: its
     # STAGE channel is `feat.over.<i>.map.<j>` (the map rooted on the flatten-over).
-    test-transform-stays-map = xfail.value {
-      bead = "den-hoag-gb9";
-      construct = "pipeOps";
+    test-transform-stays-map = {
       expr = builtins.any (
         c: builtins.match "feat\\.over\\.[0-9]+\\.map\\.[0-9]+" c != null
       ) transformDerivedNames;
-      actual = false;
-      correct = true;
+      expected = true;
     };
   };
 }

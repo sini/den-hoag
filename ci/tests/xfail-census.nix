@@ -46,38 +46,6 @@
           construct = "recoverEmits";
           sites = [ "lib/compat/policy-recover.nix" ];
         }
-        # the empty ops seam: nothing populates a compiled policy record's `ops`, so `pipeOps` is
-        # universally empty and no derived channel reaches the fleet compose. All five move together.
-        {
-          id = "pipe-consume.test-derived-channel-names";
-          bead = "den-hoag-gb9";
-          construct = "pipeOps";
-          sites = [ "lib/concern-policies.nix" ];
-        }
-        {
-          id = "pipe-consume.test-derived-channels-consumed";
-          bead = "den-hoag-gb9";
-          construct = "pipeOps";
-          sites = [ "lib/concern-policies.nix" ];
-        }
-        {
-          id = "pipe-consume.test-for-honored-as-over";
-          bead = "den-hoag-gb9";
-          construct = "pipeOps";
-          sites = [ "lib/concern-policies.nix" ];
-        }
-        {
-          id = "pipe-consume.test-for-single-derived";
-          bead = "den-hoag-gb9";
-          construct = "pipeOps";
-          sites = [ "lib/concern-policies.nix" ];
-        }
-        {
-          id = "pipe-consume.test-transform-stays-map";
-          bead = "den-hoag-gb9";
-          construct = "pipeOps";
-          sites = [ "lib/concern-policies.nix" ];
-        }
         # four suites are `= { }` with their tests commented out in place, so each reports 0/0 and
         # exits 0 — a false pass reachable exactly when someone targets the suite.
         {
@@ -116,7 +84,7 @@
           allSitesNonEmpty = builtins.all (r: r.sites != [ ]) rows;
         };
       expected = {
-        rowCount = 9;
+        rowCount = 4;
         allBeadsWellShaped = true;
         allConstructsResolve = true;
         allSitesNonEmpty = true;
