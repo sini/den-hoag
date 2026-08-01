@@ -30,12 +30,21 @@
 #     boolean over one of them states neither. The negative half — that check 2's text does NOT render once
 #     the fleet check fires — is what makes preemption executable rather than argued.
 #
-# COVERAGE LIMIT, stated: the fifth origin (`localKeys` — a channel a quirk's own `ops` or a
+# THE FIFTH ORIGIN IS FIXTURED, at (6b). `localKeys` — a channel a quirk's own `ops` or a
 # collection-stratum `route`/`join`/`tee` DERIVES under a sibling name, present in `received id` and absent
-# from `attrNames den.quirks`) has NO fixture here. Reaching it needs the derived-channel composition path,
-# which is red at this commit; a fixture that merely REGISTERS the name exercises the `channelKeys` origin
-# instead and could never show the derived case getting its own remedy. Its discriminator is exercised only
-# by the totality argument in the source, not by a witness.
+# from `attrNames den.quirks` — is reached by a quirk `ops` entry carrying an EXPLICIT `name`, which
+# compose takes verbatim as the composed channel's final name; the `<base>.<op>.<index>` shape is only the
+# fallback for an unnamed derivation. Two things about that construction are load-bearing rather than
+# incidental:
+#
+#   • The fixture must NOT also register a channel of the colliding name. A declared channel's identity IS
+#     its name and an explicitly-named derived channel's id is ALSO its name, so compose's first-wins id
+#     dedup drops the second declaration BEFORE its duplicate-final-name guard sees two — a fixture written
+#     that way asserts against a channel that is not in the dag.
+#   • Registering the name is also the EVASION this arm exists to refuse: it puts the key in `channelKeys`
+#     as well, so the message names both origins and the derived case never gets its own remedy. The
+#     discrimination is therefore a PAIR of fleets — the registration endpoint is arm (3), this is the
+#     derivation endpoint — differing in nothing but where the colliding name comes from.
 { denHoag, ... }:
 let
   inherit (denHoag) sel;
@@ -177,6 +186,36 @@ let
       settings = { };
     };
   };
+
+  # ── the COMPOSED-CHANNEL origin's fleet: a channel DERIVED under a sibling name ───────────────────────
+  # A base-channel REFERENCE by id, the same inert seed `compat/pipe.nix`'s `channelRef` builds: a deriving
+  # operator reads only `.id` of its input, and compose resolves the derived DAG's inputs against the real
+  # channel record the `ch` registration contributes. Building the DAG over the stub forces no stage
+  # closure, so the fleet that must ABORT never runs the op it declares.
+  channelRef = name: {
+    __genPipeChannel = true;
+    __derived = false;
+    id = name;
+    inherit name;
+  };
+  # The two endpoints differ in ONE STRING — the name the derivation is authored under — so the collision
+  # is the measurement rather than a property of two separately-written fleets. `channels` reaches
+  # `surfaces.values` through `local` (every composed channel is a key of `received id`) and reaches
+  # `localKeys` through the same read, while `channelNames` stays `[ "ch" ]`: the key is derived, not
+  # registered, which is the whole discrimination.
+  derivedUnder =
+    name:
+    bindingsOf {
+      quirks = {
+        ch.ops = [
+          (d.pipe.map {
+            f = v: v;
+            inherit name;
+          } (channelRef "ch"))
+        ];
+      };
+    };
+  derivedSibling = derivedUnder "channels";
 
   # ── the ESCALATION exhibit's fleet: the gathered key, ALSO REGISTERED ─────────────────────────────────
   # The "after" endpoint of the transition arm (6a) asserts; the gather-only fleet above is the
@@ -439,6 +478,81 @@ in
       expectedError = {
         type = "ThrownError";
         msg = "^(?![\\s\\S]*is a gathered channel-surface key)[\\s\\S]*fleet-wide";
+      };
+    };
+
+    # ── (6b) SHADOW REFUSAL — the COMPOSED-CHANNEL origin ───────────────────────────────────────────────
+    # The SECOND sub-origin of the operand arm (6) reaches: `surfaceOrigins` has exactly two rows, and an
+    # arm per operand is not an arm per writer. This one's writer is the OP THAT COMPOSED THE CHANNEL, and
+    # the remedy is what has to reach them — a message that lands the derived case on the registration's
+    # remedy sends the author to a `den.quirks` entry that does not exist.
+    #
+    # THE THREE ARMS ARE SEPARABLE AND THE `localKeys` ROW IS WHAT THEY REST ON, both measured rather than
+    # argued: disabling that one `prelude.optional` reddens exactly these three and no other arm in this
+    # file, so the origin they witness had no other witness here; and widening `channelKeys` to cover the
+    # sibling names — the collapse the discrimination arm exists to catch — reddens the discrimination arm
+    # ALONE of the three, leaving the remedy and fleet-silence arms green.
+    test-derived-channel-shadow-names-the-composing-op-remedy = {
+      expr = builtins.deepSeq derivedSibling "unreached";
+      expectedError = {
+        type = "ThrownError";
+        msg = "the `ops`/policy op that derived it";
+      };
+    };
+    # THE DISCRIMINATION, and the arm the debt this fixture pays was about: the key is attributed to the
+    # COMPOSED-CHANNEL origin and to that origin ALONE. The substring is SINGLE-ORIGIN-SHAPED on purpose —
+    # the leading `is ` renders only while `localKeys` is this key's sole origin, so the day `channelKeys`
+    # widens to cover derived names the label join puts `the name of a REGISTERED channel and ` in front of
+    # this text and the assertion dies. That is the failure this fixture exists to catch: the two origins
+    # collapsed into one, which a fleet that REGISTERS the colliding name can never tell apart because it
+    # populates both.
+    #
+    # GRAIN: the NODE one, asserted by the node inside the pinned substring. Check 1 names no node, so an
+    # arm satisfied by "aborts named" would be satisfied by either check.
+    test-derived-channel-shadow-is-the-per-node-refusal = {
+      expr = builtins.deepSeq derivedSibling "unreached";
+      expectedError = {
+        type = "ThrownError";
+        msg = "the binding key `channels` at `unit:u1` is a composed channel's own key";
+      };
+    };
+    # …and the FLEET check stays silent, which is an ABSENCE and therefore needs an instrument that can see
+    # one. Check 1's predicate is `elem k channelNames` and the derived name is not in `attrNames
+    # den.quirks`, so it has this input in no domain; a fleet where it fired would be a fleet that had
+    # taken the evasion. The exclusion is the MIRROR of arm (6a)'s negative — that one requires `fleet-wide`
+    # while excluding the per-node text, this one excludes `fleet-wide` while requiring the per-node origin
+    # — and it shares (6a)'s positive control: `fleet-wide` is REQUIRED text in arms (3) and (6a), so this
+    # suite exhibits both verdicts on one predicate in one run and the lookahead is not one that could never
+    # have matched.
+    test-derived-channel-shadow-withholds-the-fleet-check = {
+      expr = builtins.deepSeq derivedSibling "unreached";
+      expectedError = {
+        type = "ThrownError";
+        msg = "^(?![\\s\\S]*fleet-wide)[\\s\\S]*a composed channel's own key";
+      };
+    };
+    # THE CONTROL, and it carries more than "the fleet could have evaluated". The twin differs from the
+    # aborting fleet in ONE STRING, so it measures three things the abort arms rest on and none of them
+    # states: (i) an authored `name` really does become the composed channel's final name, which is the
+    # mechanism the collision is built out of — a derivation whose name were structural would collide with
+    # nothing; (ii) the derived channel binds ALONGSIDE its base rather than superseding it, so the key the
+    # abort names is a NEW one; (iii) NEITHER sibling name is registered on this construction — check 1
+    # reads `channelNames` and nothing the derivation writes, so a fleet that had taken the evasion would
+    # abort fleet-wide HERE TOO, under the non-colliding name.
+    test-control-derived-channel-binds-under-its-authored-name = {
+      expr =
+        let
+          b = derivedUnder "notASibling";
+        in
+        {
+          flat = b.ch;
+          derived = b.notASibling;
+          siblingsStillAppended = b ? channels && b ? settings;
+        };
+      expected = {
+        flat = [ { dir = "d1"; } ];
+        derived = [ { dir = "d1"; } ];
+        siblingsStillAppended = true;
       };
     };
 
