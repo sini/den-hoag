@@ -602,6 +602,34 @@ let
     (mkRerouteMod "spool" denHoag.classes.nixos)
   ];
 
+  # ── THE INSTRUMENT BEHIND THE PAIR ABOVE: two aspect-schema instances, ONE ARGUMENT apart ─────────────
+  # The category `"channel"` is not a property of the name `spool`; it is a property of the INSTANCE that
+  # classifies it. `mkDen` builds the schema the class-content producer reads with the fleet's DISCOVERED
+  # quirk channels, and a schema built without them answers `null` for every channel name in existence —
+  # the same answer it gives a typo. So the two rows above are evidence about the threaded instance only
+  # if the two instances are measured to disagree, which is what the row below does.
+  # THE ARGUMENTS ARE THE `spool` FLEET'S OWN: it declares no `den.classes`, so its registered set is the
+  # core triple, and its schema kinds are the three `den.schema` names. The only thing that moves between
+  # the two instances is `quirkChannels` — the instance-level image of the ONE declaration that separates
+  # `routeSourceQuirkOut` from `routeSourceUnregOut`.
+  mkFleetSchema =
+    quirkChannels:
+    (import "${denHoagSrc}/lib/concern-aspects.nix" {
+      inherit (denHoag.internal) prelude aspects merge;
+      inherit quirkChannels;
+      errors = import "${denHoagSrc}/lib/errors.nix";
+      classNames = [
+        "nixos"
+        "darwin"
+        "home-manager"
+      ];
+      kindNames = [
+        "env"
+        "host"
+        "user"
+      ];
+    }).aspectSchema;
+
   # ── THE DESTINATION INPUT: a ROUTE targeting the channel the relocation empties ───────────────────────
   # `relocationMod` moves `home-manager` to `nixos`; a route declaring `to = home-manager` at the same scope
   # is the ONE fixture combination that asks whose relocation governs a route's DESTINATION. Neither the
@@ -1175,6 +1203,44 @@ in
     test-route-source-quirk-channel-control-undeclared = {
       expr = builtins.concatMap tags (routeSourceUnregOut.projectClass axon "nixos");
       expected = [ "nixos-host" ];
+    };
+
+    # (n) ★★ THE INSTRUMENT ROW — why (l) and (m) cannot be run on a harness, stated as a measurement
+    #     rather than left to review. The category the pair turns on exists only where the aspect schema
+    #     was built with the fleet's quirk channels; the instance a test reaches for free is the top-level
+    #     one, which is built with none. An implementation threading THAT instance into the class-content
+    #     producer answers `null` for `spool`, admits it, and takes (l) from a named refusal to a silent
+    #     delivery — so (l)'s green is evidence about which instance is threaded only once the two
+    #     instances are known to disagree about this one name.
+    #     ★ THE BLINDNESS IS CHANNEL-SPECIFIC, and the last three fields are what say so. Without them the
+    #     free instance's `null` is equally consistent with a classifier that answers `null` for
+    #     everything — a dead instrument and a blind one are indistinguishable from the `spool` cell alone.
+    #     ★ The `quirkChannels`-empty instance is measured beside the free one because the free one differs
+    #     from the fleet's in more than that argument (its class set and kinds are the top-level defaults);
+    #     the pair one argument apart is what attributes the disagreement to the quirk declaration itself.
+    test-route-source-quirk-channel-needs-the-quirk-aware-instance = {
+      expr = {
+        # the instance a test reaches for free, and the one a threading mistake would reach
+        freeInstanceSpool = denHoag.internal.aspectSchema.keyCategory "spool";
+        # the fleet's own arguments, with and without the quirk declaration's image
+        quirkBlindSpool = (mkFleetSchema { }).keyCategory "spool";
+        quirkAwareSpool = (mkFleetSchema { spool = true; }).keyCategory "spool";
+        # …and neither instance is a dead classifier: both still answer for every other key space, and the
+        # quirk declaration moves nothing but its own channel.
+        freeInstanceSettings = denHoag.internal.aspectSchema.keyCategory "settings";
+        freeInstanceNixos = denHoag.internal.aspectSchema.keyCategory "nixos";
+        quirkAwareSettings = (mkFleetSchema { spool = true; }).keyCategory "settings";
+        quirkAwareNixos = (mkFleetSchema { spool = true; }).keyCategory "nixos";
+      };
+      expected = {
+        freeInstanceSpool = null;
+        quirkBlindSpool = null;
+        quirkAwareSpool = "channel";
+        freeInstanceSettings = "facet";
+        freeInstanceNixos = "class";
+        quirkAwareSettings = "facet";
+        quirkAwareNixos = "class";
+      };
     };
 
     # ══ THE DESTINATION COORDINATE UNDER RELOCATION — the §4.5b ruling on a NATIVE fleet ════════════════
