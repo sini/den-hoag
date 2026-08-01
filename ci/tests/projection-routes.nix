@@ -617,6 +617,22 @@ let
   };
   gPtDestRelocated = mkPtDestFleet [ (rerouteAct "nixos" "darwin") ];
   gPtDestControl = mkPtDestFleet [ ];
+
+  # ── TWO EVALS ONE ABSENCE APART, for the rows that make those two absences distinguishable BY TEST ────
+  # The extraction resolves a channel's source order off the scope's relocation memo, and two different
+  # things can be missing there: the MEMO, or the CHANNEL within it. They must not answer alike — an eval
+  # that carries no relocation equation at all has to say so, because the alternative is handing back the
+  # identity order and silently pinning the un-relocated semantics at any instrument that forgot to serve
+  # the attribute. A channel absent from a memo that IS present is the opposite case and genuinely means
+  # the identity: that channel has no relocation.
+  evalNoMemo.get = _: _: { };
+  evalMemoWithoutChannel.get = _: _: {
+    sourceOrder = {
+      darwin = [ "darwin" ];
+    };
+    injections = [ ];
+  };
+  sliceSubject = mkNode "e" { home-manager.tag = "hm-e"; };
 in
 {
   flake.tests.projection-routes = {
@@ -1547,6 +1563,40 @@ in
           tag = "hm-tux";
         };
         controlAtTarget = [ ];
+      };
+    };
+
+    # ══ (10) THE TWO ABSENCES AT THE EXTRACTION, told apart ═════════════════════════════════════════════
+    # A missing relocation memo and a channel missing FROM a memo are different facts, and an extraction
+    # that answered them alike would be the fail-open this whole design is built against: an instrument
+    # that simply forgot to serve the attribute would get the identity source order back and pin the
+    # un-relocated semantics without anything saying so. The rows are a pair on purpose — either one alone
+    # is satisfied by an implementation that treats both absences the same way.
+
+    # (a) NO MEMO AT ALL IS REFUSED, NAMING THE SCOPE. The eval answers an empty record for the attribute,
+    #     which is what an instrument serving a fabricated or partial eval looks like.
+    test-extraction-refuses-eval-without-relocation-memo = {
+      expr = builtins.deepSeq (classSliceAt evalNoMemo { } sliceSubject "home-manager") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "no class-relocation memo at scope '<synthetic>' \\(the eval serving this extraction does not carry the relocation equation";
+      };
+    };
+
+    # (b) A CHANNEL ABSENT FROM A MEMO THAT IS PRESENT IS THE IDENTITY, which is the answer that absence
+    #     genuinely means: nothing relocates into this channel, so its source order is itself and its
+    #     slice is the raw read. The memo here carries an order for a DIFFERENT channel, so the record is
+    #     real and only the entry is missing — which is what separates this row from (a).
+    test-extraction-missing-channel-is-identity = {
+      expr = {
+        order = sourceOrderOf evalMemoWithoutChannel "<synthetic>" "home-manager";
+        slice = builtins.concatMap tags (
+          map (e: e.module) (classSliceAt evalMemoWithoutChannel { } sliceSubject "home-manager")
+        );
+      };
+      expected = {
+        order = [ "home-manager" ];
+        slice = [ "hm-e" ];
       };
     };
   };

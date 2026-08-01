@@ -101,14 +101,31 @@ let
   # KERNEL's own equation against this same `self` (the shape the `content-key-totality` arm beside it
   # already uses), so the fixture supplies the ACTS and the kernel supplies the relation; a hand-written
   # memo here would be a second copy of the algorithm under test.
-  mkSelf =
-    acts:
+  # A SECOND aspect list, identical to the one above plus one element declaring content at a `_`-prefixed
+  # key. `_`-prefixed keys are the module system's own scaffolding, so the extraction's prefix conjunct
+  # skips them before any classification runs — which makes `_u` a channel that HAS content and can never
+  # answer any query. That is exactly the population the relocation's two endpoint arms are undecided on,
+  # and it is why the rows below need an aspect the fixtures above do not carry.
+  underscoreAspects = resolvedAspects ++ [
+    {
+      content = {
+        name = "aspU";
+        _u = mod "cU";
+      };
+      sharedFoldKey = null;
+      scope = "n";
+      assertedClasses = { };
+    }
+  ];
+
+  mkSelfOver =
+    asps: acts:
     let
       self = {
         get =
           id: attr:
           if attr == "resolved-aspects" then
-            resolvedAspects
+            asps
           else if attr == "declarations" then
             { actions.resolution = acts; }
           else if attr == "content-key-totality" then
@@ -121,11 +138,15 @@ let
     in
     self;
 
+  mkSelf = mkSelfOver resolvedAspects;
+
   cm = cmb {
     inherit classNames classifyKey;
     inherit (aspectSchema) keyCategory;
   };
   answer = acts: tagsOf (cm.class-seeds.compute (mkSelf acts) "n");
+  # the same query over the aspect list carrying the `_`-prefixed channel.
+  answerU = acts: tagsOf (cm.class-seeds.compute (mkSelfOver underscoreAspects acts) "n");
 
   # ── permutations of an act list, so an order-dependent producer is measured rather than sampled ───────
   removeAt =
@@ -300,6 +321,75 @@ in
         "iX"
         "iY"
       ];
+    };
+
+    # ── (5) the `_`-prefixed key space at the relocation's TWO ENDPOINTS ────────────────────────────────
+    # A `_`-prefixed channel is refused where an injection MINTS one, because minting merges a
+    # fleet-authored name into a key space the module system already reads. A relocation endpoint mints
+    # nothing — it names a channel that either has content or does not — so the same name has to be
+    # decided separately at each end, and deciding it by refusing the whole prefix would turn an accepted
+    # no-op into an abort. The two rows below are what makes that split a measurement instead of an
+    # assumption, and both are stated against the plain-name control that the refusal must not disturb.
+
+    # (a) THE SOURCE END IS INERT, NOT REFUSED. `_u` carries content on this aspect list, and the
+    #     extraction's prefix conjunct skips it before any classification — so relocating FROM it moves
+    #     nothing and the answer is the no-act baseline, channel for channel. A design discharging the
+    #     `_`-prefix class by refusing every occurrence of it turns this row from green to an abort.
+    #     ★ THE FIXTURE-SHAPE FIELD IS PART OF THE ROW, because the equality alone is satisfied by an
+    #     aspect list that never carried `_u` at all — a fixture whose extra element was empty would make
+    #     both sides equal for a reason that has nothing to do with the prefix.
+    test-reroute-from-underscore-channel-is-inert = {
+      expr = {
+        withAct = answerU [ (reroute "_u" "B") ];
+        noAct = answerU [ ];
+        # the content is really there, and really invisible to the query: the extra element declares `_u`,
+        # and the whole answer is unchanged by its presence.
+        declaresUnderscore = builtins.any (a: a.content ? _u) underscoreAspects;
+        sameAsWithoutTheAspect = answerU [ ] == answer [ ];
+      };
+      expected = {
+        withAct = answerU [ ];
+        noAct = answerU [ ];
+        declaresUnderscore = true;
+        sameAsWithoutTheAspect = true;
+      };
+    };
+
+    # (b) THE TARGET END BEHAVES LIKE ANY UNREGISTERED NAME. Two claims, because either alone is weaker
+    #     than the pair: relocating INTO `_x` answers exactly as relocating into the plain `x` does, and a
+    #     two-hop `A → _x → B` delivers A's content to B exactly as the plain-name control does. The
+    #     second is what shows `_x` can still be a preimage SOURCE after being a target — the property
+    #     that makes an unregistered intermediate work at all — so a change that admitted the target end
+    #     while silently dropping content routed through it fails here and passes the first claim.
+    test-reroute-to-underscore-channel-matches-plain-control = {
+      expr = {
+        oneHop = answer [ (reroute "A" "_x") ];
+        twoHop = (
+          answer [
+            (reroute "A" "_x")
+            (reroute "_x" "B")
+          ]
+        ).B;
+        # the plain-name control's own value, stated so the equality above cannot be read off two
+        # identically-empty answers.
+        twoHopControl = (
+          answer [
+            (reroute "A" "x")
+            (reroute "x" "B")
+          ]
+        ).B;
+      };
+      expected = {
+        oneHop = answer [ (reroute "A" "x") ];
+        twoHop = [
+          "cA"
+          "cB"
+        ];
+        twoHopControl = [
+          "cA"
+          "cB"
+        ];
+      };
     };
   };
 }
