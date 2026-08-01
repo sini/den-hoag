@@ -51,7 +51,9 @@ let
     # the `self` its caller applies it to, which is why the eval is the FIRST argument and not a
     # captured one. The ctx extension is empty: selection reads a node's kind and its position in the
     # scope graph, both of which the base scope context already carries.
-    matchAt = self: r: id: scopeAdapter.matchIdWith { eval = self; } { } r.selects id;
+    matchAt =
+      self: r: id:
+      scopeAdapter.matchIdWith { eval = self; } { } r.selects id;
   };
   resolvedAspects = import ./resolved-aspects.nix {
     inherit

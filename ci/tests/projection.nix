@@ -349,7 +349,8 @@ let
     __denNode = axon;
   };
   compatPathKeys = den: builtins.attrNames ((hasAspectAt den).collectPathSet axonHandle);
-  compatAspectKeys = den: map (n: n.identityKey) ((hasAspectAt den).mkEntityHasAspect axonHandle).aspects;
+  compatAspectKeys =
+    den: map (n: n.identityKey) ((hasAspectAt den).mkEntityHasAspect axonHandle).aspects;
 
   # ── THE TERMINAL-SIDE TWIN: the same topology, content authored through DECLARED OPTIONS ──────────────
   # The rows above stop at `projectClass` / `classSubtreeAt`. The terminal is one alias hop further on
@@ -497,28 +498,24 @@ let
   # exist: drop it silently, or refuse it named. The fleets below are one per cell of that space, each
   # paired with a control ONE DECLARATION away, because a refusal measured without its control is
   # indistinguishable from a change that refuses the whole space.
-  mkInjectMod =
-    class: module:
-    {
-      config.den.policies.injector = {
-        emits = [ "inject" ];
-        selects = sel.star;
-        fn =
-          { user, ... }:
-          [ (denHoag.declare.inject { inherit class module; }) ];
-      };
+  mkInjectMod = class: module: {
+    config.den.policies.injector = {
+      emits = [ "inject" ];
+      selects = sel.star;
+      fn =
+        { user, ... }:
+        [ (denHoag.declare.inject { inherit class module; }) ];
     };
-  mkRerouteMod =
-    from: to:
-    {
-      config.den.policies.rerouter = {
-        emits = [ "reroute" ];
-        selects = sel.star;
-        fn =
-          { user, ... }:
-          [ (denHoag.declare.reroute { inherit from to; }) ];
-      };
+  };
+  mkRerouteMod = from: to: {
+    config.den.policies.rerouter = {
+      emits = [ "reroute" ];
+      selects = sel.star;
+      fn =
+        { user, ... }:
+        [ (denHoag.declare.reroute { inherit from to; }) ];
     };
+  };
   outOf = mods: (denHoag.mkDen (relocationBase ++ mods)).den.output;
   # `spool` becomes a QUIRK CHANNEL by this one declaration, and by nothing else. It is the only member of
   # the reserved key space a fleet can create, which is why the pair it anchors is the sharpest control
@@ -557,8 +554,8 @@ let
 
   # (c) the EMPTY module, and its non-empty twin one declaration away.
   injectEmptyOut = outOf [ (mkInjectMod denHoag.classes.home-manager { }) ];
-  injectEmptyMarkerOut = (denHoag.mkDen (markerBase ++ [ (mkInjectMod denHoag.classes.home-manager { }) ]))
-    .den.output;
+  injectEmptyMarkerOut =
+    (denHoag.mkDen (markerBase ++ [ (mkInjectMod denHoag.classes.home-manager { }) ])).den.output;
 
   # (d) the `_`-prefixed channel, and the byte-identical fleet one character away.
   injectUnderscoreOut = outOf [
@@ -1421,9 +1418,8 @@ in
     test-relocation-forest-at-edge-target-stays-clean = {
       expr = {
         terminal =
-          (builtins.tryEval (
-            builtins.deepSeq forestAtTargetDen.output.systems.nixos.${axon}.modules true
-          )).success;
+          (builtins.tryEval (builtins.deepSeq forestAtTargetDen.output.systems.nixos.${axon}.modules true))
+          .success;
         pathSet = compatPathKeys forestAtTargetDen;
         aspects = compatAspectKeys forestAtTargetDen;
       };

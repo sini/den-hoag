@@ -364,20 +364,18 @@ in
     test-reroute-to-underscore-channel-matches-plain-control = {
       expr = {
         oneHop = answer [ (reroute "A" "_x") ];
-        twoHop = (
-          answer [
+        twoHop =
+          (answer [
             (reroute "A" "_x")
             (reroute "_x" "B")
-          ]
-        ).B;
+          ]).B;
         # the plain-name control's own value, stated so the equality above cannot be read off two
         # identically-empty answers.
-        twoHopControl = (
-          answer [
+        twoHopControl =
+          (answer [
             (reroute "A" "x")
             (reroute "x" "B")
-          ]
-        ).B;
+          ]).B;
       };
       expected = {
         oneHop = answer [ (reroute "A" "x") ];

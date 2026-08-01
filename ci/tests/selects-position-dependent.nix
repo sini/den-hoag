@@ -84,9 +84,9 @@ let
   # here exactly when the policy was SELECTED at it.
   firedAt =
     den:
-    builtins.filter (
-      id: (den.structural.eval.get id "declarations").actions.structural or [ ] != [ ]
-    ) (builtins.attrNames den.structural.eval.allNodes);
+    builtins.filter (id: (den.structural.eval.get id "declarations").actions.structural or [ ] != [ ]) (
+      builtins.attrNames den.structural.eval.allNodes
+    );
 
   # THE OTHER STRUCTURAL SITE. An `enrich`-only codomain routes the policy to the enrichment fixpoint
   # instead of the stratified dispatch — a different feed, a different attribute, the same selection.
