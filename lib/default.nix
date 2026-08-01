@@ -95,7 +95,7 @@ let
   };
   fleet = import ./fleet.nix { inherit prelude product errors; };
   buildRootsLib = import ./build-roots.nix { inherit prelude; };
-  scopeAdapter = import ./scope-adapter.nix { inherit prelude select; };
+  scopeAdapter = import ./scope-adapter.nix { inherit prelude select errors; };
   concernQuirks = import ./concern-quirks.nix { inherit prelude pipe errors; };
 
   # The demand concern (§B demand stratum): the demand channel, kind registration, the fleet

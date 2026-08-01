@@ -31,6 +31,7 @@ let
     aspects
     select
     ;
+  errors = import "${denHoagSrc}/lib/errors.nix";
   # `ra` = the resolved-aspects module with native instance args.
   mkRa =
     instanceArgs:
@@ -41,6 +42,7 @@ let
         resolve
         aspects
         select
+        errors
         ;
       graph = denHoag.internal.genGraph;
     } instanceArgs;

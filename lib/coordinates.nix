@@ -31,6 +31,17 @@
 # `or (coordDims node)` fallback and no `or [ ]`; a node reaching it without either is a NAMED abort, not
 # a sentinel. And in (2) an unmet axis is the STATED value `MISSING`, not an absent key: an omitted key
 # is what makes a coordinate compare equal to a coordinate that means something else.
+#
+# AND THE ENTRY READ IS NULL-AWARE, NOT `or`-WRITTEN, WHICH IS A STRONGER TEST THAN IT LOOKS. Nix's
+# `e.k or v` fires on a MISSING attribute and never on a present one holding `null` — so an `or`-written
+# `__entry` read is armed against a case the minters exclude (both write the key unconditionally) and
+# walks straight past the case a declared surface produces: a `den.systemViews.<system>` view carrying an
+# `__entry` key valued `null`, merged over the minted `decls` by the `scopeRoots` fold. Both readers below
+# therefore bind the value and test it, so the abort this file documents fires on the violation that
+# actually occurs rather than on the one that cannot. Accepting a `null` and passing it on IS a default,
+# spelled as an `or`; the remedy is not a better default but the removal of the default, and what it buys
+# is that the failure surfaces here, named, instead of as an unattributed `expected a set but found null`
+# at whichever later consumer first reads a field off the coordinate.
 {
   prelude,
   graph,
@@ -171,11 +182,14 @@ let
     let
       n = node nid;
       t = n.type;
+      e = n.decls.__entry or null;
     in
     if !(builtins.elem t settingsDims) then
       errors.unknownAxis nid t settingsDims
+    else if e == null then
+      errors.missingEntry nid "the node's own coordinate projection (`coordOf`)"
     else
-      { ${t} = n.decls.__entry or (errors.missingEntry nid); };
+      { ${t} = e; };
 
   # ── (2) the product coordinate ────────────────────────────────────────────────────────────────────
   # Per axis, the UNIQUE type-`d` member of `{ n } ∪ closure n`. A second member is a NAMED abort rather
@@ -194,13 +208,16 @@ let
           let
             ms = builtins.filter (a: (node a).type == d) members;
             hit = builtins.head ms;
+            e = (node hit).decls.__entry or null;
           in
           if ms == [ ] then
             missing d
           else if builtins.length ms > 1 then
             errors.coordCollision nid d ms
+          else if e == null then
+            errors.missingEntry hit "the product coordinate projection (`cellCoordsOf`)"
           else
-            (node hit).decls.__entry or (errors.missingEntry hit);
+            e;
       }) dimKinds
     );
 

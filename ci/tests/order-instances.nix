@@ -45,6 +45,7 @@ let
     aspects
     select
     ;
+  errors = import "${denHoagSrc}/lib/errors.nix";
   raReach =
     (import "${denHoagSrc}/lib/attributes/resolved-aspects.nix"
       {
@@ -54,6 +55,7 @@ let
           resolve
           aspects
           select
+          errors
           ;
         graph = denHoag.internal.genGraph;
       }

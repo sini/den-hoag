@@ -13,6 +13,7 @@ let
     aspects
     select
     ;
+  errors = import "${denHoagSrc}/lib/errors.nix";
 
   # THE ONE per-aspect class-slice extraction + the §2.2 totality assertion, built with the base
   # `classifyKey` (nixos/darwin/home-manager) — the same functions the assembly threads to
@@ -87,6 +88,7 @@ let
           aspects
           select
           resolve
+          errors
           ;
         graph = denHoag.internal.genGraph;
       }

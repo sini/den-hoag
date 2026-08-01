@@ -328,6 +328,25 @@ let
       id_hash = "h-${id}";
     };
   };
+  # ── the two ways `__entry` fails, as node accessors ───────────────────────────────────────────────
+  # The coordinate readers used to be written `n.decls.__entry or (errors.missingEntry nid)`. Nix's
+  # `e.k or v` fires on a MISSING attribute and never on a present one holding `null`, so that form was
+  # armed against a shape neither minter produces — both `buildRoots` and `cellChildrenFor` write the key
+  # unconditionally — and walked straight past the shape a declared surface DOES produce: a
+  # `den.systemViews.<system>` view carrying an `__entry` key, folded decls-winning onto a system-bearing
+  # root by the scopeRoots fold. On that violation the abort these projections document did not fire; the
+  # coordinate bound to `null` and the fleet died later, elsewhere, with an unattributed `expected a set
+  # but found null` at whichever consumer first read a field off it.
+  #
+  # BOTH SHAPES ARE EXERCISED BELOW AND THE PAIR IS THE POINT. The ABSENT key is the case the `or` form
+  # could see, so it is the positive control that the old predicate was live rather than dead. The
+  # PRESENT-null key is the case it could not see, so it is the finding. The null-aware form aborts on
+  # both — and on the absent one it aborts by its own `e == null` test rather than by inheriting the `or`,
+  # which is the distinction the argument alone cannot establish.
+  nullEntryNode = id: (synthNode id) // { decls.__entry = null; };
+  absentEntryNode = id: (synthNode id) // { decls = { }; };
+  abortsC = e: !(builtins.tryEval (builtins.deepSeq e true)).success;
+
   synthCoords =
     edges:
     mkCoords {
@@ -513,7 +532,7 @@ let
     map (n: n.key) (
       (import "${denHoagSrc}/lib/attributes/resolved-aspects.nix"
         {
-          inherit prelude graph;
+          inherit prelude graph errors;
           inherit (denHoag.internal)
             scope
             resolve
@@ -630,6 +649,37 @@ in
           "host"
           "user"
         ];
+      };
+    };
+
+    # ══ THE ENTRY READ IS NULL-AWARE AT BOTH COORDINATE PROJECTIONS ═══════════════════════════════
+    # One row per (reader × entry shape), with the admitting control in the same run and over the same
+    # pool. The controls are what make the aborts mean something: `coordOf` and `cellCoordsOf` both
+    # answer normally at an entried node, so an abort at the other two shapes is the entry's doing and
+    # not the accessor's or the pool's. `deepSeq` because a coordinate is an attrset whose VALUE is the
+    # entry — a bare `tryEval` would succeed on the unforced attrset and report a false admission.
+    test-entry-null-aware-coordOf = {
+      expr = {
+        entried = abortsC ((synthCoords linearPool).coordOf synthNode "blade:d");
+        presentNull = abortsC ((synthCoords linearPool).coordOf nullEntryNode "blade:d");
+        absent = abortsC ((synthCoords linearPool).coordOf absentEntryNode "blade:d");
+      };
+      expected = {
+        entried = false;
+        presentNull = true;
+        absent = true;
+      };
+    };
+    test-entry-null-aware-cellCoordsOf = {
+      expr = {
+        entried = abortsC ((synthCoords linearPool).cellCoordsOf synthNode "blade:d");
+        presentNull = abortsC ((synthCoords linearPool).cellCoordsOf nullEntryNode "blade:d");
+        absent = abortsC ((synthCoords linearPool).cellCoordsOf absentEntryNode "blade:d");
+      };
+      expected = {
+        entried = false;
+        presentNull = true;
+        absent = true;
       };
     };
 

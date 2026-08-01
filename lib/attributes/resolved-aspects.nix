@@ -22,6 +22,7 @@
   aspects,
   select,
   graph,
+  errors,
 }:
 {
   allAspects ? { },
@@ -537,7 +538,26 @@ in
 
         ancestorSeen = ancestorResolvedKeys self id;
         nbIndex = indexByNeededBy;
-        selCtx = select.adapters.scope.mkContext { inherit (self) node get; };
+        # The selector-form `neededBy` context. `entryFor` is NULL-AWARE for the reason scope-adapter.nix
+        # states at length: `or` fires on a missing attribute and never on a present one holding `null`, so
+        # the `scopeRoots` fold's reachable overwrite (a `den.systemViews.<system>` view carrying `__entry
+        # = null`) would otherwise flip a selector-form `neededBy` from activating to not activating with
+        # no abort — an aspect's content silently not delivered, which is the same silent-divergence class
+        # one field over from dispatch. This is the SECOND scope-context builder and it does not route
+        # through `matchIdWith`, so it threads the obligation itself; §3.2a q8's consolidation of the two
+        # into one den-hoag-local constructor is a kernel change with its own design question open.
+        selCtx = select.adapters.scope.mkContext {
+          inherit (self) node get;
+          entryFor =
+            id:
+            let
+              e = (self.node id).decls.__entry or null;
+            in
+            if e == null then
+              errors.missingEntry id "the `neededBy` selector context (aspect resolution)"
+            else
+              e;
+        };
 
         fixed =
           scope.circular

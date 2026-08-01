@@ -54,6 +54,7 @@ let
       aspects
       select
       graph
+      errors
       ;
   };
   collections = import ./collections.nix {

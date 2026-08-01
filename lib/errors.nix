@@ -139,14 +139,26 @@ in
       builtins.concatStringsSep ", " (map (m: "`${m}`") members)
     }); a product axis fixes ONE coordinate, so two same-type ancestors name two incompatible cells";
 
-  # A node carrying no `__entry`. Every node minter writes one (`buildRoots` and `cellChildrenFor` both
-  # do), so this names a node that reached the projections without going through either. A BARE SELECT
-  # here would be an uncatchable crash naming only the attribute; a silent sentinel would be an
-  # absence⇒something decision of exactly the class these projections exist to remove. Neither: abort
-  # NAMED, beside `unknownAxis`, since the projection is total only if its value source is.
+  # A node whose `decls.__entry` yields no usable entry. A BARE SELECT here would be an uncatchable crash
+  # naming only the attribute; a silent sentinel would be an absence⇒something decision of exactly the class
+  # these readers exist to remove. Neither: abort NAMED, beside `unknownAxis`, since a projection is total
+  # only if its value source is.
+  #
+  # TWO CAUSES, AND THE MESSAGE NAMES BOTH WITH THE REACHABLE ONE FIRST. The key PRESENT and valued `null`
+  # is what a declared surface actually produces: both minters (`buildRoots`, `cellChildrenFor`) write
+  # `__entry` unconditionally, so no minted node lacks the key — what happens is that the `scopeRoots` fold
+  # merges externally supplied data over the minted `decls`, and a `den.systemViews.<system>` view is
+  # `lazyAttrsOf raw`, so a key named `__entry` valued `null` overwrites the mint. The key ABSENT is the
+  # second cause and names the case the minters exclude. A message diagnosing only the second sends its
+  # reader hunting for a third minter that does not exist.
+  #
+  # `raisedBy` NAMES THE READER, and it is a parameter rather than a fixed string because the abort is
+  # raised from more than one path: the two coordinate projections and the two scope-selector contexts.
+  # One condition, one message; which reader observed it is the part that varies, so it is the part
+  # the caller supplies.
   missingEntry =
-    nodeId:
-    fail "coordinate value (§6.1)" "node `${nodeId}` carries no `decls.__entry`, so it has no coordinate value; every node minter writes one, so this node reached the coordinate projections without being minted by `buildRoots` or `cellChildrenFor`";
+    nodeId: raisedBy:
+    fail "node entry (§6.1)" "${raisedBy} read node `${nodeId}`'s `decls.__entry` and found no entry there. Either the entry is PRESENT and valued `null` — overwritten downstream of the mint, which a `den.systemViews.<system>` view carrying an `__entry` key does to every system-bearing root it lands on — or it is ABSENT, meaning this node reached the reader without being minted by `buildRoots` or `cellChildrenFor`. Check the `den.systemViews` entry for this node's system first: it is the reachable one, and it is the only one a declared surface can cause";
 
   # A containment SOURCE slice naming more than one coordinate. The slice is the emitting scope's coords
   # minus the target (`containmentOf`), and it denotes ONE source node — the id rule reads a single

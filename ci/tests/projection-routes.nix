@@ -264,6 +264,7 @@ let
           aspects
           select
           resolve
+          errors
           ;
         graph = denHoag.internal.genGraph;
       }
