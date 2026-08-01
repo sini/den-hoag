@@ -291,10 +291,12 @@ in
         msg = "the binding key `channels` at `unit:u1` is a gathered channel-surface key";
       };
     };
-    # THE REMEDY LAW, executable: a remedy is admissible only if following it makes the refusal's own
-    # predicate FALSE. "Register it as a channel" is therefore NOT a remedy and must not appear — it
-    # removes the key from nothing, so this refusal still fires with one MORE origin and the FLEET check
-    # now fires too. Following it, the author is told they made progress while the collision escalates.
+    # THE REMEDY LAW, executable: each remedy must strictly SHRINK the origin set and never grow it (the
+    # rendered SET, followed in full, is what falsifies the predicate — per-remedy falsification is
+    # unsatisfiable on a multi-origin key). "Register it as a channel" is therefore NOT a remedy and must
+    # not appear: it removes the key from nothing and ADDS the registration origin, so this refusal still
+    # fires with one more origin and the FLEET check now fires too. Following it, the author is told they
+    # made progress while the collision escalates.
     test-gathered-key-shadow-does-not-offer-registration = {
       expr =
         let

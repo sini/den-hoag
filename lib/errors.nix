@@ -46,14 +46,24 @@ let
   # The binding SIBLING names, rendered from the list the caller enumerates them in. INTERPOLATED, never
   # spelled: a third sibling reaches both shadow messages by construction, from the one enumeration the
   # sibling attrset is itself built from. A literal pair in the prose is the same drift the predicate fix
-  # removed, surviving one field over.
-  renderSiblings = names: builtins.concatStringsSep " and " (map (n: "`${n}`") names);
+  # removed, surviving one field over. The JOIN is written as the expression that performs it: Nix has no
+  # string coercion for a list, so a bare `${names}` would be a thrown coercion error — the refusal
+  # destroying itself on the abort path, which is the failure shape these refusals exist to close, one
+  # level in.
+  renderSiblings = names: builtins.concatStringsSep ", " names;
   # A colliding key's ORIGINS, one clause per WRITER. The origins are NOT disjoint — a key can arrive by
   # several routes at once, and moving only one leaves the collision standing — so every origin the
-  # discriminator found is rendered, each with the remedy that reaches ITS owner. A remedy is admissible
-  # only if following it makes the refusal's own predicate false: one that leaves the origin set unchanged
-  # fails open, and one that GROWS it is worse than silence, because the author who follows it is told they
-  # made progress.
+  # discriminator found is rendered, each with the remedy that reaches ITS owner.
+  #
+  # THE REMEDY LAW, quantified over the SET rather than over each remedy: a remedy is admissible only if
+  # following it strictly SHRINKS the origin set and never grows it, and the rendered remedy SET, followed
+  # in full, makes the refusal's own predicate false. Per-remedy falsification is unsatisfiable by
+  # construction on a multi-origin key — each origin is an independent writer, so clearing the enriching
+  # policy while the key is also inherited leaves the predicate standing — which would make all five origin
+  # remedies inadmissible on exactly the keys the five-way split exists to serve. So the per-remedy
+  # obligation is monotone shrinkage, and falsifying the predicate is an obligation on the set the message
+  # emits in full. A remedy that leaves the origin set unchanged fails open; one that GROWS it is worse than
+  # silence, because the author who follows it is told they made progress.
   renderOriginLabels = origins: builtins.concatStringsSep " and " (map (o: o.label) origins);
   renderOriginRemedies = origins: builtins.concatStringsSep "; " (map (o: o.remedy) origins);
 in
