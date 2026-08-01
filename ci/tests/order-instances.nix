@@ -366,6 +366,13 @@ let
         { actions.resolution = (graph.${id} or { }).edges or [ ]; }
       else if attr == "children" then
         (graph.${id} or { }).children or { }
+      # The structural reach payload carries each scope's injections beside its resolved aspects, so
+      # `reach.compute` reads this scope's relocation memo. `[ ]` is DATA — no node in this fixture declares
+      # an `inject` act, so it is the real equation's own answer here. `sourceOrder` is deliberately absent:
+      # a hand-written identity order would pin the un-relocated semantics at a second site, and its absence
+      # makes any future `.sourceOrder` read hit `sourceOrderOf`'s named abort instead.
+      else if attr == "class-relocation" then
+        { injections = [ ]; }
       else
         throw "reach-order stub: unexpected attr ${attr}";
     node = id: (graph.${id} or { }).node or { };

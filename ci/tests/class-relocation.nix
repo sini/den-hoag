@@ -95,7 +95,12 @@ let
     module = mod tag;
   };
 
-  # synthetic resolver: `resolved-aspects` = the aspects above; `declarations.actions.resolution` = `acts`.
+  # synthetic resolver: `resolved-aspects` = the aspects above; `declarations.actions.resolution` = `acts`;
+  # `class-relocation` = the real per-scope memo, serving both fields `class-seeds` now reads through it —
+  # `injections` for the element list, `sourceOrder` for each channel's preimage. It is driven from the
+  # KERNEL's own equation against this same `self` (the shape the `content-key-totality` arm beside it
+  # already uses), so the fixture supplies the ACTS and the kernel supplies the relation; a hand-written
+  # memo here would be a second copy of the algorithm under test.
   mkSelf =
     acts:
     let
@@ -108,6 +113,8 @@ let
             { actions.resolution = acts; }
           else if attr == "content-key-totality" then
             cm.content-key-totality.compute self id
+          else if attr == "class-relocation" then
+            cm.class-relocation.compute self id
           else
             throw "class-relocation: unexpected attr ${attr}";
       };
@@ -162,8 +169,13 @@ in
 {
   flake.tests.class-relocation = {
     # ── (1) the diamond ────────────────────────────────────────────────────────────────────────────────
-    # the sink gathers its own content first, then its preimage in registered-channel order; every channel
-    # with an outgoing relocation is emptied.
+    # every channel with an outgoing relocation is emptied, and the sink gathers the whole preimage.
+    # THE ORDER IS ELEMENT-MAJOR: the query nests element-outer, source-channel-inner, so the answer follows
+    # the aspects' own include order (aspA, aspB, aspC, aspD) rather than the sink's channel order
+    # (`[D,A,B,C]`, which would answer `[ "cD" "cA" "cB" "cC" ]`). merge_ord is the architecture's content
+    # order; under channel-major an EARLIER aspect's relocated content lands after a LATER aspect's, so
+    # declaring a relocation between two channels would invert include-order precedence for content in a
+    # third. The multiset is identical under both nestings — only the order is pinned here.
     test-diamond-answer = {
       expr = answer diamond;
       expected = {
@@ -171,10 +183,10 @@ in
         B = [ ];
         C = [ ];
         D = [
-          "cD"
           "cA"
           "cB"
           "cC"
+          "cD"
         ];
         Z = [ ];
       };
@@ -241,12 +253,13 @@ in
     };
 
     # ── (4) the unregistered intermediate ──────────────────────────────────────────────────────────────
-    # `A→X, X→B` with `X ∉ Ch`: A's content rides through X and lands at B.
+    # `A→X, X→B` with `X ∉ Ch`: A's content rides through X and lands at B. Element-major again — B's source
+    # order is `[B,A,X]`, but the element list visits aspA before aspB.
     test-unregistered-intermediate-delivers = {
       expr = (answer intermediate).B;
       expected = [
-        "cB"
         "cA"
+        "cB"
       ];
     };
 

@@ -74,7 +74,12 @@ let
     }
   ];
   # synthetic resolver: `resolved-aspects` = the two nodes; `declarations.actions.resolution` = `acts`;
-  # `content-key-totality` = the real §2.2 classification driver over those same nodes.
+  # `content-key-totality` = the real §2.2 classification driver over those same nodes; `class-relocation`
+  # = the real per-scope relocation memo, whose `injections` field `class-seeds` reads for its element list
+  # and whose `sourceOrder` the extraction reads a channel's preimage through. Both are driven from the
+  # KERNEL's own equation against this same `self`, so the instrument supplies DATA (the acts at the scope)
+  # and never a second copy of the relation — a hand-written memo would replicate the algorithm and any
+  # divergence from the kernel's would be silent.
   mkSelf =
     acts:
     let
@@ -87,6 +92,8 @@ let
             { actions.resolution = acts; }
           else if attr == "content-key-totality" then
             cm.content-key-totality.compute self id
+          else if attr == "class-relocation" then
+            cm.class-relocation.compute self id
           else
             throw "class-bucket-query: unexpected attr ${attr}";
       };

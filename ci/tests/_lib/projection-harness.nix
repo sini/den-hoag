@@ -95,7 +95,16 @@ let
         # rather than defaulted in the kernel, so a fleet that authors containment cannot read none.
         containAncestorIds = _nid: [ ];
       };
-  # A reach-graph stub `self` (resolved-aspects / declarations / children).
+  # A reach-graph stub `self` (resolved-aspects / declarations / children / class-relocation).
+  # ★ THIS STUB SERVES `reach.compute`, WHICH IS A DIFFERENT CONSUMER FROM `mkRelocEval`'s. Both reach call
+  # sites below (`projectReach`, `projectReachTotal`) hand `reach.compute` the RAW stub, while
+  # `mkRelocEval` wraps it for the EXTRACTION — so the self-referential override above does not cover this
+  # demand, and each eval answers the demand of the consumer it is handed to.
+  # WHAT `reach` NEEDS IS `injections`, and `[ ]` is DATA rather than hand-pinned semantics: these fixtures
+  # declare no `inject` act, so the empty list is the real equation's own answer on their declaration set.
+  # `sourceOrder` is deliberately NOT answered here — `mkRelocEval` serves that half from the kernel's
+  # equation, and a hand-written identity order at this arm would pin the un-relocated semantics at a
+  # second site. The two accessors compose, each naming the field it needs.
   mkStub = graph: {
     get =
       id: attr:
@@ -105,6 +114,8 @@ let
         { actions.resolution = (graph.${id} or { }).edges or [ ]; }
       else if attr == "children" then
         (graph.${id} or { }).children or { }
+      else if attr == "class-relocation" then
+        { injections = [ ]; }
       else
         throw "projection stub: unexpected attr ${attr}";
     node = id: (graph.${id} or { }).node or { };

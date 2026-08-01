@@ -84,7 +84,11 @@ let
         inherit classifyKey;
         inherit (aspectSchema) keyCategory;
       };
-  inherit (cm) classSliceAt assertKeysRegistered;
+  # `sourceOrderOf` rides along because `mkOutputModules` now reads its ROUTE DESTINATIONS through it: a
+  # route's `to` is a coordinate at the target root, relabelled by that root's own relocation exactly as the
+  # element arm's sources are. It is a REQUIRED formal there, so this instrument supplies the real query
+  # rather than letting a default answer as though no relocation existed.
+  inherit (cm) classSliceAt sourceOrderOf assertKeysRegistered;
 
   # A synthetic content element `{ key; content; scope; assertedClasses }` (the reach node shape
   # `classSliceAt` reads). `scope` and `assertedClasses` are STAMPED because a content element is produced
@@ -176,7 +180,8 @@ let
 
   # Instantiate the REAL `mkOutputModules` over a stub `result` and pull out `projectClass` (the code path
   # under test). classesByName/classOfNode/channelNames are inert for projectClass (it reads only reach +
-  # declarations + enriched-context); `classSliceAt`/`assertKeysRegistered` are the real extraction.
+  # declarations + enriched-context + the relocation memo); `classSliceAt`/`sourceOrderOf`/
+  # `assertKeysRegistered` are the real extraction.
   mkOut =
     graph:
     import "${denHoagSrc}/lib/attributes/output-modules.nix"
@@ -197,7 +202,7 @@ let
         classesByName = { };
         classOfNode = _: null;
         channelNames = [ ];
-        inherit classSliceAt assertKeysRegistered;
+        inherit classSliceAt sourceOrderOf assertKeysRegistered;
       };
 
   projectClassOf =

@@ -126,6 +126,17 @@ let
             { actions.resolution = (graph.${id} or { }).edges or [ ]; }
           else if attr == "children" then
             (graph.${id} or { }).children or { }
+          # The structural reach payload is a scope's content ELEMENTS — its resolved aspects and its
+          # injections — so `reach.compute` reads this scope's relocation memo for the second half.
+          # `[ ]` IS DATA, not hand-pinned semantics: this fixture declares no `inject` act at any node, so
+          # the empty list is the real equation's own answer on this declaration set.
+          # THE ARM DELIBERATELY DOES NOT ANSWER `sourceOrder`. A hand-written identity order there would be
+          # the un-relocated semantics pinned at a second site; leaving the field absent makes any future
+          # `.sourceOrder` read from this stub hit `sourceOrderOf`'s NAMED abort instead of a silent
+          # identity. The two accessors compose — each names the field it needs — which is what lets a
+          # partial stub be the correct one.
+          else if attr == "class-relocation" then
+            { injections = [ ]; }
           else
             throw "reach-graph stub: unexpected attr ${attr}";
         node = id: (graph.${id} or { }).node or { };
