@@ -38,7 +38,7 @@ let
         den.schema.host.includes = [ "seed" ];
         den.aspects.hostc.nixos.networking.hostName = "igloo";
         # the host-fired route (a class-source delivery: collected(src) -> root(dst)).
-        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
         # this fixture registers `route1` and includes it nowhere: an undeclared selection is derived from
         # the schema, where "in no includes list" correctly means "selects nothing". That is the 241-firings
         # correction doing its job — and it is the right answer to a question this suite is not asking,

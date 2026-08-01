@@ -80,7 +80,7 @@ let
         den.schema.user.includes = [ "acct" ];
         # ★ THE CORPUS'S OWN SELECTION, modelled rather than approximated. `env-users` is wired in
         # nix-config as `den.schema.host.includes = [ den.policies.env-users ]`, so its real selection is
-        # `[ "host" ]`. `selects = null` would assert something STRICTLY WEAKER and false — unconstrained
+        # `sel.attrs { type = \"host\"; }`. `sel.star` would assert something STRICTLY WEAKER and false — unconstrained
         # by node kind — which with a `{ host, ... }` gate leaves the rule eligible at descendant CELLS,
         # where its resolve-family `member` meets `errors.memberAtCell` ("no legitimate consumer: abort
         # LOUD"). Latent here only because nothing forces that path yet.

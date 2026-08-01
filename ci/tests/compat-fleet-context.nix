@@ -90,10 +90,10 @@ let
     ];
 
   # Compile a v1 policy SET through the real compat compile + concern-policies (declared codomain → feeds).
-  # `selects = null` is restated on each compiled record because THIS suite's subject is the ENRICH
+  # `selects = sel.star` is restated on each compiled record because THIS suite's subject is the ENRICH
   # FIXPOINT — that a presence-gated consumer becomes live once `secretsConfig` is bound. These fixture
   # decl sets carry no `den.schema.<K>.includes`, so compat's own mint would correctly give every one of
-  # them `selects = [ ]` (a registered-but-unincluded policy selects nothing — the defect this design
+  # them `sel.any [ ]` (a registered-but-unincluded policy selects nothing — the defect this design
   # removes). That is the right answer to a question this suite is not asking, and it would make all three
   # rule sets equally inert and the comparison vacuous.
   rulesFor =

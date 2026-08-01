@@ -33,7 +33,7 @@ let
   noChildren = _self: _id: { };
 
   # an enrich declaration is inert data: { key; value; __policy; }.
-  # `selects = null` — unconstrained: the rule fires wherever its gate admits. Stamped onto the built
+  # `selects = sel.star` — every node: the rule fires wherever its gate admits. Stamped onto the built
   # rule because `dispatch.mkRule`'s argument set is closed; the kernel's own compile sets the same field.
   enrichRule = args: enrichRule' args // { selects = sel.star; };
   enrichRule' =

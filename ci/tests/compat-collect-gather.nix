@@ -67,7 +67,7 @@ let
       # `mesh`… split across the two hosts so both arms are exercised on ONE fleet:
       #   h-collect fires at every host-bearing node ({ host, … }) — the mark lands at hosts AND cells
       #   (cells gather nothing on `mesh`: their siblings are cells, kind-gated out).
-      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
       # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
       # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
       # its job, and the right answer to a question this suite is not asking.
@@ -82,7 +82,7 @@ let
           ];
       };
       # cell-collect (same-host siblings) + cell-collectAll (fleet) on `umesh`.
-      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
       # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
       # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
       # its job, and the right answer to a question this suite is not asking.
@@ -129,7 +129,7 @@ let
           umesh = [ "umesh-${user.name}" ];
         };
       den.schema.user.includes = [ "cemit" ];
-      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
       # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
       # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
       # its job, and the right answer to a question this suite is not asking.
@@ -146,7 +146,7 @@ let
       # host-side collectAll on `mesh` — the entity-gate NEGATIVE: only CELLS emit mesh here, and the
       # `{ host, … }: true` predicate must reject every one of them (own kind `user`), so the host's
       # mesh binding stays EMPTY even fleet-wide.
-      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
       # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
       # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
       # its job, and the right answer to a question this suite is not asking.
@@ -180,7 +180,7 @@ let
         "hemit"
         "femit"
       ];
-      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
       # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
       # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
       # its job, and the right answer to a question this suite is not asking.

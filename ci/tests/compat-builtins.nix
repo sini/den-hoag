@@ -37,10 +37,10 @@ let
   # The stub through concern-policies → gen-dispatch rules (the value-less probe tryEval-catches the throw →
   # expansion, so it compiles to a policy sub-rule gated on `{ system = false; }`), driven through the REAL
   # structural `declarations` dispatch (attr 4) over a hand-built root — exactly the corpus firing path.
-  # `selects = null` (unconstrained) is stated here because THIS test is about the KERNEL firing path —
+  # `selects = sel.star` (every node) is stated here because THIS test is about the KERNEL firing path —
   # that the stub's refusal reaches a real dispatch and throws where a `system` coord binds, i.e. that it
   # is gated-inert for class-A by DEMAND rather than by dispatch. Compat's own mint would give it
-  # `selects = [ ]` (the fixture's v1 decl set puts it in no `includes` list, and a registered-but-
+  # `sel.any [ ]` (the fixture's v1 decl set puts it in no `includes` list, and a registered-but-
   # unincluded policy selecting nothing is the defect this design removes) — correct there, and beside the
   # point here, so the selection is declared rather than inherited from a compile this test is not driving.
   stubRules = I.compilePolicies {

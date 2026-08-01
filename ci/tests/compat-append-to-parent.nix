@@ -71,7 +71,7 @@ let
         den.schema.user.includes = [ "acct" ];
         # the CELL-FIRED forward ({ user, host } formals ⇒ fires at (user,host) cells only) — the
         # userForward shape: fromClass=home-manager, intoClass=host.class, intoPath=home-manager/users/<n>.
-        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
         # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
         # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
         # its job, and the right answer to a question this suite is not asking.
@@ -126,7 +126,7 @@ let
         den.quirks.dst = { };
         den.aspects.seed.src = [ "hello" ];
         den.schema.host.includes = [ "seed" ];
-        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+        # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
         # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
         # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
         # its job, and the right answer to a question this suite is not asking.

@@ -464,7 +464,7 @@ in
     # (7) A `{ host, user }` BARE-FN include on the host self-aspect RADIATES (a synthetic edge policy +
     #     aspect are compiled) and fires at the USER CELL (its `user` formal is satisfiable there), landing
     #     `home-manager.lateMarker` in the cell's home-manager bucket, and does NOT fire at the host
-    #     (`selects = [ host user ]` ∧ the `{host,user}` `gate` — the host lacks the `user`
+    #     (`selects = sel.any [ attrs-host attrs-user ]` ∧ the `{host,user}` `gate` — the host lacks the `user`
     #     coord). This is board #57 confinement applied to a bare-fn aspect-include.
     test-barefn-latedispatch-fires-at-cell-not-host = {
       expr = {

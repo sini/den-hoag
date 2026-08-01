@@ -166,7 +166,7 @@ let
   #
   # `emits`/`binds` are declared because the policy CODOMAIN is required: omitting either aborts at policy
   # registration, which would make this fixture abort for a reason that never touches containment at all.
-  # Record-form + `selects = ["host"]` keeps it off the user cell (which inherits the `host` coord).
+  # Record-form + `selects = sel.attrs { type = "host"; }` keeps it off the user cell (which inherits the `host` coord).
   hostToEnvBack =
     { config, ... }:
     {

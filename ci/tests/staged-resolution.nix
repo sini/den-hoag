@@ -147,7 +147,7 @@ let
       };
     };
   # rack phase: reads the relation-carried `authToken` and emits a leaf-dim MEMBERSHIP (rack, blade) — the
-  # blade cell. Value-conditional (emits nothing without the token → expansion). `selects = [rack]`
+  # blade cell. Value-conditional (emits nothing without the token → expansion). `sel.attrs { type = "rack"; }`
   # keeps it off the blade cell (which inherits `rack` + the injected `authToken`) — the resolve-policy
   # scope-restriction the double-fire discipline expects.
   rackMemberMod =

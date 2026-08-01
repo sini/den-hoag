@@ -48,7 +48,7 @@ let
   # stratum, so the rule still compiles and still fires — and the first real `edge` emission is then
   # checked against that empty codomain and aborts NAMED at the emitting site
   # (`conformingProduce` → `errors.emitsUndeclared`). The declaration is what lets a value-conditional
-  # emitter ROUTE rather than abort; `selects = null` keeps it unconstrained (it is registered here, not
+  # emitter ROUTE rather than abort; `selects = sel.star` keeps it unconstrained (it is registered here, not
   # selected through any `includes` list).
   markPolicy =
     mkPolicy "mark-aarch64" (

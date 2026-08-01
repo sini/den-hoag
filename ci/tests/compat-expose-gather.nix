@@ -42,7 +42,7 @@ let
       den.aspects.emit-ru.resolved-users = { user, ... }: [ { name = user.name or "?"; } ];
       den.aspects.emit-secret.secret = { user, ... }: [ "s-${user.name or "?"}" ];
       # EXPOSE resolved-users (the bottom-up bubble); `secret` is emitted but NEVER exposed.
-      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = null` is DECLARED because
+      # A v1-shaped record (`__isPolicy`) carrying its declarations. `selects = sel.star` is DECLARED because
       # this fixture registers the policy and includes it nowhere: an undeclared selection is derived from
       # the schema, where "in no includes list" means "selects nothing" — the 241-firings correction doing
       # its job, and the right answer to a question this suite is not asking.

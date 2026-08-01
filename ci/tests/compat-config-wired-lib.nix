@@ -83,7 +83,7 @@ let
       user.isEntity = true;
     };
     # ★ THE CORPUS'S OWN SELECTION, modelled rather than approximated. This models a host-scope resolve
-    # policy, so its selection is `[ "host" ]`. `selects = null` would assert unconstrained-by-node-kind —
+    # policy, so its selection is `sel.attrs { type = "host"; }`. `sel.star` would assert unconstrained-by-node-kind —
     # strictly weaker and false — leaving a `member` emitter eligible at descendant cells, where
     # `errors.memberAtCell` aborts. `null` is a claim, not a neutral placeholder.
     den.policies.env-to-host = {
