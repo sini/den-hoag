@@ -97,6 +97,29 @@ let
       cell = aspectsAt f "user:u1@host:h1";
     };
   authored = sel.attrs { type = "user"; };
+
+  # The kind-include POLICY arm with `den.schema.host.excludes` naming the record — the ONE fixture both
+  # exclusion rows read, so the pair differs in exactly what the record states and in nothing else.
+  excludedSelects =
+    extra:
+    let
+      r = recordWith extra;
+    in
+    (denCompat.compile {
+      hosts.x86_64-linux.h1.class = "nixos";
+      aspects.a.nixos.tag = "t";
+      schema.host = {
+        includes = [
+          "a"
+          r
+        ];
+        # ★ A REF, not a bare name. `excludes` is matched through the same ref expansion the includes
+        #   lists use, which reads `.name` off each entry — so a bare `"p"` here silently excludes
+        #   nothing. Measured while building this row, and stated so the fixture is not read as evidence
+        #   that the string form works.
+        excludes = [ { name = "p"; } ];
+      };
+    }).policies.__kindInclude__host__policy__0.selects;
 in
 {
   flake.tests.compat-authored-selects = {
@@ -220,43 +243,33 @@ in
       };
     };
 
-    # ★ THE SCHEMA-LEVEL EXCLUSION STAYS OUTERMOST, and this row exists because the ordering is an OPEN
-    # QUESTION rather than a settled law. `den.schema.<kind>.excludes` naming a policy is a DECLARATION
-    # too — made at the schema instead of on the record — so a record carrying `selects` that its kind
-    # also excludes is two authored statements in conflict, and the law that settles record-versus-
-    # DERIVATION does not settle it. The arm answers exactly what it answered before the seam on that
-    # input, so the seam lands without deciding it; this row is what a decision would have to change.
-    test-an-excluded-kind-include-policy-still-selects-nothing = {
-      expr =
-        let
-          excludedSelects =
-            extra:
-            let
-              r = recordWith extra;
-            in
-            (denCompat.compile {
-              hosts.x86_64-linux.h1.class = "nixos";
-              aspects.a.nixos.tag = "t";
-              schema.host = {
-                includes = [
-                  "a"
-                  r
-                ];
-                # ★ A REF, not a bare name. `excludes` is matched through the same ref expansion the
-                #   includes lists use, which reads `.name` off each entry — so a bare `"p"` here
-                #   silently excludes nothing. Measured while building this row, and stated so the
-                #   fixture is not read as evidence that the string form works.
-                excludes = [ { name = "p"; } ];
-              };
-            }).policies.__kindInclude__host__policy__0.selects;
-        in
-        {
-          derived = excludedSelects { };
-          authored = excludedSelects { selects = authored; };
-        };
-      expected = {
-        derived = sel.any [ ];
-        authored = sel.any [ ];
+    # THE EXCLUSION WORKING NORMALLY — the control, and the half of this pair whose answer must NOT move.
+    # A record that states no selection of its own leaves `den.schema.host.excludes` the only statement
+    # about where it fires, and that statement is honoured exactly as it was before the seam existed:
+    # `sel.any [ ]`. Nothing about refusing the CONFLICT below may disturb the non-conflicting case.
+    test-an-excluded-kind-include-policy-with-no-authored-selects-selects-nothing = {
+      expr = excludedSelects { };
+      expected = sel.any [ ];
+    };
+
+    # ★★ TWO AUTHORED STATEMENTS IN CONFLICT ARE REFUSED, NAMED, AT THE ARM. `den.schema.host.excludes`
+    # naming `p` states that `p` is not selected at `host`; `p`'s own `selects` states where it IS
+    # selected. BOTH are authored — an exclude is a DECLARATION made at the schema rather than on the
+    # record, not a derivation — so the law that orders a record above a DERIVATION is silent here, and
+    # reading it as though it spoke would install a precedence without an argument. Every ordering
+    # honours one authored statement and makes the other DISAPPEAR with no signal, which is the defect
+    # class this whole surface exists to remove; so the conflict is made unrepresentable instead of
+    # silently resolved. The message names the policy, the kind, both statements and the fix, so the
+    # author is told which two statements collided rather than being handed one of them.
+    #
+    # ★ THE REFUSAL IS ON THE CONFLICT OF STATEMENTS, NOT OF OUTCOMES. This fixture's authored value
+    # disagrees with the exclusion, but an authored `sel.any [ ]` that AGREED with it would refuse just
+    # the same — noticing the agreement would need selector equality, which this arm declines to rest on.
+    test-an-excluded-kind-include-policy-with-an-authored-selects-refuses = {
+      expr = excludedSelects { selects = authored; };
+      expectedError = {
+        type = "ThrownError";
+        msg = "policy `p` carries an authored `selects` AND is named by `den\\.schema\\.host\\.excludes`.*DROP ONE";
       };
     };
 

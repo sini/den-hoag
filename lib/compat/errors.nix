@@ -265,4 +265,22 @@ in
   excludeSubtreeUnrepresentable =
     kind: policyName: attachKind:
     fail "schema exclude scope" "`den.schema.${kind}.excludes` names policy `${policyName}`, which attaches at kind `${attachKind}` — a strict DESCENDANT of `${kind}` under the containment schema. A v1 exclude is SUBTREE-scoped (it suppresses the policy beneath the excluding `${kind}` instance only), and den-hoag currently represents selection per KIND, which cannot say `beneath this instance`. Honouring it flatly would suppress `${policyName}` at every `${attachKind}` in the fleet, which is more than the declaration asks for, so it is refused instead of silently over-applied. The same-kind case (`${policyName}` attaching at `${kind}`) IS supported";
+
+  # TWO AUTHORED STATEMENTS IN CONFLICT, refused rather than ordered. `den.schema.<K>.excludes` naming a
+  # policy states that the policy is not selected at `K`; an authored `selects` on that same record states
+  # the selection itself. BOTH are authored — an exclude is a DECLARATION made at the schema, not a
+  # derivation — so DECLARATION-BEATS-DERIVATION, which orders an authored value above a DERIVED one, is
+  # SILENT here, and reading it as though it spoke is how a precedence gets installed without an argument.
+  # Either ordering makes one of the two authored statements DISAPPEAR with no signal, which is the defect
+  # class the required-and-total `selects` surface exists to remove, arriving between two surfaces instead
+  # of inside one field. So the conflict is made UNREPRESENTABLE rather than silently resolved, and it is
+  # decidable exactly where it is created (the ref, the kind and the exclusion are all in hand at the
+  # kind-include policy arm), so refusing costs no new information and no new instrument.
+  #
+  # ★ IT FIRES ON THE CONFLICT OF STATEMENTS, NOT OF OUTCOMES. An authored `selects` that happens to equal
+  # `sel.any [ ]` agrees with the exclusion, but noticing that agreement would need selector equality —
+  # which this surface declines to rest on. Refusing the stated conflict needs no equality at all.
+  selectsConflictsWithSchemaExclude =
+    kind: policyName:
+    fail "authored selects vs schema exclude" "policy `${policyName}` carries an authored `selects` AND is named by `den.schema.${kind}.excludes` — two AUTHORED statements in conflict at kind `${kind}`: the record states its own selection, while the schema states that `${policyName}` is not selected at `${kind}`. Neither is a derivation, so declaration-beats-derivation does not order them, and honouring either one would discard the other silently. den-hoag refuses instead. DROP ONE: remove `selects` from `${policyName}` to keep the schema exclusion, or remove `${policyName}` from `den.schema.${kind}.excludes` to keep the authored selection";
 }

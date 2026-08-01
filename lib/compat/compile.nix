@@ -2017,16 +2017,25 @@ let
                   # kind selector is this arm's TRANSLATION of where a v1 record is attached; an authored
                   # `selects` states the selection itself, so it wins over the translation.
                   #
-                  # ★ THE EXCLUSION STAYS OUTERMOST, and the ordering is the open question rather than a
-                  # preference. An exclusion is a DECLARATION TOO — made at the schema rather than on the
-                  # record — so a record carrying `selects` that its kind also excludes is two authored
-                  # statements in conflict, and which of them wins is not settled by the law that settles
-                  # record-versus-derivation. Written this way the excluded case answers exactly what it
-                  # answers today, so the seam lands without deciding a question nobody has posed.
+                  # ★ THE CONFLICT OF TWO AUTHORED STATEMENTS IS REFUSED, NOT ORDERED. An exclusion is a
+                  # DECLARATION TOO — made at the schema rather than on the record — so a record carrying
+                  # `selects` that its kind also excludes states two things at once, and the law that
+                  # settles record-versus-DERIVATION is silent on record-versus-RECORD. Every ordering
+                  # honours one statement and drops the other with no signal, which is the defect class
+                  # this surface removes; the conflict is decidable right here, where it is created, so it
+                  # is made unrepresentable instead. It fires on the conflict of STATEMENTS, not of
+                  # outcomes — an authored `sel.any [ ]` agrees with the exclusion, but seeing that would
+                  # need selector equality, which this arm does not rest on.
                   selects =
-                    if isExcludedAtKind kind (ref.name or null) then
+                    let
+                      excluded = isExcludedAtKind kind (ref.name or null);
+                      authored = ref ? selects;
+                    in
+                    if excluded && authored then
+                      errors.selectsConflictsWithSchemaExclude kind ref.name
+                    else if excluded then
                       sel.any [ ]
-                    else if ref ? selects then
+                    else if authored then
                       ref.selects
                     else
                       sel.attrs { type = kind; };
