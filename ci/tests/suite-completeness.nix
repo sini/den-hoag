@@ -63,8 +63,7 @@ in
       expr = {
         count = builtins.length xfail.actualTestFiles;
         anyUnderscoreDir = builtins.any (
-          f:
-          xfail.hasInfix "_lib/" f || xfail.hasInfix "_fixtures/" f || xfail.hasInfix "_probes/" f
+          f: xfail.hasInfix "_lib/" f || xfail.hasInfix "_fixtures/" f || xfail.hasInfix "_probes/" f
         ) xfail.actualTestFiles;
         hasKnownFile = builtins.elem "boundary.nix" xfail.actualTestFiles;
       };

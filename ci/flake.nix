@@ -147,6 +147,12 @@
                   plugins = p: [ p.mdformat-frontmatter ];
                   settings.number = true;
                 };
+
+                # ci/tests/_probes/ ships VERBATIM artifacts whose bytes are provenance: the core
+                # probe is md5-anchored to the validated spec core it was copied from, and a
+                # formatter pass severs that anchor while changing nothing semantic. Excluded, not
+                # formatted-once, so the anchor survives future formatter upgrades too.
+                treefmt.settings.global.excludes = [ "ci/tests/_probes/*" ];
               };
           }
         )
