@@ -130,7 +130,7 @@ let
       map (a: a.channel) (
         builtins.filter (
           a:
-          (a.__action or null) == "pipeOp"
+          (a.__action or null) == "pipeMark"
           && builtins.any (m: (m.__pipeMark or null) == "expose") (a.marks or [ ])
         ) (collectionDeclsAt result nid)
       )
@@ -142,7 +142,7 @@ let
     result: nid:
     prelude.concatMap (
       a:
-      if (a.__action or null) == "pipeOp" then
+      if (a.__action or null) == "pipeMark" then
         prelude.concatMap (
           m:
           if
@@ -171,7 +171,7 @@ let
     result: nid:
     prelude.concatMap (
       a:
-      if (a.__action or null) == "pipeOp" then
+      if (a.__action or null) == "pipeMark" then
         prelude.concatMap (
           m:
           if (m.__pipeMark or null) == "broadcast" then

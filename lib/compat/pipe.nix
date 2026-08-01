@@ -6,7 +6,8 @@
 #      default is an ordered-list channel; a quirk carrying merge/dedup/type/… channel options passes them
 #      through (its non-channel keys — `description`, … — are dropped: `pipe.channel` rejects unknown keys).
 #
-#   2. the v1 `pipe.from name [stages]` policy effect → a den-hoag collection-stratum `pipeOp` declaration
+#   2. the v1 `pipe.from name [stages]` policy effect → a den-hoag collection-stratum `pipeCommit` or
+#      `pipeMark` declaration
 #      (`compilePipe`): the deriving stages (filter/transform/fold/for) fold LEFT-TO-RIGHT into a gen-pipe
 #      operator DAG rooted at the named channel (`stageOp`); the delivery (to/as) and site (append/expose/
 #      broadcast/collect/collectAll/withProvenance) stages ride as inert markers the emission/consumption
@@ -274,11 +275,80 @@ in
     adapters = q.adapters or [ ];
   };
 
-  # Compile a v1 `pipe.from name [stages]` effect value → a collection-stratum `pipeOp` declaration on the
-  # named channel: the deriving op DAG (rooted at `name`), the delivery routes, and the site markers — all
-  # inert (Law C2, NO EFFECT RUNTIME). den-hoag's collection stratum consumes it at channel wiring.
+  # THE DECLARATION-SITE TOKENS for ONE firing's effect list — one entry per effect, `null` where the
+  # effect is not a pipe. The ordinal is taken WITHIN `(policyId, pipeName)` rather than over the whole
+  # effect list, so adding an unrelated effect to a body renumbers nothing: the blast radius of a renumber
+  # shrinks from "every pipe in the policy" to "same-channel pipes in the policy", which is the smallest
+  # domain that still separates gen-pipe L12a's collision class (two structurally-distinct deriving
+  # declarations over the same base+op collapsing onto one id).
+  #
+  # ★ WHAT CARRIES THE CORRECTNESS IS NOT THIS NARROWING BUT THE ARITY. The token has to be STABLE, not
+  # merely injective within one firing, and an index over `(innerFn value ctx)` — the FIRED body's return
+  # list — is renumbered by a differently-shaped firing. Under the definition-time commitment fire there
+  # is exactly ONE producer of derived-channel ids (`commitFn`, fired once per policy at one ctx with no
+  # node — a `pipeMark` carries no `derived` and no `routes`, so the mark route has no id-producing path
+  # at all), and a token produced by a firing that happens once cannot vary across firings that do not
+  # happen. The narrowing is blast radius; the arity is the soundness.
+  # ★ Reads `__policyEffect` on every element and `value.pipeName` only on a pipe one; the caller binds
+  # the result LAZILY, so a policy with no pipe effect forces none of it.
+  siteTokens =
+    policyId: effects:
+    let
+      nameOf = e: if (e.__policyEffect or null) == "pipe" then e.value.pipeName else null;
+      step =
+        acc: e:
+        let
+          n = nameOf e;
+        in
+        if n == null then
+          acc // { tokens = acc.tokens ++ [ null ]; }
+        else
+          {
+            seen = acc.seen // {
+              ${n} = (acc.seen.${n} or 0) + 1;
+            };
+            tokens = acc.tokens ++ [ "${policyId}-${n}-${toString (acc.seen.${n} or 0)}" ];
+          };
+    in
+    (prelude.foldl' step {
+      seen = { };
+      tokens = [ ];
+    } effects).tokens;
+
+  # Compile a v1 `pipe.from name [stages]` effect value → a collection-stratum declaration on the named
+  # channel: the deriving op DAG (rooted at `name`), the delivery routes, and the site markers — all inert
+  # (Law C2, NO EFFECT RUNTIME). den-hoag's collection stratum consumes it at channel wiring.
+  #
+  # WHICH KIND IT EMITS IS THE MODE, FIXED AT TRANSLATION AND NEVER READ FROM A CTX:
+  #   • `mode = "commit"` — the definition-time firing. Emits `pipeCommit { channel; derived; routes;
+  #     targeted; }` and NOTHING ELSE for a pipe. Its result rides the record's `ops`.
+  #   • `mode = "mark"` — the dispatched firing. Emits `pipeMark { channel; marks; }`, EXCEPT where the
+  #     record bears commitment content that no declaration authorises, in which case it emits the
+  #     COMMITMENT kind — the honest kind for what the body produced — so that a declaration law can
+  #     refuse it. Dropping the commitment fields there would be the silent vanish this seam closes.
+  #
+  # THE INVARIANT, stated at the strength the design needs: THE MARK ROUTE NEVER EMITS A COMMITMENT THAT A
+  # DECLARATION AUTHORISES. Where `declaresCommit` holds, the commitment fields ride `ops` from the single
+  # commitment fire and this arm emits `pipeMark` alone; where it does not, the commitment kind is emitted
+  # INTO THE PATH OF A REFUSAL. A per-node commitment therefore cannot reach a consumer on either branch —
+  # in the first because it is not emitted, in the second because it is refused before the firing's
+  # declarations are consumed. That case split is exhaustive over a two-valued translation-time fact.
+  #
+  # ★ THIS FUNCTION NEVER THROWS. The refusals are tests over the value a firing RETURNED, evaluated by
+  # the caller: `recoverDecls` wraps the recovery fire in `tryEval`, which destroys a caught throw's
+  # message, so a refusal raised from inside a body arrives as `policyCodomainUnrecoverable` with the
+  # channel and the field gone. No envelope, present or future, can swallow a refusal that is not raised
+  # inside one.
+  # ★ IT EMITS EXACTLY ONE KIND PER PIPE AND STRIPS NOTHING. Emitting both kinds and filtering the wrong
+  # one per route would build a bad intermediate a later step removes, and it would kill the guard: a
+  # filtered-out declaration can never reach a conformance check.
   compilePipe =
-    declare: policyId: effectIdx: value:
+    declare:
+    {
+      mode,
+      declaresCommit ? false,
+    }:
+    policyId: site: value:
     let
       pipeName = value.pipeName;
       compiled = map (stageOp declare) (value.stages or [ ]);
@@ -323,13 +393,13 @@ in
       # per-declaration `site` token folds into the derived id (`<base>#<idOf site>`), giving distinct
       # declarations distinct ids with NO ordinal renamer; it feeds the internal id ONLY — compose recomputes
       # the channel NAME as `<input>.<op>.<declIndex>` from the op + input name, never the site, so natural
-      # names are untouched. The token is INJECTIVE per declaration: the owning policy's identity dash-joined
-      # to its within-policy effect index (`#`-free — gen-pipe adds the single `#`). Distinct policies →
-      # distinct policyId; one policy's distinct pipe declarations → distinct effectIdx; den-hoag never shares
-      # a pipe node ⇒ no false merge. Baked at construction on the flatten `over` root — chains are linear, so
-      # id-stacking propagates the one root site to every depth. Confined to deriving pipes (an as/to pipe
-      # keeps its bare base ref, byte-identical and never disambiguated).
-      site = "${policyId}-${toString effectIdx}";
+      # names are untouched. The token is supplied by `siteTokens` above — the owning policy's identity, the
+      # channel name and the ordinal WITHIN that pair, dash-joined (`#`-free — gen-pipe adds the single
+      # `#`). Distinct policies → distinct policyId; distinct channels → distinct pipeName; one policy's
+      # distinct pipes on ONE channel → distinct ordinal; den-hoag never shares a pipe node ⇒ no false
+      # merge. Baked at construction on the flatten `over` root — chains are linear, so id-stacking
+      # propagates the one root site to every depth. Confined to deriving pipes (an as/to pipe keeps its
+      # bare base ref, byte-identical and never disambiguated).
       flattenBase =
         if derives == [ ] then
           channelRef pipeName
@@ -357,18 +427,34 @@ in
           to = channelRef c.target;
         }
       ) (builtins.filter (c: c.kind == "as") delivers);
+      # THE FIELD PARTITION, total over what a compiled pipe carries. `channel` is the JOIN KEY and rides
+      # BOTH kinds — identical in both, derived from `value.pipeName`. `derived` / `routes` / `targeted`
+      # are the fleet compose commitment and ride `pipeCommit` alone (consumed by `pipeChainOf`,
+      # `pipeTerminals`, `pipeRouteOps` and `isUntargetedDeriving`, all fleet-level). `marks` are per-node
+      # emission wiring and ride `pipeMark` alone (consumed by `collectionDeclsAt` → `exposeChannelsAt` /
+      # `collectMarksAt` / `broadcastMarksAt`, all per node). Every field is routed exactly once, and the
+      # routing is a declared kind rather than a shape test.
+      commitment = {
+        channel = pipeName;
+        derived = dag;
+        routes = asRoutes;
+        # `to` aspect-delivery intents — inert, NOT folded into the compose (an aspect is not a channel; see
+        # the `to` branch of `stageOp`). Recorded verbatim for the future consumption-side aspect-carrier
+        # wiring; carrying `from = dag` so that wiring reads the post-derive terminal, matching `as`.
+        targeted = map (c: {
+          inherit (c) select;
+          from = dag;
+        }) (builtins.filter (c: c.kind == "to") delivers);
+      };
+      siteMarks = {
+        channel = pipeName;
+        marks = map (c: c.mark) (byRole "site");
+      };
     in
-    declare.pipeOp {
-      channel = pipeName;
-      derived = dag;
-      routes = asRoutes;
-      # `to` aspect-delivery intents — inert, NOT folded into the compose (an aspect is not a channel; see
-      # the `to` branch of `stageOp`). Recorded verbatim for the future consumption-side aspect-carrier
-      # wiring; carrying `from = dag` so that wiring reads the post-derive terminal, matching `as`.
-      targeted = map (c: {
-        inherit (c) select;
-        from = dag;
-      }) (builtins.filter (c: c.kind == "to") delivers);
-      marks = map (c: c.mark) (byRole "site");
-    };
+    if mode == "commit" then
+      declare.pipeCommit commitment
+    else if declaresCommit || !(declare.bearsCommitment commitment) then
+      declare.pipeMark siteMarks
+    else
+      declare.pipeCommit commitment;
 }

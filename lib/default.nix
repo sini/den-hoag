@@ -1536,7 +1536,7 @@ let
       # through the `policyOps` seam so they join the SAME compose — channel-name uniqueness (E4b) and
       # reference closure (E4a) are therefore fleet-wide over quirks, demands AND pipes.
       #
-      # PIPE OPS (den.policies `pipe.from name [stages]`, compiled to `pipeOp` declarations): a pipe's
+      # PIPE OPS (den.policies `pipe.from name [stages]`, compiled to `pipeCommit` declarations): a pipe's
       # `derived` channel DAG (filter/transform/fold/for folded left-to-right) is FLEET-WIDE — the
       # transform is ONE DAG over the named channel, not a per-scope fact — so it rides `policyOps`
       # exactly like the demand channel, seeded (from the static probe in concern-policies) BEFORE the
@@ -1549,7 +1549,7 @@ let
       # gen-pipe `route` RECORD rooted at the pipe's derived TERMINAL (`from`) and delivering to the target
       # channel (`to`), so a channel→channel rename joins the same fleet compose and the target channel's
       # consumers read the delivered value (v1 `pipe.as`). NOT threaded: `to`'s aspect-indexed delivery
-      # (`pipeOp.targeted`) — an aspect is not a gen-pipe channel and v1's `__pipeTargeted` is a consuming-
+      # (`pipeCommit.targeted`) — an aspect is not a gen-pipe channel and v1's `__pipeTargeted` is a consuming-
       # WRAP override, not a producer-side `route{select}`; it stays a recorded intent for a future
       # consumption-side aspect-carrier seam (a separate WS-B kernel). Site `marks` (append/expose/collect/
       # broadcast) are per-scope EMISSION wiring, not compose ops. The `for` whole-list run IS threaded

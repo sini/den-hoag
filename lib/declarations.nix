@@ -26,7 +26,7 @@ let
   #   • `pipeCommit` — the fleet COMPOSE COMMITMENT (the derived-channel DAG, the delivery routes, the
   #     aspect-delivery targets). It seeds the ONE gen-pipe compose BEFORE the eval, so it is
   #     ctx-independent by contract and rides the record's `ops` field, produced by a single
-  #     definition-time firing (compat/compile.nix `mintFleetWide`), never by a dispatched one.
+  #     definition-time firing at the record's mint, never by a dispatched one.
   #   • `pipeMark` — the per-node SITE MARKS (expose/collect/broadcast/append). Per-scope EMISSION
   #     wiring, fired WHERE the policy fires, so it rides the dispatched body's emission.
   # Both sit at `collection`, so a policy declaring both spans ONE stratum and needs no span reasoning
@@ -198,8 +198,7 @@ let
   # true of every record it can build. The tree's own convention one file over is the same
   # (`isUntargetedDeriving` reads `(p.targeted or [ ]) == [ ]`).
   bearsCommitment =
-    a:
-    (a.derived.__derived or false) || (a.routes or [ ]) != [ ] || (a.targeted or [ ]) != [ ];
+    a: (a.derived.__derived or false) || (a.routes or [ ]) != [ ] || (a.targeted or [ ]) != [ ];
 
   # Static kind → stratum map — the errors.mixedStratum naming and structural.nix's vocabulary
   # interface consume it (the inverse of `groups`).

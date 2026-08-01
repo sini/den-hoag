@@ -308,7 +308,7 @@ in
   # `modules/den/policies/pipes.nix` (`broadcast-syncthing-hub-shares`), a `pipe.transform` closing over
   # `user.name` yields DIFFERENT ops at two different users, and a record field cannot hold a per-node
   # value. What was wrong was the ARITY, not the field. The commitment firing is DEFINITION-TIME — once
-  # per commitment-bearing policy, at the compat record mint, where no node exists — so `ops` is filled
+  # per commitment-bearing policy, at the record's mint, where no node exists — so `ops` is filled
   # from that one firing and a commitment reaching a DISPATCHED route is a commitment that would be built
   # and never applied. This law refuses it rather than dropping it, which is the same reason the retired
   # error refused it at the other end of the same boundary.

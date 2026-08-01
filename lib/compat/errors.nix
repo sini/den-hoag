@@ -6,6 +6,27 @@
 { prelude }:
 let
   fail = ctx: msg: throw "den-compat: ${ctx}: ${msg}";
+
+  # The populated commitment fields of a `pipeCommit`, rendered as one clause. A commitment is one of
+  # three shapes and the author's next move differs by shape, so the message names WHICH — never merely
+  # "a commitment". An EMPTY render is unreachable (`bearsCommitment` is what routed the record here) and
+  # is NOT allowed to degrade to silence: it renders all three as candidates, the same rule the fire-site
+  # attribution takes for an empty coordinate set.
+  commitmentFieldsOf =
+    decl:
+    let
+      populated = builtins.filter (s: s != null) [
+        (if decl.derived.__derived or false then "a derived-channel DAG (`derived`)" else null)
+        (if (decl.routes or [ ]) != [ ] then "a delivery route (`routes`)" else null)
+        (if (decl.targeted or [ ]) != [ ] then "an aspect-delivery target (`targeted`)" else null)
+      ];
+    in
+    builtins.concatStringsSep " and " (
+      if populated == [ ] then
+        [ "a commitment in one of `derived` / `routes` / `targeted`" ]
+      else
+        populated
+    );
 in
 {
   unknownClass =
@@ -255,6 +276,41 @@ in
   policyCodomainUndeclared =
     name:
     fail "policy codomain" "v1 policy `${name}` declares no codomain and codomain recovery is OFF (`den.features.policyRecovery = false`). Flag-off is strictly more strict: declare the kinds it produces (compat/produces-by-name.nix `${name} = [ <kind> ]`)";
+
+  # LAW (a) — a compose commitment RECOVERED from a policy that declares no codomain. The commitment fire
+  # is gated on the DECLARED codomain, so a body producing a derived-channel DAG or a delivery route
+  # without a declaration has stated a fleet-wide commitment nothing will ever collect: the fleet compose
+  # seed is built BEFORE the eval, from declared bodies only. Refused rather than dropped — a dropped
+  # commitment is the silent-vanish class this seam exists to close, and it is the class the kernel's
+  # retired `opsInBody` refused for the same reason at the other end of the same boundary.
+  # ★ RAISED FROM THE RETURNED DECLARATIONS, never from inside a body: `recoverDecls` wraps its fire in
+  # `tryEval`, which DESTROYS a caught throw's message, so a refusal raised inside would arrive as
+  # `policyCodomainUnrecoverable` with the channel and the field gone.
+  # ★ The message reads only fields `recoverDecls`' own `deepSeq` has already forced, so a
+  # message-construction throw is structurally impossible rather than merely unobserved.
+  commitmentUndeclared =
+    policyName: decl:
+    fail "compose commitment" "policy `${policyName}` produced a `pipeCommit` declaration on channel `${decl.channel}` carrying ${commitmentFieldsOf decl}, from a body whose codomain is NOT DECLARED. A compose commitment seeds the ONE fleet gen-pipe compose before the eval, so it is collected from the DECLARED codomain only — an undeclared one would be built and never applied. Declare this policy's codomain as `[ \"pipeCommit\" \"pipeMark\" ]`, either in `lib/compat/produces-by-name.nix` or as `emits` on the v1 ref. BOTH kinds are required: the mark route emits a `pipeMark` at every dispatched node, so a `pipeCommit`-only declaration clears THIS abort and fails the next one at `emitsUndeclared`";
+
+  # THE COMMITMENT FIRE'S OWN ABORT, SYNTHESIZED AT THE FIRE SITE rather than read out of the throw.
+  # Nix discards a caught throw's message, so a diagnostic routed through `tryEval` cannot carry what the
+  # boundary destroyed; this one is built on the caller's side of it, from the policy name and the gate.
+  # `attributed` is the coordinate set a per-coordinate re-probe blamed — best-effort in BOTH directions
+  # (it can under-name on a value-dependent branch and over-name on an intrinsic sentinel failure), so an
+  # EMPTY attribution renders the full candidate set rather than degrading to silence.
+  # ★ CEILING, stated because a fixture pins it: this fires only where `tryEval` CAUGHT the failure. A
+  # coordinate consumed BY TYPE (`builtins.elem g accessGroups` on an attrset) raises Nix's own
+  # argument-type error, which is uncatchable, so the eval stops with no den-compat diagnostic at all.
+  commitmentFireFailed =
+    policyName: channel: attributed: candidates:
+    fail "compose commitment fire" "firing v1 policy `${policyName}` at the commitment sentinel raised an error while building its compose commitment${
+      if channel == null then "" else " on channel `${channel}`"
+    }. ${
+      if attributed != [ ] then
+        "The coordinate(s) it reads: ${builtins.concatStringsSep ", " attributed}"
+      else
+        "No single coordinate could be attributed, so the full candidate set is named: ${builtins.concatStringsSep ", " candidates}"
+    }. A commitment fire binds EVERY gate coordinate to a THROWING sentinel, because a commitment is read once at DEFINITION time where no node exists — so any per-node value the body reads has no answer there. Rewrite the commitment so it reads no coordinate, or drop `pipeCommit` from this policy's declared codomain so it is never fired at the sentinel";
 
   # `den.schema.<K>.excludes` whose target policy attaches at a STRICT DESCENDANT of K. v1 registers an
   # exclude with `scope = "subtree"`, so it suppresses the policy at K and at every node beneath K — but

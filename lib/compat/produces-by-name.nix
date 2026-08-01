@@ -24,7 +24,7 @@
 #   • env-to-clusters  (clusters.nix:22)  — resolve.to "cluster"             → member (structural)
 #   • env-users        (users.nix:107)    — resolve.to "user"                → member (structural)
 #   • cluster-aspect   (clusters.nix:73)  — include                          → edge (resolution)
-#   • broadcast-hub-peer (pipes.nix:164)  — pipe (site-mark)                 → pipeOp (collection)
+#   • broadcast-hub-peer (pipes.nix:164)  — pipe (site-mark)                 → pipeMark (collection)
 # THE OMISSION FALLBACK: a value-conditional policy NOT mapped here degrades to the proven blind
 # `mkExpanded` fan (`produces == null` ⇒ the pre-declared byte-identical behavior), additive and matching
 # gen-dispatch's own undeclared-rule design — never a crash.
@@ -36,7 +36,7 @@
   env-to-clusters = [ "member" ];
   env-users = [ "member" ];
   cluster-aspect = [ "edge" ];
-  broadcast-hub-peer = [ "pipeOp" ];
+  broadcast-hub-peer = [ "pipeMark" ];
   # THE ROUTE BUILT-INS. Each is a v1 flake-output / delivery route whose body deliberately THROWS when
   # fired at a value-less sentinel — `outputStub`'s informative class-F/G refusal, and the route arms'
   # identity-law aborts on a fabricated target. At HEAD the kernel probe caught those throws and filed the
@@ -83,10 +83,14 @@
   # otherwise hand the kernel an empty head for a body that genuinely emits, and the emission would abort
   # against its own declared codomain. Recovering the wrong answer is the defect; deleting the policy was
   # only its loudest consequence.
-  # MEASURED before declaring: its emission is a `pipe.expose` on a bare channel, which is SITE-MARK data
-  # (`declare.isSiteMarkData`) — so the rule fires, passes `conformingProduce`'s pipeOp arm, and makes no
-  # compose commitment. Declaring it therefore does not touch the unbuilt `ops` seam.
-  project-user-overlays = [ "pipeOp" ];
+  # MEASURED before declaring: its emission is a `pipe.expose` on a bare channel — no deriving stage, no
+  # route, no target — so `bearsCommitment` is false for it and the mark-mode translation emits a plain
+  # `pipeMark`. It makes no compose commitment, so its codomain is ONE kind and complete as such.
+  # ★ THE ONE-WAY OBLIGATION, at the file that authors codomains: `pipeCommit` requires `pipeMark` beside
+  # it, never the reverse. Any future entry here naming `pipeCommit` must be written
+  # `[ "pipeCommit" "pipeMark" ]` — the commitment rides `ops` from one definition-time firing while the
+  # site marks are still emitted at every dispatched node.
+  project-user-overlays = [ "pipeMark" ];
   hm-forward = [ "delivery" ];
   hmForward = [ "delivery" ];
 }

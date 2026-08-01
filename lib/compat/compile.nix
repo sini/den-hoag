@@ -122,6 +122,56 @@ let
   # corpus fact tables: `producesByName.<name> = [ ]` is that same statement made about a v1 name the shim
   # owns, so it is a fact like any other and not an absent entry. Absence — no `emits` field, no table
   # entry — is the ONLY condition under which the fire is reached.
+  # ── THE COMMITMENT GATE — THE DECLARED CODOMAIN, AND ONLY THE DECLARED ONE ───────────────────────
+  #
+  # A compat-compiled policy is fired at the COMMITMENT sentinel iff its codomain is DECLARED — by the v1
+  # ref's own `emits`, or by an entry in produces-by-name.nix — and that declaration contains
+  # `pipeCommit`. THE RECOVERY IS NEVER CONSULTED, and that is a closure rather than an ordering: for an
+  # undeclared v1 policy the codomain IS the recovery, whose result depends on which mode's `fn` was
+  # fired — which is what the gate decides. Any gate whose input is produced by the thing it gates
+  # reproduces the silent-vanish class on every branch, so the recovery is removed from the gate's input
+  # entirely. Both arms below are PRESENCE tests over data that exists before any body is fired.
+  #
+  # ★ THE GATE TESTS `pipeCommit` ALONE, and must not be widened to be symmetric with the two-kind
+  # declaration obligation. `[ "pipeMark" ]` is the complete and correct codomain for a mark-only policy;
+  # putting `pipeMark` into what the GATE tests would fire every mark-only policy at the commitment
+  # sentinel, destroying the declaration opt-out. The obligation runs one way: `pipeCommit` ⇒ `pipeMark`.
+  #
+  # ★ ABSENCE IS A DECISION HERE, and it is OBSERVED rather than silent: an undeclared policy gets
+  # `ops = [ ]`, and the mark-mode translation then emits the COMMITMENT kind into the path of a refusal
+  # (policy-recover.nix law (a) at the recovery fire, concern-policies' codomain law at dispatch), so a
+  # commitment nothing will collect aborts named instead of vanishing.
+  declaredCodomainOf =
+    declared: v1Name:
+    if declared != null then
+      declared
+    else if v1Name != null && declaredEmits ? ${v1Name} then
+      declaredEmits.${v1Name}
+    else
+      null;
+  declaresCommitOf =
+    declared: v1Name:
+    let
+      d = declaredCodomainOf declared v1Name;
+    in
+    d != null && builtins.elem "pipeCommit" d;
+
+  # `ops` — the fleet-wide compose commitments, from ONE definition-time firing of the UNGATED body's
+  # commit-mode translation at the throwing sentinel. Gated by the DECLARATION above: an undeclared policy
+  # is never fired here, which is the opt-out that keeps this free for every policy that does not need it.
+  # ★ NOT gated on `policyRecovery`. That flag governs RECOVERING a codomain nobody declared; this fire
+  # builds a commitment somebody DID declare, and skipping it under the flag would empty a declared
+  # commitment silently — the defect class, reached through a feature switch.
+  # ★ The record is the UNGATED one. A codomain, and the commitment inside it, is a STATIC property of a
+  # body; suppression is a PER-NODE dispatch concern, and recovering a static property through a dispatch
+  # gate inverts those layers.
+  commitOpsFor =
+    named: declaresCommit: ungated:
+    if declaresCommit then
+      policyRecover.recoverCommitments { inherit sentinelFields; } named ungated.gate ungated.commitFn
+    else
+      [ ];
+
   emitsFor =
     declared: v1Name: gate: fn:
     let
@@ -204,9 +254,16 @@ let
     ref: ungated:
     let
       emits = emitsFor (ref.emits or null) (ref.name or null) ungated.gate ungated.fn;
+      named = if (ref.name or null) == null then "«unnamed»" else ref.name;
     in
     {
       inherit emits;
+      # The same commitment seam `mintFleetWide` stamps, at the INCLUDE arms. Omitting it here would make
+      # the seam a property of HOW a policy was wired rather than of what it declares: an include-path
+      # policy declaring `pipeCommit` would have its commitment silently dropped from a seed that never
+      # received it, which is the class this seam closes. Empty unless the ref's own declaration names
+      # `pipeCommit`, so nothing is fired that was not fired before.
+      ops = commitOpsFor named (declaresCommitOf (ref.emits or null) (ref.name or null)) ungated;
       # THE NAME THE COMPILED KEY LOST. These arms register their record under a SYNTHETIC attr key: the
       # aspect-include arm embeds the v1 name in it, the kind-include arm's is positional and carries no
       # trace of it. A firing-time abort naming only that key names nothing the corpus author wrote —
@@ -279,7 +336,8 @@ let
         fn = ctx: if builtins.elem v1Name (ctx.suppressedPolicies or [ ]) then [ ] else compiled.fn ctx;
       };
   # The §2.4 pipe stage vocabulary: `den.quirks.<name>` → a channel registration (`channelOf`) and the
-  # `pipe.from name [stages]` policy effect → a collection-stratum `pipeOp` declaration (`compilePipe`).
+  # `pipe.from name [stages]` policy effect → a collection-stratum `pipeCommit`/`pipeMark` declaration
+  # (`compilePipe`, which kind decided by the translation mode).
   pipeLib = import ./pipe.nix { inherit prelude errors; };
 
   # A delivery DESCRIPTOR (`deliver`/`route`/`provide`, deliver.nix) → a den-hoag `delivery` DECLARATION
@@ -965,8 +1023,14 @@ let
   # entry-typed argument is an entry by here (C6), so the `declare.*` constructors' eager identity
   # checks pass; a stray string would abort named. `ctx` (the firing scope's coords) and `normalizeList`
   # serve ONLY the content-set include arm (the scope-coord emission identity + grounding).
+  # `pipeCtl` is the PIPE TRANSLATION CONTROL — `{ mode; declaresCommit; sites; }`. `mode` and
+  # `declaresCommit` are fixed at TRANSLATION time and never read from a ctx: `declaresCommit` is the same
+  # presence test the commitment gate uses (does this policy's DECLARED codomain contain `pipeCommit`)
+  # over `ref.emits` and `produces-by-name.nix`, both of which exist before any body is fired. `sites` is
+  # the per-firing declaration-site token list (`pipeLib.siteTokens`), bound LAZILY by the caller so a
+  # policy with no pipe effect forces none of it.
   translateEffect =
-    ing: normalizeList: aspectRec: policyId: ctx: effectIdx: effect:
+    ing: normalizeList: aspectRec: policyId: pipeCtl: ctx: effectIdx: effect:
     let
       kind = effect.__policyEffect or null;
     in
@@ -1166,11 +1230,16 @@ let
         }
       ) (if cs == null then [ ] else cs)
     else if kind == "pipe" then
-      # A v1 `pipe.from name [stages]` → a collection-stratum `pipeOp` declaration: the deriving stages
-      # fold left-to-right into a gen-pipe op DAG on the named channel, the delivery/site stages ride as
-      # inert markers (pipe.nix `compilePipe`). No value is forced (Law C2); a deferred (config-thunk)
-      # channel value crosses the compiled pipe untouched to the terminal (parity-watch items 5, 6).
-      [ (pipeLib.compilePipe declare policyId effectIdx effect.value) ]
+      # A v1 `pipe.from name [stages]` → a collection-stratum declaration, WHICH KIND decided by the
+      # translation mode: the deriving stages fold left-to-right into a gen-pipe op DAG on the named
+      # channel, the delivery/site stages ride as inert markers (pipe.nix `compilePipe`). No value is
+      # forced (Law C2); a deferred (config-thunk) channel value crosses the compiled pipe untouched to
+      # the terminal (parity-watch items 5, 6).
+      [
+        (pipeLib.compilePipe declare {
+          inherit (pipeCtl) mode declaresCommit;
+        } policyId (builtins.elemAt pipeCtl.sites effectIdx) effect.value)
+      ]
     else if kind == "instantiate" then
       # Native per-cluster instantiation (nixidy k8s; PIN.md census) — a spawn of the entity's class
       # content. The entity carries its own instantiate/intoAttr metadata (read at output assembly).
@@ -1230,17 +1299,39 @@ let
   # it. A `for`/`when` policy record (`{ __isPolicy; fn }`) contributes its inner `fn`'s formals + effects
   # the same way (`innerFn`). A value-conditional body (emits nothing at concern-policies' value-less
   # probe) has its stratum derived per-declaration there; this compile stays stratum-agnostic.
-  compilePolicy = ing: normalizeList: aspectRec: policyId: value: {
-    gate = fnArgsOf (innerFn value);
-    # `imap0` threads each effect's within-policy index (its position in the body's effect list) into
-    # `translateEffect` alongside the owning policy identity — the per-declaration disambiguator a compiled
-    # deriving `pipe.from` folds into its gen-pipe declaration-`site` (pipe.nix `compilePipe`).
-    fn =
-      ctx:
-      builtins.concatLists (
-        prelude.imap0 (translateEffect ing normalizeList aspectRec policyId ctx) (innerFn value ctx)
-      );
-  };
+  #
+  # ★ TWO TRANSLATIONS, ONE DISPATCHED RULE. The record's `fn` is the MARK-mode translation, dispatched
+  # per node exactly as before. `commitFn` is the COMMIT-mode translation, fired ONCE at the mint to build
+  # `ops` — it is not a second rule and is never registered. Only one of the two is dispatched, so this is
+  # one rule and one compile-time projection rather than two rules.
+  translationsOf =
+    ing: normalizeList: aspectRec: policyId: declaresCommit: effectsOf:
+    let
+      # Bound per firing and read only by the pipe arm, so a body with no pipe effect forces neither the
+      # effect list's `__policyEffect` walk nor any `pipeName`.
+      fnFor =
+        mode: ctx:
+        let
+          effects = effectsOf ctx;
+        in
+        builtins.concatLists (
+          prelude.imap0 (translateEffect ing normalizeList aspectRec policyId {
+            inherit mode declaresCommit;
+            sites = pipeLib.siteTokens policyId effects;
+          } ctx) effects
+        );
+    in
+    {
+      fn = fnFor "mark";
+      commitFn = fnFor "commit";
+    };
+
+  compilePolicy =
+    ing: normalizeList: aspectRec: policyId: declaresCommit: value:
+    {
+      gate = fnArgsOf (innerFn value);
+    }
+    // translationsOf ing normalizeList aspectRec policyId declaresCommit (innerFn value);
 
   # A `__denCanTake` policy — the FORMAL-PRESERVING compile path (the twin of the bare-ctx `compilePolicy`
   # for policies whose OWN destructuring must gate dispatch, not an internal for/when guard). A shim
@@ -1260,28 +1351,26 @@ let
   # value-absent target renders a `__dropped` no-op — translateDelivery). A CORPUS USER policy that emits
   # value-conditionally will hit the same misclassification — a C8 watch item: it aborts loudly by design
   # (never silently mis-fires), and the resolution is to rewrite it in the canTake + null-target-drop shape.
-  compileCanTake = ing: normalizeList: aspectRec: policyId: value: {
-    # The route's fixed SHAPE retires into an explicit `__condition` coord set — the coords it gates
-    # on, in the `functionArgs` shape (`false` = required). A hand-written formal lambda per shape is no
-    # longer needed now that a rule's gate can be declared as data.
-    gate =
-      if value.__denCanTake == "host" then
-        { host = false; }
-      else if value.__denCanTake == "user-host" then
-        {
-          user = false;
-          host = false;
-        }
-      else
-        errors.unsupportedEffect "canTake:${value.__denCanTake}";
+  compileCanTake =
+    ing: normalizeList: aspectRec: policyId: declaresCommit: value:
+    {
+      # The route's fixed SHAPE retires into an explicit `__condition` coord set — the coords it gates
+      # on, in the `functionArgs` shape (`false` = required). A hand-written formal lambda per shape is no
+      # longer needed now that a rule's gate can be declared as data.
+      gate =
+        if value.__denCanTake == "host" then
+          { host = false; }
+        else if value.__denCanTake == "user-host" then
+          {
+            user = false;
+            host = false;
+          }
+        else
+          errors.unsupportedEffect "canTake:${value.__denCanTake}";
+    }
     # Emits UNCONDITIONALLY given its coordinates (a single-group probe classifies it as resolution); a
     # value-absent target renders a `__dropped` no-op (translateDelivery).
-    fn =
-      ctx:
-      builtins.concatLists (
-        prelude.imap0 (translateEffect ing normalizeList aspectRec policyId ctx) (value.fn ctx)
-      );
-  };
+    // translationsOf ing normalizeList aspectRec policyId declaresCommit value.fn;
 
   compilePolicies =
     ing: normalizeList: aspectRec: selectsFromSchema: policies:
@@ -1304,6 +1393,7 @@ let
         name: ungated: gated:
         let
           emits = emitsFor (policies.${name}.emits or null) name ungated.gate ungated.fn;
+          declaresCommit = declaresCommitOf (policies.${name}.emits or null) name;
           # A v1 policy value is a RECORD or a bare `ctx:` closure; only the record can carry a declared
           # codomain, and a closure has no field to read one from. Normalising to a record here keeps the
           # ref shape one thing for `codomainStamps` — the alternative is a second shape test inside it.
@@ -1315,6 +1405,12 @@ let
         // codomainStamps ref ungated emits
         // {
           inherit emits;
+          # THE FLEET-WIDE COMPOSE COMMITMENTS, as DATA. Built by ONE definition-time firing of the
+          # commit-mode translation — no node, no stratum index, no dispatch — and empty for every policy
+          # whose declared codomain does not name `pipeCommit`. The consumer chain is static end to end:
+          # `pipeOps = concatMap (r: r.ops) rules` at the kernel, then `pipeChannelOps` / `pipeRouteOps`
+          # into the ONE fleet gen-pipe compose, none of which is indexed by a node.
+          ops = commitOpsFor name declaresCommit ungated;
           # DECLARATION BEATS DERIVATION, and the absence is the thing being decided. `selectsFromSchema`
           # encodes "a v1 policy fires only where its schema INCLUDES it" — true of a v1 USER policy, and
           # false of a shim-synthesised AMBIENT global, which has no includes entry because it is not a v1
@@ -1332,14 +1428,18 @@ let
         prelude.genAttrs policyNames (
           name:
           let
-            ungated = compilePolicy ing normalizeList aspectRec name policies.${name};
+            ungated = compilePolicy ing normalizeList aspectRec name (declaresCommitOf (policies.${name}.emits
+              or null
+            ) name) policies.${name};
           in
           mintFleetWide name ungated (gateSuppression name ungated)
         )
         // prelude.genAttrs canTakeNames (
           name:
           let
-            ungated = compileCanTake ing normalizeList aspectRec name policies.${name};
+            ungated = compileCanTake ing normalizeList aspectRec name (declaresCommitOf (policies.${name}.emits
+              or null
+            ) name) policies.${name};
           in
           mintFleetWide name ungated (gateSuppression name ungated)
         );
@@ -1673,7 +1773,10 @@ let
         name = "__aspectInclude__${ref.name}";
         value =
           let
-            ungated = compilePolicy ing normalizeList aspectRec "__aspectInclude__${ref.name}" ref;
+            ungated = compilePolicy ing normalizeList aspectRec "__aspectInclude__${ref.name}" (declaresCommitOf
+              (ref.emits or null)
+              (ref.name or null)
+            ) ref;
             compiled = gateSuppression (ref.name or null) ungated;
           in
           compiled
@@ -2003,6 +2106,7 @@ let
                 let
                   ungated =
                     compilePolicy ing normalizeList aspectRec "__kindInclude__${kind}__policy__${toString i}"
+                      (declaresCommitOf (ref.emits or null) (ref.name or null))
                       ref;
                   base = gateSuppression (ref.name or null) ungated;
                 in
