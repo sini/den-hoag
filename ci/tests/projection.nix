@@ -1379,12 +1379,23 @@ in
       };
     };
 
-    # (vi-a) CONTROL 2, COMPAT HALF — the twin of (v). Same fleet shape, same accessor, same run, with the
+    # (vi-a) CONTROL 2, COMPAT HALF — the twin of (v). Same fleet shape, same accessors, same run, with the
     #        contradictory pair declared at the PROJECTING host instead of the edge target: now compat DOES
     #        abort, and names `axon`. This is what makes (v)'s clean answer a fact about WHERE the cycle
     #        sits rather than a compat fixture that could not have aborted at all.
-    test-relocation-cycle-at-projecting-scope-aborts-compat = {
+    #        IT TAKES TWO ROWS BECAUSE (v) CLEARS TWO ACCESSORS, and they are not one read: the membership
+    #        set walks `reach` and keys by name, while the entity's aspect list augments each reached node.
+    #        A single firing twin would leave the other arm's clean answer uncontrolled — an accessor that
+    #        answered cleanly no matter what would satisfy (v) with nothing here to contradict it.
+    test-relocation-cycle-at-projecting-scope-aborts-compat-path-set = {
       expr = builtins.deepSeq (compatPathKeys cycleAtHostDen) true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class relocation cycle at node 'host:axon': home-manager, nixos \\(a relocation cycle has no rest position";
+      };
+    };
+    test-relocation-cycle-at-projecting-scope-aborts-compat-aspects = {
+      expr = builtins.deepSeq (compatAspectKeys cycleAtHostDen) true;
       expectedError = {
         type = "ThrownError";
         msg = "class relocation cycle at node 'host:axon': home-manager, nixos \\(a relocation cycle has no rest position";
