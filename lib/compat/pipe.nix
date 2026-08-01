@@ -286,7 +286,7 @@ in
       derives = byRole "derive";
       # v1 flattenAndExtract, prepended to the derive chain. den-hoag holds a list-valued emission as ONE
       # contribution (collections.nix `resolveParametric`: a plain list is the singleton `[ v ]`) and
-      # flattens it to per-element values only at the CONSUMPTION binding (`channelBindingsAt`). v1 flattens
+      # flattens it to per-element values only at the CONSUMPTION binding (`channelSurfacesAt`). v1 flattens
       # BEFORE the stages (assemble-pipes.nix `flattenAndExtract`), so a v1 filter/transform/fold/for runs
       # PER-ELEMENT. gen-pipe `over f` re-seeds each element of `f`'s output-value-list as a fresh
       # contribution, so `over (concatMap flatten1)` spreads each list-valued contribution into per-element

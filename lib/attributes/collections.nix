@@ -169,7 +169,7 @@ in
         # One annotated contribution record per RESOLVED channel value at this node. A parametric emit
         # resolving to a list yields SEVERAL records — the A12 producer-identity SPLIT (§5): one producer
         # (same aspect id_hash, rank 0), ascending `emissionIndex`, so `sortByProducer` keeps the emit
-        # order and `channelBindingsAt` reads a flat value list. A plain / config-thunk value yields
+        # order and `channelSurfacesAt` reads a flat value list. A plain / config-thunk value yields
         # exactly one record, byte-identical to the pre-slice path.
         recordsOfAspect =
           a:

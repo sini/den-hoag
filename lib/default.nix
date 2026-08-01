@@ -928,7 +928,7 @@ let
 
       # den.channelGather — the PER-NODE CHANNEL-AUGMENTATION seam (#62a). A consumer may augment the channel
       # values bound to a node's class-module formals with contributions GATHERED from beyond the node's own
-      # emissions: the hook `result -> id -> { <channel> = [ contribution ]; }` runs inside `channelBindingsAt`
+      # emissions: the hook `result -> id -> { <channel> = [ contribution ]; }` runs inside `channelSurfacesAt`
       # (output-modules.nix), its result appended AFTER the node's local emissions per channel (bound =
       # local ++ gathered). It is CURRIED on `result` so a supplier binds it ONCE (the seam hoists
       # `channelGather result`) and can precompute per-fleet indices shared across every consumer id. The
@@ -946,7 +946,7 @@ let
           default =
             _: _: _:
             { };
-          description = "Per-node channel-augmentation hook `derivedBaseNames -> result -> id -> { <channel> = [ contribution ]; }` run in `channelBindingsAt`; curried on `derivedBaseNames` (the base→terminal map, so the broadcast arm reads a source's transformed terminal) then `result` (bound once, per-fleet indices precomputed) then applied per node; the gathered contributions are appended after the node's own emissions (local ++ gathered); must stay lazy over the id spine (A17). WARNING: a caller must bind `channelGather derivedBaseNames result` ONCE per fleet and reuse the returned `id:` lambda across all nodes — re-applying it per id silently rebuilds the precomputed indices (a perf loss, no error). Native default `_: _: _: { }` (identity path).";
+          description = "Per-node channel-augmentation hook `derivedBaseNames -> result -> id -> { <channel> = [ contribution ]; }` run in `channelSurfacesAt`; curried on `derivedBaseNames` (the base→terminal map, so the broadcast arm reads a source's transformed terminal) then `result` (bound once, per-fleet indices precomputed) then applied per node; the gathered contributions are appended after the node's own emissions (local ++ gathered); must stay lazy over the id spine (A17). WARNING: a caller must bind `channelGather derivedBaseNames result` ONCE per fleet and reuse the returned `id:` lambda across all nodes — re-applying it per id silently rebuilds the precomputed indices (a perf loss, no error). Native default `_: _: _: { }` (identity path).";
         };
       };
 
@@ -1561,7 +1561,7 @@ let
         builtins.attrNames quirkDag.channels
       );
       # base channel → [ terminal name … ] for the untargeted-deriving supersede (output-modules
-      # `channelBindingsAt` aggregates each base's terminals, REPLACE-semantics — v1 runs each policy's
+      # `channelSurfacesAt` aggregates each base's terminals, REPLACE-semantics — v1 runs each policy's
       # effect from the base values, concatenating the per-policy results). Each terminal id MUST resolve to
       # a composed channel; a miss = the derive chain did not join `quirkDag` (unconsumed) → THROW, naming the id.
       derivedBaseNames = prelude.foldl' (
@@ -1889,7 +1889,7 @@ let
         # projected `hasAspect` never forces resolved-aspects until the closure is called (A17).
         enrichBindings = ent.config.den.enrichBindings or ({ bindings, ... }: bindings);
         # The per-node channel-augmentation supplier (#62a; native default = the empty gather, so
-        # `channelBindingsAt` is byte-identical to its own-emissions form). An external consumer wires
+        # `channelSurfacesAt` is byte-identical to its own-emissions form). An external consumer wires
         # its gather supplier (the v1 expose-ascent twin, #62b).
         channelGather =
           ent.config.den.channelGather or (

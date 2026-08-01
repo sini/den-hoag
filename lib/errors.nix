@@ -43,6 +43,19 @@ let
       "<no-scope>"
     else
       builtins.concatStringsSep ", " (map (k: "${k}=${render coords.${k}}") (builtins.attrNames coords));
+  # The binding SIBLING names, rendered from the list the caller enumerates them in. INTERPOLATED, never
+  # spelled: a third sibling reaches both shadow messages by construction, from the one enumeration the
+  # sibling attrset is itself built from. A literal pair in the prose is the same drift the predicate fix
+  # removed, surviving one field over.
+  renderSiblings = names: builtins.concatStringsSep " and " (map (n: "`${n}`") names);
+  # A colliding key's ORIGINS, one clause per WRITER. The origins are NOT disjoint — a key can arrive by
+  # several routes at once, and moving only one leaves the collision standing — so every origin the
+  # discriminator found is rendered, each with the remedy that reaches ITS owner. A remedy is admissible
+  # only if following it makes the refusal's own predicate false: one that leaves the origin set unchanged
+  # fails open, and one that GROWS it is worse than silence, because the author who follows it is told they
+  # made progress.
+  renderOriginLabels = origins: builtins.concatStringsSep " and " (map (o: o.label) origins);
+  renderOriginRemedies = origins: builtins.concatStringsSep "; " (map (o: o.remedy) origins);
 in
 {
   identityLaw =
@@ -404,5 +417,53 @@ in
     }` (entity `${
       render (producer.entity or null)
     }`) is tagged class `${render tag}`; declare a `${render tag}` -> `${render consuming}` adapter on the quirk or consume at the producing class";
+
+  # ── The channel-binding SIBLING SHADOW refusals ──────────────────────────────────────────────────────
+  # `bindingsAt` folds the enriched context, the registered-channel defaults and the channel value surface,
+  # then appends a fixed set of binding SIBLINGS (`settings`, `channels`). `//` is RIGHT-BIASED, so a
+  # sibling silently REPLACES any earlier operand's key of the same name: the surface that exists to stop
+  # content vanishing would itself vanish a binding. Both refusals render over the WITNESS LIST their own
+  # filter produced, so the key a message names is the key its predicate found. A collision on MORE THAN ONE
+  # sibling is ONE abort whose text enumerates every element — `throw` takes one string, and naming one of
+  # two colliding siblings is how the owner of the other is never told.
+
+  # CHECK 2 — PER NODE, forced with the binding set. Its domain is the WHOLE binding key space (every
+  # operand of the fold, not the enriched context alone), so the message states WHICH writer put the key
+  # there instead of naming a cause the key does not have — a refusal whose remedy does not reach the owner
+  # is a refusal that fails open, one level up from the defect this guard is about.
+  channelBindingShadowsSibling =
+    {
+      node,
+      siblingNames,
+      witnesses,
+    }:
+    fail "channel binding" (
+      builtins.concatStringsSep " " (
+        map (
+          w:
+          "the binding key `${w.key}` at `${node}` is ${renderOriginLabels w.origins} AND the name of a binding SIBLING this surface appends, so the sibling would silently replace it. Remedies, one per origin: ${renderOriginRemedies w.origins}. The sibling names are ${renderSiblings siblingNames}."
+        ) witnesses
+      )
+    );
+
+  # CHECK 1 — PER FLEET, forced on the `systems` path so it fires on EVERY fleet whose output is demanded,
+  # including one that wraps no class modules at all: its subject is the REGISTRATION, and a registration
+  # colliding with a sibling name is a defect of the fleet before any consumer exists. It names NO node —
+  # its predicate has none, and a message naming a thing its own predicate does not have is the same defect
+  # one field over. It names no origins either: `channelNames` is a single writer, so stating more would
+  # invent origins nothing tested.
+  channelRegistrationShadowsSibling =
+    {
+      siblingNames,
+      witnesses,
+    }:
+    fail "channel binding" (
+      builtins.concatStringsSep " " (
+        map (
+          k:
+          "the registered channel `${k}` is also the name of a binding SIBLING this surface appends at every node, so the sibling would silently replace it fleet-wide. Rename the channel (`den.quirks.${k}`). The sibling names are ${renderSiblings siblingNames}."
+        ) witnesses
+      )
+    );
 
 }

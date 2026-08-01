@@ -82,7 +82,7 @@
   # node's own emissions — `channelGather derivedBaseNames result id -> { <channel> = [ contribution ]; }`,
   # CURRIED on `derivedBaseNames` (the base→terminal map, so the broadcast arm reads a source's transformed
   # terminal) then `result` so the supplier binds it ONCE (`channelGatherR`, hoisted below) and can precompute
-  # per-fleet indices shared across every consumer id; applied per node in `channelBindingsAt` (F4: bound =
+  # per-fleet indices shared across every consumer id; applied per node in `channelSurfacesAt` (F4: bound =
   # local ++ gathered). The gathered records carry local-collection-data's contribution shape (`.deferred`/
   # `.value`/`.producer`), so they extract through the SAME `deferredToThunk` path (a gathered deferred
   # contribution resolves at ITS OWN producing scope — resolve-at-producing, decision #27). Native den-hoag
@@ -941,7 +941,17 @@ let
   # reuses them (A17: WHNF is the `id` lambda — the indices are lazy thunks in its closure, forced only when
   # a consumer demands them).
   channelGatherR = channelGather derivedBaseNames result;
-  channelBindingsAt =
+  # ONE `id`-application yielding BOTH channel surfaces, so the seven `let` bindings below are genuinely
+  # shared. Nix memoises THUNKS, not applications, and performs no common-subexpression elimination: a
+  # separate per-surface accessor applied beside this one would be two applications of the same
+  # function to the same argument, building two closures and recomputing every binding — including
+  # `gathered`, the per-node gather — at every node that demands both surfaces. The file states the general
+  # form of that cost one file away, in `channelGather`'s own option description (a caller must bind the
+  # curried fleet prefix ONCE and reuse the returned `id:` lambda; re-applying it silently rebuilds the
+  # precomputed indices — a perf loss, no error). Different doubling, same character. At a node demanding
+  # neither surface NEITHER `genAttrs` is forced: both live behind the keys of an attrset whose
+  # construction forces nothing.
+  channelSurfacesAt =
     id:
     let
       received' = received id;
@@ -982,10 +992,29 @@ let
           if derivedBaseNames ? ${ch} then (local.${ch} or [ ]) else (ownData.${ch} or [ ])
         else
           (local.${ch} or [ ]);
+      # THE contribution list per channel — the one expression both surfaces project. `(baseOf ch) ++
+      # (gathered.<ch> or [ ])` IS the contribution list; the record→value projection is exactly the one
+      # `flatten` below, and the provenance every contribution already carries (`producer`, `provenance`,
+      # `class`) is what that one function discards.
+      records = prelude.genAttrs (builtins.attrNames (local // gathered)) (
+        ch: (baseOf ch) ++ (gathered.${ch} or [ ])
+      );
     in
-    prelude.genAttrs (builtins.attrNames (local // gathered)) (
-      ch: prelude.concatMap flatten ((baseOf ch) ++ (gathered.${ch} or [ ]))
-    );
+    {
+      # The FLAT value surface — deferral normalised, a LIST emission SPREAD into elements (v1
+      # `flattenAndExtract`). Byte-identical to the pre-split single-surface expression.
+      values = builtins.mapAttrs (_: cs: prelude.concatMap flatten cs) records;
+      # The RECORDS surface — one record per contribution, provenance kept (every other field rides
+      # through untouched, `producer` and `provenance` included). THE DEFERRED-CONTRIBUTION CONTRACT is
+      # kept with it: `extractContribution` is applied, so a deferred contribution binds a gen-bind
+      # `__configThunk` resolved at its PRODUCING scope. Handing consumers the raw `c` would hand them
+      # gen-pipe's POISON for a deferred contribution (`contribute` binds `value = poison { … }`, a throw
+      # of E6), which a consumer's `c.value or [ ]` would NOT rescue — `or` defaults an absent attribute
+      # and does not catch a raised throw. The flat path's list SPREAD is deliberately NOT applied:
+      # spreading is what destroys the one-record-one-contribution correspondence this surface exists for.
+      # Byte-neutral for a non-deferred contribution, where `extractContribution c` IS `c.value`.
+      records = builtins.mapAttrs (_: cs: map (c: c // { value = extractContribution c; }) cs) records;
+    };
 
   # The binding set handed to a member's class modules: the node's entity bindings (host/user/env
   # entries + enrichments) plus the fleet's channel bindings.
@@ -1022,8 +1051,153 @@ let
       builtins.attrValues (result.get id "resolved-settings")
     );
 
+  # ── THE ONE enumeration of the binding-SIBLING surface — file-level, node-independent ────────────────
+  # The NAME LIST is the enumeration and the per-node attrset is BUILT FROM IT, not the other way round.
+  # Deriving the names from the attrset (`attrNames siblings`) makes them `id`-dependent — both values are —
+  # which puts the fleet-level check out of scope at the grain it needs, and evaluates node-independent work
+  # once per node for an answer that never varies. A third sibling is added in ONE place and both grains
+  # pick it up by construction: the per-node attrset, and both refusal messages.
+  siblingBuilders = {
+    settings =
+      { id, surfaces }:
+      settingsBindingAt id;
+    channels =
+      { id, surfaces }:
+      surfaces.records;
+  };
+  siblingNames = builtins.attrNames siblingBuilders;
+
+  # CHECK 1 (fleet, evaluated ONCE) — a REGISTERED channel whose name is a sibling name. `channelNames` is a
+  # required formal, so this is in scope for the whole file and independent of any node. A FILTER, not
+  # `builtins.any`: the message interpolates the key, so the predicate must yield its WITNESSES — a Bool
+  # cannot name the thing the message names. Forced on the `systems` path below, whose domain strictly
+  # CONTAINS `bindingsAt`'s: check 1's subject is the REGISTRATION, which is a defect of the fleet before
+  # any consumer exists, so riding the consumer path would make it a property of the current consumer set
+  # instead. The whole price of the stronger position is one `builtins.seq`.
+  collidingRegistered = builtins.filter (k: builtins.elem k channelNames) siblingNames;
+
   bindingsAt =
     id:
+    let
+      # The SINGLE application (see `channelSurfacesAt`) — both surfaces from one `id`.
+      surfaces = channelSurfacesAt id;
+
+      # ── THE SHADOWED DOMAIN, named as a LIST in the order the shipped `//` applies it ─────────────────
+      # `//` is right-biased, so the appended siblings shadow EVERY earlier operand — not the enriched
+      # context alone. `surfaces.values`' key set is `attrNames (local // gathered)`, which nothing
+      # constrains to be a subset of `channelNames`, so a sibling-named key arriving through it is shadowed
+      # too. Quantifying the check over one operand of a three-operand fold is a domain narrower than the
+      # hazard; it is stated here as a rule over `operands` instead of as an enumeration, so an operand
+      # added to the fold is an operand added to the discriminator.
+      enriched = result.get id "enriched-context";
+      channelKeys = prelude.genAttrs channelNames (_: [ ]);
+
+      # ── THE FIVE ORIGINS — the three operands are NOT three writers ───────────────────────────────────
+      # Two of the three operands are themselves `//`-merges of sub-surfaces with DIFFERENT writers, so an
+      # origin row naming an operand tells the wrong owner for most of that operand's key set:
+      #   • `enriched` is `inherited-context // enrichments.added`, and only the second half has an
+      #     enriching policy. The inherited half's keys are framework dimension names, the binding names a
+      #     `containTo`-marked `member` mints, and every key of `den.systemViews.<system>` — a `lazyAttrsOf
+      #     raw` surface, so any key is type-legal there and no text census can bound it.
+      #   • `surfaces.values` is `genAttrs (attrNames (local // gathered))`, and only `gathered` has a
+      #     `den.channelGather` supplier. `local`'s key set is EVERY composed channel — the registered
+      #     quirks AND the channels a quirk's own `ops` or a collection-stratum `route`/`join`/`tee`
+      #     derives — and a key that exists only because an op derived it is owned by that op's author.
+      # All four sub-origin reads are reached ONLY from `originsOf`, i.e. only on a path that has already
+      # aborted, so the green case pays nothing: they are unforced thunks there. `inherited` and `owners`
+      # are already-forced resolver memos on that path (`enriched-context` reads both, and `enrichments`
+      # seq-forces `owners`), and `channelGatherR` is the fleet-bound `id:` lambda whose indices are shared.
+      inherited = result.get id "inherited-context";
+      owners = (result.get id "enrichments").owners;
+      gatheredAt = channelGatherR id;
+      localKeys = (received id) // derivedBaseNames;
+
+      enrichedOrigins =
+        k:
+        prelude.optional (owners ? ${k}) {
+          label = "a context key enriched by policy `${owners.${k}}`";
+          remedy = "rename the binding key policy `${owners.${k}}` writes";
+        }
+        ++ prelude.optional (inherited ? ${k}) {
+          label = "a scope-inherited declaration key";
+          remedy = "rename it where it is written — the `containTo`-marked `member` declaration whose `bindings` mint the name, or the `den.systemViews.<system>` attrset that carries it";
+        };
+      # The registration origin is the WHOLE operand (`genAttrs channelNames`, i.e. exactly
+      # `attrNames den.quirks`), so it is a constant: one writer, one remedy, no sub-origin to select.
+      registeredChannelOrigin = {
+        label = "the name of a REGISTERED channel";
+        remedy = "rename the channel at its `den.quirks` registration";
+      };
+      surfaceOrigins =
+        k:
+        prelude.optional (gatheredAt ? ${k}) {
+          label = "a gathered channel-surface key";
+          # The ONLY clearing move for this origin. Registering it as a channel instead ESCALATES the
+          # condition it would claim to clear: it adds the key to `channelNames` and removes it from
+          # nothing, so this check still fires with one MORE origin and the fleet check now fires too.
+          remedy = "rename the gathered key at its supplier";
+        }
+        ++ prelude.optional (localKeys ? ${k}) {
+          label = "a composed channel's own key";
+          remedy = "rename the channel at whichever declaration composed it — a `den.quirks` entry, or the `ops`/policy op that derived it";
+        };
+
+      operands = [
+        {
+          attrs = enriched;
+          origins = enrichedOrigins;
+        }
+        {
+          attrs = channelKeys;
+          origins = _: [ registeredChannelOrigin ];
+        }
+        {
+          attrs = surfaces.values;
+          origins = surfaceOrigins;
+        }
+      ];
+      # SEEDED WITH THE HEAD OPERAND, folding the TAIL — this builds the SAME chain of `//` applications,
+      # in the same order, as the shipped expression, so the checks are byte-neutral by IDENTITY of the
+      # chain rather than by an equality argument about two different ones. `foldl' … { } operands` would
+      # prepend a `{ } // enriched`: an extra attrset copy proportional to the enriched-context key set at
+      # every node. `builtins.head` on a three-element literal is total by construction.
+      base = prelude.foldl' (acc: o: acc // o.attrs) (builtins.head operands).attrs (
+        builtins.tail operands
+      );
+      siblings = builtins.mapAttrs (_: f: f { inherit id surfaces; }) siblingBuilders;
+
+      # TOTALITY BY CONSTRUCTION: `base` is the `//`-fold of exactly `operands`, so `base ? k` iff some
+      # operand has `k`; and each operand's `origins` is non-empty on its own membership domain
+      # (`enriched ? k` implies `inherited ? k || added ? k`, and `added ? k` iff `owners ? k` because both
+      # fold the same acts on the same key; `surfaces.values ? k` implies `local ? k || gathered ? k`, and
+      # `localKeys` is `local`'s key set exactly; the registration row is a constant singleton). So the
+      # message can render neither zero causes nor a cause the predicate does not have. A key with MORE
+      # than one origin renders ALL of them — not over-reporting, since each is an independent writer and
+      # moving only one leaves the collision standing. The empty render is unreachable and is still not
+      # allowed to degrade to silence if it is ever reached: it names every origin as a candidate.
+      originsOf =
+        k:
+        let
+          found = builtins.concatMap (o: o.origins k) (builtins.filter (o: o.attrs ? ${k}) operands);
+        in
+        if found != [ ] then
+          found
+        else
+          [
+            {
+              label = "a binding-fold key whose writer the discriminator could not attribute";
+              remedy = "check every writer of this fold — the enriching policy, the scope-inherited declaration (a `containTo`-marked `member`'s bindings or `den.systemViews.<system>`), the channel registration (`den.quirks`), the `den.channelGather` supplier, and the `ops`/policy op that composed the channel";
+            }
+          ];
+
+      # CHECK 2 (per node) — forced whenever a node's bindings are forced, which is every node whose class
+      # modules are wrapped. It forces NO new value: `?` tests presence without forcing, and the fold
+      # already forces every operand's attrset SPINE. A FILTER for the same reason check 1 is one, and the
+      # refusal is ONE abort enumerating every element: `colliding` is a list, `throw` takes one string, and
+      # with a Bool predicate a two-sibling collision could only have named one of them — which is how the
+      # owner of the other is never told.
+      colliding = builtins.filter (k: base ? ${k}) siblingNames;
+    in
     # The consumer-supplied post-resolution enrichment (default = identity, native den-hoag untouched).
     # `resolvedAspects` is passed UNFORCED (the attribute-7 thunk): forcing this binding set does not force
     # it — only a stamped closure the hook actually calls does (A17 — the external binding-enrichment seam).
@@ -1031,12 +1205,17 @@ let
       inherit id;
       resolvedAspects = result.get id "resolved-aspects";
       bindings =
-        (result.get id "enriched-context")
-        // prelude.genAttrs channelNames (_: [ ])
-        // channelBindingsAt id
-        // {
-          settings = settingsBindingAt id;
-        };
+        if colliding == [ ] then
+          base // siblings
+        else
+          errors.channelBindingShadowsSibling {
+            node = id;
+            inherit siblingNames;
+            witnesses = map (k: {
+              key = k;
+              origins = originsOf k;
+            }) colliding;
+          };
     };
 
   memberClassName =
@@ -1159,7 +1338,7 @@ let
   # structural component — the `define-user` mechanism), so binding the whole projected slice at the host
   # handed a user-scope consumer the HOST's pool: a sibling cell's exposed value, gathered at the host,
   # reached a consumer that must see only its own emission plus what it inherits (v1 binds a scope's
-  # consumer to THAT scope's pipe value; `channelBindingsAt <cell>` is exactly that value — the cell's own
+  # consumer to THAT scope's pipe value; `(channelSurfacesAt <cell>).values` is exactly that value — the cell's own
   # emissions folded with its ancestors' received collections, siblings excluded by construction).
   #
   # A FOREIGN-scope module is bound HERE, against `bindingsAt` its own scope, and reaches the terminal
@@ -1227,54 +1406,72 @@ let
   #       compose the class-invariant core once, byte-gate each member (loud on divergence — A18), and
   #       build via `applyCoreFixed`. The shared core forces every member's PROJECTION, never their DELTAS.
   #   • share.core = false → the ordinary terminal crossing (`classCfg.instantiate`), unchanged.
-  systems = prelude.mapAttrs (
-    name: classCfg:
-    let
-      contentIds = contentIdsOf name;
-    in
-    if classCfg.share.core then
-      let
-        shared = classShare.build {
-          members = builtins.listToAttrs (
-            prelude.map (id: prelude.nameValuePair id (result.node id)) contentIds
-          );
-          classOf = classOfNode;
-          inherit projectionOf projectionPath;
-          shareCore = true;
-        };
-      in
-      builtins.listToAttrs (
-        prelude.map (id: {
-          name = id;
-          # Gate BEFORE the build (A18): a divergent core aborts named; a sound one yields the
-          # applyCoreFixed config. `seq` forces the authorization ahead of the delta merge.
-          value = builtins.seq (shared.authorize id (projectionOf id)) (
-            shared.outputFor id (deltaOf name classCfg id)
-          );
-        }) contentIds
-      )
-    else
-      builtins.listToAttrs (
-        prelude.map (
-          id:
-          let
-            # projectClass over reach, each foreign-scope slice pre-bound at its own
-            # scope; the terminal's own `wrapAll` binds the rest against this member.
-            scoped = bindAtSourceScope classCfg id (projectClassScoped id name);
-          in
-          {
-            name = id; # the member (scope node) id keys the class-major output map
-            value = classCfg.instantiate {
-              name = id; # the terminal contract's `name` is the member id
-              hostModules = scoped.modules ++ scoped.validators;
-              inherit classCfg;
-              bindings = bindingsAt id;
-              inherit producerConfigs; # CHORAG §5.1 producer-scoped config-thunk map (the fixpoint knot)
-            };
+  #
+  # CHECK 1's FORCING POSITION (the sibling-shadow fleet refusal). Same shape as the A18 gate below: `seq`
+  # forces the refusal ahead of the product. Placed HERE rather than on the bindings path so it fires on
+  # every fleet whose output is demanded, INCLUDING one that wraps no class modules at all — such a fleet
+  # has no consumer to shadow, but its registration is already the defect.
+  systems =
+    builtins.seq
+      (
+        if collidingRegistered == [ ] then
+          null
+        else
+          errors.channelRegistrationShadowsSibling {
+            inherit siblingNames;
+            witnesses = collidingRegistered;
           }
-        ) contentIds
       )
-  ) classesByName;
+      (
+        prelude.mapAttrs (
+          name: classCfg:
+          let
+            contentIds = contentIdsOf name;
+          in
+          if classCfg.share.core then
+            let
+              shared = classShare.build {
+                members = builtins.listToAttrs (
+                  prelude.map (id: prelude.nameValuePair id (result.node id)) contentIds
+                );
+                classOf = classOfNode;
+                inherit projectionOf projectionPath;
+                shareCore = true;
+              };
+            in
+            builtins.listToAttrs (
+              prelude.map (id: {
+                name = id;
+                # Gate BEFORE the build (A18): a divergent core aborts named; a sound one yields the
+                # applyCoreFixed config. `seq` forces the authorization ahead of the delta merge.
+                value = builtins.seq (shared.authorize id (projectionOf id)) (
+                  shared.outputFor id (deltaOf name classCfg id)
+                );
+              }) contentIds
+            )
+          else
+            builtins.listToAttrs (
+              prelude.map (
+                id:
+                let
+                  # projectClass over reach, each foreign-scope slice pre-bound at its own
+                  # scope; the terminal's own `wrapAll` binds the rest against this member.
+                  scoped = bindAtSourceScope classCfg id (projectClassScoped id name);
+                in
+                {
+                  name = id; # the member (scope node) id keys the class-major output map
+                  value = classCfg.instantiate {
+                    name = id; # the terminal contract's `name` is the member id
+                    hostModules = scoped.modules ++ scoped.validators;
+                    inherit classCfg;
+                    bindings = bindingsAt id;
+                    inherit producerConfigs; # CHORAG §5.1 producer-scoped config-thunk map (the fixpoint knot)
+                  };
+                }
+              ) contentIds
+            )
+        ) classesByName
+      );
 in
 {
   inherit
