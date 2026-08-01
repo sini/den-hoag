@@ -216,6 +216,14 @@ in
     # THE HOMONYM IS ENUMERATED, NOT EXEMPTED BY FILE: `resolved-aspects.nix` binds its own local `scopeOf`,
     # so it owns the name; the row asserts that the set of files claiming that is exactly the one, which is
     # what stops a second homonym from arriving unremarked.
+    # ★ ITS LIMIT, which is the shape of that same exemption: `bindsOwn` is FILE-wide, never binding-wide. A
+    # file binding the token ANYWHERE leaves the leak set entirely, so `resolved-aspects.nix` is dark to
+    # ITSELF for `scopeOf` — a genuine leak added to that file, taking `class-modules`' projection by call or
+    # by `inherit`, is discarded beside the local binding that has nothing to do with it, and the row still
+    # answers `[ ]`. What the row does see is the ARRIVAL of a shadow: a second file binding the name lands in
+    # `scopeOfHomonyms` and fails the enumeration. So the homonym list is a tripwire on NEW owners and not a
+    # check on a file already holding one, and the exempted file's own uses stay outside this row's reach for
+    # exactly as long as its local `scopeOf` stands.
     test-guard-field-projections-stay-private = {
       expr = {
         scopeOfLeaks = leakedFiles "scopeOf";
@@ -245,6 +253,13 @@ in
     # that legitimately carries the field answers nonzero.
     # It does NOT generalize to `scope`: that field is a value the caller must place in the record it builds,
     # where a bare read of `assertedClasses` has one use — repeating work.
+    # ★ ITS COVERAGE IS EXACTLY ONE FILE, BY CONSTRUCTION, and the title's talk of a file BOUNDARY should not
+    # be read as a claim about the whole scan set. `countIn outputModules` keeps the hits whose file is
+    # `output-modules.nix` and discards every other one the scan collected, so the forbidden expression
+    # written BYTE-IDENTICALLY anywhere else under `lib/` or `ci/` passes untouched — in a new `lib/attributes`
+    # consumer projecting the reach, or in `ci/tests/_lib/projection-harness.nix`, which keeps a replica of
+    # the projection body and is scanned but never counted. This guards ONE consumer. A second projecting
+    # consumer is unguarded until it is added to the comparand by hand.
     test-guard-asserted-classes-not-re-derived = {
       expr = {
         inOutputModules = countIn outputModules (codeHits "assertedClasses");
