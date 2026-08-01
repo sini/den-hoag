@@ -12,9 +12,13 @@
     # INTERIM corpus pin. Frozen 2026-07-07 (the compat-phase start) at the then-current nix-config
     # main `b0b20769` so parity diffs stay reproducible during the compat build; ADVANCED to
     # `425f1d3b` by the same 2026-07-30 owner directive (the corpus carries bugfixes the correctness
-    # validation needs). Bump deliberately, never by `nix flake update`. FOLLOW-UP (tracked): the real
+    # validation needs), and to `0d74319d` (2026-08-01) to pick up the corpus-side EMITS/BINDS
+    # DECLARATION class: `homeAarch64-to-hm`, `user-aspect-auto-include`, `primary-user-for-owner` and
+    # `env-to-hosts` restated as policy RECORDS carrying their own codomain, because a
+    # value-conditional body fired at a sentinel takes the false branch and so cannot surrender the
+    # codomain by firing. Bump deliberately, never by `nix flake update`. FOLLOW-UP (tracked): the real
     # harness migrates to a SYNTHETIC self-contained corpus (no live-fleet coupling).
-    corpus.url = "github:sini/nix-config/425f1d3b2fcc2c5547ee593a8cb74d5d61192626";
+    corpus.url = "github:sini/nix-config/0d74319dfb39e643f6865497268a2034422d74df";
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
     # home-manager — the v1 hm battery's `getModule` reaches `inputs.home-manager."${host.class}Modules"`;
     # the CONTENT arm (P2 cross-pipeline live + the fleet drv-hash ship-gate) forces it. THE INVARIANT (§4.4):

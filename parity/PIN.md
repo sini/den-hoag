@@ -50,8 +50,10 @@ scope rest on grep-confirmed reality, not on the pre-pin survey.
 
 ## Corpus pin
 
-- **Rev (CURRENT, 2026-07-30):** `github:sini/nix-config @ 425f1d3b2fcc2c5547ee593a8cb74d5d61192626`
-  — advanced by the same owner directive; see the bump section at the foot of this file.
+- **Rev (CURRENT, 2026-08-01):** `github:sini/nix-config @ 0d74319dfb39e643f6865497268a2034422d74df`
+  — the deliberate-repin cadence; see the 2026-08-01 bump section at the foot of this file.
+- **Rev (superseded, 2026-07-30 → 2026-08-01):** `github:sini/nix-config @ 425f1d3b2fcc2c5547ee593a8cb74d5d61192626`
+  — advanced by the 2026-07-30 owner directive; see that bump section.
 - **Rev (superseded, 2026-07-07 → 2026-07-30):** `github:sini/nix-config @ b0b207693ce66fb57acf2bb09cf9549e1dbddec7`
 
 Still INTERIM either way — see the `parity/flake.nix` note; the real harness migrates to a synthetic
@@ -305,3 +307,95 @@ pins `gen`, `nixpkgs`, `den-v2` and `home-manager` are byte-identical. The §4.4
 `home-manager`'s `nixpkgs` resolves to the same node as the top-level `nixpkgs` (`nixpkgs_20`). The large
 `corpus/` count is the corpus's own transitive lock re-resolving from the new rev — unavoidable when the
 corpus input itself moves, and entirely inside its subtree.
+
+## 2026-08-01 — DELIBERATE CORPUS REPIN (corpus only; the v1 oracle does NOT move)
+
+**The cadence.** A deliberate repin, not a follows-main: the corpus pin advances to pick up the corpus-side
+**emits/binds declaration class**, and it moves only by this recorded ruling. The `den-v1` oracle is
+UNTOUCHED at `7f11ba14` — this bump is one-sided by construction.
+
+| Pin | From | To |
+| --- | --- | --- |
+| `corpus` | `425f1d3b2fcc2c5547ee593a8cb74d5d61192626` | `0d74319dfb39e643f6865497268a2034422d74df` |
+| `den-v1` | `7f11ba1494052fd3ac52c1342915bcb52ba08f07` | *(unchanged)* |
+
+**Target verified, not assumed.** `git ls-remote https://github.com/sini/nix-config.git HEAD refs/heads/main`
+returned `0d74319dfb39e643f6865497268a2034422d74df` for BOTH refs — the target is the live branch tip, so no
+drift between the intent and the applied rev. Forward move confirmed:
+`git merge-base --is-ancestor 425f1d3b 0d74319d` → exit 0.
+
+### What the bump carries — 4 commits
+
+- `0d74319d` den: declare emits codomains for the three remaining value-conditional policies
+- `89db884b` den: declare value-conditional policy codomains (binds, suppresses)
+- `af8de7cb` chore: disable razerdaemon auto-cpu oc — *not den-shape*
+- `83d8253d` chore: update inputs — *not den-shape*
+
+The two den commits are one class: policies whose codomain is **value-conditional** are restated from bare
+functions (or `mkPolicy`, which has no field to declare on) into literal policy RECORDS
+(`{ __isPolicy = true; emits = […]; binds = […]; fn = …; }`). The stated reason, in the corpus's own words, is
+that a body fired at a sentinel takes the false branch and so **cannot surrender its codomain by firing** —
+the declaration has to be stated rather than discovered. Affected: `homeAarch64-to-hm`
+(`modules/den/classes/home-platform.nix`), `user-aspect-auto-include` and `primary-user-for-owner`
+(`modules/den/defaults.nix`), `env-to-hosts` (`modules/den/policies/fleet.nix`).
+
+### §2.6 census re-validation at the new corpus rev
+
+Both revs were exported (`git archive`) and measured with the **same instrument in the same run**. Every
+census is UNCHANGED; the only movement is the new declaration surface itself.
+
+| Census | `425f1d3b` | `0d74319d` | Verdict |
+| --- | --- | --- | --- |
+| `.nix` files | 500 | 500 | unchanged |
+| `batteries.forward` sites | 0 | 0 | unchanged (control `batteries.` → 13 / 13) |
+| route sites (qualified + inherited) | 4 | 4 | unchanged — the `home-platform.nix` triple + the `devshell.nix` adapter-bearing route |
+| `adaptArgs` sites | 1 | 1 | unchanged — `devshell.nix:21`, and that file is BYTE-IDENTICAL across the bump |
+| `provides.` declarations | 0 | 0 | unchanged — the C4 corpus-dead claim HOLDS |
+| tier-2 NTA forward consumer | none | none | OQ2 stays CLOSED |
+| `microvm-guests` refs | 8 | 8 | unchanged |
+| `__isPolicy` records | 0 | **5** | THE BUMP |
+| `emits =` declarations | 0 | **3** | THE BUMP |
+| `binds =` declarations | 1 | **2** | THE BUMP |
+
+Negative control `zzzNotARealTokenXyz` → 0 at both revs on the same instrument, so the zeros above are real
+absences rather than a predicate that could not match.
+
+**Instrument correction worth recording.** A first pass counted route sites with `policy\.route` and got
+**3**, contradicting this file's recorded 4. The predicate was blind, not the record: `devshell.nix` does
+`inherit (den.lib.policy) route;` and then calls bare `route { … }`, which a `policy\.route` predicate
+structurally cannot match. The spelling-union predicate reproduces this file's 4 at the old rev, which is
+what validates it. `home-platform.nix`'s three route CALLS are unchanged in kind — still `path = [ ]` with no
+`adaptArgs`, i.e. tier-1 static; only the surrounding policy WRAPPER became a record.
+
+### Lock hygiene
+
+Targeted update only (`nix flake lock --update-input corpus`). Checked **path-wise, not node-key-wise** (nix
+renumbers suffixed node keys, which makes a key-keyed diff report spurious moves): resolving every root
+input's closure to canonical paths gives **302 changed paths, all 302 under `corpus/`, ZERO outside**. The
+five sibling root inputs — `den-v1`, `gen`, `nixpkgs`, `den-v2`, `home-manager` — resolve to byte-identical
+locked revs before and after. The §4.4 invariant holds: `home-manager`'s `nixpkgs` is the follows PATH
+`["nixpkgs"]`, which resolves through root to the top-level `nixpkgs` node (`nixpkgs_20`) — not to the
+similarly-named `nixpkgs` node, which belongs to the corpus subtree.
+
+### Suite outcomes
+
+- **parity: 71/71, exit 0.** No movement.
+- **ci: 2199/2219, exit 1, 20 non-pass** — the same parked set as the recorded baseline (2 `compat-*`,
+  13 `den-pipe`, 5 `pipe-consume`), i.e. INVARIANT as required, since `ci/` consumes neither pin. The
+  denominator moved (2040 → 2219) only because den-hoag HEAD has gained tests since the last bump; the
+  red-set count is the control, and it is unchanged at 20.
+
+### COVERAGE LIMIT — the parity green is not evidence about the corpus
+
+**No parity test consumes the `corpus` specialArg.** `parity/flake.nix` passes `corpus = inputs.corpus`
+into `specialArgs`, but a predicate for that binding across `parity/tests/` and `parity/ship-gate.nix`
+returns ZERO, while the same predicate in the same run finds `harness` in 10 test files (the positive
+control). Every `corpus` token in the suite is either prose or the SYNTHETIC `fakeCorpus` in
+`parity-content.nix`. So the corpus input is fetched and locked but never read: the 71/71 above is a
+genuine no-regression signal for the HARNESS, and says **nothing** about whether the shim handles the new
+policy-record form. Under this repin the parity suite could not have gone red for a corpus reason.
+
+The arm that would actually exercise the new `__isPolicy`/`emits`/`binds` records is the dev-time
+full-fleet ship-gate (`runbook.md`) — the real nix-config corpus diff ∖ ledger — which does not run in
+den-hoag's own CI. **That gate has NOT been run for this repin.** Whether the compat layer accepts a policy
+record where it previously received a bare function is therefore OPEN, and is the natural follow-up.
