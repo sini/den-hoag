@@ -31,6 +31,7 @@
   denCompat,
   denHoag,
   denHoagSrc,
+  nixpkgsLib,
   ...
 }:
 let
@@ -159,6 +160,82 @@ let
   axon = "host:axon";
   alice = "user:alice@host:axon";
 
+  # ── THE TERMINAL-SIDE TWIN: the same topology, content authored through DECLARED OPTIONS ──────────────
+  # The rows above stop at `projectClass` / `classSubtreeAt`. The terminal is one alias hop further on
+  # (`terminalModulesAt` → `systems.<class>.<member>.modules`), and a module list arriving there is
+  # `bindAtSourceScope`- and `bind.wrapAll`-wrapped — a projected foreign-scope slice is a fully-applied
+  # attrset or a `setFunctionArgs` functor, so the raw `tags` walk the content rows use does not reach it.
+  # The terminal rows therefore assert through an EVALUATION of the resolved configuration, which is also
+  # the register the membership argument is made in: what the built system holds, not what a list looks
+  # like. An evaluation needs content that sets options which EXIST, so this fixture replaces the `tag`
+  # strings with option definitions; every other module is shared with the fixture above, so the two
+  # fleets differ in their content and in nothing else.
+  #
+  # THE HOST AND THE CELL SET DIFFERENT OPTIONS, and that is what lets both markers be `raw` — the
+  # one-definition type. A single shared marker would need a merging type, and a merging type would absorb
+  # an unexpected second contributor silently; with `raw`, a second definition of either marker is a
+  # conflict rather than a longer list. `hostMarker` is the non-vacuity half: it resolves on BOTH fleets,
+  # so a control answering the marker's default is a control that reached the terminal and found nothing
+  # there, rather than an eval that never ran.
+  markerContent =
+    { config, ... }:
+    {
+      config.den.aspects.hostm.nixos.hostMarker = "nixos-host";
+      config.den.aspects.acctm.home-manager.marker = "hm-alice";
+      config.den.include = [
+        {
+          at = config.den.host.axon;
+          aspects = [ config.den.aspects.hostm ];
+        }
+        {
+          at = config.den.user.alice;
+          aspects = [ config.den.aspects.acctm ];
+        }
+      ];
+    };
+  markerBase = [
+    relocationSchema
+    relocationInstances
+    relocationMembership
+    relocationClassing
+    markerContent
+  ];
+  markerFreeOut = (denHoag.mkDen markerBase).den.output;
+  markerRelocatedOut = (denHoag.mkDen (markerBase ++ [ relocationMod ])).den.output;
+
+  # Force a member's module list through the REAL module system — the crossing `gen-flake`'s terminal
+  # makes — and answer its resolved configuration. `marker2` belongs to the injection rows below; it is
+  # declared here because one eval serves every terminal row and a per-row option set would let two rows
+  # disagree about what the terminal was asked for. `warnings` is gen-bind's split-return collision
+  # channel, which a bare `evalModules` (not a full NixOS eval) does not declare.
+  evalMember =
+    sys:
+    (nixpkgsLib.evalModules {
+      modules = sys.modules ++ [
+        (
+          { lib, ... }:
+          {
+            options.marker = lib.mkOption {
+              type = lib.types.raw;
+              default = "unset";
+            };
+            options.marker2 = lib.mkOption {
+              type = lib.types.raw;
+              default = "unset";
+            };
+            options.hostMarker = lib.mkOption {
+              type = lib.types.raw;
+              default = "unset";
+            };
+            options.warnings = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+            };
+          }
+        )
+      ];
+    }).config;
+
   # ── THE INJECTION INPUT: the second public relocation verb, on the same fixture ───────────────────────
   # `declare.inject` declares content AT A SCOPE with no aspect behind it. It reaches both consumers through
   # the SAME per-scope memo the `reroute` half rides (`class-relocation.injections`), read by `class-seeds`
@@ -180,6 +257,46 @@ let
       ];
   };
   injectedOut = (denHoag.mkDen (relocationBase ++ [ injectMod ])).den.output;
+
+  # The injection at the NIXOS coordinate. The rows above inject at `home-manager`, which is the cell's own
+  # producing class and therefore a coordinate that ALREADY HOLDS CONTENT — so an injection landing there
+  # is measured as a longer list beside content that was going to be there anyway. The cell holds no
+  # `nixos` content at all, so this fleet is the cell-with-no-preexisting-content case: the coordinate's
+  # entire answer is the injection, and a design that appends to an existing bucket while failing to
+  # create an absent one answers `[ ]` here and stays green on every row above.
+  injectNixosMod.config.den.policies.inject-nixos = {
+    emits = [ "inject" ];
+    selects = sel.star;
+    fn =
+      { user, ... }:
+      [
+        (denHoag.declare.inject {
+          class = denHoag.classes.nixos;
+          module = {
+            tag = "inj-nixos";
+          };
+        })
+      ];
+  };
+  injectNixosOut = (denHoag.mkDen (relocationBase ++ [ injectNixosMod ])).den.output;
+
+  # The injection on the TERMINAL-side fixture, for the alias-hop row. `marker2` is a third option, so the
+  # injected module is distinguishable at the resolved configuration from the cell's own `marker`.
+  injectMarkerMod.config.den.policies.inject-marker = {
+    emits = [ "inject" ];
+    selects = sel.star;
+    fn =
+      { user, ... }:
+      [
+        (denHoag.declare.inject {
+          class = denHoag.classes.home-manager;
+          module = {
+            marker2 = "inj-alice";
+          };
+        })
+      ];
+  };
+  injectMarkerOut = (denHoag.mkDen (markerBase ++ [ injectMarkerMod ])).den.output;
 
   # ── THE DESTINATION INPUT: a ROUTE targeting the channel the relocation empties ───────────────────────
   # `relocationMod` moves `home-manager` to `nixos`; a route declaring `to = home-manager` at the same scope
@@ -329,6 +446,89 @@ in
       };
     };
 
+    # ══ THE RELOCATION AT THE TERMINAL — closing the alias hop ══════════════════════════════════════════
+    # The three rows above stop at `projectClass` / `classSubtreeAt`. Both of those are one alias hop short
+    # of the surfaces a consumer actually reads: `graphAccessor.contentsOf` on the collection side and
+    # `systems.<class>.<member>.modules` on the terminal side. Until the hop is closed, "the introspection
+    # surface and the built system agree about a relocation" is a reading of the call chain rather than a
+    # measurement, and the two rows below are the measurement — one at each end, on the same fixture.
+
+    # (iv) THE COLLECTION-SIDE END. `contentsOf id class` re-presents the class bucket as seed
+    #      contributions, so its `content` is the same deferredModule the rows above walk and the same
+    #      `tags` projection applies. It answers the RELOCATED content, which is what makes the accessor
+    #      the fold's alias rather than a second reading of the graph.
+    test-relocation-reaches-contentsOf = {
+      expr = builtins.concatMap (c: tags c.content) (relocatedOut.graphAccessor.contentsOf axon "nixos");
+      expected = [
+        "nixos-host"
+        "hm-alice"
+      ];
+    };
+
+    # (v) THE TERMINAL-SIDE END, asserted through an EVALUATION rather than over a module list's shape.
+    #     `marker` is defined only by the CELL's `home-manager` content and only the relocation brings it
+    #     into the host's `nixos` member, so its resolved value is the relocation observed at the built
+    #     configuration. The control is the relocation-free twin in the same run, and `hostMarker` is what
+    #     makes the control evidence: it resolves on both fleets, so the control's `unset` is the terminal
+    #     reached and holding nothing there — not an evaluation that failed to run.
+    test-relocation-reaches-terminal-modules = {
+      expr = {
+        relocated =
+          let
+            c = evalMember markerRelocatedOut.systems.nixos.${axon};
+          in
+          {
+            inherit (c) marker hostMarker;
+          };
+        control =
+          let
+            c = evalMember markerFreeOut.systems.nixos.${axon};
+          in
+          {
+            inherit (c) marker hostMarker;
+          };
+      };
+      expected = {
+        relocated = {
+          hostMarker = "nixos-host"; # the host's own content, on both fleets…
+          marker = "hm-alice"; # …and the cell's, which only the relocation puts here.
+        };
+        control = {
+          hostMarker = "nixos-host";
+          marker = "unset";
+        };
+      };
+    };
+
+    # (vi) ★ THE VANISHED CONTENT LANDS IN THE HOST, and the row must assert BOTH halves or it is satisfied
+    #      by a design that simply deletes the emptied cell.
+    #      (a) MEMBERSHIP IS UNCHANGED at the destination class: the cell never becomes a `nixos` member,
+    #          because the member filter's producing-class conjunct excludes it whatever content the
+    #          coordinate holds. This is the half that fails if an implementation reads the relocation into
+    #          the member spine as well as into the content.
+    #      (b) THE HOST'S OWN MODULE COUNT MOVES: the relocated cell content arrives as a second module at
+    #          the host's `nixos` projection, against one on the control.
+    #      A change that merely deleted the emptied cell would pass (a) and fail (b).
+    #
+    #      This is the DESTINATION coordinate of the observation the route suite's member row makes at the
+    #      SOURCE: that row asserts the cell is GONE from `systems.home-manager`, this one asserts it never
+    #      ARRIVES in `systems.nixos` while its content does. Neither implies the other — a design moving
+    #      the member along with the content passes the first and fails this one.
+    test-relocation-vanished-content-lands-in-the-host = {
+      expr = {
+        membersRelocated = builtins.attrNames relocatedOut.systems.nixos;
+        membersControl = builtins.attrNames relocationFreeOut.systems.nixos;
+        modulesRelocated = builtins.length (relocatedOut.projectClass axon "nixos");
+        modulesControl = builtins.length (relocationFreeOut.projectClass axon "nixos");
+      };
+      expected = {
+        membersRelocated = [ axon ]; # (a) the cell is not here…
+        membersControl = [ axon ];
+        modulesRelocated = 2; # (b) …but its content is.
+        modulesControl = 1;
+      };
+    };
+
     # ══ THE INJECTION INPUT — the second public verb, armed at both consumers ═══════════════════════════
     # `den-hoag-4kh.41` recorded the standing gap in one line: only `reroute` was armed. The rows above
     # measure a relocation; these measure an INJECTION, which is the other half of the same memo and the
@@ -383,6 +583,70 @@ in
       expected = {
         projected = [ "hm-alice" ];
         folded = [ "hm-alice" ];
+      };
+    };
+
+    # (iv) THE INJECTION AT A COORDINATE THAT HOLDS NOTHING. The three rows above inject at the cell's own
+    #      producing class, where the injected module lands beside content that was going to be there
+    #      anyway — so they cannot tell "appends to a bucket" from "creates one". The cell declares no
+    #      `nixos` content at all, so here the coordinate's whole answer IS the injection, on both
+    #      consumers, and the same-run control is the injection-free fleet answering nothing there.
+    #      ★ The member half is the second reason this coordinate is worth its own row: the cell holds
+    #      `nixos` content now and still does not become a `nixos` member — content at a coordinate and
+    #      membership of that class are independent, exactly as the relocation rows above assert from the
+    #      other direction.
+    test-inject-at-empty-coordinate = {
+      expr = {
+        cell = builtins.concatMap tags (injectNixosOut.projectClass alice "nixos");
+        cellFolded = builtins.concatMap tags (injectNixosOut.classSubtreeAt alice "nixos");
+        host = builtins.concatMap tags (injectNixosOut.projectClass axon "nixos");
+        control = builtins.concatMap tags (relocationFreeOut.projectClass alice "nixos");
+        members = builtins.attrNames injectNixosOut.systems.nixos;
+      };
+      expected = {
+        cell = [ "inj-nixos" ]; # the coordinate held nothing; the injection is its whole content…
+        cellFolded = [ "inj-nixos" ]; # …on the other consumer too.
+        host = [
+          "nixos-host"
+          "inj-nixos"
+        ]; # and reach draws it into the host's projection.
+        control = [ ]; # one declaration away, the coordinate is empty.
+        members = [ axon ]; # content at `nixos` does not make the cell a `nixos` member.
+      };
+    };
+
+    # (v) THE INJECTION REACHES THE TERMINAL — the alias hop closed for the inject half, on the same
+    #     evaluation predicate the relocation's terminal row uses. `marker2` is defined only by the
+    #     injected module, so its resolved value at the cell's built member is the injection observed at
+    #     the configuration rather than in a module list. `marker` is the non-vacuity half here: the
+    #     cell's own aspect content resolves on both fleets, so the control's `unset` for `marker2` is the
+    #     terminal reached and holding no injection.
+    test-inject-reaches-terminal-modules = {
+      expr = {
+        injected =
+          let
+            c = evalMember injectMarkerOut.systems.home-manager.${alice};
+          in
+          {
+            inherit (c) marker marker2;
+          };
+        control =
+          let
+            c = evalMember markerFreeOut.systems.home-manager.${alice};
+          in
+          {
+            inherit (c) marker marker2;
+          };
+      };
+      expected = {
+        injected = {
+          marker = "hm-alice"; # the cell's own content, on both fleets…
+          marker2 = "inj-alice"; # …and the injected module, which only this fleet declares.
+        };
+        control = {
+          marker = "hm-alice";
+          marker2 = "unset";
+        };
       };
     };
 
