@@ -947,6 +947,12 @@ in
     #     row because they do not share a category: `meta` and `includes` are structural keys the kernel
     #     reads by fixed name, `artifact` is a facet. A row pinning one member would be blind to a
     #     classifier that answered correctly for its category and wrongly for the other.
+    #     ★★ `meta` IS HALF OF A PAIR ABOUT ONE NAME, and the halves live in different suites because they
+    #     are about different producers. This row says `meta` AS THE INJECTED CHANNEL is refused named; its
+    #     other half — `projection-routes.test-injection-declares-no-forward` — says a `meta.__forward`
+    #     written INSIDE an injected module is inert, because the specs fold reads an element's own `meta`
+    #     and a minted element's content is exactly `{ name; <channel> = module; }`. Only together do they
+    #     close the forward surface against an injection: one route is refused, the other is never read.
     test-inject-schema-claimed-channel-meta-refused = {
       expr = builtins.deepSeq (injectMetaOut.classSubtreeAt axon "nixos") true;
       expectedError = {

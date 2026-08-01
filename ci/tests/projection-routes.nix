@@ -584,6 +584,39 @@ let
     scope.reach = destFwdNodes;
     desc.routes = [ (rerouteAct "home-manager" "nixos") ];
   };
+
+  # ── the PARENT-TARGETED destination, and it is a third fixture rather than a variant of the two above.
+  # A route's destination is matched against the projecting scope's relocation at BOTH gathering arms: the
+  # own-scope routes fired at the scope, and the descendant-fired `appendToParent` ones the scope gathers.
+  # Every parent-targeted fixture in this suite declares its `to` at a host with no relocation on that
+  # channel, where matching through the relocation and matching literally agree — so the second arm's
+  # destination read has no fixture that can tell the two apart. This one moves the destination: the cell
+  # fires the route, the HOST reroutes the route's `to` away, and the two answers separate.
+  ptRouteToNixos = deliveryAct {
+    from = "home-manager";
+    to = "nixos";
+    at = [
+      "home-manager"
+      "users"
+      "tux"
+    ];
+    appendToParent = true;
+  };
+  mkPtDestFleet = hostActs: {
+    host = {
+      node.parent = null;
+      children.cell = { };
+      reach = [ (mkNodeAt "host" "host-own" { nixos.tag = "nixos-host"; }) ];
+      routes = hostActs;
+    };
+    cell = {
+      node.parent = "host";
+      reach = [ (mkNodeAt "cell" "acct" { home-manager.tag = "hm-tux"; }) ];
+      routes = [ ptRouteToNixos ];
+    };
+  };
+  gPtDestRelocated = mkPtDestFleet [ (rerouteAct "nixos" "darwin") ];
+  gPtDestControl = mkPtDestFleet [ ];
 in
 {
   flake.tests.projection-routes = {
@@ -1312,6 +1345,13 @@ in
     #     restatement: the byte-identical attrset carried as an ASPECT's content DOES produce a live forward
     #     spec (it delivers the reached home-manager content at `leaked` into nixos). The two fixtures differ
     #     only in which producer minted the element, and they answer differently.
+    #     ★★ THIS ROW IS HALF OF A PAIR ABOUT THE SAME NAME, and on its own it is the weaker half. It says
+    #     `meta` INSIDE an injected module is inert. Its other half —
+    #     `projection.test-inject-schema-claimed-channel-meta-refused` — says `meta` AS the injected CHANNEL
+    #     is refused named. Only together do they state what the mint does with a claimed key: a fleet
+    #     cannot reach the forward surface through an injection by either route, one because the read never
+    #     looks there and one because the declaration is refused before it is built. A suite carrying this
+    #     row alone would be satisfied by a mint that simply admitted `meta` as a channel.
     test-injection-declares-no-forward = {
       expr = {
         injectionForwards = projectReachOf gInjectCarrier "scope" "nixos";
@@ -1473,6 +1513,40 @@ in
           }
         ];
         atDescendantNixos = [ ];
+      };
+    };
+
+    # (c) ★★ A PARENT-TARGETED ROUTE'S DESTINATION FOLLOWS THE GATHERING SCOPE'S RELOCATION — the second
+    #     gathering arm, and the one no fixture in this suite could see. The rows above cover the own-scope
+    #     arm; the descendant-fired `appendToParent` routes are gathered by the host through a SEPARATE
+    #     destination compare, and every parent-targeted fixture here declares `to = nixos` at a host that
+    #     reroutes nothing — where matching the destination through the host's relocation and matching it
+    #     literally give the same answer. So that compare had no witness at all, and deleting it left every
+    #     row green.
+    #     The fleets below differ in ONE declaration, at the host: the cell fires the route either way, and
+    #     the host either reroutes the route's `to` away or does not. Both halves move, which is what makes
+    #     the row discriminating in both directions rather than only where content appears — under a
+    #     literal compare the contribution stays at `nixos` and never reaches `darwin`.
+    test-parent-targeted-route-destination-follows-relocation = {
+      expr = {
+        relocatedAtTarget =
+          (crossFreeform (projectClassOf gPtDestRelocated "host" "darwin")).home-manager.users;
+        relocatedAtDeclared = projectClassOf gPtDestRelocated "host" "nixos";
+        controlAtDeclared =
+          (crossFreeform (projectClassOf gPtDestControl "host" "nixos")).home-manager.users;
+        controlAtTarget = projectClassOf gPtDestControl "host" "darwin";
+      };
+      expected = {
+        # the host reroutes `nixos → darwin`, so the route declared `to = nixos` contributes HERE…
+        relocatedAtTarget.tux = {
+          tag = "hm-tux";
+        };
+        relocatedAtDeclared = [ ]; # …and nothing rests at the channel it named.
+        # CONTROL, one declaration away: the route answers at its declared destination and nowhere else.
+        controlAtDeclared.tux = {
+          tag = "hm-tux";
+        };
+        controlAtTarget = [ ];
       };
     };
   };
