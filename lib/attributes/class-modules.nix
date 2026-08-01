@@ -203,6 +203,28 @@ let
       in
       throw "den-hoag: class-modules: class content at scope '${sid}' is read from a reserved channel '${d}' (the aspect schema registers it as a '${keyCategory d}' key, and a '${keyCategory d}' key is never class content)";
 
+  # ── THE INJECTION-ELEMENT READ OF A SCOPE'S MEMO — a NAMED field projection, and PRIVATE ──────────────
+  # `injectionsOf eval sid` selects `.injections` off the scope's `class-relocation` record. It is a field
+  # projection and not a graph query, so by the split this file already draws (`sourceOrderOf` exported,
+  # `scopeOf`/`assertedOf` not) it stays private and is bound in each file that makes the read — here for
+  # `class-seeds`, and again in `resolved-aspects.nix` for `reach`. The two messages name their own consumer
+  # because they answer for two different eval handles and a diagnostic that cannot say which is one a
+  # reader cannot act on.
+  # IT IS NAMED RATHER THAN BARE because a bare `.injections` is the only read this design adds with no
+  # named abort: on a hand-built stub answering a memo record that lacks the field, the bare selection gives
+  # the evaluator's `attribute 'injections' missing`, which `builtins.tryEval` does NOT contain, while this
+  # throw is contained — the same shape the totality rows are written against everywhere else.
+  # STRICT IN ITS SCOPE ID for the same reason `classSliceAt` is: reached only through `eval.get sid` and
+  # the message interpolation, `sid` goes unforced by an eval that ignores its id argument, and the
+  # accessor's safety would then rest on a SIBLING EXPRESSION in the caller's fold forcing it first — a
+  # property of the fold shape, which the next edit rearranges silently. `seq` reaches WHNF of a string.
+  injectionsOf =
+    eval: sid:
+    builtins.seq sid (
+      (eval.get sid "class-relocation").injections
+        or (throw "den-hoag: class-modules: no class-relocation injections at scope '${sid}' (the eval serving class-seeds does not carry the relocation equation's record)")
+    );
+
   # ── THE ONE EXTRACTION, RELOCATION-AWARE — the exported entry point ───────────────────────────────────
   # `classSliceAt eval exempt e c` = the `c`-content of ONE content element, read through the relocation
   # relation of THE ELEMENT'S OWN scope: the concatenation of the element's raw slices at every channel in
@@ -223,9 +245,21 @@ let
   # asserted keys open the registered-key gate for its own minted channel and nothing else; a caller
   # spelling `exempt // e.assertedClasses` would re-derive, outside the file that owns `assertedOf`, a set
   # this file already computes — the second-derivation shape the design refuses everywhere else.
+  #
+  # THE `builtins.seq sid` MAKES `scopeOf`'s ABORT A PROPERTY OF THE EXTRACTION AND OF NOTHING ELSE. Without
+  # it `sid` is reached only through `eval.get sid` and the throw-message interpolations, so an eval that
+  # IGNORES its id argument never forces it and a scope-less element passes the gate silently — a guard
+  # whose soundness depends on a property of the CALLER, which regresses on the next eval anyone writes.
+  # Forcing here reaches WHNF of a string: no memo is demanded that was not demanded before, and on a real
+  # eval the id is a string `eval.get` forces anyway.
   classSliceAt =
     eval: exempt: e: c:
-    prelude.concatMap (d: rawSliceOf (exempt // assertedOf e) e d) (sourceOrderOf eval (scopeOf e) c);
+    let
+      sid = scopeOf e;
+    in
+    builtins.seq sid (
+      prelude.concatMap (d: rawSliceOf (exempt // assertedOf e) e d) (sourceOrderOf eval sid c)
+    );
 
   # Per-aspect totality force: (a) the §4.1 prebuilt-arm EXCLUSIVITY (`artifactExclusive` — an aspect
   # declaring `artifact` with non-empty class content aborts NAMED); (b) a WHNF force of every non-`_`,
@@ -360,27 +394,6 @@ let
   # selects is a list of channel NAMES. There is exactly one content expression here — a fast path that
   # computed content by a second expression would be a two-path divergence, and this is not that.
   srcOrder = frame: c: if frame == null then [ c ] else preimageOf frame c;
-
-  # ── RAW seeds of ONE channel at ONE node: aspect content, then node-local injections ──────────────────
-  # Injections are raw content at their declared channel, so they relocate exactly as aspect content does
-  # (the query concatMaps over the preimage) — reproducing inject-then-relocate ordering by construction.
-  # `sharedFoldKey = null` on an injection is the anon rule: node-local content, never cross-scope deduped.
-  # `resolvedAspects` and `injects` are PASSED IN, bound once per node by the equation. Neither depends on
-  # the channel, so re-reading or re-filtering them here would repeat a node-level value K times per node.
-  rawSeedsAt =
-    resolvedAspects: exempt: injects: d:
-    prelude.concatMap (a: rawSliceOf exempt a d) resolvedAspects
-    ++ map (a: {
-      inherit (a) module;
-      sharedFoldKey = null;
-    }) (builtins.filter (a: className a.class == d) injects);
-
-  # ── THE QUERY. Per (node, channel). Total. Order-free in the act list. ───────────────────────────────
-  # `exempt` and `injects` are PARAMETERS, bound once per node by the equation. Computing either here would
-  # rebuild it once per channel, because `genAttrs classNames` calls this K times; neither depends on `c`.
-  classSeedsAt =
-    frame: resolvedAspects: exempt: injects: c:
-    prelude.concatMap (rawSeedsAt resolvedAspects exempt injects) (srcOrder frame c);
 
   # ── THE ACYCLICITY GUARD ──────────────────────────────────────────────────────────────────────────────
   # THE LAW: Ρ(n) restricted to distinct endpoints is acyclic. A cycle among distinct channels has no rest
@@ -578,12 +591,24 @@ in
       };
   };
 
-  # THE MEMO. `resolve.attr` memoizes per (node, attribute); `genAttrs` memoizes per channel and forces only
-  # the channel demanded. This attrset is the query's MEMO TABLE, not its definition.
-  # EVERY NODE-LEVEL VALUE IS BOUND HERE, in the compute's `let`, so each is computed once and shared by
-  # every channel `genAttrs` demands: the node's resolved aspects, its act list, the FRAME (so the acyclicity
-  # guard fires once and the transposed relation is materialized once), `exempt`, and the filtered `injects`.
-  # Binding any of them inside the per-channel query instead would rebuild it K times per node.
+  # THE MEMO — and it is the PER-NODE INSTANCE OF THE ONE EXTRACTION, not a second one. `resolve.attr`
+  # memoizes per (node, attribute); `genAttrs` memoizes per channel and forces only the channel demanded.
+  # This attrset is the query's MEMO TABLE, not its definition.
+  #
+  # THE NESTING IS ELEMENT-MAJOR, CHANNEL-INNER, and that is the whole of what moves. HEAD nested
+  # channel-outer (per source channel, fold every element), which permutes the answer whenever the element
+  # order and the source order have an INVERSION: an earlier aspect's RELOCATED content then lands after a
+  # later aspect's, so declaring a relocation between two channels inverts include-order precedence for
+  # content in a third. merge_ord — own-first, DFS-preorder, include order — is the architecture's content
+  # order, so that inversion is a defect in the resolved configuration and element-major removes it. The
+  # multiset is identical under both nestings; only the order moves, and only on relocation inputs.
+  #
+  # AN INJECTION IS AN ELEMENT OF `elements`, NOT A SECOND APPEND PATH. HEAD carried a second injection
+  # producer that applied none of `rawSliceOf`'s tests; routing injections through the same extraction is
+  # what makes the reserved-channel refusals and the registered-key gate reach them at all.
+  #
+  # `content-key-totality` FOLDS OVER `ra` ONLY, never over the injections: an injection's single asserted
+  # key is not a classification candidate, so folding it there would force a module for no gate.
   class-seeds = resolve.attr {
     name = "class-seeds";
     kind = "synthesized";
@@ -592,18 +617,17 @@ in
       "resolved-aspects"
       "declarations"
       "content-key-totality"
+      "class-relocation"
     ];
     compute =
       self: id:
       let
-        resolvedAspects = self.get id "resolved-aspects";
-        acts = (self.get id "declarations").actions.resolution or [ ];
-        exempt = forwardSourceClassesOf resolvedAspects;
-        injects = builtins.filter (a: a.__action == "inject") acts;
-        frame = frameAt id acts;
+        ra = self.get id "resolved-aspects";
+        elements = ra ++ injectionsOf self id;
+        exempt = forwardSourceClassesOf ra;
       in
       builtins.seq (self.get id "content-key-totality") (
-        prelude.genAttrs classNames (classSeedsAt frame resolvedAspects exempt injects)
+        prelude.genAttrs classNames (c: prelude.concatMap (e: classSliceAt self exempt e c) elements)
       );
   };
 

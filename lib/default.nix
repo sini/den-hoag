@@ -1900,8 +1900,9 @@ let
         # discovered `classifyKey` so `projectClass` (the reach-based projection) and the `class-modules`
         # buckets share exactly one extraction — the ANCHOR `projectClass == classSubtreeAt` on a no-edge
         # node is that equivalence — and `projectClass` enforces the unregistered-key totality abort.
-        # `sourceOrderOf` is exported by the same builder as a graph query over the relocation relation; it
-        # is not threaded here because no output-stratum reader takes it yet.
+        # `sourceOrderOf` is exported by the same builder as a graph query over the relocation relation, and
+        # IS threaded: the route/forward DESTINATION coordinates are read through it, so the same relation
+        # governs a placement target and the content elements beside it.
         inherit
           (attributesLib.mkClassSlice {
             classNames = effectiveClassNames;
@@ -1911,6 +1912,7 @@ let
             inherit (denAspects.aspectSchema) keyCategory;
           })
           classSliceAt
+          sourceOrderOf
           assertKeysRegistered
           forwardSourceClassesOf
           ;

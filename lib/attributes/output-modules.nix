@@ -115,6 +115,18 @@
     _: _: _: _:
     [ ]
   ),
+  # THE Ρ-PREIMAGE ORDER OF A CHANNEL AT A SCOPE (`class-modules.nix sourceOrderOf`) — `sourceOrderOf eval S c`
+  # answers which channels' content comes to rest at `c` under the relocation relation declared at `S`. The
+  # three ROUTE/FORWARD DESTINATION sites below read it: a delivery names the coordinate `(T, C)` and Ρ(T)
+  # says what `C` means at `T`, so a destination is relabelled by the target root's own relocation exactly as
+  # the element arm's sources are. Without it a route arm answers `live` for a coordinate the element arm
+  # beside it answers `vacated` — one coordinate, two answers, selected by whether the content arrived as an
+  # element or as a placement.
+  # REQUIRED, NO DEFAULT, and that is the whole point of the formal. A `_: _: c: [ c ]` default satisfies
+  # every lexical guard while answering as though no relocation existed — the un-relocated semantics pinned
+  # silently at a fourth site, which is the class of omission this unification exists to remove. A caller
+  # that has no extraction to thread has no business reading a destination through one.
+  sourceOrderOf,
   # §2.2 TOTALITY assertion (`class-modules.nix assertKeysRegistered`). Forces classification of every
   # non-`_` content key of a REACHED aspect (abort NAMED on a genuinely unregistered typo key); `projectClass`
   # runs it per reached aspect so a typo cannot silently vanish on the drv path (spec §2.2 ruling 2026-07-14).
@@ -645,15 +657,25 @@ let
   # target-class case witnessed so far carries `adaptArgs = null`, so the arm is inert on the green set; the
   # adaptArgs-bearing forwards all target homeManager-at-cell (a separate lift composition), so this arm's
   # v1-fidelity is RE-VERIFIED when that path is built — a documented ceiling, not a live divergence.
+  #
+  # IT TAKES THE PROJECTING SCOPE `id` because its `intoClass` match is a DESTINATION coordinate, read
+  # through `id`'s own relocation relation (see `sourceOrderOf` above). `id` sits immediately after `exempt`,
+  # the position the two sibling bindings that take both (`routeRemapFor`, `remapOver`) already fix, which
+  # also makes the last three arguments identical to `routeRemapFor`'s whole argument list — the two are
+  # called adjacently in `projectClassScoped`, on the same `exempt`, `id` and `class`.
   forwardModulesFor =
-    reach: exempt: class:
+    reach: exempt: id: class:
     let
+      # The destination coordinate's preimage at the PROJECTING scope, bound once: it depends on neither the
+      # spec nor the reached node, so resolving it inside the fold would re-run the reserved-channel filter
+      # once per reached aspect.
+      destOrder = sourceOrderOf result id class;
       specs = prelude.concatMap (
         n:
         let
           f = (n.content.meta or { }).__forward or null;
         in
-        if f == null || f.intoClass != class then [ ] else [ f ]
+        if f == null || !(builtins.elem f.intoClass destOrder) then [ ] else [ f ]
       ) reach;
     in
     prelude.concatMap (
@@ -697,11 +719,22 @@ let
 
   # `exempt` = `id`'s forward-source set (threaded from `projectClass`, own-scope leg). The parent-targeted
   # leg's source is a DESCENDANT cell, so it carries its OWN per-cell exemption.
+  #
+  # BOTH ARMS MATCH THE ROUTE'S DESTINATION THROUGH `id`'s RELOCATION, not by a literal compare (see
+  # `sourceOrderOf` above). `id` is the right scope for both: `routesAt id` gathers the deliveries fired at
+  # `id` that target `id`, and `parentTargetedRoutesAt id` the descendant-fired ones whose
+  # `deliveryTargetRootOf` resolves to `id` — so the destination coordinate's owning scope is `id` on each.
+  # The route's SOURCE stays governed by each element's own scope, inside `classSliceAt`.
   routeRemapFor =
     exempt: id: class:
+    let
+      # Bound once per (id, class): neither arm's route affects it, and both arms scan it.
+      destOrder = sourceOrderOf result id class;
+    in
     # (1) OWN-scope routes fired at `id` — the source node set is `reach id`.
     prelude.concatMap (
-      route: if route.to == class && guardHolds route id then remapOver exempt id route else [ ]
+      route:
+      if builtins.elem route.to destOrder && guardHolds route id then remapOver exempt id route else [ ]
     ) (routesAt id)
     # (2) DESCENDANT-DRIVEN parent-targeted routes (#10 hm-user-detect) — a cell-fired
     #     `appendToParent` route targeting THIS host: the SOURCE is the descendant cell (`sourceScope`), so
@@ -711,7 +744,7 @@ let
     #     hm does NOT ride the cell's gather), and the guard is evaluated at the CELL.
     ++ prelude.concatMap (
       pt:
-      if pt.route.to == class && guardHolds pt.route pt.sourceScope then
+      if builtins.elem pt.route.to destOrder && guardHolds pt.route pt.sourceScope then
         remapOver (forwardSourceClassesOf (result.get pt.sourceScope "reach")) pt.sourceScope pt.route
       else
         [ ]
@@ -748,9 +781,12 @@ let
   # the right pool (`bindAtSourceScope`). The route/forward remap layers are stamped with the PROJECTING
   # scope: a remapped slice's arg environment is the route's own concern (`placeRemapped` already threads
   # `bindingsAt srcScope` through its nested eval, and the `at = [ ]` / eval-time-guard arms take the
-  # terminal's), so re-binding them here would double-apply that transform. A node with no stamp (a
-  # synthetically-constructed reach, ci/tests/_lib/projection-harness.nix) reads as the projecting scope —
-  # the pre-stamp behaviour.
+  # terminal's), so re-binding them here would double-apply that transform. THE READ IS A BARE FIELD, with
+  # no `or id` fallback: every content-element producer stamps `scope` unconditionally, so a fallback here
+  # would be a second answer to a question the element already carries — and it answered the PROJECTING
+  # scope where the declared reading is the emitting one, so the absence it covered was one it also got
+  # wrong. The named diagnostic on an absent field lives at the extraction, which reads the same field
+  # through `class-modules.nix`'s own projection.
   projectClassScoped =
     id: class:
     let
@@ -770,12 +806,12 @@ let
       builtins.seq (assertKeysRegistered exempt n) (
         map (e: {
           inherit (e) module;
-          scope = n.scope or id;
+          scope = n.scope;
         }) (classSliceAt result exempt n class)
       )
     ) reach
     ++ map atProjectingScope (routeRemapFor exempt id class)
-    ++ map atProjectingScope (forwardModulesFor reach exempt class);
+    ++ map atProjectingScope (forwardModulesFor reach exempt id class);
 
   projectClass = id: class: map (e: e.module) (projectClassScoped id class);
 

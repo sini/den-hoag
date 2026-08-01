@@ -355,16 +355,44 @@ in
   reach = resolve.attr {
     name = "reach";
     kind = "circular";
+    # `"class-relocation"` is a GAIN, not a swap: `reach` reads `declarations` DIRECTLY — the structural
+    # walk consults it for the reach-edge acts — so `readsAttrs` keeps it. This list declares THIS
+    # attribute's own dependencies, never the transitive closure of its dependencies' dependencies, and
+    # dropping `declarations` because the memo also reads it would state an edge that does not exist and
+    # leave a real one undeclared. No cycle: the memo is `synthesized` over `declarations`, which `reach`
+    # already reads.
     readsAttrs = [
       "resolved-aspects"
       "declarations"
       "children"
+      "class-relocation"
     ];
     compute =
       self: id:
       let
         # Positive edges at a node: the node's own DECLARED (opt-in) reach-edges.
         positiveEdgesAt = nid: reachEdgesOf ((self.get nid "declarations").actions.resolution or [ ]);
+
+        # ── THE INJECTION-ELEMENT READ OF A SCOPE'S MEMO — a NAMED field projection, and PRIVATE ────────
+        # An injection is a CONTENT ELEMENT of the scope that declares it (class-modules.nix
+        # `injectionElementsAt`), so it travels the structural payload beside that scope's resolved
+        # aspects rather than a second append path at each consumer. The twin of this binding lives in
+        # `class-modules.nix` for `class-seeds`; each names its own consumer in the message because the two
+        # answer for two different eval handles.
+        # NAMED rather than bare: a bare `.injections` on a stub whose memo record lacks the field gives
+        # the evaluator's `attribute 'injections' missing`, which `builtins.tryEval` does NOT contain,
+        # while this throw is contained.
+        # STRICT IN ITS SCOPE ID. Reached otherwise only through `eval.get sid` and the message
+        # interpolation, `sid` goes unforced by an eval that ignores its id argument. Today the sibling
+        # `self.get nid "resolved-aspects"` in the same fold lambda forces `nid` first — but only while
+        # that attribute is served by a lookup KEYED ON id; serve it as a constant and the fold admits a
+        # poisoned scope id. The force makes that accident unnecessary rather than merely redundant.
+        injectionsOf =
+          eval: sid:
+          builtins.seq sid (
+            (eval.get sid "class-relocation").injections
+              or (throw "den-hoag: resolved-aspects: no class-relocation injections at scope '${sid}' (the eval serving reach does not carry the relocation equation's record)")
+          );
 
         # NEGATIVE-EDGE SUPPRESSION (spec §2 F3-exclude / u21). The suppressed-EDGE set at a node: the
         # `target`s named by every reach-suppress declaration whose scope predicate `when` HOLDS for the
@@ -420,8 +448,20 @@ in
         # accumulated OWN-SUBTREE FIRST (own node's forwardExpand order, then each descendant's, in
         # `scope.descendants` order), THEN the edges of `edgesAt id` in precedence order (default edges <
         # opt-in edges). Do NOT reorder these folds — the class-slice merge depends on this sequence.
+        #
+        # THE PAYLOAD IS THE SCOPE'S CONTENT ELEMENTS, in the STRUCTURAL arm only. Each subtree scope
+        # contributes its resolved aspects AND its injections, because an injection declares content at a
+        # scope exactly as an aspect's class body does. The EDGE-closure `project` arm below deliberately
+        # does NOT change: an injection element declares no aspect identity (`key = null`), so it cannot
+        # participate in the edge closure's single-visit law, which is stated over `n.key` — and gen-graph
+        # keeps a null-keyed item unconditionally (the conservative NULL-KEEP direction), so putting
+        # injections on the edge arm DOUBLES them for a scope reached both structurally and by an edge.
+        # An injection therefore travels the component whose index it has (scope) and not the one whose
+        # index it lacks (aspect identity).
         subtreeIds = [ id ] ++ scope.descendants self id;
-        structuralNodesRaw = prelude.concatMap (nid: self.get nid "resolved-aspects") subtreeIds;
+        structuralNodesRaw = prelude.concatMap (
+          nid: self.get nid "resolved-aspects" ++ injectionsOf self nid
+        ) subtreeIds;
         # CROSS-SCOPE SHARED-ASPECT DEDUP (v1 `wrapPerScope` `dedupByKey (m: m.key)`, resolve.nix:43-66 @ pin
         # 11866c16). A genuinely-shared host+user aspect (`den.default`) resolves to a BYTE-IDENTICAL node at
         # the host AND its cells (same A-IDENT key + same entity-coord projection ⇒ same `sharedFoldKey`);
