@@ -224,6 +224,17 @@ let
       };
 
       # User-scope policy for user schema includes.
+      #
+      # THE CODOMAIN IS DECLARED HERE BECAUSE THE RECOVERY CANNOT REACH IT. `userDetectFn` is
+      # VALUE-CONDITIONAL (`optionals (isOsSupported && hasClass)`), and the probe sentinel the codomain
+      # recovery fires it at is engineered — deliberately, see the body's comment above — to drive
+      # `isOsSupported` FALSE, which is the very thing that keeps the bare `host.class` read from
+      # hard-failing at the probe. So the recovery walks the false branch and reads back an EMPTY HEAD for
+      # a body that emits at every real (user,host) cell, and the first real emission then aborts against
+      # a codomain the shim invented rather than one this record stated. Every effect the body produces is
+      # a `policy.include` (the `userForward` include plus `classIncludes`), and the include arm of the
+      # effect translation is `declare.edge` on each of its three sub-arms — so the emission set is `edge`,
+      # closed by construction and not merely by observation.
       userDetect = {
         policies."${ctxName}-user-detect" = userDetectFn;
         includes = [
@@ -231,6 +242,7 @@ let
             __isPolicy = true;
             name = "${ctxName}-user-detect";
             fn = userDetectFn;
+            emits = [ "edge" ];
           }
         ];
       };
