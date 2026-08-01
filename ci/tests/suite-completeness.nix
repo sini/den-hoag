@@ -68,7 +68,7 @@ in
         hasKnownFile = builtins.elem "boundary.nix" xfail.actualTestFiles;
       };
       expected = {
-        count = 225;
+        count = 226;
         anyUnderscoreDir = false;
         hasKnownFile = true;
       };
