@@ -74,7 +74,7 @@ includes den's built-in classes and the v1 battery classes the shim provisions (
 sites of this shape are already known across the wider den config corpus — an aspect keyed `aliases` beside a
 declared `den.classes.aliases`, and one keyed `wsl` beside the built-in WSL battery class.
 
-## Value-conditional policies declare their codomain (`binds`, `suppresses`)
+## Value-conditional policies declare their codomain (`binds`, `suppresses`, `emits`)
 
 Bare-lambda policies remain the normal form — nothing changes for most configs. The shim discovers what a
 v1 policy emits by firing its body once against a probe entry, and for an unconditional body that recovery
@@ -117,6 +117,38 @@ den v1 accepts this form as-is — its policy type checks `__isPolicy`, its merg
 and dispatch reads only `.fn` — so the declaration can land **before** the pin bump, byte-inert under v1.
 Reference config `nix-config` took exactly this route in commit `43c48473`, declaring `binds` on its
 environment-gated member policy and `suppresses` on its droid-conditional excluder.
+
+**The same declaration one level up: `emits`.** `binds` and `suppresses` name the dependency *edges* a
+policy carries; `emits` names the declaration *kinds* it produces — `delivery`, `edge`, `member`, `spawn`,
+`pipeOp` — and the other two are refinements of it. It is declared on the same record, by the same rule, and
+refused the same way:
+
+```nix
+den.policies.homeAarch64-to-hm = {
+  __isPolicy = true;
+  emits = [ "delivery" ];  # the kinds this body produces at a real host
+  fn = { host, ... }: ...; # emissions guarded by: hasPrefix "aarch64-" host.system
+};
+```
+
+```
+den-hoag: declaration codomain: policy `homeAarch64-to-hm` (compiled as
+`__kindInclude__user__policy__3`) produced a `delivery` declaration, which is not in its declared
+`emits` = [  ]. The codomain is a CONTRACT checked at every firing, not an annotation: either add
+`delivery` to `emits` or stop producing it
+```
+
+The declared field is consulted **first** — ahead of the shim's table of known v1 names, and ahead of the
+probe fire that table exists to avoid — so a policy that declares its own `emits` is never fired at a
+sentinel at all. That ordering is what makes the declaration the durable remedy and the table a stopgap: the
+table is the one mechanism measured to drift, and the drift described above happened entirely inside it. The
+shim declares on its own policies for the same reason — the home-manager user-detect policy in
+`lib/compat/home-env.nix` carries `emits = [ "edge" ]` rather than leaning on a probe.
+
+One trap, and it is the same for all three fields: every arm tests **presence**, never emptiness. `emits = [ ]`
+is an empty codomain stated outright — a body that then emits anything is refused by name against its own
+declaration — and it is not a way to spell "undeclared". Omit the field entirely if you want the shim to
+recover it for you.
 
 **Where to look in your own config.** Only emitting policies whose bodies guard emissions on entity values
 need this — a `resolve`/`include` that fires unconditionally recovers fine. You do not need to find them in
