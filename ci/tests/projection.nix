@@ -203,6 +203,154 @@ let
   axon = "host:axon";
   alice = "user:alice@host:axon";
 
+  # ── THE OFF-SUBTREE REACH TARGET: the fixture that tells the guard's TWO forcing paths apart ─────────
+  #    A projection demands a scope's relocation memo by two routes with DIFFERENT DOMAINS. The structural
+  #    payload reads each subtree scope's injections — `[ id ] ++ descendants`, and no further. The
+  #    class-slice EXTRACTION resolves each reached element's source order at that ELEMENT'S OWN scope,
+  #    and an edge-projected element's scope is the EDGE TARGET, a node no subtree walk visits. The three
+  #    cycle rows on the fixture above declare the contradiction inside the projecting host's own subtree,
+  #    where both routes demand the same memo, so each of them is satisfied by either route alone and none
+  #    can say whether the second exists at all.
+  #
+  #    This fleet moves the cycle out of the subtree. `dendrite` is a SIBLING host under the same env —
+  #    outside `axon`'s subtree entirely — and the only thing that carries it into `axon`'s projection is
+  #    an OPT-IN reach-edge declared at `axon`. The schema and the class map are shared with the fixture
+  #    above (same kinds, same content classes); the instances, the membership and the content are its own,
+  #    because adding a second host to the shared modules would move the answers of every row that reads
+  #    them.
+  edgeInstances.config.den = {
+    env.prod = { };
+    host.axon = { };
+    host.dendrite = { };
+    user.alice = { };
+  };
+  edgeMembership =
+    { config, ... }:
+    {
+      config.den.membership = [
+        {
+          coords = {
+            env = config.den.env.prod;
+            host = config.den.host.axon;
+          };
+        }
+        {
+          coords = {
+            env = config.den.env.prod;
+            host = config.den.host.dendrite;
+          };
+        }
+        {
+          coords = {
+            host = config.den.host.axon;
+            user = config.den.user.alice;
+          };
+        }
+      ];
+    };
+  edgeContent =
+    { config, ... }:
+    {
+      config.den.aspects.hostc.nixos.tag = "nixos-host";
+      config.den.aspects.acct.home-manager.tag = "hm-alice";
+      # THE NON-VACUITY REQUIREMENT, MET IN THE FIXTURE. The edge closure yields an element carrying the
+      # target's scope only if the target RESOLVES an aspect the edge's class filter admits. Give the
+      # target no aspect and the filter answers the empty list: nothing carries its scope, its memo is
+      # never demanded, and every row below passes without exercising the path it names. An aspect at the
+      # target is therefore part of the fixture's contract, not decoration — and it is what the last row
+      # asserts arrives.
+      config.den.aspects.faraway.nixos.tag = "nixos-dendrite";
+      config.den.include = [
+        {
+          at = config.den.host.axon;
+          aspects = [ config.den.aspects.hostc ];
+        }
+        {
+          at = config.den.user.alice;
+          aspects = [ config.den.aspects.acct ];
+        }
+        {
+          at = config.den.host.dendrite;
+          aspects = [ config.den.aspects.faraway ];
+        }
+      ];
+    };
+  # The OPT-IN edge, declared at the PROJECTING host alone. No class filter: an unfiltered edge admits
+  # every one of the target's resolved aspects, which is the form that meets the non-vacuity requirement
+  # without making the fixture depend on a filter's predicate as well.
+  edgeMod =
+    { config, ... }:
+    {
+      config.den.policies.reach-dendrite = {
+        emits = [ "reach-edge" ];
+        selects = sel.entity config.den.host.axon;
+        fn = _: [ (denHoag.declare.reach-edge { target = "host:dendrite"; }) ];
+      };
+    };
+  # A relocation fired at ONE NAMED ENTITY. The three fleets below differ in where the declaration lands
+  # and in whether the relation is contradictory — nothing else moves, which is what lets a clean answer
+  # be read as a fact about the cycle's LOCATION.
+  mkRerouteAt = name: entity: decls: {
+    config.den.policies.${name} = {
+      emits = [ "reroute" ];
+      selects = sel.entity entity;
+      fn = _: decls;
+    };
+  };
+  cyclicPair = [
+    (denHoag.declare.reroute {
+      from = denHoag.classes.home-manager;
+      to = denHoag.classes.nixos;
+    })
+    (denHoag.declare.reroute {
+      from = denHoag.classes.nixos;
+      to = denHoag.classes.home-manager;
+    })
+  ];
+  # The FOREST twin of the pair above: one edge, a rest position, an answer.
+  forestPair = [
+    (denHoag.declare.reroute {
+      from = denHoag.classes.home-manager;
+      to = denHoag.classes.nixos;
+    })
+  ];
+  edgeBase = [
+    relocationSchema
+    edgeInstances
+    edgeMembership
+    relocationClassing
+    edgeContent
+    edgeMod
+  ];
+  edgeFleetWith = mods: (denHoag.mkDen (edgeBase ++ mods)).den;
+  cycleAtTargetDen = edgeFleetWith [
+    ({ config, ... }: mkRerouteAt "cycle-at-target" config.den.host.dendrite cyclicPair)
+  ];
+  cycleAtHostDen = edgeFleetWith [
+    ({ config, ... }: mkRerouteAt "cycle-at-host" config.den.host.axon cyclicPair)
+  ];
+  forestAtTargetDen = edgeFleetWith [
+    ({ config, ... }: mkRerouteAt "forest-at-target" config.den.host.dendrite forestPair)
+  ];
+
+  # THE COMPAT ENTRY POINT, over this fleet's built den. `reroute` is a native resolution verb with no v1
+  # spelling, so a cyclic fleet cannot be authored through the compat surface at all and the bridge that
+  # normally binds these accessors is out of reach here. They are bound instead from the SAME module the
+  # bridge binds, over the same built den and threading the same two pure identity helpers — the accessors
+  # themselves, not a re-derivation of them. What they do is read `reach` and take each reached node's key;
+  # they never take a class slice, and that is the entire content of the first control below.
+  hasAspectAt =
+    den:
+    import "${denHoagSrc}/lib/compat/has-aspect-verbs.nix" {
+      inherit den;
+      inherit (denCompat) refKey augment;
+    };
+  axonHandle = {
+    __denNode = axon;
+  };
+  compatPathKeys = den: builtins.attrNames ((hasAspectAt den).collectPathSet axonHandle);
+  compatAspectKeys = den: map (n: n.identityKey) ((hasAspectAt den).mkEntityHasAspect axonHandle).aspects;
+
   # ── THE TERMINAL-SIDE TWIN: the same topology, content authored through DECLARED OPTIONS ──────────────
   # The rows above stop at `projectClass` / `classSubtreeAt`. The terminal is one alias hop further on
   # (`terminalModulesAt` → `systems.<class>.<member>.modules`), and a module list arriving there is
@@ -1178,6 +1326,125 @@ in
         terminal = true;
         accessor = true;
       };
+    };
+
+    # ══ THE GUARD'S REACH, PART TWO — the cycle OUTSIDE the projecting scope's subtree ══════════════════
+    # (i)–(iii) declare the contradiction inside `axon`'s own subtree, where the memo is demanded twice
+    # over — once by the structural payload's injection read, once by the class-slice extraction — so each
+    # of them is satisfied by either demand alone. The rows below move the cycle to a node only the EDGE
+    # reaches, which is the one location at which the two routes answer differently.
+
+    # (iv) THE TERMINAL ABORTS ON A CYCLE AT THE EDGE TARGET, AND THE REFUSAL NAMES THAT NODE. `dendrite`
+    #      is a sibling host outside `axon`'s subtree; the opt-in edge is the only thing that carries it
+    #      into `axon`'s projection, and the extraction resolving a reached element's source order at that
+    #      element's own scope is the only thing that demands its relocation memo. The NAMED node is what
+    #      separates this from an abort the subtree walk could have produced on its own — a bare
+    #      containment flag would be answered by any throw the fleet happened to carry.
+    test-relocation-cycle-at-edge-target-aborts-at-terminal = {
+      expr = builtins.deepSeq cycleAtTargetDen.output.systems.nixos.${axon}.modules true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class relocation cycle at node 'host:dendrite': home-manager, nixos \\(a relocation cycle has no rest position";
+      };
+    };
+
+    # (v) THE CONTROL THAT MAKES (iv) DISCRIMINATING: the compat surface stays CLEAN on the same fleet in
+    #     the same run. The hasAspect accessors enumerate `reach` and take each node's key; they never take
+    #     a class slice, so a contradiction at a node they merely enumerate has nothing to contradict. A
+    #     row demanding the abort at BOTH surfaces would be satisfied by a structural payload widened to
+    #     follow the edge — the arm that must not follow it — so the clean answer here is the assertion,
+    #     not an omission.
+    #     THE ASSERTION IS THE KEY LIST rather than a containment flag, which carries the control's own
+    #     non-vacuity in the same breath: `faraway` is the edge TARGET's aspect, so compat demonstrably
+    #     arrived at the cyclic node and declined to force its memo, rather than staying clean by never
+    #     getting there. Its twin is (vi-a), the same accessor on the same fleet shape with the cycle moved.
+    test-relocation-cycle-at-edge-target-leaves-compat-clean = {
+      expr = {
+        pathSet = compatPathKeys cycleAtTargetDen;
+        aspects = compatAspectKeys cycleAtTargetDen;
+      };
+      expected = {
+        # the membership set is name-keyed, so its `attrNames` are sorted…
+        pathSet = [
+          "acct"
+          "faraway"
+          "hostc"
+        ];
+        # …while the augmented node list keeps reach order: own node, descendant cell, then the edge.
+        aspects = [
+          "hostc"
+          "acct"
+          "faraway"
+        ];
+      };
+    };
+
+    # (vi-a) CONTROL 2, COMPAT HALF — the twin of (v). Same fleet shape, same accessor, same run, with the
+    #        contradictory pair declared at the PROJECTING host instead of the edge target: now compat DOES
+    #        abort, and names `axon`. This is what makes (v)'s clean answer a fact about WHERE the cycle
+    #        sits rather than a compat fixture that could not have aborted at all.
+    test-relocation-cycle-at-projecting-scope-aborts-compat = {
+      expr = builtins.deepSeq (compatPathKeys cycleAtHostDen) true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class relocation cycle at node 'host:axon': home-manager, nixos \\(a relocation cycle has no rest position";
+      };
+    };
+
+    # (vi-b) CONTROL 2, TERMINAL HALF — the same fleet at the other surface, so "aborts on both surfaces"
+    #        is asserted rather than inferred from the compat half. It names `axon` where (iv) names
+    #        `dendrite`, which is the pair that makes the node in each message load-bearing: the two rows
+    #        differ in the declaration site and read the same instrument.
+    test-relocation-cycle-at-projecting-scope-aborts-terminal = {
+      expr = builtins.deepSeq cycleAtHostDen.output.systems.nixos.${axon}.modules true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class relocation cycle at node 'host:axon': home-manager, nixos \\(a relocation cycle has no rest position";
+      };
+    };
+
+    # (vii) THE ACYCLIC CONTROL, same shape and same run: the relocation at the edge target is a FOREST
+    #       rather than a contradiction, and every surface answers. Without it (iv) and (vi-b) are
+    #       satisfied by an implementation that refuses any relocation declared at a node reached across an
+    #       edge, which would refuse the legal input along with the contradictory one.
+    test-relocation-forest-at-edge-target-stays-clean = {
+      expr = {
+        terminal =
+          (builtins.tryEval (
+            builtins.deepSeq forestAtTargetDen.output.systems.nixos.${axon}.modules true
+          )).success;
+        pathSet = compatPathKeys forestAtTargetDen;
+        aspects = compatAspectKeys forestAtTargetDen;
+      };
+      expected = {
+        terminal = true;
+        pathSet = [
+          "acct"
+          "faraway"
+          "hostc"
+        ];
+        aspects = [
+          "hostc"
+          "acct"
+          "faraway"
+        ];
+      };
+    };
+
+    # (viii) THE NON-VACUITY CONDITION FOR (iv), ASSERTED RATHER THAN ASSUMED. (iv) fires only because the
+    #        edge closure yields an element carrying the target's scope. If the target resolved no aspect
+    #        the edge admits, that list is empty, nothing carries its scope, its memo is never demanded —
+    #        and (iv) would certify a forcing path nothing exercised, green for a reason that has no
+    #        relation to the guard. A merely NON-EMPTY projection would not settle it either, since the
+    #        host's own content answers that; the assertion is the TARGET-SOURCED member, `nixos-dendrite`,
+    #        which is authored at `dendrite` and can arrive only across the edge. Read off the forest fleet
+    #        because the cyclic one has no answer to read — the same fleet family, one declaration apart.
+    test-edge-target-content-reaches-the-projection = {
+      expr = builtins.concatMap tags (forestAtTargetDen.output.projectClass axon "nixos");
+      expected = [
+        "nixos-host"
+        "nixos-dendrite"
+      ];
     };
 
     # ══ SYNTHETIC — the class-slice projection over a stub reach list (edge-replacement proofs) ═════════
