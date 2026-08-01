@@ -1,5 +1,5 @@
 # #62a — the core PER-NODE CHANNEL-AUGMENTATION seam (`den.channelGather`, output-modules.nix
-# `channelBindingsAt`). A supplier augments the channel value bound to a class module's formals with
+# `channelSurfacesAt`). A supplier augments the channel value bound to a class module's formals with
 # contributions GATHERED from beyond the node's own emissions: `channelGather derivedBaseNames result id ->
 # { <channel> = [ contribution ]; }` (curried on `derivedBaseNames` then `result`, applied per node),
 # appended AFTER the node's

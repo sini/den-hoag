@@ -369,7 +369,7 @@ in
     # emits `probe = { config, ... }: [ "host-is-${config.networking.hostName}" ]` at igloo and consumes it
     # in its nixos content; through crossNixos the config-thunk resolves against igloo's OWN nixos config,
     # so `networking.domain` carries the resolved hostName. This exercises the deferredToThunk /
-    # channelBindingsAt true-branch end to end (not just a bare evalModules), asserting on the BUILT system.
+    # channelSurfacesAt true-branch end to end (not just a bare evalModules), asserting on the BUILT system.
     test-deferred-channel-resolves-at-terminal = {
       expr = resultDeferred.nixosConfigurations.igloo.config.networking.domain;
       expected = "host-is-igloo";
