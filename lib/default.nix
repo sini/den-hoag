@@ -1208,6 +1208,46 @@ let
       # system with no declared view folds nothing — both byte-identical. Cheap thunks, forced only when a
       # producer reads inputs'/self' (Nix laziness), so an unread fleet is byte-neutral.
       systemViews = ent.config.den.systemViews or { };
+      # EVERY PRE-PASS-SOURCED MAP THIS FOLD INJECTS IS CONSUMED TOTALLY, and the check is a quantifier
+      # inversion rather than a guard added to either payload. Today the CONSUMER quantifies — over the
+      # fold's node ids — and each map is optional at the lookup, so a key no node claims is simply never
+      # read. Totality needs the MAP to quantify over its own keys and the consumer to claim each. The
+      # `or { }` / presence test at the read stays: a node with no injection is normal; a key with no node
+      # is not.
+      #
+      # ★ APPLIED HERE, IN THE ENCLOSING `let`, NEVER INSIDE THE FOLD. Written inside `mapAttrs`' binder
+      # the unclaimed-key scan re-runs once per node — `2·N·|m|` membership tests per fleet evaluation
+      # against `2·|m|` once — and a totality check costing a scan per node is a correctness argument this
+      # kernel's own scaling bar forbids. Hoisted, the per-node cost is the single attrset lookup it
+      # already was, and that is the only reason the check can be unconditional.
+      #
+      # ★ THE NODE TABLE IS `baseScopeRoots`, NOT `scopeRoots`, and the choice is load-bearing twice: the
+      # keys are the same ids either way (`baseScopeRoots` mints them), and reading `scopeRoots` here
+      # would close a cycle through the very fold this guards.
+      #
+      # ★ THE CLASS IS THE PRE-PASS-SOURCED INJECTIONS, and the enumeration is closed at the expression:
+      # `containmentBindings` and `suppressions`. `systemView` is NOT in it, for a stated reason rather
+      # than by omission — it is read from `den.systemViews`, an authored surface keyed by SYSTEM and not
+      # a map the pre-pass produces keyed by NODE, so an unclaimed key there is not a lost emission. A
+      # future third pre-pass product injected here is covered by the rule's STATEMENT rather than by
+      # someone remembering to add a third abort.
+      #
+      # ★ WHY THIS CANNOT BE A REGISTRATION CHECK on the record, unlike the stratum-stability refusal:
+      # cell-kind classification is a property of the FLEET, not of the record. `cellKinds` derives from
+      # the membership tuples, so the identical selector is sound on a fleet where a kind is a root and
+      # lossy on one where a tuple makes it a cell. Refusing it at registration would refuse a legal
+      # selection on every fleet where the kind is a root — a wrong answer, not a conservative one. A
+      # per-fleet refusal at index construction fails for the dual reason: `sel.star` admits every kind,
+      # so it would refuse every unconstrained excluder on every fleet that has a cell kind. This fires on
+      # an ACTUAL unconsumed key, which is the exact condition rather than an over-approximation of it.
+      consumedBy =
+        what: m: nodes:
+        let
+          unclaimed = builtins.filter (k: !(nodes ? ${k})) (builtins.attrNames m);
+        in
+        if unclaimed == [ ] then m else errors.prePassKeyUnconsumed what unclaimed;
+      bindingsIn = consumedBy "containmentBindings" prePass.containmentBindings baseScopeRoots;
+      suppressionsIn = consumedBy "suppressions" prePass.suppressions baseScopeRoots;
       scopeRoots = builtins.mapAttrs (
         id: node:
         let
@@ -1219,10 +1259,10 @@ let
         // {
           decls =
             node.decls
-            // (prePass.containmentBindings.${id} or { })
+            // (bindingsIn.${id} or { })
             // systemView
-            // prelude.optionalAttrs (prePass.suppressions ? ${id}) {
-              suppressedPolicies = prePass.suppressions.${id};
+            // prelude.optionalAttrs (suppressionsIn ? ${id}) {
+              suppressedPolicies = suppressionsIn.${id};
             };
         }
       ) baseScopeRoots;

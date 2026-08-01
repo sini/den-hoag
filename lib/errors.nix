@@ -364,6 +364,35 @@ in
     rule:
     fail "dispatch selection" "policy `${rule.identity or "«unnamed»"}` declares a POSITION-DEPENDENT `selects` — a selector whose answer is not a function of node kind alone (`within` / `parentMatches` / `entity`, or a boolean combination containing one) — and it reached a dispatch site that carries no per-node matcher. Either write a kind-determined selector (`sel.star`, `sel.any [ ]`, `sel.attrs { type = <kind>; }`, `sel.kind <kind value>`, and boolean combinations of those), or thread the scope-adapter matcher into this site";
 
+  # A PRE-PASS PRODUCT WAS KEYED AT A NODE THE CONSUMING FOLD DOES NOT HOLD. The pass dispatches over the
+  # attachment-free node set — every instance of every declared kind — and files each firing's emissions
+  # at its own locus; the fold that injects them iterates the main run's ROOT scope nodes, which span
+  # `allKinds ∖ cellKinds`. The two key spaces differ in SHAPE, not merely in membership: a cell-kind
+  # locus is the bare `<kind>:<name>` here and `<kind>:<name>@<parent>` there, minted by a second minter
+  # under a different id. So a produced key that no node claims is not a lookup that misses, it is a
+  # lookup in a space the key was never in — and an emission that vanishes.
+  #
+  # ★ THE QUANTIFIER IS THE FIX. `or { }` is CORRECT as the consumer's arm: a node with no injection is
+  # normal. What was missing is the PRODUCER's arm — a key with no node is not. So the map quantifies over
+  # its own keys and the consumer claims each, rather than the consumer quantifying and the map being
+  # optional.
+  #
+  # ★ THE MESSAGE PROMISES ONLY WHAT ITS CALLER DERIVES: the map's name and the unclaimed keys. The node
+  # KIND of a lost locus is deliberately NOT claimed — recovering it by parsing the id's `<kind>:` prefix
+  # would make the message depend on a minting convention the design treats as private, and threading the
+  # producer's node table would answer only for bare keys and `«unknown»` for minted ones. A message that
+  # is right for half its inputs is worse than one that does not claim the field; the key is what an
+  # author greps for. The two arms need no separate messages because the map's name distinguishes them.
+  #
+  # ★ WHAT THIS DOES NOT DO, stated so it is not read as a fix: it makes the loss VISIBLE. It does not
+  # deliver the emission to the node that carries the instance in the main run — that requires the
+  # pre-pass's bare-id key space to map into the minted-cell space, which is a construction with its own
+  # design question. {correct answer where one exists, named abort otherwise}, and the correct answer is
+  # not available without it.
+  prePassKeyUnconsumed =
+    what: keys:
+    fail "staged pre-pass" "the pre-pass produced `${what}` at ${toString (builtins.length keys)} node id(s) that the consuming fold does not hold: ${builtins.concatStringsSep ", " keys}. The pass dispatches over EVERY declared kind's instances and files at its own locus; this fold iterates the main run's ROOT scope nodes, so a locus at a CELL kind is keyed in a space the fold never reads — the emission would be produced, keyed, and silently dropped. Either select loci the main run carries as roots, or the delivery of a cell-kind locus has to be built";
+
   # `runPrePass` was applied without an `indexFeed`. The default this replaces answered `[ ]` — "no rules
   # at this node", chosen by omission and silently, which is the same absence-is-a-decision defect the
   # `selects` surface exists to remove, arriving as a defaulted argument. The throw sits INSIDE all four
