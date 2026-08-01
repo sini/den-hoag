@@ -147,6 +147,47 @@ let
         })
       ];
   };
+  # The SAME relocation, fired at the HOST ONLY. `relocationMod` above fires at every scope carrying the
+  # `host` coordinate, which is the projecting host AND the descendant cell whose slice reach delivers to
+  # it — so it cannot tell the two apart. This one selects the host kind, which makes the pair the two
+  # readings of "whose relocation governs content that arrives by reach": the emitting element's, or the
+  # projecting scope's.
+  relocationHostOnlyMod =
+    { config, ... }:
+    {
+      config.den.policies.relocate-hm-at-host = {
+        emits = [ "reroute" ];
+        selects = sel.kind config.den.schema.host;
+        fn =
+          { host, ... }:
+          [
+            (denHoag.declare.reroute {
+              from = denHoag.classes.home-manager;
+              to = denHoag.classes.nixos;
+            })
+          ];
+      };
+    };
+  # A relocation with NO REST POSITION: `home-manager → nixos` and `nixos → home-manager`, both at every
+  # scope. Neither channel is a rest position for the other, so no content answer exists and the relation
+  # itself is the defect — which is why the guard belongs to the relation and fires on any demand that
+  # forces the frame, not only on a query for a channel inside the cycle.
+  cycleMod.config.den.policies.cycle = {
+    emits = [ "reroute" ];
+    selects = sel.star;
+    fn =
+      { host, ... }:
+      [
+        (denHoag.declare.reroute {
+          from = denHoag.classes.home-manager;
+          to = denHoag.classes.nixos;
+        })
+        (denHoag.declare.reroute {
+          from = denHoag.classes.nixos;
+          to = denHoag.classes.home-manager;
+        })
+      ];
+  };
   relocationBase = [
     relocationSchema
     relocationInstances
@@ -157,6 +198,8 @@ let
   # the CONTROL twin — the same fleet with the relocation declaration REMOVED, nothing else.
   relocationFreeOut = (denHoag.mkDen relocationBase).den.output;
   relocatedOut = (denHoag.mkDen (relocationBase ++ [ relocationMod ])).den.output;
+  hostOnlyOut = (denHoag.mkDen (relocationBase ++ [ relocationHostOnlyMod ])).den.output;
+  cyclicOut = (denHoag.mkDen (relocationBase ++ [ cycleMod ])).den.output;
   axon = "host:axon";
   alice = "user:alice@host:axon";
 
@@ -1041,6 +1084,93 @@ in
       expected = {
         relocated = [ ]; # all three terms empty at `home-manager` ⇒ the member is gone.
         control = [ alice ]; # one declaration away, the member is there.
+      };
+    };
+
+    # ══ WHOSE RELOCATION GOVERNS CONTENT THAT ARRIVES BY REACH ═════════════════════════════════════════
+    # The relocation rows above declare the act at EVERY scope carrying the host coordinate — the projecting
+    # host and the descendant cell alike — so they cannot tell the two candidate readings apart: an element's
+    # own scope, or the scope doing the projecting. This pair separates them. The fleets differ in exactly
+    # one thing, the selector on the relocation policy, and they must disagree.
+    #
+    # Under the ELEMENT-SCOPE reading the host-only fleet relocates only the host's own content, and the
+    # cell's `home-manager` slice — which has no relocation at its own scope — stays where it is, arriving
+    # in the host's `home-manager` projection unmoved. Under the PROJECTING-SCOPE reading the host's act
+    # would govern every element the host reaches, and the cell's slice would follow it into `nixos`.
+    test-reroute-at-host-only-does-not-relocate-cell-content = {
+      expr = {
+        hostHm = builtins.concatMap tags (hostOnlyOut.projectClass axon "home-manager");
+        hostNixos = builtins.concatMap tags (hostOnlyOut.projectClass axon "nixos");
+        cellHm = builtins.concatMap tags (hostOnlyOut.projectClass alice "home-manager");
+      };
+      expected = {
+        hostHm = [ "hm-alice" ]; # the cell's slice arrives, and stays at its own channel…
+        hostNixos = [ "nixos-host" ]; # …so the host's `nixos` holds only the host's own content.
+        cellHm = [ "hm-alice" ]; # and the cell reads the same, which is the element-scope reading.
+      };
+    };
+
+    # THE ROW ABOVE IS ONLY EVIDENCE IF THE TWO ARMS CAN DIFFER, so the every-scope fleet's answer is
+    # restated here in the same run and in the same shape. Both arms of the pair move: the channel that is
+    # empty on one fleet is populated on the other and vice versa. Without this control the row above is
+    # satisfied by any projection that applies no relocation at all — which is exactly the state in which
+    # it would pass while proving nothing.
+    test-reroute-at-every-scope-relocates-cell-content = {
+      expr = {
+        hostHm = builtins.concatMap tags (relocatedOut.projectClass axon "home-manager");
+        hostNixos = builtins.concatMap tags (relocatedOut.projectClass axon "nixos");
+        cellHm = builtins.concatMap tags (relocatedOut.projectClass alice "home-manager");
+      };
+      expected = {
+        hostHm = [ ]; # the same channel that held the cell's slice above…
+        hostNixos = [
+          "nixos-host"
+          "hm-alice"
+        ]; # …now holds it here.
+        cellHm = [ ];
+      };
+    };
+
+    # ══ THE CYCLE GUARD'S REACH — a relation with no rest position, at the TERMINAL ═════════════════════
+    # A relocation cycle has no rest position, so no channel's content has an answer and the relation is
+    # itself the defect. The guard therefore belongs to the relation rather than to any one channel's query
+    # path — but a guard that only fires on the introspection accessors while the built system evaluates
+    # past it is a guard that never reaches production. These rows put the cycle at the terminal.
+
+    # (i) THE TERMINAL ABORTS. Forcing a member's module list — the value the built system is assembled
+    #     from — reaches the cyclic relation and refuses, rather than answering some channel's content and
+    #     leaving the contradiction unobserved.
+    test-relocation-cycle-aborts-at-terminal = {
+      expr = (builtins.tryEval (builtins.deepSeq cyclicOut.systems.nixos.${axon}.modules true)).success;
+      expected = false;
+    };
+
+    # (ii) THE REQUIRED CONTROL, same fleet and same run: the collection-side accessor aborts NAMED on the
+    #      same relation, naming the node and both channels. This is what makes (i)'s `false` the guard
+    #      firing rather than a fixture broken in some unrelated way — the abort is identified, not merely
+    #      counted, and it is the same abort at both surfaces.
+    test-relocation-cycle-names-the-relation = {
+      expr = builtins.deepSeq (cyclicOut.graphAccessor.contentsOf axon "nixos") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class relocation cycle at node 'host:axon': home-manager, nixos \\(a relocation cycle has no rest position";
+      };
+    };
+
+    # (iii) THE ACYCLIC CONTROL, same shape and same run: a fleet whose relocation is a forest evaluates
+    #       both surfaces clean. Without it (i) and (ii) are satisfied by an unconditional abort, which
+    #       would refuse every relocation rather than the contradictory ones.
+    test-relocation-acyclic-control-stays-clean = {
+      expr = {
+        terminal =
+          (builtins.tryEval (builtins.deepSeq relocatedOut.systems.nixos.${axon}.modules true)).success;
+        accessor =
+          (builtins.tryEval (builtins.deepSeq (relocatedOut.graphAccessor.contentsOf axon "nixos") true))
+          .success;
+      };
+      expected = {
+        terminal = true;
+        accessor = true;
       };
     };
 
