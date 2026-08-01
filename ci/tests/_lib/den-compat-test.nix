@@ -202,11 +202,11 @@ let
                 ;
             }
           ))
-          [
-            "expr"
-            "expected"
-            "expectedError"
-          ];
+          # the COMPLEMENT of the same partition, DERIVED from the one key list rather than repeated
+          # as a second one. Two hand-written lists for one partition drift apart, and the direction
+          # that drifts silently is this one: a key the leaf carries but the strip list forgets
+          # becomes an undeclared flake-parts option on the fleet face.
+          (builtins.attrNames assertionKeys);
 
       # THE BRIDGE EVAL — the real consumer path. `evalFlakeModule` returns the full module-system result,
       # so `eval.config.flake` is the crossed output face and `eval.config._module.args.den` is the bridge's
@@ -271,7 +271,21 @@ let
       # ERASED — and each arm's list drifted independently of the other's, which is why the same defect
       # had to be found twice from two directions. A projection has no arm-local key list to drift:
       # a new leaf field is one edit HERE and reaches every arm by construction.
+      # ★ THE ATTRIBUTION KEYS ARE IN THE LIST, AND LEAVING THEM OUT WAS AN ERASURE RATHER THAN AN
+      # OMISSION. A declared known-failure carries `bead`/`construct` (and `correct`, the other half
+      # of a value-form claim) ON THE LEAF, and the census that enforces the guards SELECTS leaves by
+      # those very keys. A projection that dropped them did not merely lose metadata: a declaration
+      # authored through this scaffold censused as no row at all and reported GREEN, so the one
+      # enforcement point that is total over hand-written leaves could not see it. The runner
+      # tolerates the extra keys.
+      #
+      # This list must agree with the declaration mechanism's own key set (`_lib/xfail.nix`), which
+      # is where the partition is defined; it is repeated here rather than threaded because threading
+      # it means an argument on all 58 importers of this scaffold.
       assertionKeys = {
+        bead = null;
+        construct = null;
+        correct = null;
         expr = null;
         expected = null;
         expectedError = null;
