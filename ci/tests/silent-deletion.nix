@@ -74,11 +74,14 @@ let
     selects = sel.star;
     fn = _: [ ];
   };
-  # A fleet-wide compose commitment that is NOT site-mark data (`marks = [ ]`), so `policyMessage`'s ops
-  # law admits it. Under the deletion reading this rode an empty-codomain policy into oblivion.
+  # A fleet-wide compose commitment — the declared kind `ops` admits, so `policyMessage`'s ops law lets it
+  # through. Under the deletion reading this rode an empty-codomain policy into oblivion.
+  # ★ IT OWES NO `pipeMark` BESIDE IT. The two-kind precondition binds a CODOMAIN, not an `ops` field: it
+  # exists because a policy whose BODY produces a pipe still emits its marks at every dispatched node.
+  # This record emits nothing at dispatch (`emits = [ ]`, `fn = _: [ ]`), so it owes no mark and its
+  # `emits = [ ]` is complete.
   composeOp = {
-    __action = "pipeOp";
-    marks = [ ];
+    __action = "pipeCommit";
   };
 
   # ── (2) the throwing enrichment fact ────────────────────────────────────────────────────────────────

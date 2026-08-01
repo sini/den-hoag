@@ -74,7 +74,7 @@ let
       den.policies.collect-mesh = {
         __isPolicy = true;
         selects = sel.star;
-        emits = [ "pipeOp" ];
+        emits = [ "pipeMark" ];
         fn =
           { host, ... }:
           [
@@ -89,7 +89,7 @@ let
       den.policies.collect-umesh = {
         __isPolicy = true;
         selects = sel.star;
-        emits = [ "pipeOp" ];
+        emits = [ "pipeMark" ];
         fn =
           { user, ... }:
           [
@@ -136,7 +136,7 @@ let
       den.policies.collect-umesh-all = {
         __isPolicy = true;
         selects = sel.star;
-        emits = [ "pipeOp" ];
+        emits = [ "pipeMark" ];
         fn =
           { user, ... }:
           [
@@ -153,7 +153,7 @@ let
       den.policies.collect-mesh-all = {
         __isPolicy = true;
         selects = sel.star;
-        emits = [ "pipeOp" ];
+        emits = [ "pipeMark" ];
         fn =
           { host, ... }:
           [
@@ -187,7 +187,7 @@ let
       den.policies.collect-mesh = {
         __isPolicy = true;
         selects = sel.star;
-        emits = [ "pipeOp" ];
+        emits = [ "pipeMark" ];
         fn =
           { host, ... }:
           [

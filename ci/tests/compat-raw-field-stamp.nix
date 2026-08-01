@@ -130,7 +130,7 @@ let
           # list. Declared unconstrained: this suite's subject is not selection.
           policies.collect-guests = {
             __isPolicy = true;
-            emits = [ "pipeOp" ];
+            emits = [ "pipeMark" ];
             selects = sel.star;
             fn =
               { host, ... }:

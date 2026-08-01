@@ -39,7 +39,11 @@ let
       config.den.aspects.seed.feat = [ "hello" ];
       config.den.schema.host.includes = [ "seed" ];
       config.den.policies.shapeFeat = {
-        emits = [ "pipeOp" ];
+        __isPolicy = true;
+        emits = [
+          "pipeCommit"
+          "pipeMark"
+        ];
         fn = _ctx: [
           (pipeEffect "feat" [
             (transform (x: x))
@@ -80,7 +84,11 @@ let
         config.den.aspects.seed.feat = [ "hello" ];
         config.den.schema.host.includes = [ "seed" ];
         config.den.policies.shapeFeat = {
-          emits = [ "pipeOp" ];
+          __isPolicy = true;
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
           fn = _ctx: [ (pipeEffect "feat" [ stage ]) ];
         };
       }

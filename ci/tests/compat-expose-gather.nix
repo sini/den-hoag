@@ -49,7 +49,7 @@ let
       den.policies.expose-ru = {
         __isPolicy = true;
         selects = sel.star;
-        emits = [ "pipeOp" ];
+        emits = [ "pipeMark" ];
         fn = { user, ... }: [
           (denCompat.pipe.from "resolved-users" [ denCompat.pipe.expose ])
         ];
@@ -63,7 +63,7 @@ let
 
   # ── (B) UNIT — gated-transitive depth over a synthetic three-level stub (root <- mid <- leaf) ───────
   exposeMark = channel: {
-    __action = "pipeOp";
+    __action = "pipeMark";
     inherit channel;
     marks = [ { __pipeMark = "expose"; } ];
   };

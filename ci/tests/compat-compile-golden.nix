@@ -151,7 +151,11 @@ let
     d: if (d.__derived or false) then opChain (builtins.head d.__derive.inputs) ++ [ d.op ] else [ ];
   baseOf = d: if (d.__derived or false) then baseOf (builtins.head d.__derive.inputs) else d;
 
-  # Each pipe fixture's `pipe.from` policy body is unconditional, so any ctx yields the pipeOp declaration.
+  # Each pipe fixture's `pipe.from` policy body is unconditional, so any ctx yields the pipe declaration.
+  # ★ These apply `.fn` DIRECTLY — the mark-mode translation, on fixtures that declare no codomain — so a
+  # commitment-bearing pipe yields the COMMITMENT kind here and NO law observes it: law (a) lives in the
+  # codomain recovery, which is reached through `emits`, and a suite that never forces `emits` never
+  # reaches it. What this surface pins is the kind a translation produces, not what a fleet does with it.
   # ★ AND THAT IS A PROPERTY OF THE FIXTURES, NOT OF PIPES — it is stated as a convenience and then relied
   # on, which makes this fixture set a DEAD PREDICATE for any question of the form "does pipe behaviour
   # depend on ctx?": all six `parity/fixtures/pipe-stages.nix` policies are `_ctx:` BY SELECTION, so that
@@ -393,7 +397,7 @@ in
     # ── §2.4 pipe stages: deriving vocab → left-to-right op DAG on the named channel ─────────────
     test-pipe-op-kind = {
       expr = derivePipeOp.__action;
-      expected = "pipeOp";
+      expected = "pipeCommit";
     };
     test-pipe-channel = {
       expr = derivePipeOp.channel;

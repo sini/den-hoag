@@ -226,7 +226,7 @@ let
     # user-scope emitter, so it says so.
     policies.expose-ru = {
       __isPolicy = true;
-      emits = [ "pipeOp" ];
+      emits = [ "pipeMark" ];
       selects = sel.attrs { type = "user"; };
       fn = { user, ... }: [ (denCompat.pipe.from "resolved-users" [ denCompat.pipe.expose ]) ];
     };

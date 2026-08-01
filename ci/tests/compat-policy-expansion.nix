@@ -98,12 +98,10 @@ let
   };
   # The corpus broadcast-hub-peer shape (nix-config pipes.nix:164-170): a value-conditional pipeOp
   # carrying ONLY a broadcast SITE MARK on a bare channel ref — no deriving DAG, no delivery route — so
-  # per-node emission DATA, not a compose commitment. Built via the SAME `declare.pipeOp` constructor
+  # per-node emission DATA, not a compose commitment. Built via the SAME `declare.pipeMark` constructor
   # `compilePipe` uses (lib/compat/pipe.nix:276-281), so it is faithful to the real compile output.
-  hubPeerPipeOp = declare.pipeOp {
+  hubPeerPipeOp = declare.pipeMark {
     channel = "syncthing-peers";
-    derived = bareRef "syncthing-peers";
-    routes = [ ];
     marks = [
       {
         __pipeMark = "broadcast";
@@ -114,19 +112,19 @@ let
   # NON-site-mark collection decls that STILL abort under expansion (genuine probe-time compose
   # commitments): a DERIVED-op pipeOp (channel-shaping DAG, `derived.__derived = true`) and a
   # delivery-ROUTE pipeOp (`routes != []`).
-  derivedPipeOp = declare.pipeOp {
+  derivedPipeOp = declare.pipeCommit {
     channel = "c";
     derived = (bareRef "c") // {
       __derived = true;
     };
     routes = [ ];
-    marks = [ { __pipeMark = "broadcast"; } ];
+    targeted = [ ];
   };
-  routePipeOp = declare.pipeOp {
+  routePipeOp = declare.pipeCommit {
     channel = "c";
     derived = bareRef "c";
     routes = [ { to = "other"; } ];
-    marks = [ { __pipeMark = "broadcast"; } ];
+    targeted = [ ];
   };
 
   ruleBy = feed: id: builtins.head (builtins.filter (r: r.identity == id) feed);
@@ -302,7 +300,7 @@ in
         let
           c = compile {
             foo = gated hostCond (vc {
-              __action = "pipeOp";
+              __action = "pipeMark";
             });
           };
         in
@@ -406,7 +404,7 @@ in
         let
           c = compile {
             foo = (gated hostCond (vc hubPeerPipeOp)) // {
-              emits = [ "pipeOp" ];
+              emits = [ "pipeMark" ];
               selects = sel.star;
             };
           };
@@ -422,7 +420,7 @@ in
         ids = [ "foo" ];
         group = "collection";
         composeSeeds = [ ];
-        collectionAtMatch = [ "pipeOp" ];
+        collectionAtMatch = [ "pipeMark" ];
       };
     };
 
