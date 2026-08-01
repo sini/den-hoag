@@ -22,18 +22,34 @@
 # registries collide on — a false pass. Every arm below carries the containment emission, and
 # `test-collision-free-fleet-is-clean` is the control proving the abort is attributable to the
 # collision rather than to the fixture.
+#
+# ★★ THE DEMAND EMISSION TARGETED A CELL KIND, AND ITS BINDING WAS LOST AT EVERY NODE. This fixture
+# used to aim its `containTo` at `rack` — the kind the membership tuple below makes a CELL kind — so the
+# pre-pass keyed the binding at the bare `rack:r1` while the fold that injects it iterates root scope
+# nodes only, and the node carrying that instance in the main run is `rack:r1@zone:z1` anyway. The
+# emission was produced, keyed, and dropped: `authToken` read `<absent>` at every node in the fleet, and
+# nothing here asked. A `containTo` target is required to be a membership-INDEPENDENT root — the target
+# guard says so in its own words — so the tuple and the target were in conflict from the start and the
+# target is the half that was wrong. `shelf` is the repair: a sibling kind under `zone` that no tuple
+# names, so it is a root, and the emission's SHAPE is untouched (a single-coord source slice whose kind
+# is the target's schema parent — the attachment case, exactly as before). The delivery row below is
+# what makes the loss unrepeatable: a fixture that never reads its own emission cannot notice losing it.
 { denHoag, nixpkgsLib, ... }:
 let
   inherit (denHoag) sel;
   inherit (denHoag) declare;
 
-  # ── the topology: zone <- rack, plus a `tag` registry the pre-pass never fires at ────────────────
+  # ── the topology: zone <- { rack, shelf }, plus a `tag` registry the pre-pass never fires at ──────
   # `tag` is parentless and carries no membership: it exists only to be a registry kind, which is
   # exactly the population the index spans and the pre-pass ignores.
+  # `rack` and `shelf` are both childless kinds under `zone`, so both are cell-kind CANDIDATES; only
+  # the membership tuple decides. It names `rack`, so `rack` is a cell and `shelf` stays a root — which
+  # is what makes `shelf` a legal `containTo` target and `rack` an illegal one.
   schema = {
     config.den.schema = {
       zone.parent = null;
       rack.parent = "zone";
+      shelf.parent = "zone";
       tag = {
         parent = null;
         imports = [
@@ -52,6 +68,7 @@ let
     config.den = {
       zone.z1 = { };
       rack.r1 = { };
+      shelf.s1 = { };
       tag = tags;
     };
   };
@@ -69,7 +86,9 @@ let
       ];
     };
 
-  # THE containment emission — the demand that builds the index.
+  # THE containment emission — the demand that builds the index. The source slice is the single `zone`
+  # coord, whose kind IS the target's schema parent, so this is the attachment case rather than the
+  # bindings-only one; the target is a ROOT kind, so the binding it carries reaches a node.
   zoneRelateMod =
     { config, ... }:
     {
@@ -83,10 +102,10 @@ let
             (declare.member {
               coords = {
                 inherit zone;
-                rack = config.den.rack.r1;
+                shelf = config.den.shelf.s1;
               };
               bindings.authToken = "tok-${zone.name}";
-              containTo = "rack";
+              containTo = "shelf";
             })
           ];
       };
@@ -110,6 +129,20 @@ let
         den.membershipTuples
       ] true
     )).success;
+
+  # WHAT THE EMISSION DELIVERED, read at the node rather than inferred from the fleet evaluating. Both
+  # readings are needed and neither is redundant: the by-name read says the target holds the value, and
+  # the census says NO OTHER node does — a binding that silently moved and a binding that silently
+  # vanished are different regressions, and the census is the only one of the two that catches the
+  # second by itself.
+  bindingAt = den: id: (den.structural.eval.node id).decls.authToken or "<absent>";
+  bindingCarriers =
+    den:
+    builtins.sort (a: b: a < b) (
+      builtins.filter (id: (den.structural.eval.node id).decls ? authToken) (
+        builtins.attrNames den.structural.eval.allNodes
+      )
+    );
 
   # Two `tag` entries pinning identity to `tier` alone — `name` drops out of the preimage, so both
   # hash to the same content address.
@@ -175,6 +208,26 @@ in
         two = { };
       });
       expected = true;
+    };
+
+    # THE DEMAND EMISSION ACTUALLY ARRIVES, which is the row this fixture never had. Every arm above
+    # reads whether the fleet EVALUATES, and a lost binding evaluates perfectly — so for as long as the
+    # emission aimed at a cell kind, `authToken` was absent at every node and all four arms stayed green
+    # over a fleet whose only pre-pass product was being dropped. The demand that builds the index has
+    # to be a demand that lands, or these arms are pinning the index of a fleet that never used it.
+    test-the-containment-binding-arrives-at-its-target = {
+      expr =
+        let
+          den = fleetWith distinct;
+        in
+        {
+          atTarget = bindingAt den "shelf:s1";
+          carriers = bindingCarriers den;
+        };
+      expected = {
+        atTarget = "tok-z1";
+        carriers = [ "shelf:s1" ];
+      };
     };
 
     # The ACROSS-KIND half of the precondition, pinned at the minting rather than by census: the kind
