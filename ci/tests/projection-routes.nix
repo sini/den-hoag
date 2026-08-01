@@ -101,7 +101,20 @@ let
   # route's `to` is a coordinate at the target root, relabelled by that root's own relocation exactly as the
   # element arm's sources are. It is a REQUIRED formal there, so this instrument supplies the real query
   # rather than letting a default answer as though no relocation existed.
-  inherit (cm) classSliceAt sourceOrderOf assertKeysRegistered;
+  # ★ `forwardSourceClassesOf` IS THREADED BECAUSE THE PRODUCTION ASSEMBLY THREADS IT, and the projection
+  # reads it through an OPTIONAL argument defaulting to `_: { }`. A stub that omits it therefore runs every
+  # forward row against an EMPTY exemption — which is not a smaller instrument but a different one: the
+  # exemption is exactly what lets a forward read content out of a source class the key classifier does not
+  # recognise. Omitting it leaves the rows below green for the wrong reason, because every forward source
+  # they name happens to be a registered class name, where no exemption is needed; a forward from an
+  # unregistered source silently answers nothing. An argument the fixture may decline to supply is one the
+  # fixture can be wrong about in silence, so it is supplied.
+  inherit (cm)
+    classSliceAt
+    sourceOrderOf
+    assertKeysRegistered
+    forwardSourceClassesOf
+    ;
 
   # A synthetic content element `{ key; content; scope; assertedClasses }` (the reach node shape
   # `classSliceAt` reads). `scope` and `assertedClasses` are STAMPED because a content element is produced
@@ -237,7 +250,12 @@ let
         classesByName = { };
         classOfNode = _: null;
         channelNames = [ ];
-        inherit classSliceAt sourceOrderOf assertKeysRegistered;
+        inherit
+          classSliceAt
+          sourceOrderOf
+          assertKeysRegistered
+          forwardSourceClassesOf
+          ;
       };
 
   projectClassOf =
@@ -325,7 +343,12 @@ let
         classesByName = { };
         classOfNode = _: null;
         channelNames = [ ];
-        inherit classSliceAt sourceOrderOf assertKeysRegistered;
+        inherit
+          classSliceAt
+          sourceOrderOf
+          assertKeysRegistered
+          forwardSourceClassesOf
+          ;
       };
   projectReachOf =
     graph: id: class:
@@ -633,6 +656,33 @@ let
     injections = [ ];
   };
   sliceSubject = mkNode "e" { home-manager.tag = "hm-e"; };
+
+  # ── THE SOURCE SIDE OF THE RESERVED KEY SPACE, reached through a FORWARD rather than a relocation ─────
+  # A forward's `fromClass` is a free-form name read off a reached aspect's own `meta.__forward`, with no
+  # relocation act anywhere. That is the second of the two paths into the source-side read, and it is the
+  # one an endpoint-side refusal cannot see: there is no endpoint to check. The two fixtures differ only in
+  # which key space the source name is in, and must land on opposite verdicts.
+  mkFwdSourceNode =
+    src:
+    mkNode "fwd" {
+      ${src}.tag = "fwd-src";
+      meta.__forward = {
+        fromClass = src;
+        intoClass = "home-manager";
+        intoPath = [ "placed" ];
+        guard = null;
+        adaptArgs = null;
+        item = null;
+      };
+    };
+  gFwdFromClaimed.scope = {
+    reach = [ (mkFwdSourceNode "settings") ];
+    routes = [ ];
+  };
+  gFwdFromUnregistered.scope = {
+    reach = [ (mkFwdSourceNode "spool") ];
+    routes = [ ];
+  };
 in
 {
   flake.tests.projection-routes = {
@@ -1598,6 +1648,43 @@ in
         order = [ "home-manager" ];
         slice = [ "hm-e" ];
       };
+    };
+
+    # ══ (11) THE FORWARD'S SOURCE CLASS IS READ THROUGH THE SAME FILTER ═════════════════════════════════
+    # A relocation endpoint and a forward's `fromClass` both end up naming a channel the extraction will
+    # read content out of, but only one of them is an endpoint. A forward's source is a free-form name
+    # carried on a reached aspect's own `meta.__forward`, with no relocation act anywhere — so an
+    # implementation that placed the refusal at the relocation endpoints would leave this path delivering.
+    # These two rows are what tell the two candidate refusal positions apart.
+
+    # (a) A SCHEMA-CLAIMED SOURCE IS REFUSED NAMED, naming the channel AND its category. The name already
+    #     means something in this key space, so reading class content out of it would give one value two
+    #     readings selected by which gate reached it first.
+    test-forward-from-schema-claimed-channel-refused = {
+      expr = builtins.deepSeq (projectClassOf gFwdFromClaimed "scope" "home-manager") true;
+      expectedError = {
+        type = "ThrownError";
+        msg = "class content at scope '[^']*' is read from a reserved channel 'settings' \\(the aspect schema registers it as a 'facet' key";
+      };
+    };
+
+    # (b) AN UNREGISTERED SOURCE STILL DELIVERS, and this control is what keeps (a) from emptying every
+    #     forward in the tree. An unregistered `fromClass` is the legitimate case the forward-source
+    #     exemption exists for — the name means nothing yet, so nothing collides — and a change refusing
+    #     every non-class source satisfies (a) while breaking it. The two fixtures differ in the source
+    #     name and in nothing else.
+    #     ★ Its twin one key space over is `class-relocation.test-reroute-from-underscore-channel-is-inert`:
+    #     a prefixed source stays admitted and inert rather than becoming an abort. The three together are
+    #     what pin the split — claimed refuses, unregistered delivers, prefixed is inert.
+    test-forward-from-unregistered-channel-still-delivers = {
+      expr = projectClassOf gFwdFromUnregistered "scope" "home-manager";
+      expected = [
+        {
+          placed = {
+            tag = "fwd-src";
+          };
+        }
+      ];
     };
   };
 }
