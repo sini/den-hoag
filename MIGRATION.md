@@ -120,7 +120,7 @@ environment-gated member policy and `suppresses` on its droid-conditional exclud
 
 **The same declaration one level up: `emits`.** `binds` and `suppresses` name the dependency *edges* a
 policy carries; `emits` names the declaration *kinds* it produces — `delivery`, `edge`, `member`, `spawn`,
-`pipeOp` — and the other two are refinements of it. It is declared on the same record, by the same rule, and
+`pipeCommit`, `pipeMark` — and the other two are refinements of it. It is declared on the same record, by the same rule, and
 refused the same way:
 
 ```nix

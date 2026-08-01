@@ -310,7 +310,7 @@ rec {
 
     # r13 `pipe.from name [stages]` — MANDATORY: each §2.4 stage. The five pipe-stages fixtures cover
     # deriving (filter/transform/fold/for), delivery (to/as), and site (append/expose/broadcast/collect/
-    # collectAll/withProvenance) stages. Run to force each pipeOp declaration.
+    # collectAll/withProvenance) stages. Run to force each pipe declaration.
     pipeDerive = {
       decls = pipeFx.derivePipe;
       pin = "compat-compile-golden";

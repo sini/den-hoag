@@ -92,9 +92,9 @@ let
   #    the instanceConfig stamp), so the corpus's
   #    `host.settings.core.network.syncthing.isHub or false` (nix-config policies/pipes.nix:166) reads
   #    the REAL value at dispatch (the u6 read gap, CLOSED). The now-LIVE firing branch emits a
-  #    `pipe.from` — a value-conditional pipeOp. The SITE-MARK rung (this commit) recognizes it as per-
+  #    `pipe.from` — a value-conditional pipe. The SITE-MARK rung (this commit) recognizes it as per-
   #    node emission DATA: a broadcast site mark on a BARE channel ref (no deriving DAG, no route) is NOT
-  #    a compose commitment, so it rides the `#collection` expansion sub-rule (`declare.isSiteMarkData`)
+  #    a compose commitment, so it rides the `#collection` expansion sub-rule (it is a `pipeMark`)
   #    and the hub node RESOLVES CLEAN — u6's LOUD named abort is now GONE (the corpus re-probe frontier
   #    at `__kindInclude__host__policy__11` clears). The site marks are still UNCONSUMED by lib wiring
   #    (ledger u9); delivery is the next rung. The in-pipe broadcast PREDICATES (pipes.nix:147,157 —
@@ -294,9 +294,9 @@ in
     #     CLOSED;
     #   bodyFiresAtRealCtx — the corpus body applied to the REAL ctx entity takes the FIRING branch and
     #     emits the syncthing-peers pipe effect (v1's dispatch-time read, restored at the ctx level);
-    #   firingNodeResolvesClean — the SITE-MARK rung: the fired emission is a pure SITE-MARK pipeOp
-    #     (broadcast mark on a bare channel ref), recognized as per-node DATA by `declare.isSiteMarkData`
-    #     and allowed through the declared collection rule (broadcast-hub-peer declares `produces = [pipeOp]`,
+    #   firingNodeResolvesClean — the SITE-MARK rung: the fired emission is a pure `pipeMark`
+    #     (broadcast mark on a bare channel ref), per-node DATA by its DECLARED kind
+    #     and allowed through the declared collection rule (broadcast-hub-peer declares `produces = [pipeMark]`,
     #     so deriveGroup stamps its group at compile — one declared rule, not the blind fan), so the hub node RESOLVES CLEAN —
     #     u6's LOUD named abort is GONE (the corpus re-probe frontier clears). Site marks stay UNCONSUMED
     #     by lib wiring (ledger u9); delivery is the next rung (this pin flips again when it lands);

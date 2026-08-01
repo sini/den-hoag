@@ -4,9 +4,9 @@
 # COVERED stratum {structural, resolution, collection}, each keeping only its-stratum declarations. So
 # every declaration is produced in ITS stratum's phase (the one-rule/one-stratum law holds per sub-rule)
 # while the policy's declarations self-route by kind. An enrich-kind declaration or a DERIVED/route
-# pipeOp from an expansion policy aborts LOUD (probe-time compose/feed commitments a value-less policy
-# cannot make); a pure SITE-MARK pipeOp on a bare channel ref is per-node emission DATA and rides the
-# `#collection` sub-rule (`declare.isSiteMarkData`), seeding no compose op. A policy that DECLARES its
+# pipeCommit from an expansion policy aborts LOUD (probe-time compose/feed commitments a value-less policy
+# cannot make); a `pipeMark` on a bare channel ref is per-node emission DATA and rides the
+# `#collection` sub-rule, seeding no compose op. A policy that DECLARES its
 # produced-kind family (`emits` / `producesByName`) skips the fan entirely: `dispatch.deriveGroup`
 # stamps its group at DEFINITION time (gen-dispatch declared-stratum), so ONE declared rule keyed by the
 # bare name is built (the corpus path); the blind fan is the additive fallback for undeclared policies.
@@ -29,7 +29,7 @@
 #                                                   (the swallowed-throw path; now a codomain declaration)
 #   · test-resolution-subrule-routes-edge         — an `edge` reaches the resolution sub-rule only
 #   · test-value-conditional-spawn-routes-structural — a `spawn` reaches the structural sub-rule only
-#   · test-value-conditional-sitemark-pipeop-expands — a SITE-MARK pipeOp rides the `#collection` sub-rule
+#   · test-value-conditional-sitemark-pipeop-expands — a `pipeMark` rides the `#collection` sub-rule
 #   · test-corpus-straddle                        — two corpus-shaped policies straddling strata, each
 #                                                   self-routing through its own fan
 #
@@ -96,7 +96,7 @@ let
     id = ch;
     name = ch;
   };
-  # The corpus broadcast-hub-peer shape (nix-config pipes.nix:164-170): a value-conditional pipeOp
+  # The corpus broadcast-hub-peer shape (nix-config pipes.nix:164-170): a value-conditional pipe
   # carrying ONLY a broadcast SITE MARK on a bare channel ref — no deriving DAG, no delivery route — so
   # per-node emission DATA, not a compose commitment. Built via the SAME `declare.pipeMark` constructor
   # `compilePipe` uses (lib/compat/pipe.nix:276-281), so it is faithful to the real compile output.
@@ -110,8 +110,8 @@ let
     ];
   };
   # NON-site-mark collection decls that STILL abort under expansion (genuine probe-time compose
-  # commitments): a DERIVED-op pipeOp (channel-shaping DAG, `derived.__derived = true`) and a
-  # delivery-ROUTE pipeOp (`routes != []`).
+  # commitments): a DERIVED-op `pipeCommit` (channel-shaping DAG, `derived.__derived = true`) and a
+  # delivery-ROUTE `pipeCommit` (`routes != []`).
   derivedPipeOp = declare.pipeCommit {
     channel = "c";
     derived = (bareRef "c") // {
@@ -291,10 +291,10 @@ in
       expected = false;
     };
 
-    # R2 — conservation: a value-conditional policy that produces a BARE pipeOp (no marks, no derived, no
+    # R2 — conservation: a value-conditional policy that produces a BARE `pipeMark` (no marks, no derived, no
     # routes) at dispatch aborts loud — it is not site-mark DATA, so the fleet-compose-commitment posture
     # is retained (the DAG is seeded at the probe, which it never reaches). RETAINED verbatim across the
-    # site-mark rung: a bare pipeOp still aborts.
+    # site-mark rung: a bare collection declaration still aborts.
     test-value-conditional-pipeop-aborts = {
       expr =
         let
@@ -310,7 +310,7 @@ in
       expected = false;
     };
 
-    # NEW (site-mark rung) — a value-conditional DERIVED-op pipeOp (channel-shaping DAG,
+    # NEW (site-mark rung) — a value-conditional DERIVED-op `pipeCommit` (channel-shaping DAG,
     # `derived.__derived = true`) STILL aborts: it is a genuine probe-time compose commitment a
     # value-less policy cannot make.
     test-value-conditional-derived-pipeop-aborts = {
@@ -324,7 +324,7 @@ in
       expected = false;
     };
 
-    # NEW (site-mark rung) — a value-conditional delivery-ROUTE pipeOp (`routes != []`) STILL aborts (the
+    # NEW (site-mark rung) — a value-conditional delivery-ROUTE `pipeCommit` (`routes != []`) STILL aborts (the
     # same compose-commitment law: a delivery route seeds the fleet compose before eval).
     test-value-conditional-route-pipeop-aborts = {
       expr =
@@ -395,7 +395,7 @@ in
       };
     };
 
-    # The broadcast-hub-peer shape declared: a value-conditional SITE-MARK pipeOp declares `[ pipeOp ]` →
+    # The broadcast-hub-peer shape declared: a value-conditional site-mark pipe declares `[ pipeMark ]` →
     # ONE collection rule (bare name). It STILL seeds no compose op (`pipeOps == []` — value-conditional
     # makes no compose commitment), and `assertCovered`'s site-mark allowance rides the declared rule
     # exactly as it rode the `#collection` fan sub-rule.

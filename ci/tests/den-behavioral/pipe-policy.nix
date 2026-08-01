@@ -799,7 +799,7 @@ in
     # its own `name` (the navigation view's stamp, flake-module.nix `annotatedViewNav`), which is what the
     # pipe constructor reads. RED for the deriving-stage cause the armed `pipe.filter`/`transform`/`fold`/
     # `for`/`as` cases above carry, NOT for the ref form: a deriving stage or a delivery route in a policy
-    # BODY is a fleet-compose commitment (`compose commitment` abort, declarations.nix `isSiteMarkData`),
+    # BODY is a fleet-compose commitment (`compose commitment` abort, on the undeclared-codomain law),
     # so the body must declare it as data in `ops` and emit only per-node site marks.
     test-pipe-from-ref = denTest (
       { den, igloo, ... }:

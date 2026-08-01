@@ -104,8 +104,9 @@ its body; a policy whose emission is gated on a context VALUE (so it emits nothi
 throws doing value-work against the sentinel) has its stratum derived PER DECLARATION at dispatch —
 each declaration produced in its own stratum's phase — so a value-conditional resolution or structural
 policy is authored plainly, no probe-shaping required. A per-declaration policy may only emit
-`structural`/`resolution` declarations; an `enrich` or `pipeOp` declaration from one aborts loud (those
-are probe-time feed/compose commitments a value-conditional policy cannot make).
+`structural`/`resolution` declarations; an `enrich` or `pipeCommit` declaration from one aborts loud (those
+are probe-time feed/compose commitments a value-conditional policy cannot make). A `pipeMark` — per-node
+site-mark emission data — carries no such commitment and rides the collection sub-rule.
 
 ## Development
 
