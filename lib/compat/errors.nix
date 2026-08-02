@@ -277,6 +277,98 @@ in
     name:
     fail "policy codomain" "v1 policy `${name}` declares no codomain and codomain recovery is OFF (`den.features.policyRecovery = false`). Flag-off is strictly more strict: declare the kinds it produces (compat/produces-by-name.nix `${name} = [ <kind> ]`)";
 
+  # THE SPY REFUSAL — the codomain fire was CAUGHT, so the body decides what it emits from a COORDINATE
+  # VALUE, and no authored source declares the field(s) that fire was recovering.
+  #
+  # WHY A REFUSAL AND NOT A WORSE RECOVERY. A codomain is a STATIC property of a body. A value-conditional
+  # body has no codomain at a value-less context — it has one per context — so there is no answer to
+  # invent, and the shipped value sentinel's answer (the body's FALSE branch, silently) is the
+  # unsoundness this refusal replaces. The refusal is the honest total: the question is refused where it
+  # has no answer, and the remedy states the answer the body cannot.
+  #
+  # ★ IT NAMES THE COORDINATE, NEVER THE FIELD THE BODY READ. The spy binds every coordinate field to a
+  # named throw, but `tryEval` DESTROYS a caught throw's message, so the field name does not survive the
+  # envelope. What does survive is the per-coordinate attribution loop's verdict, synthesized on this
+  # side of the boundary exactly as `commitmentFireFailed` is.
+  # ★ IT NAMES THE MISSING DECLARATION FIELD, because COMPLETING THE DECLARATION is the remedy — not
+  # rewriting the body, and not restating fields some source already declares. The caller reaches this
+  # only after the ref, the fleet surface and the shim tables have all been consulted (compile.nix
+  # `codomainChain`), so a field named here is declared NOWHERE.
+  # ★ THE REMEDY IS A COMPLETE RECORD, because `den.policyCodomains` is TOTAL BY TYPE: a partial record
+  # is refused at the option, so printing one would print a value this design's own surface rejects.
+  codomainValueConditional =
+    name: declared: needed: declaredValues: reads:
+    let
+      renderList = xs: "[ " + builtins.concatStringsSep " " (map (s: "\"${s}\"") xs) + " ]";
+      field =
+        f: "${f} = ${if declaredValues ? ${f} then renderList declaredValues.${f} else "[ ]"};";
+      remedy = builtins.concatStringsSep " " (
+        map field [
+          "emits"
+          "binds"
+          "suppresses"
+        ]
+      );
+      declares =
+        if declared == [ ] then
+          "declares no codomain"
+        else
+          "declares ${builtins.concatStringsSep ", " declared}";
+    in
+    fail "policy codomain"
+      "v1 policy `${name}` ${declares} but no source declares ${
+        builtins.concatStringsSep ", " needed
+      }, and recovering the omitted field(s) requires firing a body that decides what it emits from a coordinate value. A codomain is a STATIC property of a body, decided before any node exists, so there is no context at which this question has an answer and the shim will not invent one. The coordinate(s) it reads: ${
+        if reads == [ ] then "«no single coordinate could be attributed»" else builtins.concatStringsSep ", " reads
+      }. COMPLETE THE DECLARATION — beside the policy, leaving the body untouched: `den.policyCodomains.${name} = { ${remedy} };`. The declaration is TOTAL: all three fields are stated, and `[ ]` is a legal value meaning the body produces none of that kind. `emits` names the kinds the body may produce at ANY context — the UNION over its branches, not the ones it takes at some particular node";
+
+  # THE FLEET SURFACE'S OWN TYPE REFUSAL, raised by the shim rather than by the option type.
+  # `den.policyCodomains` is typed `attrsOf (submodule …)` with all three fields REQUIRED at
+  # flake-module.nix, so a module-evaluated fleet is refused there. This is the SAME refusal for the
+  # `denCompat.compile`-direct path, which never crosses an option type at all — without it the design's
+  # headline claim ("an omitted field is impossible BY TYPE") would hold on one entry path and not the
+  # other, which is an authoring convention wearing a type's clothes.
+  policyCodomainNotTotal =
+    name: value:
+    let
+      fields = [
+        "emits"
+        "binds"
+        "suppresses"
+      ];
+    in
+    if !(builtins.isAttrs value) then
+      fail "policy codomain"
+        "`den.policyCodomains.${name}` is not a record. A codomain declaration is a closed record of ${
+          builtins.concatStringsSep ", " fields
+        }"
+    else
+      let
+        missing = builtins.filter (f: !(value ? ${f})) fields;
+        extra = builtins.filter (f: !(builtins.elem f fields)) (builtins.attrNames value);
+      in
+      if missing != [ ] then
+        fail "policy codomain"
+          "`den.policyCodomains.${name}` omits ${
+            builtins.concatStringsSep ", " missing
+          }. A codomain declaration is TOTAL: every kind a body may produce is stated, and every kind it may not is stated as the EMPTY HEAD. Write the omitted field(s) as `[ ]` — that is a declaration, not a placeholder, and it is what makes the recovery unnecessary for this policy"
+      else
+        fail "policy codomain"
+          "`den.policyCodomains.${name}` carries unknown field(s) ${
+            builtins.concatStringsSep ", " extra
+          }. The codomain vocabulary is closed: ${builtins.concatStringsSep ", " fields}";
+
+  # TWO AUTHORED STATEMENTS IN CONFLICT, at the two codomain surfaces. The v1 ref's own field and
+  # `den.policyCodomains.<name>` are BOTH authored, so DECLARATION-BEATS-DERIVATION — which orders an
+  # authored value above a DERIVED one — is SILENT between them, and reading a silent principle as though
+  # it spoke is how a precedence gets installed without an argument. Either ordering makes one of the two
+  # authored statements disappear with no signal. Refused instead, exactly as
+  # `selectsConflictsWithSchemaExclude` refuses the same shape one surface over.
+  policyCodomainConflict =
+    name: field:
+    fail "policy codomain conflict"
+      "v1 policy `${name}` declares `${field}` on its own record AND at `den.policyCodomains.${name}`, and the two DISAGREE. Both are AUTHORED statements — neither is a derivation — so declaration-beats-derivation does not order them, and honouring either one would discard the other silently. den-hoag refuses instead. DROP ONE: remove `${field}` from the policy record to keep the fleet declaration, or remove it from `den.policyCodomains.${name}` to keep the record's";
+
   # LAW (a) — a compose commitment RECOVERED from a policy that declares no codomain. The commitment fire
   # is gated on the DECLARED codomain, so a body producing a derived-channel DAG or a delivery route
   # without a declaration has stated a fleet-wide commitment nothing will ever collect: the fleet compose
