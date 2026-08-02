@@ -810,7 +810,11 @@ in
     # comment agreeing with that hazard's description, which is a reading of two texts rather than a
     # tracker decision. Inventing the attribution is the exact failure the declaration mechanism exists
     # to remove, so the red stays anonymous and visible instead of being made green under a guess.
-    # Owner item on den-hoag-9uv: confirm the id or reassign, then declare it here.
+    # ★ THE POINTER WAS STALE AND IS CORRECTED: `den-hoag-9uv` is CLOSED, and a closed bead named as a
+    # tracker silently converts live work into finished work. The live owner item is `den-hoag-8n1`, which
+    # has since CONFIRMED the attribution (den-hoag-9xo.75) and ruled the disposition (declare it through
+    # the three-state mechanism). That execution is 8n1's, not this lane's, so the red stays here,
+    # visible, pointing at a bead that is actually open.
     test-probeSentinel-off-parks = {
       expr = probeEnrichParks offProbeSentinel;
       expected = true;

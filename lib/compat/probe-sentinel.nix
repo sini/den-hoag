@@ -9,8 +9,17 @@
 # value-conditional FALSE branch and the recovery reads its codomain cleanly.
 #
 # CEILING (self-announcing, unchanged): a body reading a field absent from this set still fails LOUDLY and
-# names the field, so the remedy is to extend the set — or, better, to declare the policy's codomain in
-# produces-by-name.nix, which skips the fire entirely.
+# names the field, so the remedy is to extend the set — or, better, to declare the policy's codomain at
+# `den.policyCodomains.<name>` (or on the v1 record), which skips the fire entirely.
+#
+# ★★ THIS FILE IS A COUPLED SURFACE, AND THE COUPLING IS NOW LOAD-BEARING TWICE OVER. These names are the
+# key set of BOTH sentinels: the VALUE stand-in above and the throwing SPY that `policy-recover.nix`
+# `codomainSpy` builds by `attrNames` over the same set. The spy's whole soundness argument is that the
+# two fires differ ONLY in the values bound to a SHARED key set, so a key present here is a funnel and a
+# key ABSENT here is invisible to both — which is why an `or`-defaulted read of a field this file omits
+# defaults silently in the spy fire too, and the codomain it recovers can be wrong with no signal.
+# ⇒ A corpus field added here closes a spy hole in the same edit. A field NOT added is a hole that no
+# instrument in the shim can observe, and the only other remedy is the declaration.
 #
 # A DEEP field (`settings`) cannot be a string: it needs a submodule tree materialized at its own
 # defaults, which only the bridge can build. The bridge threads it as the reserved

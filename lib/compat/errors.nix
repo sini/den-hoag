@@ -364,11 +364,18 @@ in
   # seed is built BEFORE the eval, from declared bodies only. Refused rather than dropped — a dropped
   # commitment is the silent-vanish class this seam exists to close, and it is the class the kernel's
   # retired `opsInBody` refused for the same reason at the other end of the same boundary.
-  # ★ RAISED FROM THE RETURNED DECLARATIONS, never from inside a body: `recoverDecls` wraps its fire in
+  # ★ RAISED FROM THE RETURNED DECLARATIONS, never from inside a body: `classifyDecls` wraps its fire in
   # `tryEval`, which DESTROYS a caught throw's message, so a refusal raised inside would arrive as
   # `policyCodomainUnrecoverable` with the channel and the field gone.
-  # ★ The message reads only fields `recoverDecls`' own `deepSeq` has already forced, so a
-  # message-construction throw is structurally impossible rather than merely unobserved.
+  # ★★ THE MESSAGE READS ONLY FIELDS THE FIRE HAS ALREADY FORCED, so a message-construction throw is
+  # structurally impossible rather than merely unobserved — AND ITS WARRANT IS NOW A COUPLING, NOT A
+  # FORCING DEPTH. This used to rest on `recoverDecls`' own `deepSeq`, which forced everything the
+  # declarations carried; that `deepSeq` is gone, replaced by `policy-recover.nix` `recoveryDomain`, which
+  # forces EXACTLY the kind set, the refined codomains, and `lawAFields`. The conclusion survives because
+  # `lawAFields` is DEFINED as every field `commitmentFieldsOf` reads plus the `channel` rendered around
+  # it — so `commitmentFieldsOf` is a COUPLED SURFACE: a field added to it below is a field owed to that
+  # domain in the same edit, and adding one without it reopens exactly the message-construction throw this
+  # sentence rules out.
   commitmentUndeclared =
     policyName: decl:
     fail "compose commitment" "policy `${policyName}` produced a `pipeCommit` declaration on channel `${decl.channel}` carrying ${commitmentFieldsOf decl}, from a body whose codomain is NOT DECLARED. A compose commitment seeds the ONE fleet gen-pipe compose before the eval, so it is collected from the DECLARED codomain only — an undeclared one would be built and never applied. Declare this policy's codomain as `[ \"pipeCommit\" \"pipeMark\" ]`, either in `lib/compat/produces-by-name.nix` or as `emits` on the v1 ref. BOTH kinds are required: the mark route emits a `pipeMark` at every dispatched node, so a `pipeCommit`-only declaration clears THIS abort and fails the next one at `emitsUndeclared`";
