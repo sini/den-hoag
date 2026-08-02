@@ -31,6 +31,7 @@
   lib,
   denHoag,
   denCompat,
+  xfail,
   ...
 }:
 let
@@ -789,7 +790,9 @@ in
     };
     # (b) off-PARKS — OFF the field is absent → `host ? class` false at the probe → the enrich rides an
     # expansion sub-rule → `expansionEnrich` NAMED throw (the ABSENCE surfaced as a catchable park).
-    # ★★ EXPECTED-RED, DELIBERATELY LEFT FAILING — do not "fix" this by asserting what it now does.
+    # ★★ EXPECTED-RED, DECLARED — and the declaration is what keeps it from being "fixed" by asserting
+    # what it now does: the value form states TODAY'S WRONG ANSWER (`actual`) and the RIGHT one
+    # (`correct`) side by side, so the leaf is green while the defect stands and red the day it moves.
     #
     # PROPERTY IT PINNED: with `probeSentinel` OFF the sentinel loses its `class` field, so the corpus
     # shape `if host ? class` reads value-conditional, its enrich rode an EXPANSION sub-rule, and
@@ -801,23 +804,32 @@ in
     # converts a loud, informative refusal into a silent drop.
     #
     # That is a KNOWN OPEN DEFECT (the empty-recovery hazard), not a behaviour we endorse. Asserting the
-    # silence would pin the defect into the suite and make it green through its own fix. It stays red as a
-    # live witness until an empty RECOVERY is as loud as a throwing one.
+    # silence as `expected` would pin the defect into the suite and make it green through its own fix.
+    # It stays a live witness — declared against its own wrongness, never against the silence — until an
+    # empty RECOVERY is as loud as a throwing one.
     #
-    # ★ NOT CONVERTED TO A DECLARED KNOWN-FAILURE, AND THE OMISSION IS DELIBERATE. Every other red in
-    # this suite now carries its tracker id on the leaf. This one does not, because no tracker has been
-    # confirmed to own it: the reading that it belongs to the empty-recovery hazard rests on this
+    # ★ IT SHIPPED ANONYMOUS ON PURPOSE, AND THAT LINEAGE IS KEPT RATHER THAN OVERWRITTEN. Every other
+    # red in this suite carried its tracker id on the leaf; this one did not, because no tracker had been
+    # confirmed to own it: the reading that it belongs to the empty-recovery hazard rested on this
     # comment agreeing with that hazard's description, which is a reading of two texts rather than a
     # tracker decision. Inventing the attribution is the exact failure the declaration mechanism exists
-    # to remove, so the red stays anonymous and visible instead of being made green under a guess.
-    # ★ THE POINTER WAS STALE AND IS CORRECTED: `den-hoag-9uv` is CLOSED, and a closed bead named as a
-    # tracker silently converts live work into finished work. The live owner item is `den-hoag-8n1`, which
-    # has since CONFIRMED the attribution (den-hoag-9xo.75) and ruled the disposition (declare it through
-    # the three-state mechanism). That execution is 8n1's, not this lane's, so the red stays here,
-    # visible, pointing at a bead that is actually open.
-    test-probeSentinel-off-parks = {
+    # to remove, so the red stayed anonymous and visible instead of being made green under a guess. An
+    # earlier revision also pointed at `den-hoag-9uv`, which is CLOSED — a closed bead named as a tracker
+    # silently converts live work into finished work.
+    # ★ THE DISCLAIMER IS DISCHARGED BY RULING, so the guess is no longer what stands behind the id:
+    # `den-hoag-8n1` CONFIRMED the attribution as `den-hoag-9xo.75` — the empty-recovery hazard, the same
+    # defect and the same `recoverEmits` seam the two `compat-scope-local-firing` declarations name — and
+    # ruled the disposition DECLARE through the three-state mechanism.
+    # ★ THE LEAF CARRIES THE DEFECT'S BEAD, NOT THE RULING'S, and the two are not interchangeable: 8n1 is
+    # discharged the moment this declaration lands, and a tracker that closes on the declaration's own
+    # arrival reintroduces the 9uv failure above. `den-hoag-9xo.75` stays open until an empty recovery is
+    # as loud as a throwing one — which is precisely the day this leaf must go red.
+    test-probeSentinel-off-parks = xfail.value {
+      bead = "den-hoag-9xo.75";
+      construct = "recoverEmits";
       expr = probeEnrichParks offProbeSentinel;
-      expected = true;
+      actual = false;
+      correct = true;
     };
     # ★★★ RE-EXPRESSED — THE UNGUARDED READ IS NOW REFUSED, AND THE SENTINEL'S VALUE NO LONGER DECIDES.
     #

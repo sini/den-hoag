@@ -33,7 +33,16 @@
       expr = xfail.censusOf config.flake.tests;
       expected = [
         # the empty-recovery hazard: a value-conditional v1 policy's codomain recovers EMPTY, so the
-        # policy classifies to no group and compiles to no rule — silently.
+        # policy classifies to no group and compiles to no rule — silently. The severed-belt row is the
+        # same defect reached from the other side: `probeSentinel` OFF removes the sentinel's `class`
+        # field, which is what makes the corpus shape `if host ? class` value-conditional at the probe.
+        # Its attribution was RULED (den-hoag-8n1) rather than read off the fixture's comment.
+        {
+          id = "compat-feature-severed.test-probeSentinel-off-parks";
+          bead = "den-hoag-9xo.75";
+          construct = "recoverEmits";
+          sites = [ "lib/compat/policy-recover.nix" ];
+        }
         {
           id = "compat-scope-local-firing.test-expansion-collapses-to-one-rule";
           bead = "den-hoag-9xo.75";
@@ -84,7 +93,7 @@
           allSitesNonEmpty = builtins.all (r: r.sites != [ ]) rows;
         };
       expected = {
-        rowCount = 4;
+        rowCount = 5;
         allBeadsWellShaped = true;
         allConstructsResolve = true;
         allSitesNonEmpty = true;
