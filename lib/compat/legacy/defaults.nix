@@ -39,9 +39,20 @@ let
   # match the name — so the ambient `den.policies.user-to-host` global (builtins.nix) is removed from the
   # fleet-wide firing set, leaving a SINGLE firing via the include.
   routeIncludes = builtins.filter (r: r != null) (map (b: b.routeInclude or null) batteryList);
+  # ★ THE CODOMAIN RIDES THE COERCION. A battery's route record is SHIM-AUTHORED, so it declares its own
+  # codomain (os-class.nix / os-user.nix) and the coercion must carry that declaration onto the record the
+  # include arm compiles — dropping it would send a body the shim wrote to a sentinel fire to rediscover
+  # what the shim already stated. Inherited WITHOUT `or` defaults: a battery route that declares no
+  # codomain is a shim defect and should fail here, loudly, rather than fall through to a recovery.
   coerce = r: {
     __isPolicy = true;
-    inherit (r) name fn;
+    inherit (r)
+      name
+      fn
+      emits
+      binds
+      suppresses
+      ;
   };
 
   # `den.aspects.defaults` — the desugared v1 `den.default`: its non-includes content, plus the coerced

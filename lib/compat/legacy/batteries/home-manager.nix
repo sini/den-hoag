@@ -87,6 +87,13 @@ rec {
   # builtins.nix (the dual-registration pattern: one definition, both paths).
   hmUserDetect = {
     __denCanTake = "user-host";
+    # SHIM-AUTHORED ⇒ SHIM-DECLARED. `declare.delivery` entry-checks `targetClass` EAGERLY and
+    # `translateDelivery` selects that entry with `d.target == null`, so the coordinate-gated `intoClass`
+    # below is FORCED at construction: the codomain spy reads a coordinate here and refuses, correctly.
+    # The emission's TARGET depends on the node; its KIND SET does not, and that is what this states.
+    emits = [ "delivery" ];
+    binds = [ ];
+    suppresses = [ ];
     fn =
       { user, host, ... }:
       let

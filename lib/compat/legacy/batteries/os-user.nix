@@ -47,6 +47,12 @@ let
   # ambient global from the fleet-wide firing set → the route fires ONCE, via the include arm.
   userToHost = {
     name = "user-to-host";
+    # Declared for the same reason `os-to-host` is (os-class.nix): the shim authors this route, and
+    # `declare.delivery`'s eager `targetClass` entry-check forces the coordinate-derived `intoClass` at
+    # construction, so no sentinel fire can recover a codomain the shim already knows.
+    emits = [ "delivery" ];
+    binds = [ ];
+    suppresses = [ ];
     fn =
       { user, host, ... }:
       [

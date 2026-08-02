@@ -92,6 +92,12 @@ let
   # this presents it so that reference resolves + the droid exclude reaches its named class-B abort.
   userToHost = {
     __denCanTake = "user-host";
+    # SHIM-AUTHORED, so the shim declares — and must, because `declare.delivery`'s eager `targetClass`
+    # entry-check forces `intoClass` at construction, which reads `host.class`. Value-identical to the
+    # os-user battery's own declaration (os-user.nix `userToHost`), as the whole record is.
+    emits = [ "delivery" ];
+    binds = [ ];
+    suppresses = [ ];
     fn =
       { user, host, ... }:
       [
@@ -123,6 +129,13 @@ let
   # userName default (entities/host.nix:156 `userName = strOpt … config.name`).
   hmUserDetect = {
     __denCanTake = "user-host";
+    # SHIM-AUTHORED ⇒ SHIM-DECLARED. `declare.delivery` entry-checks `targetClass` EAGERLY and
+    # `translateDelivery` selects that entry with `d.target == null`, so the coordinate-gated `intoClass`
+    # below is FORCED at construction: the codomain spy reads a coordinate here and refuses, correctly.
+    # The emission's TARGET depends on the node; its KIND SET does not, and that is what this states.
+    emits = [ "delivery" ];
+    binds = [ ];
+    suppresses = [ ];
     fn =
       { user, host, ... }:
       let
@@ -284,6 +297,10 @@ let
     }:
     {
       __denCanTake = "user-host";
+      # SHIM-AUTHORED ⇒ SHIM-DECLARED, for the whole `mkUserDetect` family at once — see `hmUserDetect`.
+      emits = [ "delivery" ];
+      binds = [ ];
+      suppresses = [ ];
       fn =
         { user, host, ... }:
         let
@@ -411,6 +428,13 @@ let
   ambient = route: route // { selects = sel.star; };
   wslToHost = {
     __denCanTake = "host";
+    # SHIM-AUTHORED ⇒ SHIM-DECLARED. `declare.delivery` entry-checks `targetClass` EAGERLY and
+    # `translateDelivery` selects that entry with `d.target == null`, so the coordinate-gated `intoClass`
+    # below is FORCED at construction: the codomain spy reads a coordinate here and refuses, correctly.
+    # The emission's TARGET depends on the node; its KIND SET does not, and that is what this states.
+    emits = [ "delivery" ];
+    binds = [ ];
+    suppresses = [ ];
     fn =
       { host, ... }:
       [

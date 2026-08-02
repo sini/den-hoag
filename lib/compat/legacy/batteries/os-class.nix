@@ -72,6 +72,19 @@ in
   # once its output class is registered; until then a darwin host aborts LOUDLY at resolveBucket.)
   routeInclude = {
     name = "os-to-host";
+    # THE SHIM DECLARES THE CODOMAIN OF THE POLICY IT AUTHORS. This route is minted HERE, not by a v1
+    # fleet, so there is no author to ask for a `den.policyCodomains` entry — the shim is the author, and
+    # a mechanism that fires its own body at a sentinel to rediscover what it just wrote is inventing an
+    # answer it already has.
+    # ★ AND THIS BODY CANNOT BE RECOVERED BY FIRING, which is why the declaration is REQUIRED rather than
+    # merely cheaper. `declare.delivery` entry-checks `targetClass` EAGERLY, and `translateDelivery`
+    # selects that entry with `d.target == null` — so the coordinate-gated `intoClass` below is FORCED at
+    # construction. The codomain spy therefore reads a coordinate for every such route and refuses it,
+    # correctly: the emission's target genuinely depends on `host.class`. The kind set does not, and that
+    # is exactly what this declaration states.
+    emits = [ "delivery" ];
+    binds = [ ];
+    suppresses = [ ];
     fn =
       { host, ... }:
       [
