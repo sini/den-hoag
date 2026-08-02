@@ -418,6 +418,19 @@ let
       })
     ];
   };
+  # ★ THE DECLARED TWIN — the remedy the refusal prints, applied. Same body, same fleet, `emits` stated
+  # at `den.policyCodomains`, so no fire happens and the unguarded read is never reached at definition
+  # time. This is the control that makes the arm below a statement about the FIRE and not about the
+  # fixture being uncompilable.
+  probeUnguardedDeclaredFixture = probeUnguardedFixture // {
+    policyCodomains.probe-coord = {
+      emits = [ "edge" ];
+      binds = [ ];
+      suppresses = [ ];
+    };
+  };
+  probeUnguardedCleanIn =
+    fx: w: (builtins.tryEval (builtins.deepSeq (unionTrace (w.mkDen [ (v1mod fx) ])) true)).success;
   probeUnguardedClean =
     w:
     (builtins.tryEval (builtins.deepSeq (unionTrace (w.mkDen [ (v1mod probeUnguardedFixture) ])) true))
@@ -489,6 +502,21 @@ let
       { host, ... }:
       if (host.class or null) == "droid" then [ (denCompat.exclude userToHostRef) ] else [ ];
   };
+  # ★ THE SAME FIXTURE WITH ITS REFINED CODOMAIN DECLARED, through the fleet surface. This is the
+  # positive control for the refusal below: the remedy the message prints, applied verbatim, and the
+  # abort is gone. Without it "refused" and "this fixture cannot compile at all" are the same observation.
+  excludeDeclaredFixture = excludeFixture // {
+    policyCodomains.drop-user-to-host-on-droid = {
+      emits = [ "suppress" ];
+      binds = [ ];
+      suppresses = [ "user-to-host" ];
+    };
+  };
+  excludeFamilyParksIn =
+    fx: w:
+    !(builtins.tryEval (
+      builtins.deepSeq ((w.mkDen [ { den = fx; } ]).den.structural.eval.get "host:d1" "declarations") true
+    )).success;
   excludeFamilyParks =
     w:
     !(builtins.tryEval (
@@ -787,11 +815,38 @@ in
       expr = probeEnrichParks offProbeSentinel;
       expected = true;
     };
-    # CONTENT-CLEAN ON arm — a policy reading a bare coord field UNGUARDED at the probe (`builtins.seq
-    # host.class …`, the host-modules-capture corpus shape) types THROUGH clean with the sentinel ON. Mutation-
-    # provable: strip the field from probeSentinelModule ⇒ this native-misses at the probe (the LOUD ceiling).
-    test-probeSentinel-unguarded-on-clean = {
+    # ★★★ RE-EXPRESSED — THE UNGUARDED READ IS NOW REFUSED, AND THE SENTINEL'S VALUE NO LONGER DECIDES.
+    #
+    # This arm asserted that a policy reading a bare coord field UNGUARDED at the probe (`builtins.seq
+    # host.class …`, the host-modules-capture corpus shape) types THROUGH clean with the sentinel ON —
+    # i.e. that the recovery survived because the sentinel happened to carry a type-correct value for the
+    # field the body forced. That is the property the codomain spy exists to remove: it made the
+    # recovery's success a fact about the SENTINEL's key set rather than about the body.
+    #
+    # ★ AND THE SPY DOES NOT DISTINGUISH FORCING FROM BRANCHING, deliberately. This body forces
+    # `host.class` and DISCARDS the value, so its emission is in fact unconditional — but a read is a
+    # funnel whether or not the value goes on to decide anything, and no fire can tell the two apart
+    # without deciding the halting problem for the branch that never ran. The refusal is therefore
+    # CONSERVATIVE here, and it is named, attributed, and remediable — which the silent wrong answer it
+    # replaces was not.
+    test-probeSentinel-unguarded-read-is-refused-on = {
       expr = probeUnguardedClean full;
+      expected = false;
+    };
+    # ★★ THE OFF ARM IS NOT ASSERTABLE, AND THAT IS THE CEILING RATHER THAN AN OMISSION. With
+    # `probeSentinel` OFF the sentinel carries no `class` key at all, so `host.class` is a MISSING
+    # ATTRIBUTE — which `tryEval` cannot catch, so it escapes every envelope and aborts the evaluation the
+    # assertion would be made in. Measured: an arm reading `probeUnguardedClean offProbeSentinel` does not
+    # report `false`, it takes the whole suite down with `attribute 'class' missing`.
+    # ⇒ The spy CHANGES the ON arm (a present-but-throwing key is a catchable, attributed refusal) and
+    # cannot change the OFF one (an absent key is Nix's own uncatchable error). That asymmetry is
+    # `policy-recover.nix`'s stated honest ceiling, and the remedy is the same one its header names:
+    # extend the sentinel key set, or declare the codomain and skip the fire entirely — which is what the
+    # arm below does.
+    # ★ THE REMEDY, APPLIED — same body, same fleet, codomain declared ⇒ no fire ⇒ clean. Without this the
+    # two arms above are equally satisfied by a fixture that cannot compile for some unrelated reason.
+    test-probeSentinel-unguarded-declared-codomain-is-clean = {
+      expr = probeUnguardedCleanIn probeUnguardedDeclaredFixture full;
       expected = true;
     };
 
@@ -802,16 +857,19 @@ in
       expr = declSeverableOn offFamilyStamps;
       expected = true;
     };
-    # ★ RE-EXPRESSED, same movement as the resolve half. This asserted that severing `familyStamps` is
-    # BYTE-NEUTRAL over the non-feature fixtures. That is no longer true, and the change is deliberate:
-    # the flag's OFF arm collapses the corpus name sets, so policies that had a DECLARED codomain lose it
-    # and the shim must recover one by firing — and `user-to-host`'s body raises at a value-less sentinel,
-    # which is now a NAMED abort instead of a swallowed throw. Byte-neutral severability was a property of
-    # the era when a failed probe was silently treated as "emits nothing"; it cannot survive making that
-    # failure loud, and we chose loud. Asserted as an abort so the movement is pinned rather than assumed.
+    # ★★ RE-EXPRESSED AGAIN, AND THE ORIGINAL PROPERTY IS RESTORED. The previous revision asserted an
+    # ABORT here: with the name sets collapsed, `user-to-host` lost its declared codomain, the shim fired
+    # its body at a value-less sentinel, and the `"«sentinel»"` class failed to resolve to a delivery
+    # bucket — a named recovery failure. That abort was never a property of the FLAG; it was the shim
+    # having no declaration for a route the shim itself authors.
+    #
+    # The route now declares its codomain ON ITS OWN RECORD (legacy/batteries/os-user.nix), which no
+    # corpus name set can collapse, so severing `familyStamps` is BYTE-NEUTRAL over the non-feature
+    # fixtures once more. The flag governs the corpus TABLES; it never governed the shim's own routes, and
+    # the abort was that confusion showing through.
     test-familyStamps-trace-baseline = {
-      expr = (builtins.tryEval (builtins.deepSeq (traceSeverableOn offFamilyStamps) true)).success;
-      expected = false;
+      expr = traceSeverableOn offFamilyStamps;
+      expected = true;
     };
     # (b) resolve half = the mkCompile bake site — ON a kind-include resolve policy whose ref name ∈ the set
     # has `member` folded into its declared codomain; OFF the bake collapses to `[ ]` ⇒ none is declared.
@@ -819,23 +877,42 @@ in
       expr = resolveStampOf full;
       expected = true;
     };
-    # ★ RE-EXPRESSED, and the flag's semantics MOVED rather than survived. OFF used to mean "unstamped,
-    # therefore quietly absent from the pre-pass feed". It now means the corpus name sets collapse, so no
-    # codomain is DECLARED for a value-conditional resolve policy, so the shim must recover one by firing
-    # the body — which raises, and raises NAMED. Flag-off is therefore STRICTLY MORE STRICT than flag-on,
-    # which is the removability posture this design states for `policyRecovery`: severing a compat input
-    # may refuse a fleet, never silently degrade it. Asserted as an abort, with the ON arm above as the
-    # negative control in the same run.
+    # ★★ RE-EXPRESSED AGAIN, AND THE FLAG'S ORIGINAL MEANING IS RESTORED for the same reason the trace
+    # baseline's is: the abort the previous revision pinned came from the shim's OWN `user-to-host` route
+    # losing a declaration it should never have depended on a corpus table for. With that declared on the
+    # record, OFF means what it always meant — the name sets collapse, `env-to-hosts` has no DECLARED
+    # `member`, and it is quietly absent from the pre-pass resolve feed.
+    #
+    # ★ AND THE RECOVERY DOES NOT SILENTLY PUT IT BACK. This resolve body gates on a DEFAULTED coordinate
+    # (`{ token ? null, ... }`), which the fire omits so the body's own default applies, so the spy admits
+    # it with the honest `emits = [ ]` — not `member`. Flag-off therefore still removes it from the feed,
+    # which is the property this arm exists to hold, with the ON arm above as the live control.
     test-familyStamps-resolve-stamp-off = {
-      expr = (builtins.tryEval (builtins.deepSeq (resolveStampOf offFamilyStamps) true)).success;
+      expr = resolveStampOf offFamilyStamps;
       expected = false;
     };
-    # (b) exclude half = the seam-module omit site — ON the corpus excluder's main-run `suppress` is benign
-    # (the seam names it ⇒ `suppress` is declared ⇒ the pre-pass feed consumed it); OFF the seam is `[ ]` ⇒
-    # the recovered codomain is empty and the same `suppress` violates it ⇒ NAMED throw. The two sites
-    # collapse ATOMICALLY (a lone-site collapse desyncs the two writers).
-    test-familyStamps-exclude-benign-on = {
+    # (b) exclude half = the seam-module omit site.
+    #
+    # ★★★ RE-EXPRESSED, AND THE ON ARM'S OLD "BENIGN" RESTED ON AN INVENTED VALUE. The seam declares
+    # `emits = [ "suppress" ]`, which makes `suppresses` REQUIRED by the required-iff rule — and no source
+    # declared it, so `codomainStamps` recovered it BY FIRING. This excluder is value-conditional
+    # (`host.class == "droid"`), so the value sentinel took its FALSE branch and the recovery answered
+    # `suppresses = [ ]` for a body whose real suppression target is `user-to-host`. The arm was green
+    # because the pre-pass consumed the suppression before anything compared it to that codomain — benign
+    # by accident, over a wrong value. That is `den-hoag-9xo.75`'s recorded defect verbatim.
+    #
+    # The codomain spy refuses it instead: the refined codomain is UNRECOVERABLE, so it is named rather
+    # than invented. Both flag arms now park, for two DIFFERENT reasons — ON the refined codomain cannot
+    # be recovered, OFF the whole codomain is undeclared — so the pair below still discriminates, and the
+    # declared twin is the control that the refusal has a working remedy.
+    test-familyStamps-exclude-unrecoverable-refined-codomain-refused-on = {
       expr = excludeFamilyParks full;
+      expected = true;
+    };
+    # ★ THE REMEDY, APPLIED. The same fixture, same flag arm, with `suppresses` declared at
+    # `den.policyCodomains` — no fire, no refusal, and the suppression still lands.
+    test-familyStamps-exclude-declared-refined-codomain-is-benign-on = {
+      expr = excludeFamilyParksIn excludeDeclaredFixture full;
       expected = false;
     };
     test-familyStamps-exclude-park-off = {

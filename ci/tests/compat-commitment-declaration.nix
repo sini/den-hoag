@@ -462,32 +462,55 @@ in
       };
     };
 
-    # ── A9-undeclared-conditional — the arm that makes the two laws' union checkable ──────────────────
-    # At the VALUE sentinel the effect list evaluates to `[ ]` and the recovery returns an EMPTY HEAD, so
-    # law (a) does not fire and the policy compiles. Without this arm, "an undeclared policy takes law (a)"
-    # reads as a fact about a population and is false.
-    test-a9-undeclared-conditional-recovers-an-empty-head = {
+    # ── A9-undeclared-conditional — RE-EXPRESSED, and the movement is the point ───────────────────────
+    #
+    # ★★★ THESE THREE ARMS USED TO PIN THE DEFECT. `condCommit` reads `host.class`, so at the VALUE
+    # sentinel its effect list evaluated to `[ ]`, the recovery returned an EMPTY HEAD, law (a) did not
+    # fire, and the policy COMPILED — carrying a codomain the shim had invented from the sentinel's own
+    # constant. The suite asserted all three steps, and the second one said so outright: the empty head
+    # was "the sentinel's value". A fixture stating what the sentinel decided is a fixture pinning a
+    # recovery that answers about the sentinel instead of about the body.
+    #
+    # THE CODOMAIN SPY REMOVES THE STEP THEY RESTED ON. The fire binds every coordinate field to a named
+    # throw, so a body that BRANCHES on one is CAUGHT and REFUSED at compile — named, naming the
+    # coordinate and the declaration that fixes it — instead of compiling on an invented empty head and
+    # failing later at dispatch, or not failing at all.
+    #
+    # ★ THE UNION PROPERTY THE OLD ARMS EXISTED TO PROTECT IS NOT LOST, and it is not carried by these
+    # three: law (a) has its witness at `test-a9-undeclared-law-a-names-the-channel-and-only-the-populated-field`
+    # (an UNCONDITIONAL undeclared commitment, which the spy admits and law (a) then refuses) and law (b)
+    # at `test-a9-declared-law-b-names-the-kind-and-renders-no-field-clause`. Both are in this run. What
+    # these arms now pin is the THIRD state, which no fixture could reach before: refused for being
+    # unanswerable, rather than answered wrongly.
+    test-a9-undeclared-conditional-is-refused-by-name = {
       expr = (compiled { condCommit = condOn "nixos"; }).condCommit.emits;
-      expected = [ ];
+      expectedError = {
+        type = "ThrownError";
+        msg = "den-compat: policy codomain: v1 policy `condCommit` declares no codomain but no source declares emits";
+      };
     };
-    # ★ …AND THE EMPTY HEAD IS A VALUE, NOT AN ABSENCE. The same body with the condition inverted to match
-    # the sentinel's OWN constant recovers the commitment and takes law (a). The pair differs in one string
-    # literal, so it isolates the branch the sentinel's value decided — which an arm over a field the
-    # sentinel merely omits could not do.
-    test-a9-undeclared-conditional-empty-head-is-the-sentinel-value = {
+    # …and the refusal names the COORDINATE it read and the REMEDY that fixes it, leaving the body alone.
+    # ★ THE COORDINATE, NOT THE FIELD: the spy's own throw names `class`, but `tryEval` destroys a caught
+    # throw's text, so what survives is the per-coordinate attribution loop's verdict — synthesized on the
+    # caller's side of the boundary, exactly as `commitmentFireFailed` is.
+    test-a9-undeclared-conditional-refusal-names-the-coordinate-and-the-remedy = {
+      expr = (compiled { condCommit = condOn "nixos"; }).condCommit.emits;
+      expectedError = {
+        type = "ThrownError";
+        msg = "The coordinate\\(s\\) it reads: host[\\s\\S]*COMPLETE THE DECLARATION[\\s\\S]*den.policyCodomains.condCommit";
+      };
+    };
+    # ★★ THE DISCRIMINATION, AND IT IS STRICTLY STRONGER THAN THE PAIR IT REPLACES. The same body with the
+    # condition inverted to match the sentinel's OWN constant is refused IDENTICALLY. Under the value
+    # sentinel these two inputs — differing in one string literal — produced OPPOSITE outcomes, because
+    # the sentinel's constant decided which branch the recovery saw. The spy never lets a coordinate value
+    # decide anything, so the verdict no longer depends on what the sentinel happens to carry. That
+    # independence is the soundness claim, executable.
+    test-a9-undeclared-conditional-verdict-does-not-depend-on-the-sentinel-constant = {
       expr = (compiled { condCommit = condOn "«sentinel»"; }).condCommit.emits;
       expectedError = {
         type = "ThrownError";
-        msg = "policy `condCommit` produced a `pipeCommit` declaration on channel `mesh`";
-      };
-    };
-    # …and at a REAL node the list is non-empty, the emission is dispatched into the empty admitted set,
-    # and law (b) fires. Same body, both laws, one run: that is the union.
-    test-a9-undeclared-conditional-dispatches-into-law-b = {
-      expr = builtins.deepSeq (bindOf { condCommit = condOn "nixos"; } "host:h1") "unreached";
-      expectedError = {
-        type = "ThrownError";
-        msg = "den-hoag: declaration codomain: policy `condCommit` produced a `pipeCommit` declaration";
+        msg = "den-compat: policy codomain: v1 policy `condCommit` declares no codomain but no source declares emits";
       };
     };
 
