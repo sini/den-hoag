@@ -72,6 +72,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.filter-tcp = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.filter-tcp =
           { host, ... }:
           let
@@ -122,6 +134,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.transform-items = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.transform-items =
           { host, ... }:
           let
@@ -224,6 +248,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.fold-nums = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.fold-nums =
           { host, ... }:
           let
@@ -273,6 +309,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.for-items = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.for-items =
           { host, ... }:
           let
@@ -332,6 +380,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.combined = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.combined =
           { host, ... }:
           let
@@ -447,6 +507,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.policy-a = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.policy-a =
           { host, ... }:
           let
@@ -458,6 +530,18 @@ in
             ])
           ];
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.policy-b = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.policy-b =
           { host, ... }:
           let
@@ -518,6 +602,18 @@ in
 
         # policy-a: drop "c", tag "a"; policy-b: drop "a", tag "b" — distinct filter AND transform (alnum
         # tags so the concatenated result is a valid hostName).
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.policy-a = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.policy-a =
           { host, ... }:
           let
@@ -532,6 +628,18 @@ in
             ])
           ];
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.policy-b = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.policy-b =
           { host, ... }:
           let
@@ -832,6 +940,18 @@ in
         };
 
         # Use ref syntax: den.quirks.firewall instead of string "firewall".
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.filter-high = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.filter-high =
           { host, ... }:
           let
@@ -884,6 +1004,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.rename-pipe = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.rename-pipe =
           { host, ... }:
           let
@@ -942,6 +1074,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.derive-rules = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.derive-rules =
           { host, ... }:
           let
@@ -1075,6 +1219,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.as-and-to = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.as-and-to =
           { host, ... }:
           let
@@ -1146,6 +1302,18 @@ in
         };
 
         # Policy derives monitoring-targets from backends via pipe.as.
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.backends-to-monitoring = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.backends-to-monitoring =
           { host, ... }:
           let

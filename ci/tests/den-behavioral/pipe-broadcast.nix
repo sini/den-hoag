@@ -61,6 +61,18 @@ in
         };
 
         # USER scope: broadcast peer-dev to all user scopes fleet-wide.
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.broadcast-peer-dev = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.broadcast-peer-dev =
           { host, user, ... }:
           let
@@ -154,6 +166,18 @@ in
         };
 
         # Transform (uppercase-style tag) runs source-side, then broadcast.
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.broadcast-peer-dev = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.broadcast-peer-dev =
           { host, user, ... }:
           let
@@ -199,6 +223,18 @@ in
         };
 
         # Broadcast to USER scopes only.
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.broadcast-peer-dev = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.broadcast-peer-dev =
           { host, user, ... }:
           let
@@ -247,6 +283,18 @@ in
             };
         };
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.broadcast-peer-dev = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.broadcast-peer-dev =
           { host, user, ... }:
           let
@@ -499,6 +547,18 @@ in
         den.quirks.peer-dev.description = "per-user device records";
 
         # alice-specific broadcast (NOT schema.user — so tux has no peer-dev policy).
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.broadcast-peer-dev = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.broadcast-peer-dev =
           { user, ... }:
           let

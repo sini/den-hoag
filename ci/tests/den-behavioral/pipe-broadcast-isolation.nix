@@ -211,6 +211,18 @@ in
         den.aspects.tux.peer-dev = [ { who = "tux"; } ];
         den.aspects.alice.peer-dev = [ { who = "alice"; } ];
 
+        # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+        # untouched. A `pipe` stage pair states BOTH kinds: the commitment seeds the ONE fleet compose
+        # before the eval, and the mark route emits at every dispatched node, so a `pipeCommit`-only
+        # declaration clears the commitment abort and fails the next one at `emitsUndeclared`.
+        den.policyCodomains.broadcast-peer-dev = {
+          emits = [
+            "pipeCommit"
+            "pipeMark"
+          ];
+          binds = [ ];
+          suppresses = [ ];
+        };
         den.policies.broadcast-peer-dev =
           { host, user, ... }:
           let
