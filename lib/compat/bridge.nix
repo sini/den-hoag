@@ -811,6 +811,13 @@ in
           # #71: each host-embedded user evaluates through v1's userType twin (the user kind's emitted
           # value — the same lazily-read processed schema as `kindModule`; no fixpoint, same reasoning).
           userKindModule = (denConfig.schema or { }).user or { };
+          # v1's `lookupAspect` selects on the `den` ARG's aspect tree (entities/host.nix:11 takes the
+          # module arg), so the registry's `aspect` default must read the SAME surface a corpus module
+          # reads when it writes `den.aspects.<name>` itself — the NAVIGATION view (line ~206), whose
+          # nodes carry native `.key`. Read lazily inside the instance eval's option default (nothing
+          # forces it here), and the aspects fold never reads `hosts`, so no fixpoint — the same
+          # reasoning as `kindModule` above.
+          aspects = (compat.annotatedViewNav denConfig).aspects;
         };
       }
     );

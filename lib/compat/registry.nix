@@ -31,26 +31,41 @@
 let
   # The BASE ENTITY MODULE — v1's hostType instance option surface (pin 11866c16
   # nix/lib/entities/host.nix:53-105), reproduced for exactly the options the corpus kind module
-  # reads/writes plus the grain-relevant ones. Everything else v1 declares there (aspect,
-  # description, mainModule, __resolveResult, __pathSetByScope) reads den v1 RUNTIME machinery the
+  # reads/writes plus the grain-relevant ones. Everything else v1 declares there (description,
+  # mainModule, __resolveResult, __pathSetByScope) reads den v1 RUNTIME machinery the
   # shim replaces wholesale — none is grain- or stamp-relevant, so none is declared; an authored def
   # for one rides the freeform, inert. (`intoAttr` IS declared below — the corpus gates on it,
-  # fleet.nix:69.) `system` is the two-level GROUP KEY
+  # fleet.nix:69; `aspect` likewise — the corpus RESOLVES it, and it is DATA, not machinery.)
+  # `system` is the two-level GROUP KEY
   # (v1 :64 `strOpt "platform system" system` — the systemType submodule's `name`), null on the
   # option-classification probe.
+  #
+  # `aspects` is the fleet's NAVIGATION-view aspect tree — what v1's `lookupAspect` selects on (pin
+  # 11866c16 nix/lib/entities/_types.nix:19-24, `den.aspects.${config.name}`). `{ }` on the
+  # option-classification probe, which walks `.options` and never forces a default.
   baseEntityModule =
-    lib: system: userKindModule:
+    lib: system: userKindModule: aspects:
     { name, config, ... }:
     let
       inherit (lib) mkOption types;
+      # v1's `lookupAspect` (pin 11866c16 nix/lib/entities/_types.nix:19-24) — the shared default of
+      # BOTH `aspect` options below: the entity's same-named aspect, or a WARNED empty one. The warn
+      # is v1's, kept verbatim: a host with no matching aspect is LEGAL under v1 and resolves to an
+      # empty tree, so throwing here would refuse a fleet v1 evaluates.
+      lookupAspect =
+        entityName:
+        if aspects ? ${entityName} then
+          aspects.${entityName}
+        else
+          lib.warn "den.aspects.${entityName} not defined — entity gets empty aspect" { };
       # #71 (the u20 next-link) — v1's `userType host` twin (pin 11866c16 entities/host.nix:145-177):
       # each host-embedded user evaluates through the USER kind instance submodule (`mkInstanceType
       # den.schema.user { strict = false; … }`), so the v1 instance DEFAULTS materialize — `userName`
       # (default `config.name`, :156), `classes` (default `[ "user" ]`, :157-162 — the corpus kind's
       # shorthand `classes = mkDefault [ "homeManager" ]` def, carried by the #68 belt, beats it
-      # exactly as under v1), `host` (:169-172), plus the kind's own options/imports. `aspect`
-      # (:163-168, `lookupAspect den config`) is NOT declared — v1 runtime machinery (the header
-      # posture); an authored aspect rides the freeform. `_module.args.user`/`.host` are v1's
+      # exactly as under v1), `host` (:169-172), `aspect` (:163-168, `lookupAspect den config` —
+      # the user twin of the host option below; same reasoning, same shared helper), plus the kind's
+      # own options/imports. `_module.args.user`/`.host` are v1's
       # ctx-module injections (resolvedCtxModule "user"; :154).
       userInstanceOf =
         uname: authored:
@@ -78,6 +93,10 @@ let
                   host = mkOption {
                     type = types.raw;
                     default = hostSelf;
+                  };
+                  aspect = mkOption {
+                    type = types.raw; # v1 :165 — no merging
+                    default = lookupAspect config.name;
                   };
                 };
               }
@@ -127,6 +146,28 @@ let
           default =
             if config.system != null && lib.hasSuffix "darwin" config.system then "darwin" else "nixos";
           description = "os-configuration nix class for host (v1 entities/host.nix:65-67)";
+        };
+        # v1 :68-73 — `aspect`, THE ASPECT THAT CONFIGURES THIS HOST: `lookupAspect den config`, i.e.
+        # `den.aspects.${config.name}`. Declared for exactly the reason `intoAttr` is: the header's
+        # runtime-machinery rule DOES NOT REACH IT. `mainModule`/`__resolveResult`/`__pathSetByScope`
+        # hold v1 fx-pipeline results the shim replaces wholesale; `aspect` holds the AUTHORED ASPECT
+        # TREE — ordinary declaration data that exists identically on both sides — and the corpus
+        # READS it: nix-config aspects/virtualization/microvm-guests.nix:43
+        # `den.lib.aspects.resolve "microvm" vm.aspect`, over the host ENTRIES carried in
+        # `host.microvm.guests`. Omitting it made an entity field that v1 delivers simply ABSENT.
+        # THE VALUE IS THE NAVIGATION-VIEW NODE, not the raw fold: v1's default is literally a select
+        # on the `den` arg's aspect tree, and under the shim that select yields the typed node
+        # carrying native `.key` (bridge.nix `annotatedViewNav`). Handing back the raw tree here would
+        # mint a SECOND, key-less aspect surface reachable only through the registry — the divergence
+        # this field's absence already demonstrated, one layer in.
+        # `types.raw` (v1 :70 `no merging`) ⇒ structurally EXCLUDED from the deepSeq-safe stamp and
+        # carried on the #70 lazy raw side channel, which is correct twice over: an aspect tree holds
+        # class fns and module trees (exactly what the exclusion rule exists for), and v1 binds the
+        # full merged host config as the ctx entity, so a policy body reading `host.aspect` finds it.
+        aspect = mkOption {
+          type = types.raw;
+          default = lookupAspect config.name;
+          description = "aspect that configures this host (v1 entities/host.nix:68-73 via lookupAspect, _types.nix:19-24)";
         };
         # v1 :75-80 — `users`, the host-embedded user accounts, default `{ }`. v1 types it
         # `attrsOf (userType config)` (each user through the USER kind's instance submodule); here it
@@ -425,7 +466,8 @@ let
     }:
     (lib.evalModules {
       modules = [
-        (baseEntityModule lib null userKindModule)
+        # `{ }` aspects: this eval walks `.options` only, so no `aspect` default is ever forced.
+        (baseEntityModule lib null userKindModule { })
         kindModule
         { config._module.args.name = "«den-compat-probe»"; }
       ];
@@ -442,12 +484,15 @@ let
   # `__functor` is module-system-callable on BOTH seam paths (passThroughSeam returns the corpus's
   # raw `{ imports; options }`; the severed processed path is gen-schema's own option-declaring
   # module); `{ }` for a fleet with no host kind declaration (base-only registry — every schema
-  # default null, the grains absent, byte-identical to the pre-registry bridge).
+  # default null, the grains absent, byte-identical to the pre-registry bridge). `aspects` is the
+  # fleet's navigation-view aspect tree, read LAZILY (it is only ever forced by an `aspect` default,
+  # i.e. by a consumer actually reading the field); `{ }` warns-and-empties, v1's own no-aspect arm.
   mkHostsOption =
     {
       lib,
       kindModule,
       userKindModule ? { },
+      aspects ? { },
     }:
     let
       inherit (lib) types;
@@ -493,7 +538,7 @@ let
         types.submoduleWith {
           shorthandOnlyDefinesConfig = true;
           modules = [
-            (baseEntityModule lib system userKindModule)
+            (baseEntityModule lib system userKindModule aspects)
             kindModule
           ];
         };
