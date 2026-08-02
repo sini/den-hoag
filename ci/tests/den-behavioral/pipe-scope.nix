@@ -78,9 +78,18 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as pipe-policy.nix test-pipe-filter — only
-    # pipe.expose/collect/collectAll are wired into den.channelGather; pipe.expose's OWN wiring is
-    # itself the gap here, see below): v1 expected "x-a"; den-hoag actual "" (same — filter+transform+expose chain never reaches the host).
+    # PARKED — an expose-marked pipe is excluded from the derived supersede outright.
+    # RE-MEASURED at this rev with the codomain declared: `attribute 'label' missing`. The control —
+    # the same case with the consumer reading `i.name` in place of `i.label` — yields "a-b", the RAW
+    # pool, with NEITHER the filter nor the transform applied. The exclusion is explicit rather than
+    # incidental: `isUntargetedDeriving` (lib/default.nix) requires that a pipe carry no `expose` mark,
+    # so this pipe contributes no terminal to `derivedBaseNames` and the consumer reads the base
+    # channel unchanged.
+    # ★ The old park note recorded "" — that was the pre-gather.nix world. The ascent itself works now
+    # (the expose-only siblings above are green); it is the deriving half that does not compose with it.
+    # # Witnesses the deriving chain composing with the ascent: the value tux exposes is the one its
+    # # DERIVED terminal produced, not the raw emit. The expose-only siblings above cannot see this —
+    # # with no deriving stage their raw pool and their terminal are the same list.
     # # Transform stages applied before expose.
     # test-pipe-expose-with-transform = denTest (
     #   { den, igloo, ... }:
@@ -115,6 +124,19 @@ in
     #         };
     #     };
     #
+    #     # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+    #     # untouched. The expose-only policies above declare NOTHING and need not: a bare site mark makes
+    #     # no compose commitment. A deriving stage does, so the moment `filter`/`transform` joins the
+    #     # chain the body owes a codomain — `pipeCommit` for the derived terminal that seeds the ONE
+    #     # fleet compose, `pipeMark` for the ascent emitted at every dispatched node.
+    #     den.policyCodomains.expose-filtered = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.expose-filtered =
     #       { host, user, ... }:
     #       let
@@ -132,7 +154,9 @@ in
     #
     #     den.default.includes = [ den.policies.expose-filtered ];
     #
-    #     # Only kept items, transformed, reach the host.
+    #     # Only kept items, transformed, reach the host. Each stage has its own failure: an unapplied
+    #     # filter yields "x-a-x-b", an unapplied transform makes `i.label` a missing-attribute abort,
+    #     # and an ascent carrying the RAW pool instead of the terminal aborts the same way.
     #     expr = igloo.networking.hostName;
     #     expected = "x-a";
     #   }
@@ -371,10 +395,16 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE (pipe run-wiring gap, see pipe-policy.nix): v1 expected "2" (collect gathers
-    # 3 raw entries, then pipe.filter removes the port-8080 one); den-hoag actual "3" (pipe.collect
-    # DOES gather cross-host — proven by test-pipe-collect above — but the subsequent pipe.filter
-    # in the SAME pipeline is not applied).
+    # PARKED — a gathered contribution never enters the derive chain.
+    # RE-MEASURED at this rev with the codomain declared: "3" against v1's "2".
+    # ★ THE OLD PARK NOTE'S DIAGNOSIS IS FALSIFIED. It read "the subsequent pipe.filter is not applied",
+    # and the filter IS applied. The control: with the predicate replaced by `(_: false)` this case
+    # yields 2 — so the node's OWN contribution (1, local) was filtered away while the 2 gathered from
+    # iceberg survived untouched. The filter runs over the base's own contributions; `collect` merges
+    # peer contributions onto the channel at the node, downstream of the terminal that supersedes it.
+    # Same root as pipe-policy.nix's `test-pipe-as-with-collect`.
+    # # Witnesses the gather composing with a deriving stage in ONE pipeline: the peer entries collect
+    # # into igloo's scope and the filter then runs over the gathered pool, not just over the local emit.
     # # Collect + filter composition.
     # test-pipe-collect-filter = denTest (
     #   { den, igloo, ... }:
@@ -386,6 +416,16 @@ in
     #       description = "HTTP backends";
     #     };
     #
+    #     # THE DECLARATION COMPLETED — the collect mark alone commits nothing, but the `filter` beside it
+    #     # builds a derived terminal that seeds the fleet compose, so this body owes both kinds.
+    #     den.policyCodomains.fleet-backends = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.fleet-backends =
     #       { host, ... }:
     #       let
@@ -430,6 +470,8 @@ in
     #         };
     #     };
     #
+    #     # 2 separates the three reachable outcomes: 3 is the gathered-but-unfiltered pool (the parked
+    #     # measurement), 1 is a filter that ran before the gather joined, 0 is no gather at all.
     #     expr = igloo.networking.hostName;
     #     expected = "2";
     #   }

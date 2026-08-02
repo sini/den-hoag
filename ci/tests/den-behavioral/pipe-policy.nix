@@ -413,7 +413,14 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "x-y-z--p"; den-hoag actual "x-y--p-q" (neither the alpha pipe.append nor the beta pipe.filter applied).
+    # PARKED — the unconsumed `append` mark, and now the ONLY thing between this case and green.
+    # RE-MEASURED at this rev with the codomain declared (the body below carries it): "x-y--p" against
+    # v1's "x-y-z--p". The beta arm's `pipe.filter` APPLIED — "q" is gone — so the deriving half of this
+    # case is already correct and the alpha arm's `pipe.append "z"` is all that is missing. That makes
+    # this a SECOND witness to the defect `test-pipe-append` above carries, not a separate gap:
+    # `pipe.append` compiles to a site mark (lib/compat/pipe.nix, the `append` branch) that no consumer
+    # reads — lib/compat/gather.nix interprets `expose`/`collect`/`collectAll`/`broadcast`, and nothing
+    # anywhere interprets `append`.
     # # Multiple pipe.from in one policy targeting different pipes.
     # test-pipe-multiple-from = denTest (
     #   { den, igloo, ... }:
@@ -455,6 +462,18 @@ in
     #         };
     #     };
     #
+    #     # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+    #     # untouched. ONE declaration covers BOTH `pipe.from` effects: the codomain is the policy's, not
+    #     # the effect's. The alpha arm is site-only and commits nothing; the beta arm's `filter` builds a
+    #     # derived terminal, and that one commitment is what the whole body owes `pipeCommit` for.
+    #     den.policyCodomains.multi-pipe = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.multi-pipe =
     #       { host, ... }:
     #       let
@@ -471,6 +490,8 @@ in
     #
     #     den.default.includes = [ den.policies.multi-pipe ];
     #
+    #     # The two halves fail independently: "x-y--p" is a dropped append, "x-y-z--p-q" a dropped
+    #     # filter, so neither arm can carry the other's pass.
     #     expr = igloo.networking.hostName;
     #     expected = "x-y-z--p";
     #   }
@@ -703,9 +724,13 @@ in
         expected = "a-b";
       }
     );
-    # BLOCKED-WSB (pipe run-wiring gap, same root cause as the PARKED-DIVERGENCE cases in this
-    # file — here the raw/untransformed pool makes the CONSUMER's own accessor throw):
-    # `'builtins.head' called on an empty list` — pipe.filter/append/to not applied; `secrets` has no native emitter, so with no append the pool stays empty and `head` on it throws.
+    # PARKED — `pipe.to` aspect-delivery is not wired, compounded by the unconsumed `append`.
+    # RE-MEASURED at this rev with the codomain declared: `'builtins.head' called on an empty list`.
+    # `secrets` has no native emitter and `filter (_: false)` empties what little there is, so both
+    # consumers read [ ]. `to` compiles to an inert `targeted` intent that lib/compat/pipe.nix's own `to`
+    # branch describes as awaiting "a FUTURE consumption-side aspect-carrier wiring (a separate WS-B
+    # kernel seam)": an aspect is not a gen-pipe channel, so this delivery cannot be a route, and the
+    # consumption-side carrier it needs instead does not exist yet.
     # # pipe.to delivers pipe data only to the targeted aspect.
     # test-pipe-to-aspect = denTest (
     #   { den, igloo, ... }:
@@ -738,6 +763,17 @@ in
     #         };
     #     };
     #
+    #     # THE DECLARATION COMPLETED — through the fleet surface, beside the policy and leaving the body
+    #     # untouched. `to` is an aspect-delivery TARGET, the third commitment shape beside `derived` and
+    #     # `routes`, so this body would owe `pipeCommit` on the `to` stages alone even without the filters.
+    #     den.policyCodomains.app-secrets = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.app-secrets =
     #       { host, ... }:
     #       let
@@ -758,6 +794,8 @@ in
     #
     #     den.default.includes = [ den.policies.app-secrets ];
     #
+    #     # The two consumers read the SAME channel and must see DIFFERENT values, so a `to` that
+    #     # delivers to everyone fails here exactly as loudly as one that delivers to no one.
     #     expr = {
     #       host = igloo.networking.hostName;
     #       domain = igloo.networking.domain;
@@ -769,7 +807,10 @@ in
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected "x-y"; den-hoag actual "" (pipe.filter+append+to not applied — the base pool is empty, since `items` has no native emitter here, and nothing gets appended).
+    # PARKED — the same two blockers as `test-pipe-to-aspect`: `pipe.to` unwired, `append` unconsumed.
+    # RE-MEASURED at this rev with both codomains declared: "" against v1's "x-y". `filter (_: false)`
+    # empties the base and neither append reaches it, so nothing survives for the two deliveries to
+    # concatenate.
     # # Two policies targeting the same aspect on the same pipe concatenate.
     # test-pipe-to-same-aspect-concat = denTest (
     #   { den, igloo, ... }:
@@ -791,6 +832,16 @@ in
     #         };
     #     };
     #
+    #     # THE DECLARATION COMPLETED — one record per POLICY, and the two are separate policies even
+    #     # though their bodies are the same shape over the same channel.
+    #     den.policyCodomains.policy-a = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.policy-a =
     #       { host, ... }:
     #       let
@@ -804,6 +855,14 @@ in
     #         ])
     #       ];
     #
+    #     den.policyCodomains.policy-b = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.policy-b =
     #       { host, ... }:
     #       let
@@ -822,13 +881,19 @@ in
     #       den.policies.policy-b
     #     ];
     #
-    #     # Both targeted effects concatenate for the same aspect.
+    #     # Both targeted effects concatenate for the same aspect. The `filter (_: false)` empties the
+    #     # base first, so ONLY the two appends can produce this value — "x" or "y" alone is one policy's
+    #     # delivery lost, and "" is both.
     #     expr = igloo.networking.hostName;
     #     expected = "x-y";
     #   }
     # );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected { normal = "a-b-c"; special = "special-only"; }; den-hoag actual { normal = "a-b"; special = "a-b"; } (append not applied to `normal`; filter/append/to not applied to `special`, which falls back to the same untargeted raw pool as `normal`).
+    # PARKED — the same two blockers as `test-pipe-to-aspect`. RE-MEASURED at this rev with the codomain
+    # declared: { normal = "a-b"; special = "a-b"; } against v1's
+    # { normal = "a-b-c"; special = "special-only"; }. The two consumers AGREE, and that is the whole
+    # failure: with no aspect-carrier the targeted arm collapses onto the same scope-wide pool the
+    # untargeted arm reads. The missing "c" on `normal` is the untargeted arm's own `append`.
     # # Untargeted and targeted coexist: targeted overrides for specific aspect.
     # test-pipe-to-with-untargeted = denTest (
     #   { den, igloo, ... }:
@@ -871,6 +936,16 @@ in
     #         };
     #     };
     #
+    #     # THE DECLARATION COMPLETED — the targeted arm's `to` is the commitment; the untargeted arm
+    #     # beside it is site-only. Both ride ONE policy record.
+    #     den.policyCodomains.mixed-policy = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.mixed-policy =
     #       { host, ... }:
     #       let
@@ -891,6 +966,9 @@ in
     #
     #     den.default.includes = [ den.policies.mixed-policy ];
     #
+    #     # The two consumers read ONE channel and must DISAGREE. `special == normal` is the whole
+    #     # failure — the targeted arm collapsing back onto the scope-wide pool — and it is unreachable
+    #     # here whichever value the collapse lands on.
     #     expr = {
     #       # special sees targeted data (overrides scope-wide)
     #       special = igloo.networking.hostName;
@@ -1105,7 +1183,16 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected { count = "2"; urls = "http://10.0.0.1:80,http://10.0.0.2:80"; }; den-hoag actual { count = "0"; urls = ""; } (pipe.collect DOES gather cross-host — proven by test-pipe-collect above — but the subsequent transform+as in the SAME pipeline are not applied, and since `peer-urls` has no native emitter the renamed target stays empty).
+    # PARKED — a gathered contribution never enters the derive chain.
+    # RE-MEASURED at this rev with the codomain declared: { count = "1"; urls = "http://10.0.0.1:80"; }
+    # against v1's { count = "2"; urls = "http://10.0.0.1:80,http://10.0.0.2:80"; }.
+    # ★ THE OLD PARK NOTE'S DIAGNOSIS IS FALSIFIED. It recorded { count = "0"; urls = ""; } and blamed
+    # "transform+as not applied". Both ARE applied: the one URL present is in transformed form, and it
+    # arrived at `peer-urls`, which has no native emitter, so it can only have come down the `as` route.
+    # What is missing is iceberg's entry. The `collect` mark merges peer contributions onto the BASE
+    # channel at the node, while the route reads the DERIVED terminal composed from the base's own
+    # contributions — so a gathered value bypasses the chain rooted above it.
+    # Same root as pipe-scope.nix's `test-pipe-collect-filter`.
     # # pipe.as + pipe.collect: cross-host collection delivered under target name.
     # test-pipe-as-with-collect = denTest (
     #   { den, igloo, ... }:
@@ -1120,6 +1207,16 @@ in
     #       description = "Derived peer URLs (no native emitters)";
     #     };
     #
+    #     # THE DECLARATION COMPLETED — the `as` route is the commitment (a channel→channel move seeded
+    #     # into the ONE fleet compose), the collect mark is per-node emission wiring.
+    #     den.policyCodomains.collect-as-urls = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.collect-as-urls =
     #       { host, ... }:
     #       let
@@ -1159,6 +1256,9 @@ in
     #         };
     #     };
     #
+    #     # `peer-urls` has no native emitter, so every entry here arrived by route. The count separates a
+    #     # lost gather (1) from a lost route (0); the urls separate a lost transform (the raw attrsets
+    #     # cannot be sorted as strings) from a route carrying the base instead of the derived terminal.
     #     expr = {
     #       count = igloo.networking.hostName;
     #       urls = igloo.networking.domain;
@@ -1333,8 +1433,23 @@ in
       }
     );
 
-    # PARKED-DIVERGENCE (same pipe run-wiring gap as test-pipe-filter above): v1 expected `true` (pipe.as targeting its OWN pipe should THROW — self-reference error); den-hoag actual `false` (no throw: since `.as` is not wired for consumption at all, the self-reference is never evaluated, so it silently no-ops instead of erroring).
+    # PARKED — den-hoag DIVERGES where v1 refused. RE-MEASURED at this rev with the codomain declared:
+    # `stack overflow; max-call-depth exceeded`. `pipe.as "items"` on channel `items` builds a route
+    # whose `from` and `to` ends are the same channel; nothing refuses it, so compose chases the cycle.
+    # ★ NOT ARMED AS AN `expectedError` ON THAT MESSAGE, DELIBERATELY. This case exists to witness that a
+    # self-reference is REFUSED, so asserting the overflow would assert the refusal's ABSENCE: it would
+    # sit green over the defect and then turn red on the day the named refusal lands. The assertion is
+    # left below in the form it should take once there is a refusal to name.
+    # ★ v1's original `!(builtins.tryEval (builtins.seq … null)).success` is NOT restored either. That
+    # boolean is true for ANY throw from anywhere in the fleet, so it would have passed on the
+    # undeclared-codomain abort and on this overflow alike — it cannot fail for its own reason.
     # # pipe.as targeting own pipe throws an error.
+    # #
+    # # THE ASSERTION IS SHARPENED FROM WHAT v1 CARRIED. v1 asserted
+    # # `!(builtins.tryEval (builtins.seq … null)).success` — a boolean that is `true` for ANY throw from
+    # # anywhere in the fleet, including the undeclared-codomain abort this case now has to clear, so it
+    # # would have passed on precisely the wrong error. `expectedError` rides nix-unit's native channel
+    # # instead: it matches the message, and it FAILS when nothing throws at all.
     # test-pipe-as-self-error = denTest (
     #   { den, igloo, ... }:
     #   {
@@ -1352,6 +1467,17 @@ in
     #         };
     #     };
     #
+    #     # THE DECLARATION COMPLETED — an `as` stage builds a delivery route, and a route is a
+    #     # commitment whether or not its target resolves. Declaring it is what lets the SELF-reference be
+    #     # the error this case reaches, rather than the missing declaration.
+    #     den.policyCodomains.self-as = {
+    #       emits = [
+    #         "pipeCommit"
+    #         "pipeMark"
+    #       ];
+    #       binds = [ ];
+    #       suppresses = [ ];
+    #     };
     #     den.policies.self-as =
     #       { host, ... }:
     #       let
@@ -1365,8 +1491,11 @@ in
     #
     #     den.default.includes = [ den.policies.self-as ];
     #
-    #     expr = !(builtins.tryEval (builtins.seq igloo.networking.hostName null)).success;
-    #     expected = true;
+    #     expr = igloo.networking.hostName;
+    #     expectedError = {
+    #       type = "ThrownError";
+    #       msg = "self";
+    #     };
     #   }
     # );
   };
