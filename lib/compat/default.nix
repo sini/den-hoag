@@ -43,12 +43,33 @@ let
   gatedAspectsType = import ./gated-aspects-type.nix { inherit aspects merge prelude; };
   # `mkGateAspect { classNames; quirkChannels }` → `name: aspect: aspect` — the aspect-content gate handle
   # `translateAspect` self-applies to its DESUGARED output (§9.5). It types the desugared aspect through the
-  # SAME closed-gated aspect type the compile view uses and, for byte-neutrality, returns the aspect UNCHANGED —
-  # the typing is a VALIDATION seq (a typo throws NAMED at the gate), never a shape transform. This is the sole
-  # typo boundary for a parametric aspect's RESULT (never run through the compile-time typed tree — it is
-  # materialized at RESOLUTION, `resolved-aspects.nix`); a STATIC aspect's typo is caught directly by the typed
-  # tree's closed gate at compile (`typedCompileTree`). `classNames` are the GROUNDED (kebab) class names
-  # `translateAspect` produced, so a legit `home-manager` class bucket is recognized (not gate-rejected).
+  # SAME closed-gated aspect type the compile view uses. This is the sole typo boundary for a parametric
+  # aspect's RESULT (never run through the compile-time typed tree — it is materialized at RESOLUTION,
+  # `resolved-aspects.nix`); a STATIC aspect's typo is caught directly by the typed tree's closed gate at
+  # compile (`typedCompileTree`). `classNames` are the GROUNDED (kebab) class names `translateAspect`
+  # produced, so a legit `home-manager` class bucket is recognized (not gate-rejected).
+  #
+  # IDENTITY TOTALITY — the gate is the parametric result's TYPE MOMENT, so it is where the result acquires
+  # the identity a static aspect is born with. A submodule-instantiated aspect carries `id_hash` by
+  # construction (gen-aspects mounts it on EVERY typed aspect node, `aspectId` over `identity.key`); a
+  # parametric result is a RAW attrset that never becomes a submodule instance on its own, so a gate that
+  # returned it verbatim handed the kernel an aspect element with NO identity — and the kernel's A12
+  # producer key (`collections.nix`, `identity = a.content.id_hash`) reads that field as TOTAL. It is total
+  # because it is SUPPLIED here, not because a reader defaults it: an `or`-defaulted identity is a silent
+  # merge of distinct producers, which is a wrong answer rather than a failure. So the gate returns the
+  # aspect WITH the typed node's own `id_hash` — the ONE authority (no re-derived preimage, no den-local
+  # identity policy), leaving every other key byte-identical. An aspect that already carries an `id_hash`
+  # (a navigated typed node returned from a parametric body) keeps its own and is never re-forced, which
+  # also keeps the read-only option undefined-by-us.
+  #
+  # WHY THE TYPED NODE AND NOT THE WRAP NAME. The include-site key (`meta.loc`, the positional
+  # `__kindInclude__<kind>__aspect__<i>:include:<j>` wrap name that becomes the resolved node's `.key`) is
+  # shared BY CONSTRUCTION across every cell of a kind — one authored include firing at N cells — so it
+  # cannot discriminate the N producers it yields, and hashing it would collide them all. The typed node's
+  # `identity.key` is `meta.aspect-chain ++ [ name ]` over the RESOLVED content, so a body that names its
+  # per-cell instantiation (v1's own identity discipline: an aspect body's `name` IS its identity) keys each
+  # cell distinctly, and a body that names nothing falls back to the mount name — the include-site identity,
+  # which is the correct answer exactly when there is one producer per site.
   #
   # FORCING GRAIN (laziness-preserving + cycle-free): only the UNDECLARED (freeform) authored keys are forced,
   # each to WHNF, recursing into an authored attrset child (a nested namespace) so a deep typo (`typo.foo = "x"`)
@@ -56,8 +77,9 @@ let
   # channel / facet / structural — `keyCategory ≠ null`) is never gated, so it is SKIPPED: its value is user
   # content that may carry a module fixpoint (a `settings`/class body reading `config.…`), and forcing it would
   # both waste work and risk a self-referential loop. A freeform typo key exists on the typed node but its merge
-  # throws when forced; a namespace child recurses gate-retained. `id_hash` and other defaults are never forced
-  # (only authored keys are walked).
+  # throws when forced; a namespace child recurses gate-retained. Beyond the authored keys the ONLY default
+  # forced is `id_hash` (the identity above) — a short-string hash over `name` + `meta.aspect-chain`, forcing
+  # no class body and no user fixpoint.
   mkGateAspect =
     {
       classNames,
@@ -103,7 +125,9 @@ let
             ];
           }).config.aspects.${name};
       in
-      builtins.seq (forceGate typed aspect) aspect;
+      builtins.seq (forceGate typed aspect) (
+        aspect // prelude.optionalAttrs (!(aspect ? id_hash)) { inherit (typed) id_hash; }
+      );
   # The pure compile core (Law C2): v1 declarations → den-hoag concern declarations. `declare` is
   # den-hoag's declaration-constructor vocabulary (the policy-effect translation targets, including the
   # `delivery` intent kind); the gen-edge record is rendered from that intent later, at the firing node.
