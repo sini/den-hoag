@@ -919,6 +919,16 @@ in
       expr = excludeFamilyParksIn excludeDeclaredFixture full;
       expected = false;
     };
+    # ★★ WHAT MAKES THE ARM ABOVE NON-INERT is the arm BEFORE it, not a mutation of the declaration, and
+    # the difference was measured rather than assumed. The intended control — the same record with the
+    # suppression TARGET removed (`suppresses = [ ]`), which should park on the body suppressing a policy
+    # its own codomain excludes — DOES NOT PARK at this probe: the staged pre-pass CONSUMES the
+    # suppression before anything compares it to the declared codomain, so the mutation is invisible here.
+    # (That consumption is also why the pre-spy behaviour looked "benign" over an invented `[ ]`.)
+    # ⇒ The liveness control is the UNDECLARED/DECLARED pair over the SAME fixture in the SAME run: absent
+    # the declaration it parks, present it is clean. That proves the fixture runs and that the declaration
+    # is what moved it. A codomain-violation probe for the refined head belongs at the emission site, not
+    # at this flag's witness, and is not built here rather than being asserted vacuously.
     test-familyStamps-exclude-park-off = {
       expr = excludeFamilyParks offFamilyStamps;
       expected = true;
