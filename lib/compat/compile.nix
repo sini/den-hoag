@@ -103,13 +103,169 @@ let
   declaredEmits = prelude.genAttrs (
     builtins.attrNames producesByName ++ resolveFamilyNames ++ excludeFamilyNames
   ) declaredEmitsOf;
-  # `emitsFor v1Name fn` — the codomain for one compiled policy. The v1 NAME is the identity the corpus
-  # facts key on; a policy wired through an include compiles to a SYNTHETIC attr key, so the lookup must
-  # happen at the REF (here) and never at the compiled key.
-  # `emitsFor declared v1Name gate fn` — the codomain, by DECLARATION wherever one exists and by recovery
-  # only where none does. `declared` is the SOURCE value's own `emits` (a v1 fleet that already declares
-  # its codomain is never fired at a sentinel at all — the shim's opt-out property); then the corpus facts
-  # keyed by v1 name; and only then the fire.
+
+  # ── THE CODOMAIN FIELD VOCABULARY, closed and DERIVED ────────────────────────────────────────────
+  # `emits` plus one field per REFINED codomain row, read off `declare.codomainRows` rather than spelled,
+  # so a row added to the kernel's table becomes a field this surface owes rather than one it silently
+  # drops. It is the same list `errors.policyCodomainNotTotal` closes the fleet surface's vocabulary
+  # against, in both directions.
+  codomainFields = [ "emits" ] ++ map (k: declare.codomainRows.${k}.declaredIn) (
+    builtins.attrNames declare.codomainRows
+  );
+
+  # THE SHIM TABLES, PROJECTED INTO THE ONE CODOMAIN RECORD — the same shape the v1 ref and the fleet
+  # surface speak. Each table's contribution becomes a projection INTO this record rather than a parallel
+  # input, which is what makes three fleet-settable clones unbuildable rather than merely discouraged: a
+  # fourth corpus table would have to be written as a fourth projection into this same record, and would
+  # be visible as one.
+  # ★ THE REFINED FIELDS ARE `null`, NOT `[ ]`, AND THE DIFFERENCE IS LOAD-BEARING. The tables never
+  # carried `binds`/`suppresses` — `declaredEmitsOf` folds them into `emits` and nothing else reads them —
+  # so a table row is NOT a statement about those fields and must not stop the per-field fall-through.
+  # `[ ]` there would be a DECLARATION of emptiness the table's author never made, which is the same
+  # absent-reads-as-empty defect one surface over.
+  tableCodomains = prelude.genAttrs (builtins.attrNames declaredEmits) (n: {
+    emits = declaredEmits.${n};
+    binds = null;
+    suppresses = null;
+  });
+
+  # `codomainRecordFor fleetCodomains ref named ungated` — THE CODOMAIN, whole, for one compiled policy.
+  # The v1 NAME is the identity every authored source keys on; a policy wired through an include compiles
+  # to a SYNTHETIC attr key, so the lookup must happen at the REF and never at the compiled key.
+  #
+  # ── §6's PRECEDENCE CHAIN, APPLIED PER FIELD ────────────────────────────────────────────────────
+  #   1. `ref.<field>`                  the v1 record's own declaration       AUTHORED
+  #   2. `den.policyCodomains.<name>`   the fleet-side declaration            AUTHORED
+  #   3. the legacy shim tables         den's belief about someone else's code  DERIVED
+  #   4. absent everywhere              ⇒ the spy classifies
+  #
+  # (3) SITS BELOW (1) AND (2) BY OWNERSHIP: a den-side fact about a corpus policy DRIFTS from the body it
+  # describes, while a fleet-side declaration is written by the lambda's own author, beside the lambda,
+  # and cannot drift from a body it sits next to.
+  #
+  # ★★ (1) AND (2) ARE BOTH AUTHORED, SO DECLARATION-BEATS-DERIVATION IS SILENT BETWEEN THEM. It orders an
+  # authored value above a DERIVED one and says nothing about two authored ones, and reading a silent
+  # principle as though it spoke is how a precedence gets installed without an argument. Either ordering
+  # would make one of two authored statements disappear with no signal. Equal values are ONE STATEMENT
+  # MADE TWICE and are admitted; unequal values are refused (`policyCodomainConflict`) — the same posture
+  # `selectsConflictsWithSchemaExclude` already takes between an authored `selects` and a schema exclude.
+  #
+  # ★★★ THE FALL-THROUGH IS PER FIELD, NOT PER RECORD, and that is the pre-existing meaning the compat
+  # promise protects. A DECLARED field is authoritative and is never fired for. An OMITTED field consults
+  # the REST OF THE CHAIN FIRST — the fleet record, then the tables — and only a field absent from EVERY
+  # authored source reaches the recovery. Sending an omitted ref field straight to the fire would let a
+  # ref's OMISSION beat a fleet's AUTHORED statement, which is §6's own prohibition violated verbatim, and
+  # would print a remedy naming a field the author had already declared.
+  # ★ For an UNCONDITIONAL body that fall-through fire answers CORRECTLY — a positive recovery is sound
+  # evidence — and for a VALUE-CONDITIONAL body the same fire meets the SPY and is REFUSED, naming the
+  # missing FIELD, because completing the declaration is the remedy. So the arm has no third state: a
+  # field is declared, or it is recovered; what changed is that the recovery now refuses the case it used
+  # to answer wrongly.
+  #
+  # ★★ THE KEY SET IS STATIC AND THE VALUES ARE LAZY, and that split is forced rather than stylistic. A
+  # key set conditioned on the classification would have to FORCE the fire to be decided, turning every
+  # compiled record into a fired one — and a consumer that compiles a fleet WITHOUT registering it (the
+  # surface suites project the compiled spine and never reach `policyMessage`) would pay a fire it never
+  # asked for, some of them UNCATCHABLE. `needed` is computed from the AUTHORED sources alone, so the
+  # branch above costs no fire; only reading the value of a field no source declares forces one.
+  codomainRecordFor =
+    fleetCodomains: ref: named: ungated:
+    let
+      # ONE classification, shared by every field this policy owes. `emits` and the refined codomains are
+      # three PROJECTIONS of one fire rather than three fires: a codomain is a single static property of a
+      # body, and firing per field would both triple the cost and give the projections a way to disagree
+      # with each other. Lazy — never forced when every field is declared.
+      cls = policyRecover.classifyDecls { inherit sentinelFields; } named ungated.gate ungated.fn;
+      fleetRec = fleetCodomains.${named} or null;
+      tableRec = tableCodomains.${named} or null;
+      declaredByRef = f: ref ? ${f};
+      # arm (2) then arm (3). A table row answers `emits` only and carries `null` for the refined fields,
+      # which is not a statement and does not stop the fall-through.
+      fromChain =
+        f:
+        if fleetRec != null && fleetRec ? ${f} then
+          { value = fleetRec.${f}; }
+        else if tableRec != null && (tableRec.${f} or null) != null then
+          { value = tableRec.${f}; }
+        else
+          null;
+      declared = f: declaredByRef f || fromChain f != null;
+      declaredFields = builtins.filter declared codomainFields;
+      declaredValues = builtins.listToAttrs (
+        map (f: {
+          name = f;
+          value = if declaredByRef f then ref.${f} else (fromChain f).value;
+        }) declaredFields
+      );
+      # THE AUTHORED-VS-AUTHORED CONFLICT, over the fields BOTH surfaces declare. A field the ref omits is
+      # not a statement, so it cannot disagree with one.
+      conflicting = builtins.filter (
+        f: declaredByRef f && fleetRec != null && fleetRec ? ${f} && ref.${f} != fleetRec.${f}
+      ) codomainFields;
+      emitsDeclared = declared "emits";
+      resolvedEmits =
+        if declaredByRef "emits" then
+          ref.emits
+        else if fromChain "emits" != null then
+          (fromChain "emits").value
+        else
+          policyRecover.recoverEmits named cls.decls;
+      refinedKindsFor =
+        f:
+        builtins.filter (k: declare.codomainRows.${k}.declaredIn == f) (
+          builtins.attrNames declare.codomainRows
+        );
+
+      # ★★★ WHICH FIELDS THIS POLICY ACTUALLY OWES — THE REQUIRED-IFF RULE, WHICH IS NOT THE SAME
+      # QUESTION AS "WHICH FIELDS ARE DECLARED". `declare.codomainRows` states the refined codomains under
+      # `member` ⇒ `binds` REQUIRED and `suppress` ⇒ `suppresses` REQUIRED. A policy whose resolved `emits`
+      # is `[ "suppress" ]` HAS ALREADY STATED that it emits no `member`, so `binds = [ ]` follows BY
+      # DERIVATION from an authored statement: there is nothing left to recover, nothing to fire for, and
+      # nothing to refuse.
+      # ★★ READING AN INAPPLICABLE FIELD AS "UNDECLARED" IS THE DEFECT THIS GUARD REMOVES, and it is the
+      # pre-existing meaning of the expression it replaces (`if builtins.elem k emits then … else [ ]`).
+      # Without it the chain refuses most of the corpus for failing to declare a codomain its own `emits`
+      # says it cannot have — a refusal whose printed remedy is a field the required-iff rule forbids
+      # mattering.
+      # ★ WHEN `emits` ITSELF IS UNANSWERED every field hangs on the same fire, so the question cannot be
+      # narrowed and the whole record is owed. That is not a widening: if the fire ADMITS, the refined
+      # fields are read off the very declarations that answered `emits`, and if it REFUSES then `emits` had
+      # no answer either.
+      owedFields =
+        if emitsDeclared then
+          builtins.filter (
+            f: f == "emits" || builtins.any (k: builtins.elem k resolvedEmits) (refinedKindsFor f)
+          ) codomainFields
+        else
+          codomainFields;
+      needed = builtins.filter (f: !(declared f) && builtins.elem f owedFields) codomainFields;
+      valueOf =
+        f:
+        if declaredByRef f then
+          ref.${f}
+        else if fromChain f != null then
+          (fromChain f).value
+        # ⚠ A DECLARED CODOMAIN IS REQUIRED WHEN RECOVERY IS OFF, and it is required PER FIELD. A record
+        # declaring `emits` while omitting the field one of those kinds owes is the same undeclared
+        # codomain one level finer, so it takes the same abort rather than a silent fire.
+        else if !policyRecovery then
+          errors.policyCodomainUndeclared named
+        # THE EMPTY HEAD BY DERIVATION — a refined codomain the resolved `emits` says cannot arise. No fire.
+        else if !(builtins.elem f owedFields) then
+          [ ]
+        else if cls.verdict == "value-conditional" then
+          errors.codomainValueConditional named declaredFields needed declaredValues cls.reads
+        else if f == "emits" then
+          resolvedEmits
+        else
+          (declare.codomainsOf cls.decls).${f} or [ ];
+    in
+    if conflicting != [ ] then
+      errors.policyCodomainConflict named (builtins.head conflicting)
+    else
+      prelude.genAttrs codomainFields valueOf;
+
+  # `declaredCodomainOf` — the DECLARED `emits`, from the AUTHORED sources only, in the same order.
   #
   # ★ EVERY ARM TESTS PRESENCE, NEVER EMPTINESS, and the difference is the whole ordering. `emits = [ ]` is
   # an EMPTY HEAD — a rule that compiles, is registered at the bottom stratum, fires where its gate admits
@@ -125,8 +281,13 @@ let
   # ── THE COMMITMENT GATE — THE DECLARED CODOMAIN, AND ONLY THE DECLARED ONE ───────────────────────
   #
   # A compat-compiled policy is fired at the COMMITMENT sentinel iff its codomain is DECLARED — by the v1
-  # ref's own `emits`, or by an entry in produces-by-name.nix — and that declaration contains
-  # `pipeCommit`. THE RECOVERY IS NEVER CONSULTED, and that is a closure rather than an ordering: for an
+  # ref's own `emits`, by `den.policyCodomains.<name>`, or by an entry in produces-by-name.nix — and that
+  # declaration contains `pipeCommit`. ★ THE FLEET SURFACE IS IN THIS GATE'S INPUT BECAUSE IT IS AUTHORED:
+  # the gate's closure property is that the RECOVERY never feeds it, not that only the ref may. Leaving the
+  # fleet declaration out would make a fleet-declared `pipeCommit` unreachable at the seam that collects
+  # it — the commitment would be declared, never fired, and silently absent from the compose seed, which is
+  # the exact class this gate exists to close.
+  # THE RECOVERY IS NEVER CONSULTED, and that is a closure rather than an ordering: for an
   # undeclared v1 policy the codomain IS the recovery, whose result depends on which mode's `fn` was
   # fired — which is what the gate decides. Any gate whose input is produced by the thing it gates
   # reproduces the silent-vanish class on every branch, so the recovery is removed from the gate's input
@@ -142,17 +303,19 @@ let
   # (policy-recover.nix law (a) at the recovery fire, concern-policies' codomain law at dispatch), so a
   # commitment nothing will collect aborts named instead of vanishing.
   declaredCodomainOf =
-    declared: v1Name:
+    fleetCodomains: declared: v1Name:
     if declared != null then
       declared
+    else if v1Name != null && (fleetCodomains.${v1Name} or null) != null then
+      fleetCodomains.${v1Name}.emits
     else if v1Name != null && declaredEmits ? ${v1Name} then
       declaredEmits.${v1Name}
     else
       null;
   declaresCommitOf =
-    declared: v1Name:
+    fleetCodomains: declared: v1Name:
     let
-      d = declaredCodomainOf declared v1Name;
+      d = declaredCodomainOf fleetCodomains declared v1Name;
     in
     d != null && builtins.elem "pipeCommit" d;
 
@@ -172,22 +335,6 @@ let
     else
       [ ];
 
-  emitsFor =
-    declared: v1Name: gate: fn:
-    let
-      named = if v1Name == null then "«unnamed»" else v1Name;
-    in
-    if declared != null then
-      declared
-    else if v1Name != null && declaredEmits ? ${v1Name} then
-      declaredEmits.${v1Name}
-    else if !policyRecovery then
-      errors.policyCodomainUndeclared named
-    else
-      policyRecover.recoverEmits {
-        inherit sentinelFields;
-        declaredEmits = { };
-      } named gate fn;
   # The include-arm stamp: one `emits` field where three `__`-prefixed tags used to ride.
   # ★ `ungated` is the record BEFORE `gateSuppression` wraps its `fn`. A codomain is a STATIC property of
   # a body; suppression is a PER-NODE DISPATCH concern. Recovering the codomain through the dispatch gate
@@ -197,83 +344,40 @@ let
   # from the ungated body makes the question unaskable rather than merely unlikely, and removes an
   # accidental dependence on `gateSuppression`'s fail-open `or [ ]` default (so tightening that default
   # later cannot silently break codomain recovery).
-  # THE REFINED CODOMAINS (`declare.codomainRows`), stamped beside `emits` and by the SAME rule: a
-  # DECLARATION on the v1 ref wins, and only an undeclared one is recovered — read off the SAME sentinel
-  # fire, through the row's own `keysOf`. So the shim's opt-out property survives unchanged: a v1 record
-  # declaring its codomains is never fired at a sentinel at all, and a record that must be fired is fired
-  # ONCE for every codomain it owes rather than once per field.
+  # THE REFINED CODOMAINS ride the SAME record and the SAME chain as `emits` — see `codomainRecordFor`,
+  # which is where the whole codomain is decided. They are not a second mechanism: `emits` and the refined
+  # fields are three projections of ONE classification, so a record that must be fired is fired ONCE for
+  # every codomain it owes rather than once per field, and the projections cannot disagree.
   #
-  # ★ THE RECOVERY IS NON-AUTHORITATIVE, exactly as `emits`' is, and that is what makes it safe to state
-  # a codomain the shim inferred. A body whose sentinel branch emits no `member` recovers `binds = [ ]` —
-  # an EMPTY HEAD, a legal declaration — and if a real firing then binds a key, `errors.bindsUndeclared`
-  # aborts NAMED at that emission instead of letting a positive dependency edge the stratification never
-  # saw exist in silence. Under-recovery is therefore LOUD, never a quiet unsoundness.
-  #
-  # ⚠ AND A DECLARED CODOMAIN IS REQUIRED WHEN RECOVERY IS OFF. `emitsFor`'s no-recovery arm aborts on an
-  # undeclared `emits`; a record declaring `emits` while omitting the field one of those kinds owes is the
-  # same undeclared codomain one level finer, so it takes the same abort rather than a silent fire.
-  # ★★ THE KEY SET IS STATIC AND THE VALUES ARE LAZY, and that split is forced rather than stylistic.
-  # A key set conditioned on `emits` has to FORCE `emits` to be decided, and `emits` is precisely the
-  # field whose recovery fires a body — so a conditional stamp turns every compiled record into a fired
-  # one. A consumer that compiles a fleet WITHOUT registering it (the surface suites project the compiled
-  # spine and never reach `policyMessage`) then pays a fire it never asked for, and the shim's documented
-  # recovery ceiling makes some of those fires UNCATCHABLE: a body bare-accessing a required coord fails
-  # on a missing attribute, which `tryEval` cannot catch.
-  #
-  # Stamping both fields with values that consult `emits` only when READ inverts that: at registration
-  # `policyMessage` has already forced `emits` for its own earlier guards, so reading a codomain there
-  # costs nothing new and can introduce no failure the codomain-less path did not already have; and a
-  # record nobody registers is never fired at all.
-  codomainStamps =
-    ref: ungated: emits:
-    let
-      rows = declare.codomainRows;
-      named = if (ref.name or null) == null then "«unnamed»" else ref.name;
-      recovered =
-        if !policyRecovery then
-          errors.policyCodomainUndeclared named
-        else
-          declare.codomainsOf (
-            policyRecover.recoverDecls { inherit sentinelFields; } named ungated.gate ungated.fn
-          );
-    in
-    builtins.listToAttrs (
-      map (k: {
-        name = rows.${k}.declaredIn;
-        # A DECLARATION on the v1 ref wins outright — the shim's opt-out, which is also the only way to
-        # state a codomain a sentinel fire cannot reach (a value-conditional body takes its false branch
-        # at the sentinel and emits nothing). Otherwise: the kinds this policy does not emit get the
-        # EMPTY HEAD, and the ones it does are read off the fire through the row's own `keysOf`.
-        value =
-          ref.${rows.${k}.declaredIn}
-            or (if builtins.elem k emits then recovered.${rows.${k}.declaredIn} or [ ] else [ ]);
-      }) (builtins.attrNames rows)
-    );
+  # ★ THE RECOVERY IS NON-AUTHORITATIVE, and that is what makes it safe to state a codomain the shim
+  # inferred. A body whose fire emits no `member` recovers `binds = [ ]` — an EMPTY HEAD, a legal
+  # declaration — and if a real firing then binds a key, `errors.bindsUndeclared` aborts NAMED at that
+  # emission instead of letting a positive dependency edge the stratification never saw exist in silence.
+  # Under-recovery is therefore LOUD, never a quiet unsoundness.
 
   familyStamps =
-    ref: ungated:
+    fleetCodomains: ref: ungated:
     let
-      emits = emitsFor (ref.emits or null) (ref.name or null) ungated.gate ungated.fn;
       named = if (ref.name or null) == null then "«unnamed»" else ref.name;
+      codomain = codomainRecordFor fleetCodomains ref named ungated;
     in
-    {
-      inherit emits;
+    codomain
+    // {
       # The same commitment seam `mintFleetWide` stamps, at the INCLUDE arms. Omitting it here would make
       # the seam a property of HOW a policy was wired rather than of what it declares: an include-path
       # policy declaring `pipeCommit` would have its commitment silently dropped from a seed that never
       # received it, which is the class this seam closes. Empty unless the ref's own declaration names
       # `pipeCommit`, so nothing is fired that was not fired before.
-      ops = commitOpsFor named (declaresCommitOf (ref.emits or null) (ref.name or null)) ungated;
+      ops = commitOpsFor named (declaresCommitOf fleetCodomains (ref.emits or null) (ref.name or null)) ungated;
       # THE NAME THE COMPILED KEY LOST. These arms register their record under a SYNTHETIC attr key: the
       # aspect-include arm embeds the v1 name in it, the kind-include arm's is positional and carries no
       # trace of it. A firing-time abort naming only that key names nothing the corpus author wrote —
-      # which is the same reason `emitsFor` keys its codomain lookup at the REF's v1 name. This carries
+      # which is the same reason `codomainRecordFor` keys its lookup at the REF's v1 name. This carries
       # the same name onto the record so the diagnostics can read it (one optional field; the kernel
       # learns no compile vocabulary from it). `null` for a nameless ref — a bare-fn include has no v1
       # name to state — and the message then renders by the compiled key alone.
       originName = ref.name or null;
-    }
-    // codomainStamps ref ungated emits;
+    };
 
   # ── THE SELECTION PRODUCERS ──────────────────────────────────────────────────────────────────────
   #
@@ -417,6 +521,8 @@ let
   # The SINGLE source is `v1-class-key-map.nix` (shared with flake-module's §2.2 raw-totality `groundK`);
   # a v1 `homeManager` body grounds to den-hoag's registered `home-manager` class here (R2).
   v1ClassKeyMap = import ./v1-class-key-map.nix;
+  # THE v1 SURFACE KEY SET, shared with flake-module.nix's option declaration (surface-keys.nix header).
+  surfaceKeys = import ./surface-keys.nix;
 
   # Ground ONE v1 class-NAME string (not an attrset key) through the SAME v1ClassKeyMap — for the
   # class-name FIELDS a translated route/deliver effect resolves against `resolveBucket` (§9 C6):
@@ -1373,7 +1479,7 @@ let
     // translationsOf ing normalizeList aspectRec policyId declaresCommit value.fn;
 
   compilePolicies =
-    ing: normalizeList: aspectRec: selectsFromSchema: policies:
+    fleetCodomains: ing: normalizeList: aspectRec: selectsFromSchema: policies:
     let
       names = builtins.attrNames policies;
       # Partition: `when`-over-inline-aspect values become aspects (conditional activation); a
@@ -1392,19 +1498,20 @@ let
       mintFleetWide =
         name: ungated: gated:
         let
-          emits = emitsFor (policies.${name}.emits or null) name ungated.gate ungated.fn;
-          declaresCommit = declaresCommitOf (policies.${name}.emits or null) name;
+          declaresCommit = declaresCommitOf fleetCodomains (policies.${name}.emits or null) name;
           # A v1 policy value is a RECORD or a bare `ctx:` closure; only the record can carry a declared
           # codomain, and a closure has no field to read one from. Normalising to a record here keeps the
-          # ref shape one thing for `codomainStamps` — the alternative is a second shape test inside it.
+          # ref shape one thing for `codomainRecordFor` — the alternative is a second shape test inside it.
+          # ★ A BARE LAMBDA THEREFORE DECLARES NOTHING AND FALLS THROUGH, which is the population this
+          # design exists to serve: it is the documented universal v1 policy form, it can carry no field,
+          # and its remedy is `den.policyCodomains.<name>` beside it.
           ref = (if builtins.isAttrs policies.${name} then policies.${name} else { }) // {
             inherit name;
           };
         in
         gated
-        // codomainStamps ref ungated emits
+        // codomainRecordFor fleetCodomains ref name ungated
         // {
-          inherit emits;
           # THE FLEET-WIDE COMPOSE COMMITMENTS, as DATA. Built by ONE definition-time firing of the
           # commit-mode translation — no node, no stratum index, no dispatch — and empty for every policy
           # whose declared codomain does not name `pipeCommit`. The consumer chain is static end to end:
@@ -1428,7 +1535,7 @@ let
         prelude.genAttrs policyNames (
           name:
           let
-            ungated = compilePolicy ing normalizeList aspectRec name (declaresCommitOf (policies.${name}.emits
+            ungated = compilePolicy ing normalizeList aspectRec name (declaresCommitOf fleetCodomains (policies.${name}.emits
               or null
             ) name) policies.${name};
           in
@@ -1437,7 +1544,7 @@ let
         // prelude.genAttrs canTakeNames (
           name:
           let
-            ungated = compileCanTake ing normalizeList aspectRec name (declaresCommitOf (policies.${name}.emits
+            ungated = compileCanTake ing normalizeList aspectRec name (declaresCommitOf fleetCodomains (policies.${name}.emits
               or null
             ) name) policies.${name};
           in
@@ -1774,13 +1881,14 @@ let
         value =
           let
             ungated = compilePolicy ing normalizeList aspectRec "__aspectInclude__${ref.name}" (declaresCommitOf
+              fleetCodomains
               (ref.emits or null)
               (ref.name or null)
             ) ref;
             compiled = gateSuppression (ref.name or null) ungated;
           in
           compiled
-          // familyStamps ref ungated
+          // familyStamps fleetCodomains ref ungated
           // {
             # DECLARATION BEATS DERIVATION — the same law the schema arm states, at the arm that compiles
             # top-level `den.default.includes` records. The confinement below is a TRANSLATION of what a
@@ -1925,7 +2033,7 @@ let
     if violations == [ ] then null else builtins.head violations;
   selectsFromSchema =
     name: selectsOfSchema (builtins.filter (k: !(isExcludedAtKind k name)) (includedAt name));
-  compiledPolicies = compilePolicies ing normalizeList aspectRec selectsFromSchema v1Policies;
+  compiledPolicies = compilePolicies fleetCodomains ing normalizeList aspectRec selectsFromSchema v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag declarations,
   # classified PER REF exactly as v1's `wrapChild` (`aspects/fx/aspect/normalize.nix`, @ pin 11866c16). v1's
@@ -2106,12 +2214,12 @@ let
                 let
                   ungated =
                     compilePolicy ing normalizeList aspectRec "__kindInclude__${kind}__policy__${toString i}"
-                      (declaresCommitOf (ref.emits or null) (ref.name or null))
+                      (declaresCommitOf fleetCodomains (ref.emits or null) (ref.name or null))
                       ref;
                   base = gateSuppression (ref.name or null) ungated;
                 in
                 base
-                // familyStamps ref ungated
+                // familyStamps fleetCodomains ref ungated
                 // {
                   gate = kindCoord // base.gate;
                   # `den.schema.<kind>.excludes` naming this policy removes it from THIS kind's selection.
@@ -2301,33 +2409,43 @@ let
   # `unknownSurfaceKey`). Known = the recognised concern surfaces + `den.default` + the declared custom
   # kinds (whose instances ride at `den.<kind>`). `_`-prefixed keys are den-internal (reserved), never a
   # user surface, so they are exempt. A typo'd/unknown key aborts named, never silently drops.
+  # ── `den.policyCodomains` — THE FLEET-SETTABLE CODOMAIN SURFACE ──────────────────────────────────
+  #
+  # ONE surface, keyed by the v1 SOURCE REF's name, subsuming the three den-side tables' role rather than
+  # cloning it. The key is the ref's name and not the compiled attr key because a policy wired through
+  # `den.schema.<kind>.includes` compiles to a SYNTHETIC key that no name-keyed lookup could ever catch —
+  # the same constraint the existing tables already carry.
+  #
+  # ★★ THE RECORD IS TOTAL: all three fields REQUIRED, an omitted one impossible rather than discouraged.
+  # A partially authored record would be an `emits`-only surface for that policy — the omitted field falls
+  # to the recovery, which for a value-conditional body is exactly the defect this surface exists to
+  # remove, arriving at a policy that IS declared. Totality is enforced by the option TYPE at
+  # flake-module.nix `v1OptionsModule`, and HERE for the `denCompat.compile`-direct entry path, which
+  # crosses no option type at all. Without the second enforcement the headline property ("an omitted field
+  # is impossible BY TYPE") would hold on one entry path and not the other.
+  # ★ FORCED WITH `surfaceTotalityOk`, so an authored-but-unused bad record is refused at the surface
+  # rather than only when some consumer happens to read that policy's codomain.
+  fleetCodomainDecls = v1Decls.policyCodomains or { };
+  fleetCodomains = prelude.genAttrs (builtins.attrNames fleetCodomainDecls) (
+    n:
+    let
+      v = fleetCodomainDecls.${n};
+      ok =
+        builtins.isAttrs v
+        && builtins.all (f: v ? ${f}) codomainFields
+        && builtins.all (f: builtins.elem f codomainFields) (builtins.attrNames v);
+    in
+    if ok then v else errors.policyCodomainNotTotal n v
+  );
+  policyCodomainsOk = builtins.deepSeq (builtins.attrValues fleetCodomains) true;
+
   declaredKinds = builtins.attrNames (v1Decls.schema or { });
-  # KEEP IN SYNC with flake-module.nix `v1OptionsModule.options` (the declared v1 surface) — a key
-  # added there without a row here aborts every fleet; a key here without an option there is dead.
-  knownSurfaceKeys = [
-    "hosts"
-    "homes"
-    "schema"
-    "aspects"
-    "policies"
-    "classes"
-    "include"
-    "quirks"
-    "contentClass"
-    "default"
-    # `reservedKeys` (den v1 `den.reservedKeys`, key-classification.nix:34) — a CONFIG-only v1 key the shim
-    # ACCEPTS and IGNORES: it extends v1's structuralKeysSet, which the compat keyClassification export
-    # (#49-slice) reproduces STATICALLY (baked `[ "settings" ]`, the corpus's value). No concern reads it, so
-    # it is a known surface (never a typo) but has no ingest/compile handler.
-    "reservedKeys"
-    # `batteries` (den v1 `den.batteries.<name>`, modules/aspects/batteries/) — the shim provisions the
-    # corpus-consumed batteries at `config.den.batteries.<name>` (lib/compat/batteries.nix). Their VALUES
-    # are inert data consumed BY REFERENCE via `den.default.includes` / a user aspect's includes (the v1
-    # posture — an UNREFERENCED battery is inert in v1 too), so the KEY is accepted and ignored: no concern
-    # reads `den.batteries` itself (a referenced battery rides the include list, not this key), exactly like
-    # `reservedKeys`.
-    "batteries"
-  ]
+  # THE STATIC v1 SURFACE, read off the SINGLE source `surface-keys.nix` that flake-module.nix's
+  # `v1OptionsModule` declares its options from. The two used to be hand-kept lists held in step by a
+  # comment at each end — a key added there without a row here aborts every fleet, and a key here without
+  # an option there is dead — and nothing compared them. One list cannot disagree with itself.
+  knownSurfaceKeys =
+    builtins.attrNames surfaceKeys
   ++ declaredKinds
   # M1.5: the marker-discovered custom-kind instance namespaces (a v1 config CHOOSES the registry key, e.g.
   # `den.clusters` for kind `cluster` — ingest discovers it by id_hash, never by name), PLUS the
@@ -2346,9 +2464,12 @@ let
     else
       errors.unknownSurfaceKey (builtins.head unknownSurfaceKeys);
 in
-# Force the totality check before ANY concern crosses the boundary (a consumer forcing any output attr
-# trips a typo'd/unknown `den.*` key here, never downstream).
-builtins.seq surfaceTotalityOk {
+# Force the totality checks before ANY concern crosses the boundary (a consumer forcing any output attr
+# trips a typo'd/unknown `den.*` key here, never downstream). `policyCodomainsOk` rides the same seq so a
+# partially-authored codomain record is refused AT THE SURFACE rather than only when some consumer
+# happens to read that one policy's codomain — the same posture, for the surface this design adds.
+builtins.seq surfaceTotalityOk (
+  builtins.seq policyCodomainsOk {
   # The entity concern (§8): flat registries (entry-valued), the v1 attrs mkDen rebuilds from, the
   # membership relation, the containment schema, the content-class map, and the kind-attached includes
   # lifted to `include` records. Everything here is entry-valued past ingestion (C6).
@@ -2393,4 +2514,5 @@ builtins.seq surfaceTotalityOk {
     else
       builtins.mapAttrs (_: pipeLib.channelOf) quirks;
   classes = builtins.mapAttrs translateClass v1Classes;
-}
+  }
+)

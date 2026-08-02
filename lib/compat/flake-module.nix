@@ -124,6 +124,8 @@ let
   # spelled the v1 way (`homeManager`) is recognised as a registered class directly (no per-key grounding —
   # grounding to the kebab kernel name stays confined to compile).
   v1ClassKeyMap = import ./v1-class-key-map.nix;
+  # THE v1 SURFACE KEY SET, shared with compile.nix's totality gate (surface-keys.nix header).
+  surfaceKeys = import ./surface-keys.nix;
   # `typedCompileTree { declaredClassNames; quirkChannelNames; } rawAspects` — eval the RAW v1 aspect tree
   # through the compile view, yielding a typed tree whose class keys are deferredModules and whose nodes carry
   # native `.key` (the ONLY identity — compile reads `.key` directly). The closed gate (`mkCompileAspectsType`'s
@@ -177,24 +179,62 @@ let
   # TRADE-OFF of the freeform: a TYPO in an unknown `den.*` key silently succeeds HERE (it is absorbed,
   # not rejected). That is deliberate — surface-totality (every v1 key is a KNOWN key, else a named
   # error) is enforced downstream at `compile`, over the read-back config, not at this permissive eval.
-  # KEEP IN SYNC with compile.nix `knownSurfaceKeys` (the totality gate reads that list).
+  #
+  # THE OPTION SET IS GENERATED FROM `surface-keys.nix`, the SINGLE source compile.nix's
+  # `knownSurfaceKeys` also reads. The two were hand-kept lists held in step by a comment at each end,
+  # with nothing comparing them and both desync directions named in the tree itself; one list cannot
+  # disagree with itself.
+  #
+  # ★ THE CODOMAIN RECORD IS THE ONE TYPED MEMBER. Every v1 key is `raw` because the v1 grammar is not
+  # ours to type. `den.policyCodomains` is not reproduced from v1 — it is the surface this design owns,
+  # and its whole enforcement is that a PARTIAL record cannot be authored, so it is declared as
+  # `attrsOf (submodule …)` with all three fields REQUIRED and no freeform. Typed `raw` like its
+  # neighbours, the totality claim would evaporate with no signal.
+  codomainRecordOpt =
+    description:
+    schema.mkOption {
+      type = schema.types.attrsOf (
+        schema.types.submodule {
+          options = {
+            emits = schema.mkOption {
+              type = schema.types.listOf schema.types.str;
+              description = "The declaration KINDS this policy's body may produce, as the UNION over its branches.";
+            };
+            binds = schema.mkOption {
+              type = schema.types.listOf schema.types.str;
+              description = "The containment BINDING KEYS a `member` this policy emits may carry. `[ ]` states that it binds none.";
+            };
+            suppresses = schema.mkOption {
+              type = schema.types.listOf schema.types.str;
+              description = "The POLICY NAMES a `suppress` this policy emits may target. `[ ]` states that it suppresses none.";
+            };
+          };
+        }
+      );
+      default = { };
+      inherit description;
+    };
+  optionFor =
+    key: spec:
+    if spec.option.codomainRecord or false then
+      codomainRecordOpt spec.option.description
+    else if builtins.isList spec.option.default then
+      rawListOpt spec.option.description
+    else
+      rawOpt spec.option.description;
+  v1SurfaceOptions = builtins.listToAttrs (
+    map (key: {
+      name = key;
+      value = optionFor key surfaceKeys.${key};
+    }) (builtins.filter (key: surfaceKeys.${key}.option != null) (builtins.attrNames surfaceKeys))
+  );
   v1OptionsModule = {
     options.den = schema.mkOption {
       default = { };
       description = "The den v1 declaration surface (read by the compat two-eval, desugared by compile).";
       type = schema.types.submodule {
         freeformType = schema.types.lazyAttrsOf schema.types.raw;
-        options = {
-          hosts = rawOpt "v1 `den.hosts.<system>.<name>` (two-level host definitions).";
-          homes = rawOpt "v1 `den.homes.<system>.<name>` (standalone home-manager configurations).";
-          schema = rawOpt "v1 `den.schema.<kind>` (containment kinds + kind-attached includes).";
-          aspects = rawOpt "v1 `den.aspects.<name>` (aspect definitions).";
-          policies = rawOpt "v1 `den.policies.<name>` (policy functions / for·when records).";
-          classes = rawOpt "v1 `den.classes.<name>` (output class registrations).";
-          include = rawListOpt "v1 static entity-scoped aspect inclusions.";
-          quirks = rawOpt "v1 `den.quirks.<name>` (quirk channels).";
-          contentClass = rawOpt "v1 kind -> content-class overrides.";
-        };
+        options = v1SurfaceOptions;
       };
     };
   };
