@@ -12,7 +12,7 @@
 #
 #   • LAW (a), the RECOVERY fire — reached only by a policy with NO declaration, so any `pipeCommit` among
 #     the recovered declarations is unauthorised by construction. Raised from the RETURNED declarations,
-#     outside `recoverDecls`' `tryEval` envelope (which destroys a caught throw's text) and BEFORE the
+#     outside `classifyDecls`' `tryEval` envelope (which destroys a caught throw's text) and BEFORE the
 #     `unique (map kindOf …)` projection (which erases the channel and the commitment fields the message
 #     names). It is the shim's refusal and carries the shim's prefix.
 #   • LAW (b), DISPATCH — the kernel's general codomain law at `conformingProduce`. It carries the KERNEL
@@ -451,7 +451,7 @@ in
       };
     };
     # …and it is NOT the recovery-failure message. Under a construction that raised this refusal from
-    # INSIDE the body, `recoverDecls`' `tryEval` would catch it and render `policyCodomainUnrecoverable` —
+    # INSIDE the body, `classifyDecls`' `tryEval` would catch it and render `policyCodomainUnrecoverable` —
     # policy name only, channel and field destroyed. The exclusion is what makes this arm discriminate the
     # position rather than restate the abort.
     test-a9-undeclared-law-a-is-not-the-recovery-failure-message = {

@@ -335,7 +335,7 @@ in
   # declarations are consumed. That case split is exhaustive over a two-valued translation-time fact.
   #
   # ★ THIS FUNCTION NEVER THROWS. The refusals are tests over the value a firing RETURNED, evaluated by
-  # the caller: `recoverDecls` wraps the recovery fire in `tryEval`, which destroys a caught throw's
+  # the caller: `classifyDecls` wraps the recovery fire in `tryEval`, which destroys a caught throw's
   # message, so a refusal raised from inside a body arrives as `policyCodomainUnrecoverable` with the
   # channel and the field gone. No envelope, present or future, can swallow a refusal that is not raised
   # inside one.

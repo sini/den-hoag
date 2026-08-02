@@ -165,7 +165,7 @@ in
 
     # ── A3 — a REQUIRED coordinate read by field is ATTRIBUTED at the fire site ───────────────────────
     # `host.class` is a `probe-sentinel.nix` constant, so it is in the twin's key set at BOTH production
-    # wirings and this arm needs no surface pin. The read raises the twin's named throw, `recoverDecls`'
+    # wirings and this arm needs no surface pin. The read raises the twin's named throw, the recovery fire's
     # `tryEval` catches it — destroying its text — and the diagnostic is SYNTHESIZED on the caller's side
     # of that boundary from the policy name and the probe's verdict. Asserting the twin's own text here
     # would assert something no envelope can deliver.
@@ -225,7 +225,7 @@ in
     # ── A3-coordinate-residual — the CATCHABILITY ceiling, pinned OPEN ────────────────────────────────
     # A defaulted, list-typed formal consumed BY TYPE never selects a field at all: Nix's argument-type
     # check inspects the type tag, sees an attrset where a list is required, and raises its OWN error —
-    # which `tryEval` cannot catch. `recoverDecls` never returns, the fire-site attribution never runs,
+    # which `tryEval` cannot catch. `classifyDecls` never returns, the fire-site attribution never runs,
     # and NO den-compat diagnostic is produced. The lookahead is what makes that an assertion rather than
     # a hope: the absence of the shim's own prefix is the ceiling's content.
     #

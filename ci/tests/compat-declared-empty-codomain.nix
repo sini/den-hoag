@@ -4,12 +4,12 @@
 # The kernel ruled what an empty codomain MEANS: `emits = [ ]` is an EMPTY HEAD — a rule that compiles, is
 # registered at the bottom stratum, fires wherever its gate admits and produces nothing; producing anything
 # violates its own codomain and aborts NAMED (concern-policies.nix header; silent-deletion.nix pins it on
-# the kernel surface). The compat shim reaches the same field by a different route: `emitsFor` takes the
+# the kernel surface). The compat shim reaches the same field by a different route: `codomainRecordFor` takes the
 # source record's own `emits` if there is one, then the corpus fact tables keyed by the v1 name, and only
 # then FIRES the body at a value-less sentinel to recover a codomain (`policy-recover.nix`).
 #
 # ★ WHY THE TWO ROUTES HAD TO BE SEPARATED. While an empty codomain compiled to no rule at all, "declared
-# empty" and "probed empty" reached the same place, so an `emitsFor` arm that skipped a declaration BECAUSE
+# empty" and "probed empty" reached the same place, so a chain arm that skipped a declaration BECAUSE
 # it was empty was invisible. Under the empty-head ruling they are different programs: the declaration
 # states a rule with an empty consequence set, and the probe result is a GUESS about a body — one that
 # a value-conditional body answers wrongly by construction (it takes its false branch at a value-less ctx).
@@ -22,7 +22,7 @@
 # body with its own declaration-free twin — the SAME body, the SAME fleet, in the SAME run — so the probe
 # is shown LIVE and returning something else at the moment the declaration is shown to win.
 #
-# THE SECOND CODOMAIN LAYER (`suppresses`/`binds`, compile.nix `codomainStamps`) was already presence-keyed
+# THE SECOND CODOMAIN LAYER (`suppresses`/`binds`, compile.nix `codomainRecordFor`) was already presence-keyed
 # (`ref.<field> or <recovery>`), so an explicit empty refined codomain always survived; it is pinned here
 # because the two layers state one property and a reader has no way to tell which of them a regression
 # moved. One row (`suppress`) carries it — both rows are the same expression over `declare.codomainRows`.

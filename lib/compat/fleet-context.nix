@@ -61,7 +61,7 @@
     {
       # A v1-SHAPED policy record (`__isPolicy`), because this is registered on the COMPAT surface where
       # `den.policies.<name>` speaks v1 — a bare fn or a `{ __isPolicy; fn; }` record. The declaration
-      # fields ride alongside it and are read at the mint (`compile.nix` `emitsFor` / `mintFleetWide`),
+      # fields ride alongside it and are read at the mint (`compile.nix` `codomainRecordFor` / `mintFleetWide`),
       # which is what lets a shim built-in declare what a v1 author cannot.
       __isPolicy = true;
       name = "fleet-context-enrich";
