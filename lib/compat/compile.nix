@@ -109,9 +109,10 @@ let
   # so a row added to the kernel's table becomes a field this surface owes rather than one it silently
   # drops. It is the same list `errors.policyCodomainNotTotal` closes the fleet surface's vocabulary
   # against, in both directions.
-  codomainFields = [ "emits" ] ++ map (k: declare.codomainRows.${k}.declaredIn) (
-    builtins.attrNames declare.codomainRows
-  );
+  codomainFields = [
+    "emits"
+  ]
+  ++ map (k: declare.codomainRows.${k}.declaredIn) (builtins.attrNames declare.codomainRows);
 
   # THE SHIM TABLES, PROJECTED INTO THE ONE CODOMAIN RECORD — the same shape the v1 ref and the fleet
   # surface speak. Each table's contribution becomes a projection INTO this record rather than a parallel
@@ -368,7 +369,9 @@ let
       # policy declaring `pipeCommit` would have its commitment silently dropped from a seed that never
       # received it, which is the class this seam closes. Empty unless the ref's own declaration names
       # `pipeCommit`, so nothing is fired that was not fired before.
-      ops = commitOpsFor named (declaresCommitOf fleetCodomains (ref.emits or null) (ref.name or null)) ungated;
+      ops = commitOpsFor named (declaresCommitOf fleetCodomains (ref.emits or null) (
+        ref.name or null
+      )) ungated;
       # THE NAME THE COMPILED KEY LOST. These arms register their record under a SYNTHETIC attr key: the
       # aspect-include arm embeds the v1 name in it, the kind-include arm's is positional and carries no
       # trace of it. A firing-time abort naming only that key names nothing the corpus author wrote —
@@ -1535,18 +1538,20 @@ let
         prelude.genAttrs policyNames (
           name:
           let
-            ungated = compilePolicy ing normalizeList aspectRec name (declaresCommitOf fleetCodomains (policies.${name}.emits
-              or null
-            ) name) policies.${name};
+            ungated = compilePolicy ing normalizeList aspectRec name (declaresCommitOf fleetCodomains
+              (policies.${name}.emits or null)
+              name
+            ) policies.${name};
           in
           mintFleetWide name ungated (gateSuppression name ungated)
         )
         // prelude.genAttrs canTakeNames (
           name:
           let
-            ungated = compileCanTake ing normalizeList aspectRec name (declaresCommitOf fleetCodomains (policies.${name}.emits
-              or null
-            ) name) policies.${name};
+            ungated = compileCanTake ing normalizeList aspectRec name (declaresCommitOf fleetCodomains
+              (policies.${name}.emits or null)
+              name
+            ) policies.${name};
           in
           mintFleetWide name ungated (gateSuppression name ungated)
         );
@@ -2033,7 +2038,9 @@ let
     if violations == [ ] then null else builtins.head violations;
   selectsFromSchema =
     name: selectsOfSchema (builtins.filter (k: !(isExcludedAtKind k name)) (includedAt name));
-  compiledPolicies = compilePolicies fleetCodomains ing normalizeList aspectRec selectsFromSchema v1Policies;
+  compiledPolicies =
+    compilePolicies fleetCodomains ing normalizeList aspectRec selectsFromSchema
+      v1Policies;
 
   # Kind-attached includes (`den.schema.<kind>.includes`) → per-kind, per-ref den-hoag declarations,
   # classified PER REF exactly as v1's `wrapChild` (`aspects/fx/aspect/normalize.nix`, @ pin 11866c16). v1's
@@ -2446,15 +2453,15 @@ let
   # an option there is dead — and nothing compared them. One list cannot disagree with itself.
   knownSurfaceKeys =
     builtins.attrNames surfaceKeys
-  ++ declaredKinds
-  # M1.5: the marker-discovered custom-kind instance namespaces (a v1 config CHOOSES the registry key, e.g.
-  # `den.clusters` for kind `cluster` — ingest discovers it by id_hash, never by name), PLUS the
-  # bridge-passed DECLARED non-kind config namespaces (`den._declaredKeys`, e.g. `secretsConfig`, extracted
-  # from the flake-parts option surface). Both are LEGITIMATE declared surfaces; a typo is neither (it is
-  # freeform-absorbed, undeclared, and holds no instance registry), so it still aborts named — strict R9
-  # totality preserved, not widened. mkDen-direct fixtures set neither; the discovered set alone classifies.
-  ++ ing.discoveredRegistryKeys
-  ++ (v1Decls._declaredKeys or [ ]);
+    ++ declaredKinds
+    # M1.5: the marker-discovered custom-kind instance namespaces (a v1 config CHOOSES the registry key, e.g.
+    # `den.clusters` for kind `cluster` — ingest discovers it by id_hash, never by name), PLUS the
+    # bridge-passed DECLARED non-kind config namespaces (`den._declaredKeys`, e.g. `secretsConfig`, extracted
+    # from the flake-parts option surface). Both are LEGITIMATE declared surfaces; a typo is neither (it is
+    # freeform-absorbed, undeclared, and holds no instance registry), so it still aborts named — strict R9
+    # totality preserved, not widened. mkDen-direct fixtures set neither; the discovered set alone classifies.
+    ++ ing.discoveredRegistryKeys
+    ++ (v1Decls._declaredKeys or [ ]);
   unknownSurfaceKeys = builtins.filter (
     k: (builtins.substring 0 1 k != "_") && !(builtins.elem k knownSurfaceKeys)
   ) (builtins.attrNames v1Decls);
@@ -2470,49 +2477,49 @@ in
 # happens to read that one policy's codomain — the same posture, for the surface this design adds.
 builtins.seq surfaceTotalityOk (
   builtins.seq policyCodomainsOk {
-  # The entity concern (§8): flat registries (entry-valued), the v1 attrs mkDen rebuilds from, the
-  # membership relation, the containment schema, the content-class map, and the kind-attached includes
-  # lifted to `include` records. Everything here is entry-valued past ingestion (C6).
-  entities = {
-    inherit (ing)
-      schema
-      registries
-      instances
-      membership
-      contentClass
-      systemFor
-      instantiateFor
-      # R6: the per-host home-manager NixOS module grain (terminal-side twin of instantiateFor).
-      hmModuleFor
-      # The bridge-registry passthrough: the per-KIND per-entity ctx-entity field record (the host's
-      # structural class/system/hostName trio + every kind's structural-exclusion registry stamp,
-      # `den._entityStamps` via the bridge) — flake-module.nix `instanceConfig` stamps it onto EVERY
-      # kind's entities.
-      entityFields
-      ;
-  };
-  inherit aspects policies;
-  # Static entity-scoped aspect inclusions (den-hoag `den.include`, the §370 `directAspects` seed).
-  # The compile core emits NONE — this is the seam the LEGACY `self-provide` desugar (R5, spec §10)
-  # appends its self-named-aspect includes onto (flake-module.nix `addSelfIncludes`), severable: with
-  # the legacy module out of the wiring the list stays empty, byte-identical to a no-R5 compile.
-  include = [ ];
-  # v1 `den.quirks.<name>` → a den-hoag channel registration `{ channel; ops; adapters; }` (pipe.nix
-  # `channelOf`), so an aspect's quirk key resolves to a channel contribution rather than being
-  # class-classified or aborting as an unknown key. The pipe STAGE vocabulary (`pipe.from`/filter/fold →
-  # the operator DAG on a channel) is a POLICY effect, compiled by `translateEffect` above. KEY-OVERLAP
-  # CHECK (§2.4, preserved from v1): a name declared as both a class and a quirk channel is ambiguous
-  # under den-hoag's `resolveBucket` (classes ∪ channels) — a named definition-time error.
-  channels =
-    let
-      quirks = v1Decls.quirks or { };
-      classNames = builtins.attrNames v1Classes;
-      overlap = builtins.filter (n: builtins.elem n classNames) (builtins.attrNames quirks);
-    in
-    if overlap != [ ] then
-      errors.quirkClassOverlap (builtins.head overlap)
-    else
-      builtins.mapAttrs (_: pipeLib.channelOf) quirks;
-  classes = builtins.mapAttrs translateClass v1Classes;
+    # The entity concern (§8): flat registries (entry-valued), the v1 attrs mkDen rebuilds from, the
+    # membership relation, the containment schema, the content-class map, and the kind-attached includes
+    # lifted to `include` records. Everything here is entry-valued past ingestion (C6).
+    entities = {
+      inherit (ing)
+        schema
+        registries
+        instances
+        membership
+        contentClass
+        systemFor
+        instantiateFor
+        # R6: the per-host home-manager NixOS module grain (terminal-side twin of instantiateFor).
+        hmModuleFor
+        # The bridge-registry passthrough: the per-KIND per-entity ctx-entity field record (the host's
+        # structural class/system/hostName trio + every kind's structural-exclusion registry stamp,
+        # `den._entityStamps` via the bridge) — flake-module.nix `instanceConfig` stamps it onto EVERY
+        # kind's entities.
+        entityFields
+        ;
+    };
+    inherit aspects policies;
+    # Static entity-scoped aspect inclusions (den-hoag `den.include`, the §370 `directAspects` seed).
+    # The compile core emits NONE — this is the seam the LEGACY `self-provide` desugar (R5, spec §10)
+    # appends its self-named-aspect includes onto (flake-module.nix `addSelfIncludes`), severable: with
+    # the legacy module out of the wiring the list stays empty, byte-identical to a no-R5 compile.
+    include = [ ];
+    # v1 `den.quirks.<name>` → a den-hoag channel registration `{ channel; ops; adapters; }` (pipe.nix
+    # `channelOf`), so an aspect's quirk key resolves to a channel contribution rather than being
+    # class-classified or aborting as an unknown key. The pipe STAGE vocabulary (`pipe.from`/filter/fold →
+    # the operator DAG on a channel) is a POLICY effect, compiled by `translateEffect` above. KEY-OVERLAP
+    # CHECK (§2.4, preserved from v1): a name declared as both a class and a quirk channel is ambiguous
+    # under den-hoag's `resolveBucket` (classes ∪ channels) — a named definition-time error.
+    channels =
+      let
+        quirks = v1Decls.quirks or { };
+        classNames = builtins.attrNames v1Classes;
+        overlap = builtins.filter (n: builtins.elem n classNames) (builtins.attrNames quirks);
+      in
+      if overlap != [ ] then
+        errors.quirkClassOverlap (builtins.head overlap)
+      else
+        builtins.mapAttrs (_: pipeLib.channelOf) quirks;
+    classes = builtins.mapAttrs translateClass v1Classes;
   }
 )

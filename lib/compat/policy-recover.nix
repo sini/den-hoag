@@ -146,16 +146,18 @@ let
   codomainSpy =
     { sentinelFields }:
     name:
-    prelude.genAttrs (
-      [
-        "id_hash"
-        "name"
-      ]
-      ++ builtins.attrNames sentinelFields
-    ) (
-      field:
-      throw "den-compat: codomain spy: v1 policy `${name}` read the coordinate field `${field}` while its declaration codomain was being recovered"
-    );
+    prelude.genAttrs
+      (
+        [
+          "id_hash"
+          "name"
+        ]
+        ++ builtins.attrNames sentinelFields
+      )
+      (
+        field:
+        throw "den-compat: codomain spy: v1 policy `${name}` read the coordinate field `${field}` while its declaration codomain was being recovered"
+      );
 
   # `classifyDecls { sentinelFields } name gate fn` → the verdict, and on the admitting verdict the
   # DECLARATIONS the body produced. Three states where the value sentinel had two:

@@ -300,8 +300,7 @@ in
     name: declared: needed: declaredValues: reads:
     let
       renderList = xs: "[ " + builtins.concatStringsSep " " (map (s: "\"${s}\"") xs) + " ]";
-      field =
-        f: "${f} = ${if declaredValues ? ${f} then renderList declaredValues.${f} else "[ ]"};";
+      field = f: "${f} = ${if declaredValues ? ${f} then renderList declaredValues.${f} else "[ ]"};";
       remedy = builtins.concatStringsSep " " (
         map field [
           "emits"
@@ -315,12 +314,12 @@ in
         else
           "declares ${builtins.concatStringsSep ", " declared}";
     in
-    fail "policy codomain"
-      "v1 policy `${name}` ${declares} but no source declares ${
-        builtins.concatStringsSep ", " needed
-      }, and recovering the omitted field(s) requires firing a body that decides what it emits from a coordinate value. A codomain is a STATIC property of a body, decided before any node exists, so there is no context at which this question has an answer and the shim will not invent one. The coordinate(s) it reads: ${
-        if reads == [ ] then "«no single coordinate could be attributed»" else builtins.concatStringsSep ", " reads
-      }. COMPLETE THE DECLARATION — beside the policy, leaving the body untouched: `den.policyCodomains.${name} = { ${remedy} };`. The declaration is TOTAL: all three fields are stated, and `[ ]` is a legal value meaning the body produces none of that kind. `emits` names the kinds the body may produce at ANY context — the UNION over its branches, not the ones it takes at some particular node";
+    fail "policy codomain" "v1 policy `${name}` ${declares} but no source declares ${builtins.concatStringsSep ", " needed}, and recovering the omitted field(s) requires firing a body that decides what it emits from a coordinate value. A codomain is a STATIC property of a body, decided before any node exists, so there is no context at which this question has an answer and the shim will not invent one. The coordinate(s) it reads: ${
+      if reads == [ ] then
+        "«no single coordinate could be attributed»"
+      else
+        builtins.concatStringsSep ", " reads
+    }. COMPLETE THE DECLARATION — beside the policy, leaving the body untouched: `den.policyCodomains.${name} = { ${remedy} };`. The declaration is TOTAL: all three fields are stated, and `[ ]` is a legal value meaning the body produces none of that kind. `emits` names the kinds the body may produce at ANY context — the UNION over its branches, not the ones it takes at some particular node";
 
   # THE FLEET SURFACE'S OWN TYPE REFUSAL, raised by the shim rather than by the option type.
   # `den.policyCodomains` is typed `attrsOf (submodule …)` with all three fields REQUIRED at
@@ -338,25 +337,16 @@ in
       ];
     in
     if !(builtins.isAttrs value) then
-      fail "policy codomain"
-        "`den.policyCodomains.${name}` is not a record. A codomain declaration is a closed record of ${
-          builtins.concatStringsSep ", " fields
-        }"
+      fail "policy codomain" "`den.policyCodomains.${name}` is not a record. A codomain declaration is a closed record of ${builtins.concatStringsSep ", " fields}"
     else
       let
         missing = builtins.filter (f: !(value ? ${f})) fields;
         extra = builtins.filter (f: !(builtins.elem f fields)) (builtins.attrNames value);
       in
       if missing != [ ] then
-        fail "policy codomain"
-          "`den.policyCodomains.${name}` omits ${
-            builtins.concatStringsSep ", " missing
-          }. A codomain declaration is TOTAL: every kind a body may produce is stated, and every kind it may not is stated as the EMPTY HEAD. Write the omitted field(s) as `[ ]` — that is a declaration, not a placeholder, and it is what makes the recovery unnecessary for this policy"
+        fail "policy codomain" "`den.policyCodomains.${name}` omits ${builtins.concatStringsSep ", " missing}. A codomain declaration is TOTAL: every kind a body may produce is stated, and every kind it may not is stated as the EMPTY HEAD. Write the omitted field(s) as `[ ]` — that is a declaration, not a placeholder, and it is what makes the recovery unnecessary for this policy"
       else
-        fail "policy codomain"
-          "`den.policyCodomains.${name}` carries unknown field(s) ${
-            builtins.concatStringsSep ", " extra
-          }. The codomain vocabulary is closed: ${builtins.concatStringsSep ", " fields}";
+        fail "policy codomain" "`den.policyCodomains.${name}` carries unknown field(s) ${builtins.concatStringsSep ", " extra}. The codomain vocabulary is closed: ${builtins.concatStringsSep ", " fields}";
 
   # TWO AUTHORED STATEMENTS IN CONFLICT, at the two codomain surfaces. The v1 ref's own field and
   # `den.policyCodomains.<name>` are BOTH authored, so DECLARATION-BEATS-DERIVATION — which orders an
@@ -366,8 +356,7 @@ in
   # `selectsConflictsWithSchemaExclude` refuses the same shape one surface over.
   policyCodomainConflict =
     name: field:
-    fail "policy codomain conflict"
-      "v1 policy `${name}` declares `${field}` on its own record AND at `den.policyCodomains.${name}`, and the two DISAGREE. Both are AUTHORED statements — neither is a derivation — so declaration-beats-derivation does not order them, and honouring either one would discard the other silently. den-hoag refuses instead. DROP ONE: remove `${field}` from the policy record to keep the fleet declaration, or remove it from `den.policyCodomains.${name}` to keep the record's";
+    fail "policy codomain conflict" "v1 policy `${name}` declares `${field}` on its own record AND at `den.policyCodomains.${name}`, and the two DISAGREE. Both are AUTHORED statements — neither is a derivation — so declaration-beats-derivation does not order them, and honouring either one would discard the other silently. den-hoag refuses instead. DROP ONE: remove `${field}` from the policy record to keep the fleet declaration, or remove it from `den.policyCodomains.${name}` to keep the record's";
 
   # LAW (a) — a compose commitment RECOVERED from a policy that declares no codomain. The commitment fire
   # is gated on the DECLARED codomain, so a body producing a derived-channel DAG or a delivery route
