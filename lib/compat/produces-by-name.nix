@@ -91,6 +91,28 @@
   # `[ "pipeCommit" "pipeMark" ]` — the commitment rides `ops` from one definition-time firing while the
   # site marks are still emitted at every dispatched node.
   project-user-overlays = [ "pipeMark" ];
+  # ★ THE FIRST ENTRY TO DISCHARGE THAT OBLIGATION, and it is here for a DIFFERENT REASON than the
+  # undetectability this file's header narrates. The hub-shares broadcast is the corpus pipe that carries a
+  # DERIVING stage — a `pipe.transform` between the `from` and the `broadcast`, tagging each dir record with
+  # its source user — so `bearsCommitment` reads its `__derived` dag as true and the translation routes the
+  # record to `pipeCommit`, where `broadcast-hub-peer` above, a bare from+broadcast, is a plain mark. The
+  # body is UNCONDITIONAL and the recovery fire reaches it and produces that declaration; recovery still
+  # cannot supply the codomain, because a compose commitment seeds the ONE fleet gen-pipe compose BEFORE the
+  # eval and is collected from the DECLARED codomain only — a recovered one would be built and never
+  # applied, so `recoverEmits` refuses it as unauthorised by construction. The pair is dictated verbatim by
+  # that refusal (`errors.commitmentUndeclared`, which names this file and this list): the commitment rides
+  # `ops` from one definition-time firing while the site marks are still emitted at every dispatched node,
+  # so `pipeCommit` alone clears the commitment abort and fails the next one at `emitsUndeclared`.
+  # ★ INTERIM, under the codomain-posture ruling, and stated rather than hidden. The canonical remedy is a
+  # FLEET-SETTABLE declaration surface — the codomain declared where the policy is authored, not held here
+  # as a den-hoag-side fact about someone else's corpus — and it does not exist yet. Withholding the entry
+  # until it does does not buy the ruling anything: it leaves the corpus's `.#nixosConfigurations` aborting
+  # at `attrNames`. This entry migrates to that surface when it lands, and is dispositioned with the rest of
+  # this table at the deferred review the ruling schedules for it.
+  broadcast-syncthing-hub-shares = [
+    "pipeCommit"
+    "pipeMark"
+  ];
   hm-forward = [ "delivery" ];
   hmForward = [ "delivery" ];
 }
