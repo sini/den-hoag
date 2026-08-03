@@ -551,33 +551,100 @@ let
   # (srcScope = the descendant cell). `guardHolds route srcScope` gates against the SOURCE scope's bindings.
   # ── placeRemapped — v1 `nestWithAdaptArgs`/`nestPlain` (route.nix:78-126 @ pin 11866c16), den-hoag-native.
   # For a route with `at ≠ []` and NO eval-time guard (cases 1/2), a route-remapped slice becomes a
-  # TOP-LEVEL module in the terminal `evalModules` — `args: { config = setAttrByPath at (nestedEval).config }`
-  # — so it receives the terminal's top-level args (`pkgs`/`lib`/`config`), and its slice is resolved in a
-  # NESTED `evalModules` whose `specialArgs` thread BOTH provenances a parametric slice may read: the host
-  # top-level args (fixes `pkgs` at `users.users.<u>`) AND the SOURCE scope's channel/entity bindings
-  # (`bindingsAt srcScope` — fixes `peer-dev` at `home-manager.users.<u>`). This replaces the old nest-as-
-  # VALUE placement (`placeSlice` nested the wrapper as the submodule value, so gen-bind's wrapAll saw the
-  # outer attrset as content and never wrapped the inner fn → its args were the bare submodule's, missing
-  # pkgs/peer-dev). Case-3 (eval-time guard) is DELIBERATELY NOT handled here — it stays on the
-  # `argEnvWrap`+`placeSlice` path (below), because its guard reads the SUBMODULE's options (`options ?
-  # marker` declared inside the target submodule), which a top-level guard would not see.
+  # TOP-LEVEL module in the terminal `evalModules`, so it receives the terminal's top-level args
+  # (`pkgs`/`lib`/`config`) AND can decide there — the only place `options` exists — which of the two
+  # dispositions of the fragment the route admits: MODE L (link) or MODE C (separate compilation). The
+  # choice, and the two `let` bindings it reads, are documented at the placement below.
   #
-  # LEDGER (per-module vs v1's #572 COMBINED eval): v1 does ONE `nestWithAdaptArgs` over `{ imports =
-  # adapted }` for a MULTI-SOURCE route; this evals each slice module SEPARATELY. Corpus-inert — the only
-  # routed multi-source case (test-forwards-mergeable-option) merges LIST-valued content (associative concat,
-  # order-free), so per-module vs combined agree. A future multi-source route delivering a SCALAR or a
-  # priority-annotated field would need the combined `{ imports = slices }` eval (spread here) to match v1.
+  # MODE-C-SCOPED, from here to the end of both LEDGERs: under mode C the placed module is `args: { config =
+  # setAttrByPath at (nestedEval).config }` and its slice is resolved in a NESTED `evalModules` whose
+  # `specialArgs` thread BOTH provenances a parametric slice may read: the host top-level args (fixes `pkgs`
+  # at `users.users.<u>`) AND the SOURCE scope's channel/entity bindings (`bindingsAt srcScope`). Under mode L
+  # none of that applies — the slice is placed as a DEFINITION and the TARGET publishes those args, with only
+  # the den bindings pre-bound. Mode C replaces the old nest-as-VALUE placement (`placeSlice` nested the
+  # wrapper as the submodule value, so gen-bind's wrapAll saw the outer attrset as content and never wrapped
+  # the inner fn → its args were the bare submodule's, missing pkgs/peer-dev). Case-3 (eval-time guard) is
+  # DELIBERATELY NOT handled here — it stays on the `argEnvWrap`+`placeSlice` path (below), because its guard
+  # reads the SUBMODULE's options (`options ? marker` declared inside the target submodule), which a
+  # top-level guard would not see.
   #
-  # LEDGER (priority-annotation collapse): the nested `evalModules` RESOLVES the slice before the outer merge
-  # sees it, so a `mkDefault`/`mkForce`/`mkMerge` annotation in a routed slice is COLLAPSED to its resolved
-  # value at the nested boundary. No active routed slice carries one (verified); the parked
-  # issue-311-nested-includes-are-parametric `homeManager.home.keyboard.model` mkDefault/mkForce pair rides
-  # the hm-user-detect route — when it is un-parked (a later rung), that rung must check whether the
-  # nested-eval collapse changes its cross-scope priority resolution.
+  # LEDGER (per-module vs v1's #572 COMBINED eval) — MODE C ONLY: v1 does ONE `nestWithAdaptArgs` over
+  # `{ imports = adapted }` for a MULTI-SOURCE route; mode C evals each slice module SEPARATELY. Corpus-inert
+  # — the only routed multi-source case (test-forwards-mergeable-option) merges LIST-valued content
+  # (associative concat, order-free), so per-module vs combined agree. A future multi-source route delivering
+  # a SCALAR or a priority-annotated field would need the combined `{ imports = slices }` eval (spread here)
+  # to match v1. Mode L carries no such divergence: it places each slice as a separate DEFINITION resolved in
+  # the target's ONE fixpoint, which is the combined-merge semantics v1's single nested eval approximates.
+  #
+  # LEDGER (priority-annotation collapse) — MODE C ONLY: the nested `evalModules` RESOLVES the slice before
+  # the outer merge sees it, so a `mkDefault`/`mkForce`/`mkMerge` annotation in a routed slice is COLLAPSED to
+  # its resolved value at the nested boundary. It therefore bites on the adaptArgs routes — `userToHost` at
+  # `users.users.<u>` is the corpus's only one — and NOT on `hm-user-detect`, which takes mode L at every
+  # terminal that declares a linkset at the coordinate (each real nixos/home-manager crossing), where a
+  # slice's annotations reach the target's own merge intact. No active mode-C routed slice carries one
+  # (verified); the parked issue-311-nested-includes-are-parametric `homeManager.home.keyboard.model`
+  # mkDefault/mkForce pair rides `hm-user-detect`, so at a real terminal it is mode-L content and the collapse
+  # does not reach it — a rung un-parking it must check the mode-C routes (`userToHost`), not this one.
   placeRemapped =
     route: srcScope: sliceMod:
     let
       srcBindings = bindingsAt srcScope; # den channel + entity + settings values (peer-dev lives here).
+      # ── THE INTACT GRAFT (mode L) — the slice LINKED at `at`, never separately compiled.
+      # Cardelli 1997 §5 (Linksets) — the OTHER disposition of a fragment: where `crossEval` SEPARATELY
+      # COMPILES the slice against a sub-linkset and lifts its resolved `config`, this LINKS the slice into
+      # the linkset that already lives at the placement coordinate — the target submodule's own eval. Only
+      # linking preserves what a lifted `.config` structurally drops: option DECLARATIONS reach the outer
+      # option-set, priority annotations (`mkDefault`/`mkForce`/`mkMerge`) survive to the target's merge
+      # instead of collapsing at a nested boundary, sibling slices resolve in ONE fixpoint so each reads the
+      # others' contributions, and the target's own arg publications (`pkgs`, `osConfig`, the submodule's
+      # `config`/`lib`) reach the slice as the target defines them rather than as a caller guessed them.
+      # The ONE linkset entry no target can publish is the SOURCE scope's den binding — a quirk channel like
+      # `peer-dev` names no module-system arg, so nothing at the coordinate could resolve it. gen-bind's
+      # `wrapAll` pre-binds exactly those FORMALS (a pre-eval rewrite of the module's formal parameters, not
+      # of the arg environment), leaving every formal it does not bind to resolve at the target. Threading
+      # the HOST's `config`/`lib`/`pkgs` in here instead would SHADOW the target's own publications and
+      # reinstate the sub-linkset under another name.
+      linked =
+        builtins.head
+          (bind.wrapAll {
+            modules = [ sliceMod ];
+            bindings = srcBindings;
+            inherit producerConfigs;
+          }).modules;
+      # ── WHERE THE GRAFT IS ADMISSIBLE — `at` must NAME A LINKSET in the crossing terminal.
+      # A fragment can only be linked where an `evalModules` owns the coordinate; that is a property of the
+      # TERMINAL, not of the route, so it is decided HERE at the crossing (the one place `options` exists)
+      # and never at fold time. Walking the terminal's declared options along `at`: entering a declared
+      # option (`_type == "option"`) means the REMAINING path lies inside that option's type, i.e. a
+      # submodule eval owns the coordinate and a module placed there is linked. Consuming the whole path
+      # without entering an option leaves an option-SET prefix (`wsl`, an attribute set OF options) — no
+      # eval there, and the module system rejects a non-attrset value at such a path outright. Falling off
+      # the declared options leaves a freeform/raw value slot — no eval there either. In both of those the
+      # coordinate has NO linkset, so the fragment MUST be separately compiled and its resolved config
+      # placed as a value: mode L is unavailable, not merely unattractive.
+      # CEILING (ledgered, and MEASURED — not hypothetical): the predicate tests a PREFIX of `at`, never the
+      # coordinate. It returns true the moment it ENTERS a declared option and does not inspect what remains
+      # of the path — at `users.users.<u>.maid` it validates `users.users` and never looks at `maid`. So a
+      # declared option is necessary for a linkset and not sufficient, in TWO independent ways: the option
+      # entered may itself be of a NON-module type (`types.attrs`, `lazyAttrsOf raw`), and the remaining
+      # SUFFIX may land somewhere that is not a linkset even where the prefix is. Either way the graft is
+      # taken, the slice sits at the coordinate as raw data with its `imports` unprocessed, and the content
+      # VANISHES — silently, unless a reader happens to look. Witnessed: changing one live coordinate's
+      # option type from `submoduleWith` to a non-module type turns a passing route into an eval abort.
+      # The live mode-L coordinates are `home-manager.users.<u>`, `users.users.<u>.maid` and
+      # `hjem.users.<u>`; `users.users.<u>` itself is NOT among them — that is `userToHost`, an adaptArgs
+      # route, hence always mode C. Each is a `submoduleWith` today, INCLUDING the `maid` suffix the
+      # predicate does not check. Sharpening it needs BOTH halves: "declares a MODULE-VALUED option" AND
+      # "the remaining suffix lands on a linkset".
+      hasLinkset =
+        opts: path:
+        path != [ ]
+        && (
+          let
+            k = builtins.head path;
+          in
+          opts ? ${k} && ((opts.${k}._type or null) == "option" || hasLinkset opts.${k} (builtins.tail path))
+        );
     in
     args:
     let
@@ -596,11 +663,28 @@ let
     in
     {
       config = args.lib.setAttrByPath route.at (
-        builtins.removeAttrs nested.config [
-          "_module"
-          "warnings"
-          "assertions"
-        ]
+        # MODE L (link) vs MODE C (separate compilation). Linking is the DEFAULT disposition — it is the one
+        # that keeps the fragment a fragment — and mode C is taken only where linking cannot express the
+        # route: (a) the coordinate names no linkset (see `hasLinkset`), or (b) the route REWRITES the arg
+        # environment. (b) is a module-system bound rather than a preference: `specialArgs` is caller-only
+        # (gen-bind arg-env.nix — "rewriting it means OWNING the `evalModules` call"), and the only channel
+        # writable from inside an eval, `_module.args`, reaches a module solely through a DECLARED formal,
+        # so a formals-erased slice (`args: … args.pkgs2 …`) can read an injected name from `specialArgs`
+        # alone. An `adaptArgs` route must therefore own the eval — which is precisely what mode C is.
+        # CONSEQUENCE (ledgered): everything mode L preserves stays LOST on an adaptArgs route. Its slices'
+        # option DECLARATIONS do not reach the outer option-set, their priority annotations collapse at the
+        # nested boundary (the second LEDGER above), and they cannot see each other's contributions. In the
+        # corpus that is `userToHost` at `users.users.<u>`, the only adaptArgs route. This is forced by
+        # `specialArgs` being caller-only, not elected — closing it means re-expressing the arg-env rewrite
+        # through a channel a LINKED fragment can read.
+        if route.adaptArgs == null && hasLinkset args.options route.at then
+          linked
+        else
+          builtins.removeAttrs nested.config [
+            "_module"
+            "warnings"
+            "assertions"
+          ]
       );
     };
 
