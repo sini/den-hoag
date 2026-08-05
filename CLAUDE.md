@@ -2,14 +2,14 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
-
 ## ★ Current arc (2026-08-05)
 
 **GEN-FIRST consolidation; den-hoag is FROZEN** (ADR-0002 — breaking it is acceptable; its kernel/compat
 work is parked and deferred out of `bd ready`). Boot from
 `~/Documents/papers/den-architecture/STATUS/RESUME-PROMPT-ARCH.md`, not from `bd ready`: the ready list
 serves the live gen arc only, and the law lives in `~/Documents/papers/den-architecture/specs/adr/`.
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 
 ## Beads Issue Tracker
 
