@@ -10,5 +10,14 @@ result
 .beads-credential-key
 .beads/proxieddb/
 
+# Root-level bd runtime lock. .beads/.gitignore's `*.lock` cannot reach the repo
+# root, so this one has to be named here.
+.beads.gate.lock
+
+# Untracked JSONL export. The tracked export is .beads/beads.jsonl; this one is a
+# stray that some tooling has written at least once and that a staleness check can
+# read instead, understating the drift.
+.beads/issues.jsonl
+
 # bv (beads viewer) local config and caches
 .bv/
