@@ -43,4 +43,19 @@ if command -v bd >/dev/null 2>&1; then
 fi
 # --- END BEADS INTEGRATION v1.1.0 ---
 
+# --- BEGIN DEN-HOAG EXPORT GUARD (not beads-managed) ---
+# A stale .beads/beads.jsonl cannot be committed. Rationale and re-wiring instructions live
+# in the script's header. Sited OUTSIDE the beads markers above so a `bd hooks install` that
+# rewrites the managed block leaves this call standing; re-verify after any beads upgrade,
+# the same contract .beads/hooks/commit-msg carries. Must precede the `exec` below, which
+# replaces this process.
+#
+# Resolved relative to THIS FILE, not to the commit's worktree. core.hooksPath is an absolute
+# path into the main checkout, so every linked worktree runs this same hook file; the script
+# lands beside it in the same commit, whereas a worktree checked out earlier has no copy and
+# would be blocked from committing through no fault of its own. The guard still exports and
+# compares within whichever worktree is committing — only its own location is fixed here.
+"$(dirname "$0")/../../hooks/beads-export-guard.sh" || exit 1
+# --- END DEN-HOAG EXPORT GUARD ---
+
 exec /nix/store/pi00kf1m0bs82i4f3gjhyjavczhza541-pre-commit-4.5.1/bin/pre-commit "${ARGS[@]}"
