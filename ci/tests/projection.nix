@@ -50,8 +50,10 @@ let
     ;
 
   # ── ANCHOR fixture: the class-fold-subtree fleet (nixos host `igloo` + three hm user cells, each cell
-  #    emitting a nixos (define-user) slice + a home-manager slice). NO reach edges (corpus has none until
-  #    Phase 5), so reach host = the structural subtree — the exact classSubtreeAt domain.
+  #    emitting a nixos (define-user) slice + a home-manager slice). NO reach edges — THIS FIXTURE declares
+  #    none, which is a property of the fixture and not of the tree: the corpus has an opt-in producer, a v1
+  #    `policy.spawn { classes }` lowering to one class-scoped `declare.reach-edge` per named class. With no
+  #    edge here, reach host = the structural subtree — the exact classSubtreeAt domain.
   anchorFleet = denCompat.mkDen [
     {
       den.hosts.x86_64-linux.igloo = {
@@ -1601,7 +1603,9 @@ in
     # ══ COMPLETE-REACH projection SEMANTICS (the terminal-content proofs, spec §6 intent) ═══════════════
     #    Drive the REAL reach.compute over a stub with INJECTED opt-in edges, then projectClass —
     #    proving the terminal (terminalModulesAt = projectClass) produces the RIGHT output on a complete
-    #    reach (the fleet will match once Phase 5 wires the real corpus edges). These are the outcomes the
+    #    reach. The corpus authors its own edges through the v1 `policy.spawn { classes }` arm (one
+    #    class-scoped `declare.reach-edge` per named class); the edges injected here additionally cover
+    #    reach shapes that producer does not author. These are the outcomes the
     #    spec §6 intent oracle names: spicetify ONCE, intel cpu+gpu BOTH, define-user nixos@host + hm@cell.
 
     # (a) THE SPICETIFY DOUBLE dissolves — ONE declaration. A user (sini) reaches `roles.media` (→ the

@@ -225,7 +225,8 @@ in
     # host gathers from its descendant cell (`parentTargetedRoutesAt`). `home-manager.users.tux` is present
     # with the cell's OWN `hm-tux` content, class-record CLEAN (hasClassKeys = false — the u22-family abort
     # shape is impossible). The mark-pending marker was mis-scoped (hm-forward content, not a host-aspects
-    # reach-edge — that is Phase 5). (The sibling test-nested-nixos-half-lands-at-host STAYS GREEN — that
+    # reach-edge — those come from the v1 `policy.spawn { classes }` arm, a separate producer).
+    # (The sibling test-nested-nixos-half-lands-at-host STAYS GREEN — that
     # content is the descendant cell's OWN nixos slice, reached via the structural-descendant edge.)
     test-user-hm-clean-of-class-records = {
       expr = {

@@ -77,8 +77,9 @@ let
   # ── COMPLETE-REACH driver (spec §Phase-2 synthetic-first): reach.compute over a STUB graph with INJECTED
   #    opt-in edges (the reach-graph mkStub approach), then projectClass over the resulting reach — so the
   #    single-visit dedup + structural-descendant + edge closure are exercised end-to-end (NOT a pre-built
-  #    reach list). This is how the corpus terminal will behave once Phase 5 wires the real edges; here the
-  #    edges are injected synthetically.
+  #    reach list). This is how the corpus terminal behaves on the edges its own producer authors — a v1
+  #    `policy.spawn { classes }` lowers to one class-scoped `declare.reach-edge` per named class; here the
+  #    edges are injected synthetically, so reach shapes that producer does not author are covered too.
   mkRa =
     import "${denHoagSrc}/lib/attributes/resolved-aspects.nix"
       {

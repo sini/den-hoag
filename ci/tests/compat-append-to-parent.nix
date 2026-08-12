@@ -184,7 +184,8 @@ in
     # DESCENDANT cell (`parentTargetedRoutesAt`, output-modules.nix) — the cell's `home-manager` slice remaps
     # to `nixos` at `[ home-manager users tux ]`. So the cell's forwarded hm content NOW reaches the host
     # terminal (the delivery half is a projection-view transform, not an emission fold). The mark-pending
-    # marker was mis-scoped (this is hm-FORWARD content, not a host-aspects reach-edge — that is Phase 5).
+    # marker was mis-scoped (this is hm-FORWARD content, not a host-aspects reach-edge — those come from the
+    # v1 `policy.spawn { classes }` arm, a separate producer).
     test-parent-target-reaches-host-terminal = {
       expr =
         let

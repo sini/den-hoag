@@ -136,7 +136,8 @@ in
     # from its DESCENDANT cell (`parentTargetedRoutesAt`) — the resolve.to-derived cell's `home-manager`
     # slice remaps to `nixos` at `[ home-manager users tux ]`. The per-user hm content NOW reaches the host
     # terminal (the delivery half is a projection transform). The mark-pending marker was mis-scoped (this
-    # is hm-forward content, not a host-aspects reach-edge — that is Phase 5).
+    # is hm-forward content, not a host-aspects reach-edge — those come from the v1 `policy.spawn
+    # { classes }` arm, a separate producer).
     test-resolved-user-hm-lands-at-host-terminal = {
       expr = {
         users = hostHmUsers resolved;

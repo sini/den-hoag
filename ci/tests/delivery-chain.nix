@@ -217,6 +217,9 @@ in
   # DAG-diamond multiplicity) are subsumed by the reach EDGE closure + single-visit/merge_ord laws,
   # witnessed at the projection level in `ci/tests/projection.nix` (the reach + projectClass witnesses) and
   # `ci/tests/reach-graph.nix` (edge transitivity, per-scope single-visit, canonical order). The corpus
-  # route→forward producer that fed this chain is re-wired as an opt-in reach-edge at Phase 5.
+  # route→forward producer that fed this chain is NOT re-wired: a v1 `route.appendToParent` still lowers to
+  # a parent-targeted forward, which the HOST gathers at projection time via `parentTargetedRoutesAt`. The
+  # opt-in reach-edge producer that DID land is a different one — the v1 `policy.spawn { classes }` arm,
+  # which retargets to one class-scoped `declare.reach-edge` per named class.
   flake.tests.delivery-chain = { };
 }
