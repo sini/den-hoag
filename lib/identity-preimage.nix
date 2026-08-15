@@ -13,7 +13,7 @@
 { aspects, schema }:
 let
   # Origin-aware aspect content-address — the gen-link ORIGIN coordinate, reached through gen-aspects
-  # `aspectId` (the exact formula gen-link `nodeId` delegates to; route-through-native, no formula twin).
+  # `aspectId` (routed through gen-schema's ONE `hashIdentity`; route-through-native, no formula twin).
   # `origin=[]` yields preimage `aspect|origin=|key=<k>` — today's partition, byte-preserved — so
   # `aspectIdHash` below stays value-identical. A namespace is a LOCAL ORIGIN: it stamps its aspects with
   # `origin=["<name>"]`, partitioning their content-address from a plain aspect of the same key.

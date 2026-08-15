@@ -1,6 +1,6 @@
 # The ORIGIN coordinate as a PARTITION (value-agnostic, sibling to native-identity.nix). A namespace is a
 # local ORIGIN: its aspects carry `origin=["<name>"]` in their content-address, reached through gen-aspects
-# `aspectId` (the formula gen-link `nodeId` delegates to) via `denHoag.aspectIdHashFor`. This witnesses the
+# `aspectId` (routed through gen-schema's `hashIdentity`) via `denHoag.aspectIdHashFor`. This witnesses the
 # LAW the origin coordinate must satisfy — same origin+path ⇒ same id, distinct path ⇒ distinct id, origin
 # genuinely enters the preimage (a namespace aspect ≠ a plain aspect of the same key), cross-namespace
 # distinct — pinning STRUCTURE, not id literals, so it survives any future formula change.

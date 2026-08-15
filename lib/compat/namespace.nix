@@ -81,7 +81,7 @@ let
   };
 
   # ORIGIN-STAMP. A namespace IS a local ORIGIN: every aspect it contributes carries `origin=["<name>"]` in
-  # its id_hash (via gen-aspects `aspectId` — the formula gen-link `nodeId` delegates to; see
+  # its id_hash (via gen-aspects `aspectId` — routed through gen-schema's `hashIdentity`; see
   # aspectIdHashFor). Key + attr-placement stay UNCHANGED — the den-brackets nav, and include/dedup/delivery
   # (all BY-KEY, lib/attributes/resolved-aspects.nix), are byte-neutral; ONLY the internal, never-emitted
   # id_hash content-address shifts (drv-neutral, partition-gated).
