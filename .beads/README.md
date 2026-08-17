@@ -80,6 +80,6 @@ bd create "Try out Beads"
 - **Quick Start Guide**: Run `bd quickstart`
 - **Examples**: [github.com/steveyegge/beads/examples](https://github.com/steveyegge/beads/tree/main/examples)
 
-______________________________________________________________________
+---
 
 *Beads: Issue tracking that moves at the speed of thought* ⚡
