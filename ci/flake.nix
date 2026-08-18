@@ -152,7 +152,19 @@
                 # probe is md5-anchored to the validated spec core it was copied from, and a
                 # formatter pass severs that anchor while changing nothing semantic. Excluded, not
                 # formatted-once, so the anchor survives future formatter upgrades too.
-                treefmt.settings.global.excludes = [ "ci/tests/_probes/*" ];
+                # archive/beads/ ships the SAME CLASS one directory over: 118 evacuated bead records
+                # (strip-back P10) whose bodies are verbatim copies of what left the tracker, and whose
+                # restore path is "paste the archive file's Description block back". Measured before this
+                # line landed, live control in the same run: mdformat strips 1,990 bytes from
+                # den-hoag-4kh.20.md and 36 from den-hoag-4kh.53.74.md — so a formatter pass silently
+                # edits records the boot prompt routes readers to and the stubs promise are verbatim.
+                # Excluded rather than formatted-once, for the reason the probes row gives: the property
+                # must survive future formatter upgrades. README.md is authored documentation and is NOT
+                # excluded — it is formatted like every other document in the tree.
+                treefmt.settings.global.excludes = [
+                  "ci/tests/_probes/*"
+                  "archive/beads/den-hoag-*.md"
+                ];
               };
           }
         )
