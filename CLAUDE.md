@@ -102,12 +102,18 @@ measured green" is not an exemption; skipping this cost a public revert on `gith
 - An **absence** claim needs a positive control on the same predicate in the same run. Several false "clean"
   results in this project came from predicates that could not have matched.
 
-### Architecture invariant currently under audit
+### Architecture invariant — PARKED WITH THE FREEZE, not live
 
 The den-hoag **kernel must be a pure graph representation** before the full backwards-compat layer
 materializes. `ci/tests/boundary.nix` guards the kernel⟂compat line **lexically only** (token scan, import
 direction, seam enumeration) — it cannot observe representation, so a v1-shaped state accumulator wearing
-gen-native naming passes every guard. Live arc: `bd show den-hoag-4kh`.
+gen-native naming passes every guard.
+
+★ **This audit is PARKED.** It belongs to the attempt-1 kernel track, frozen under ADR-0002 and deferred
+out of `bd ready`; its carrier `den-hoag-4kh` is a pointer stub since the 2026-08-18 tracker evacuation,
+with the record at `archive/beads/den-hoag-4kh.md`. Do not resume it. **The live arc is the gen-first
+consolidation — `bd show den-hoag-pdlh`** (the phase map), entered through
+`~/Documents/papers/den-architecture/STATUS/RESUME-PROMPT-ARCH.md`.
 
 ## Build & Test
 
