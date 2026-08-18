@@ -6,14 +6,20 @@ This file provides instructions and context for AI coding agents working on this
 
 **GEN-FIRST consolidation; den-hoag is FROZEN** (ADR-0002 — breaking it is acceptable; its kernel/compat
 work is parked and deferred out of `bd ready`). Boot from
-`~/Documents/papers/den-architecture/STATUS/RESUME-PROMPT-ARCH.md`, not from `bd ready`: the ready list
-serves the live gen arc only, and the law lives in `~/Documents/papers/den-architecture/specs/adr/`.
+`~/Documents/repos/sini/den-ag-design/STATUS/RESUME-PROMPT-ARCH.md`, not from `bd ready`: the ready list
+serves the live gen arc only, and the law lives in `~/Documents/repos/sini/den-ag-design/specs/adr/`.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+★ **THE BEADS WORKSPACE IS NOT IN THIS REPO.** It moved to `~/Documents/repos/sini/den-ag-design/.beads`
+on 2026-08-18, beside the ADRs and specs it cites — this repository is frozen (ADR-0002) and the tracker
+serves the live gen arc. `BEADS_DIR` is set globally, so `bd` works from any directory; pass `bd -C <path>`
+when a command has already `cd`'d elsewhere. The issue prefix stays `den-hoag`: it names the PROJECT, not
+this repository.
 
 ### Quick Reference
 
@@ -113,7 +119,7 @@ gen-native naming passes every guard.
 out of `bd ready`; its carrier `den-hoag-4kh` is a pointer stub since the 2026-08-18 tracker evacuation,
 with the record at `archive/beads/den-hoag-4kh.md`. Do not resume it. **The live arc is the gen-first
 consolidation — `bd show den-hoag-pdlh`** (the phase map), entered through
-`~/Documents/papers/den-architecture/STATUS/RESUME-PROMPT-ARCH.md`.
+`~/Documents/repos/sini/den-ag-design/STATUS/RESUME-PROMPT-ARCH.md`.
 
 ## Build & Test
 
