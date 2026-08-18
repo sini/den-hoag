@@ -1,4 +1,0 @@
-#!/bin/sh
-# Strip AI-attribution trailers the harness injects despite attribution config.
-# Contract: den-hoag-qnlx (2026-08-03). Re-verify this hook after any beads hook upgrade.
-sed -i '/^Claude-Session:/d' "$1"
