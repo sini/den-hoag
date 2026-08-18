@@ -1178,10 +1178,14 @@ expansion policy — the honest consequence of making ctx capability-scoped.
 Two places where the shipped substrate differs from the r2 spec's placeholder names — resolved here,
 faithfully to Law A1:
 
-1. **The gen-flake terminal is `realize` + `terminals.nixosSystem`, not `mkSystems.nixos`.** The spec's
-   `mkSystems.nixos` is a placeholder. den-hoag makes exactly one nixpkgs crossing, in
-   `lib/output/terminal.nix` (`crossNixos` → `gen-flake.terminals.nixosSystem { nixpkgs }`), driven by
-   `den.nixpkgs`. Every other `lib/**` file is nixpkgs-lib-free.
+1. **The gen-flake terminal is `terminals.mkSystemTerminal`, not `mkSystems.nixos` — and not the
+   `terminals.nixosSystem` sugar either.** The spec's `mkSystems.nixos` is a placeholder. den-hoag makes
+   exactly one nixpkgs crossing, in `lib/output/terminal.nix`: the generic `crossVia evaluator` calls
+   `gen-flake.terminals.mkSystemTerminal { inherit evaluator; }` (`:62`), and `crossNixos` is thin sugar
+   over it — `crossVia nixpkgs.lib.nixosSystem` (`:76`) — so the nixpkgs knowledge lives in the
+   *evaluator*, never in a system-named terminal. Driven by `den.nixpkgs`. Every other `lib/**` file is
+   nixpkgs-lib-free. den-hoag does **not** use gen-flake's `realize`: it holds the per-class fold itself
+   and calls the terminal directly (measured — zero `realize` calls in `lib/`).
 2. **The dispatch-coupled fixpoint is `gen-scope.circular` composed DIRECTLY over `gen-dispatch.dispatch`.**
    `gen-resolve` documents the circular∘dispatch pattern but exports no wrapper. The B1 enrichment
    fixpoint is `gen-scope.circular { init = base; eq = keysetEq } (ctx: ctx // extract (dispatch …))` —
